@@ -1,0 +1,25 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Templated", "version": "1.0.0" },
+  "servers": [
+    {
+      "url": "https://{host}/api/{basePath}",
+      "variables": {
+        "host": { "default": "api.test" },
+        "basePath": { "default": "v3" }
+      }
+    }
+  ],
+  "paths": {
+    "/things/{id}": {
+      "get": {
+        "operationId": "getThing",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "X-Trace", "in": "header", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "ok" } }
+      }
+    }
+  }
+}

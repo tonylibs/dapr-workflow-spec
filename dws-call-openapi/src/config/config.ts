@@ -28,6 +28,8 @@ export interface Config {
   readonly operationId: string;
   /** Parameter name -> jq expression evaluated against the input data. */
   readonly parameters: Readonly<Record<string, string>>;
+  /** Server variable overrides applied on top of the document's defaults. */
+  readonly serverVariables: Readonly<Record<string, string>>;
   readonly auth: AuthConfig;
   readonly output: OutputMode;
   readonly timeoutMs: number;
@@ -69,6 +71,7 @@ export function loadConfig(env: Env): Config {
     documentSha256: documentSha256.toLowerCase(),
     operationId,
     parameters: parseParameters(env.PARAMETERS),
+    serverVariables: parseServerVariables(env.SERVER_VARIABLES),
     auth: parseAuth(env),
     output: parseOutput(env.OUTPUT),
     timeoutMs: parseTimeout(env.TIMEOUT),
@@ -113,23 +116,32 @@ function parsePort(raw: string | undefined): number {
 }
 
 function parseParameters(raw: string | undefined): Record<string, string> {
+  return parseStringMap(raw, 'PARAMETERS', 'a jq expression');
+}
+
+function parseServerVariables(raw: string | undefined): Record<string, string> {
+  return parseStringMap(raw, 'SERVER_VARIABLES', 'a server variable value');
+}
+
+/** Parses an env var holding a JSON object whose values must all be strings. */
+function parseStringMap(raw: string | undefined, envKey: string, valueDescription: string): Record<string, string> {
   const value = nonEmpty(raw);
   if (value === undefined) return {};
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);
   } catch (err) {
-    throw new ConfigError(`PARAMETERS must be valid JSON: ${(err as Error).message}`);
+    throw new ConfigError(`${envKey} must be valid JSON: ${(err as Error).message}`);
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new ConfigError('PARAMETERS must be a JSON object');
+    throw new ConfigError(`${envKey} must be a JSON object`);
   }
   const out: Record<string, string> = {};
-  for (const [key, expr] of Object.entries(parsed)) {
-    if (typeof expr !== 'string') {
-      throw new ConfigError(`PARAMETERS.${key} must be a string (a jq expression)`);
+  for (const [key, entry] of Object.entries(parsed)) {
+    if (typeof entry !== 'string') {
+      throw new ConfigError(`${envKey}.${key} must be a string (${valueDescription})`);
     }
-    out[key] = expr;
+    out[key] = entry;
   }
   return out;
 }

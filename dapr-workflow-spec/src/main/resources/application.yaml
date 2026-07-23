@@ -1,0 +1,17 @@
+dws:
+  # Namespace the controller deploys managed workflow stacks into.
+  namespace: default
+  # How often drained previous versions are garbage-collected.
+  reconcile:
+    every: 30s
+  # Prebuilt step/orchestrator images. Override registry and tags per environment.
+  images:
+    call-http: sw-call-http:1.0
+    call-openapi: sw-call-openapi:1.0
+    run: sw-run:1.0
+    orchestrator: sw-orchestrator:1.0
+
+quarkus:
+  kubernetes-client:
+    devservices:
+      enabled: false

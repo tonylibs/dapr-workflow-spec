@@ -45,7 +45,7 @@ export async function buildEngine(config: Config): Promise<Engine> {
   const template = resolveOperation(spec, config.operationId);
   const validator = new OperationValidator(template);
   const apiKeyScheme = findApiKeyScheme(spec);
-  const server = readServer(spec);
+  const server = readServer(spec, config.serverVariables);
 
   const secret =
     config.auth.type === 'none' ? undefined : await resolveSecret(config.auth.secret, config.daprHttpPort);
@@ -54,8 +54,14 @@ export async function buildEngine(config: Config): Promise<Engine> {
   return { config, spec, template, validator, server, auth };
 }
 
-/** Reads the first server's URL and its variable defaults for buildRequest. */
-function readServer(spec: object): ServerConfig {
+const SERVER_TEMPLATE_RE = /\{([^{}]+)\}/g;
+
+/**
+ * Reads the first server's URL and resolves its variables: document defaults
+ * first, then SERVER_VARIABLES overrides. A templated URL with a variable that
+ * neither source resolves fails startup rather than sending `{var}` upstream.
+ */
+function readServer(spec: object, overrides: Readonly<Record<string, string>>): ServerConfig {
   const servers = (spec as { servers?: unknown }).servers;
   const first = Array.isArray(servers) ? (servers[0] as Record<string, unknown> | undefined) : undefined;
   const url = typeof first?.url === 'string' ? first.url : undefined;
@@ -68,5 +74,27 @@ function readServer(spec: object): ServerConfig {
       if (typeof value === 'string') variables[name] = value;
     }
   }
-  return { url, variables };
+  Object.assign(variables, overrides);
+
+  if (url !== undefined) {
+    assertServerResolvable(url, variables);
+  }
+  return { url: url === undefined ? undefined : stripTrailingSlash(url), variables };
+}
+
+/** Fails fast when the server URL still references an unresolved variable. */
+function assertServerResolvable(url: string, variables: Readonly<Record<string, string>>): void {
+  const unresolved = [...url.matchAll(SERVER_TEMPLATE_RE)]
+    .map((match) => match[1] as string)
+    .filter((name) => !(name in variables));
+  if (unresolved.length > 0) {
+    throw new Error(
+      `server URL "${url}" has unresolved variable(s): ${unresolved.join(', ')} — set them via SERVER_VARIABLES`,
+    );
+  }
+}
+
+/** A trailing slash would produce a double slash once the path is appended. */
+function stripTrailingSlash(url: string): string {
+  return url.endsWith('/') ? url.slice(0, -1) : url;
 }

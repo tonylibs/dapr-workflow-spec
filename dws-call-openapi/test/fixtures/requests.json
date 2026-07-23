@@ -1,0 +1,126 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Request Construction", "version": "1.0.0" },
+  "servers": [{ "url": "https://api.x.com/v2" }],
+  "paths": {
+    "/pets/{petId}": {
+      "get": {
+        "operationId": "getPet",
+        "parameters": [
+          { "name": "petId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "ok" } }
+      }
+    },
+    "/stores/{storeId}/orders/{orderId}": {
+      "get": {
+        "operationId": "getOrder",
+        "parameters": [
+          { "name": "storeId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "orderId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "ok" } }
+      }
+    },
+    "/files/{dir}/{file}": {
+      "get": {
+        "operationId": "getFile",
+        "parameters": [
+          { "name": "dir", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "file", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "ok" } }
+      }
+    },
+    "/names/{name}": {
+      "get": {
+        "operationId": "getName",
+        "parameters": [
+          { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "ok" } }
+      }
+    },
+    "/flags/{flag}": {
+      "get": {
+        "operationId": "getFlag",
+        "parameters": [
+          { "name": "flag", "in": "path", "required": true, "schema": { "type": "boolean" } }
+        ],
+        "responses": { "200": { "description": "ok" } }
+      }
+    },
+    "/search": {
+      "get": {
+        "operationId": "searchItems",
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer" } },
+          {
+            "name": "tag",
+            "in": "query",
+            "style": "form",
+            "explode": true,
+            "schema": { "type": "array", "items": { "type": "string" } }
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "style": "form",
+            "explode": false,
+            "schema": { "type": "array", "items": { "type": "string" } }
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "style": "deepObject",
+            "explode": true,
+            "schema": {
+              "type": "object",
+              "properties": { "color": { "type": "string" }, "size": { "type": "string" } }
+            }
+          },
+          { "name": "q", "in": "query", "allowReserved": true, "schema": { "type": "string" } },
+          { "name": "strict", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "ok" } }
+      }
+    },
+    "/pets/{petId}/notes": {
+      "post": {
+        "operationId": "createNote",
+        "parameters": [
+          { "name": "petId", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "tag", "in": "query", "schema": { "type": "string" } },
+          { "name": "X-Request-Id", "in": "header", "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["text"],
+                "properties": { "text": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "ok" } }
+      }
+    },
+    "/docs": {
+      "post": {
+        "operationId": "createDoc",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/vnd.acme+json": {
+              "schema": { "type": "object", "properties": { "title": { "type": "string" } } }
+            }
+          }
+        },
+        "responses": { "200": { "description": "ok" } }
+      }
+    }
+  }
+}

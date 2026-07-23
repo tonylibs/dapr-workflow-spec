@@ -7,10 +7,23 @@ and is invoked by `dws-orchestrator` via Dapr service invocation.
 
 At startup the step loads an OpenAPI document, verifies its SHA-256, dereferences
 and validates it, and resolves one `OPERATION_ID` into a cached operation
-template. Per request it binds parameters (evaluated from the input with jq),
-validates them against the document schemas, calls the upstream operation, and
-returns the result. Everything that can fail at startup fails fast; nothing is
-lazy on the request path.
+template. Per request it evaluates `PARAMETERS` with jq, binds and validates the
+values against the document schemas, hands them to `SwaggerClient.buildRequest`
+to construct the HTTP request, executes it with undici, and shapes the result.
+Everything that can fail at startup fails fast; nothing is lazy on the request
+path.
+
+### Request pipeline
+
+```
+input JSON ──jq(PARAMETERS)──▶ evaluated values
+           ──bind by location──▶ {params, requestBody}
+           ──ajv validate + coerce──▶ (400 on violation)
+           ──SwaggerClient.buildRequest({spec, operationId, parameters,
+                                         requestBody, server})──▶ {url, method, headers, body}
+           ──+ auth headers / apiKey query, timeout──▶ undici
+           ──OUTPUT replace|merge──▶ response
+```
 
 ## Stack
 
@@ -19,8 +32,11 @@ lazy on the request path.
   modules (`config`, `openapi`, `runner`)
 - [`@readme/openapi-parser`](https://npm.im/@readme/openapi-parser) — load,
   dereference, and validate the OpenAPI 3.0/3.1 document
-- [`openapi-client-axios`](https://npm.im/openapi-client-axios) — resolve
-  `OPERATION_ID` and execute the request
+- [`swagger-client`](https://npm.im/swagger-client) — `SwaggerClient.buildRequest`
+  turns the spec + `OPERATION_ID` + parameters into `{url, method, headers, body}`.
+  **All path/query/header/body serialization, URL-encoding, and server templating
+  is delegated to it; none of it is hand-rolled here.**
+- [`undici`](https://undici.nodejs.org/) — executes the built request
 - [`ajv`](https://ajv.js.org/) — validate bound parameters and request body
 - [`node-jq`](https://npm.im/node-jq) — evaluate `PARAMETERS` jq expressions
 - No Dapr SDK: secrets are fetched with a single HTTP GET to the sidecar
@@ -59,6 +75,7 @@ All configuration is via environment variables.
 | `DOCUMENT_SHA256` | yes | — | 64-char hex SHA-256 of the document bytes. Verified at startup. |
 | `OPERATION_ID` | yes | — | The `operationId` to execute. |
 | `PARAMETERS` | no | `{}` | JSON object mapping a parameter name (or `requestBody`) to a jq expression evaluated against the input data. |
+| `SERVER_VARIABLES` | no | `{}` | JSON object of server-variable values, applied over the document's defaults. Startup fails if the server URL still has an unresolved `{variable}`. |
 | `AUTH_TYPE` | no | `none` | `none` \| `bearer` \| `basic` \| `apiKey`. |
 | `AUTH_SECRET` | conditional | — | Inline secret value (used when auth is not `none`). |
 | `AUTH_SECRET_STORE` | conditional | — | Dapr secret store name (alternative to `AUTH_SECRET`). |

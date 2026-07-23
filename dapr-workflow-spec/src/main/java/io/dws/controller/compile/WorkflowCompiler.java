@@ -64,10 +64,9 @@ public class WorkflowCompiler {
             throw new CompilationException(errors);
         }
 
-        String rawName = workflow.getDocument().getName();
-        String w = Names.kebab(rawName);
+        String w = Names.kebab(workflow.getDocument().getName());
         String versionId = SpecDigest.versionId(specText, format);
-        String version = rawName + "@" + versionId;
+        String version = version(w, versionId);
         String defResource = Names.definitionResource(w, versionId);
 
         List<StepService> steps = new ArrayList<>();
@@ -83,6 +82,11 @@ public class WorkflowCompiler {
                 Map.of("DEFINITION_STORE", defResource, "DEFINITION_KEY", DEFINITION_KEY));
 
         return new DeploymentPlan(w, versionId, version, defResource, specText, steps, bindings, orchestrator);
+    }
+
+    /** The public version string: {@code <workflow>@v<sha256-8>}. */
+    public static String version(String workflow, String versionId) {
+        return workflow + "@" + versionId;
     }
 
     // ---- parsing / validation ------------------------------------------------

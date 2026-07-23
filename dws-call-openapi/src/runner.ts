@@ -7,7 +7,7 @@
 import type { Engine } from './openapi/engine.js';
 import { evaluateParameters } from './jq.js';
 import { executeRequest } from './http.js';
-import { buildOutboundRequest } from './request.js';
+import { buildOutboundRequest, type OutboundRequest } from './request.js';
 import type { Binding, BoundParam, ValidationIssue } from './openapi/validator.js';
 
 /** The special PARAMETERS key whose evaluated value becomes the JSON body. */
@@ -50,8 +50,15 @@ export class TransportError extends Error {
 const SUCCESS_MIN = 200;
 const SUCCESS_MAX = 300;
 
-/** Runs the operation and returns the value shaped per OUTPUT mode. */
-export async function runOperation(engine: Engine, input: Record<string, unknown>): Promise<unknown> {
+/**
+ * Evaluates PARAMETERS, binds and validates them, and builds the outbound
+ * request — everything up to (but not including) the network call. Exposed so
+ * the config-mapping-to-buildRequest contract can be tested without upstream.
+ */
+export async function prepareOutbound(
+  engine: Engine,
+  input: Record<string, unknown>,
+): Promise<OutboundRequest> {
   const evaluated = await evaluateParameters(engine.config.parameters, input);
   const binding = bind(engine, evaluated);
 
@@ -60,7 +67,12 @@ export async function runOperation(engine: Engine, input: Record<string, unknown
     throw new BindingError('request failed schema validation', issues);
   }
 
-  const outbound = buildOutboundRequest(engine, coercedParams, binding);
+  return buildOutboundRequest(engine, coercedParams, binding);
+}
+
+/** Runs the operation and returns the value shaped per OUTPUT mode. */
+export async function runOperation(engine: Engine, input: Record<string, unknown>): Promise<unknown> {
+  const outbound = await prepareOutbound(engine, input);
 
   let status: number;
   let body: unknown;

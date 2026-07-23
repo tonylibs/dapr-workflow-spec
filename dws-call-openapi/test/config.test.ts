@@ -63,6 +63,16 @@ describe('loadConfig', () => {
     expect(() => loadConfig(baseEnv({ PARAMETERS: '{"petId":5}' }))).toThrow(/string/);
   });
 
+  it('parses SERVER_VARIABLES into a name->value map, defaulting to empty', () => {
+    expect(loadConfig(baseEnv({ SERVER_VARIABLES: '{"region":"eu"}' })).serverVariables).toEqual({ region: 'eu' });
+    expect(loadConfig(baseEnv()).serverVariables).toEqual({});
+  });
+
+  it('rejects non-object or non-string SERVER_VARIABLES', () => {
+    expect(() => loadConfig(baseEnv({ SERVER_VARIABLES: '"eu"' }))).toThrow(/object/);
+    expect(() => loadConfig(baseEnv({ SERVER_VARIABLES: '{"region":5}' }))).toThrow(/string/);
+  });
+
   it('rejects OUTPUT outside replace|merge', () => {
     expect(() => loadConfig(baseEnv({ OUTPUT: 'append' }))).toThrow(/OUTPUT/);
   });

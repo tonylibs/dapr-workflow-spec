@@ -174,4 +174,5 @@ kubectl apply -f k8s/deployment.yaml                # dapr-enabled orchestrator,
 
 - The Deployment sets `DAPR_CONFIG_STORE=dws-definitions` and `DEFINITION_KEY=order-workflow@v1`, with `dapr.io/app-id: order-workflow`. There is **no definitions ConfigMap volume** — definitions live in the Configuration store.
 - **The Dapr Configuration API is read-only for applications.** The controller therefore writes definition keys **directly into the backing store (Redis)**; the orchestrator only reads them.
-- **Roll out a new version** by writing a new immutable key (e.g. `order-workflow@v2`) and deploying a new pod with `DEFINITION_KEY=order-workflow@v2`. Running pods keep se
+- **Roll out a new version** by writing a new immutable key (e.g. `order-workflow@v2`) and deploying a new pod with `DEFINITION_KEY=order-workflow@v2`. Running pods keep serving their pinned version until replaced.
+```
