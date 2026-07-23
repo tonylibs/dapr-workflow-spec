@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dws-definitions
+  labels:
+    app: dws-orchestrator
+data:
+  # Each key becomes a *.json file under DWS_DEFINITIONS_PATH.
+  # Example: checkInventory -> switch on .inStock -> chargePayment | notifyOutOfStock.
+  order-workflow.json: |
+    {
+      "document": {
+        "dsl": "1.0.0",
+        "namespace": "examples",
+        "name": "order-workflow",
+        "version": "1.0.0"
+      },
+      "start": "checkInventory",
+      "tasks": {
+        "checkInventory": {
+          "type": "call",
+          "service": "inventory-service",
+          "path": "run",
+          "then": "decide"
+        },
+        "decide": {
+          "type": "switch",
+          "cases": [
+            { "when": "${ .inStock }", "then": "chargePayment" }
+          ],
+          "default": "notifyOutOfStock"
+        },
+        "chargePayment": {
+          "type": "call",
+          "service": "payment-service",
+          "path": "run",
+          "then": "orderPlaced"
+        },
+        "notifyOutOfStock": {
+          "type": "call",
+          "service": "notification-service",
+          "path": "run",
+          "then": "orderRejected"
+        },
+        "orderPlaced": { "type": "end" },
+        "orderRejected": { "type": "end" }
+      }
+    }

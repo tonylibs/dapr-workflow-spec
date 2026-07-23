@@ -1,0 +1,4 @@
+devknativeinternalcaching.Image=imports.dev.knative.internal.caching.Image
+devknativeinternalcaching.ImageProps=imports.dev.knative.internal.caching.ImageProps
+devknativeinternalcaching.ImageSpec=imports.dev.knative.internal.caching.ImageSpec
+devknativeinternalcaching.ImageSpecImagePullSecrets=imports.dev.knative.internal.caching.ImageSpecImagePullSecrets

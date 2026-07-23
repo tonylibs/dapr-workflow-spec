@@ -1,0 +1,23 @@
+# Build outputs
+target/
+dist/
+build/
+*.class
+
+# Node
+node_modules/
+*.tsbuildinfo
+
+# IDE / tooling
+.idea/
+.vscode/
+*.iml
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.*

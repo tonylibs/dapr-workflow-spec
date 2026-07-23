@@ -1,0 +1,62 @@
+# Example Knative Service for a single `call: http` step.
+#
+# This manifest configures the `check-inventory` step: a GET to the inventory
+# service. Every HTTP call step deploys this same image and differs only in the
+# env block and the Dapr app-id (which is the task name).
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: check-inventory
+  labels:
+    dws.io/step-type: call-http
+    dws.io/task: check-inventory
+spec:
+  template:
+    metadata:
+      annotations:
+        # Scale to zero when idle; scale up on invocation.
+        autoscaling.knative.dev/minScale: "0"
+        # Dapr sidecar injection. app-id is derived from the task name so the
+        # orchestrator can invoke this step via Dapr service invocation.
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "check-inventory"
+        dapr.io/app-port: "8080"
+    spec:
+      containers:
+        - image: registry.io/dws/dws-call-http:1.0
+          ports:
+            - name: http1
+              containerPort: 8080
+          env:
+            - name: TASK
+              value: "check-inventory"
+            - name: METHOD
+              value: "get"
+            - name: ENDPOINT
+              value: "https://inventory-svc/check"
+            # Optional knobs (defaults shown for reference):
+            # - name: BODY_MODE
+            #   value: "passthrough"   # passthrough | none | template
+            # - name: OUTPUT
+            #   value: "replace"       # replace | merge
+            # - name: TIMEOUT
+            #   value: "30s"
+            # - name: HEADERS
+            #   value: '{"X-Api-Key":"..."}'
+            # - name: QUERY
+            #   value: '{"sku":"{sku}"}'
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"

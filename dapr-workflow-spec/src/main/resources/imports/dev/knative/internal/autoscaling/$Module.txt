@@ -1,0 +1,7 @@
+devknativeinternalautoscaling.Metric=imports.dev.knative.internal.autoscaling.Metric
+devknativeinternalautoscaling.MetricProps=imports.dev.knative.internal.autoscaling.MetricProps
+devknativeinternalautoscaling.MetricSpec=imports.dev.knative.internal.autoscaling.MetricSpec
+devknativeinternalautoscaling.PodAutoscaler=imports.dev.knative.internal.autoscaling.PodAutoscaler
+devknativeinternalautoscaling.PodAutoscalerProps=imports.dev.knative.internal.autoscaling.PodAutoscalerProps
+devknativeinternalautoscaling.PodAutoscalerSpec=imports.dev.knative.internal.autoscaling.PodAutoscalerSpec
+devknativeinternalautoscaling.PodAutoscalerSpecScaleTargetRef=imports.dev.knative.internal.autoscaling.PodAutoscalerSpecScaleTargetRef

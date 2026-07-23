@@ -1,0 +1,5 @@
+language: java
+app: mvn compile exec:java -e -Dexec.mainClass=org.tony.Main
+imports:
+  - k8s/serving-crds.yaml
+  - k8s/dapr-crds.yaml

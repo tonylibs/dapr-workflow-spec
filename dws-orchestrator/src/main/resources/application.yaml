@@ -1,0 +1,42 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: dws-orchestrator
+
+# Actuator: expose health/info for Kubernetes probes.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+# Dapr sidecar wiring. The SDK reads DAPR_GRPC_PORT / DAPR_HTTP_PORT from the environment
+# (injected by the Dapr sidecar); these values are surfaced here for clarity/local overrides.
+dapr:
+  grpc:
+    port: ${DAPR_GRPC_PORT:50001}
+  http:
+    port: ${DAPR_HTTP_PORT:3500}
+
+# Orchestrator behaviour.
+dws:
+  # Directory of workflow JSON definitions (mounted from a ConfigMap in Kubernetes).
+  definitions-path: ${DWS_DEFINITIONS_PATH:/etc/dws/definitions}
+  # Default pub/sub component for EMIT tasks that do not specify one.
+  default-pubsub: ${DWS_DEFAULT_PUBSUB:pubsub}
+  # Default activity retry policy applied to CALL and EMIT tasks.
+  retry:
+    max-attempts: ${DWS_RETRY_MAX_ATTEMPTS:3}
+    first-retry-interval: ${DWS_RETRY_FIRST_INTERVAL:PT1S}
+    backoff-coefficient: ${DWS_RETRY_BACKOFF:2.0}
+    max-retry-interval: ${DWS_RETRY_MAX_INTERVAL:PT30S}
+
+logging:
+  level:
+    io.dws.orchestrator: INFO

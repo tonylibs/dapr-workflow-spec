@@ -1,0 +1,38 @@
+{
+  "name": "dws-call-openapi",
+  "version": "1.0.0",
+  "description": "Prebuilt step image for `call: openapi` tasks in the DWS platform. One image serves every openapi call step; behavior is defined entirely by env config.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.10.0",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "node --watch --experimental-strip-types src/index.ts",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@readme/openapi-parser": "^4.1.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "fastify": "^5.2.0",
+    "fastify-plugin": "^5.0.1",
+    "node-jq": "^6.0.1",
+    "openapi-client-axios": "^7.5.5",
+    "yaml": "^2.6.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.17.0",
+    "nock": "^14.0.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.0",
+    "vitest": "^3.0.0"
+  }
+}

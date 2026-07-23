@@ -1,0 +1,162 @@
+package imports.dev.knative.serving;
+
+/**
+ * The seccomp options to use by this container.
+ * <p>
+ * If seccomp options are
+ * provided at both the pod &amp; container level, the container options
+ * override the pod options.
+ * Note that this field cannot be set when spec.os.name is windows.
+ */
+@javax.annotation.Generated(value = "jsii-pacmak/1.139.0 (build 26a6b54)", date = "2026-07-23T16:02:23.189Z")
+@software.amazon.jsii.Jsii(module = imports.dev.knative.serving.$Module.class, fqn = "devknativeserving.ServiceSpecTemplateSpecContainersSecurityContextSeccompProfile")
+@software.amazon.jsii.Jsii.Proxy(ServiceSpecTemplateSpecContainersSecurityContextSeccompProfile.Jsii$Proxy.class)
+public interface ServiceSpecTemplateSpecContainersSecurityContextSeccompProfile extends software.amazon.jsii.JsiiSerializable {
+
+    /**
+     * type indicates which kind of seccomp profile will be applied. Valid options are:.
+     * <p>
+     * Localhost - a profile defined in a file on the node should be used.
+     * RuntimeDefault - the container runtime default profile should be used.
+     * Unconfined - no profile should be applied.
+     */
+    @org.jetbrains.annotations.NotNull java.lang.String getType();
+
+    /**
+     * localhostProfile indicates a profile defined in a file on the node should be used.
+     * <p>
+     * The profile must be preconfigured on the node to work.
+     * Must be a descending path, relative to the kubelet's configured seccomp profile location.
+     * Must be set if type is "Localhost". Must NOT be set for any other type.
+     */
+    default @org.jetbrains.annotations.Nullable java.lang.String getLocalhostProfile() {
+        return null;
+    }
+
+    /**
+     * @return a {@link Builder} of {@link ServiceSpecTemplateSpecContainersSecurityContextSeccompProfile}
+     */
+    static Builder builder() {
+        return new Builder();
+    }
+    /**
+     * A builder for {@link ServiceSpecTemplateSpecContainersSecurityContextSeccompProfile}
+     */
+    public static final class Builder implements software.amazon.jsii.Builder<ServiceSpecTemplateSpecContainersSecurityContextSeccompProfile> {
+        java.lang.String type;
+        java.lang.String localhostProfile;
+
+        /**
+         * Sets the value of {@link ServiceSpecTemplateSpecContainersSecurityContextSeccompProfile#getType}
+         * @param type type indicates which kind of seccomp profile will be applied. Valid options are:. This parameter is required.
+         *             Localhost - a profile defined in a file on the node should be used.
+         *             RuntimeDefault - the container runtime default profile should be used.
+         *             Unconfined - no profile should be applied.
+         * @return {@code this}
+         */
+        public Builder type(java.lang.String type) {
+            this.type = type;
+            return this;
+        }
+
+        /**
+         * Sets the value of {@link ServiceSpecTemplateSpecContainersSecurityContextSeccompProfile#getLocalhostProfile}
+         * @param localhostProfile localhostProfile indicates a profile defined in a file on the node should be used.
+         *                         The profile must be preconfigured on the node to work.
+         *                         Must be a descending path, relative to the kubelet's configured seccomp profile location.
+         *                         Must be set if type is "Localhost". Must NOT be set for any other type.
+         * @return {@code this}
+         */
+        public Builder localhostProfile(java.lang.String localhostProfile) {
+            this.localhostProfile = localhostProfile;
+            return this;
+        }
+
+        /**
+         * Builds the configured instance.
+         * @return a new instance of {@link ServiceSpecTemplateSpecContainersSecurityContextSeccompProfile}
+         * @throws NullPointerException if any required attribute was not provided
+         */
+        @Override
+        public ServiceSpecTemplateSpecContainersSecurityContextSeccompProfile build() {
+            return new Jsii$Proxy(this);
+        }
+    }
+
+    /**
+     * An implementation for {@link ServiceSpecTemplateSpecContainersSecurityContextSeccompProfile}
+     */
+    @software.amazon.jsii.Internal
+    final class Jsii$Proxy extends software.amazon.jsii.JsiiObject implements ServiceSpecTemplateSpecContainersSecurityContextSeccompProfile {
+        private final java.lang.String type;
+        private final java.lang.String localhostProfile;
+
+        /**
+         * Constructor that initializes the object based on values retrieved from the JsiiObject.
+         * @param objRef Reference to the JSII managed object.
+         */
+        protected Jsii$Proxy(final software.amazon.jsii.JsiiObjectRef objRef) {
+            super(objRef);
+            this.type = software.amazon.jsii.Kernel.get(this, "type", software.amazon.jsii.NativeType.forClass(java.lang.String.class));
+            this.localhostProfile = software.amazon.jsii.Kernel.get(this, "localhostProfile", software.amazon.jsii.NativeType.forClass(java.lang.String.class));
+        }
+
+        /**
+         * Constructor that initializes the object based on literal property values passed by the {@link Builder}.
+         */
+        protected Jsii$Proxy(final Builder builder) {
+            super(software.amazon.jsii.JsiiObject.InitializationMode.JSII);
+            this.type = java.util.Objects.requireNonNull(builder.type, "type is required");
+            this.localhostProfile = builder.localhostProfile;
+        }
+
+        @Override
+        public final java.lang.String getType() {
+            return this.type;
+        }
+
+        @Override
+        public final java.lang.String getLocalhostProfile() {
+            return this.localhostProfile;
+        }
+
+        @Override
+        @software.amazon.jsii.Internal
+        public com.fasterxml.jackson.databind.JsonNode $jsii$toJson() {
+            final com.fasterxml.jackson.databind.ObjectMapper om = software.amazon.jsii.JsiiObjectMapper.INSTANCE;
+            final com.fasterxml.jackson.databind.node.ObjectNode data = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+
+            data.set("type", om.valueToTree(this.getType()));
+            if (this.getLocalhostProfile() != null) {
+                data.set("localhostProfile", om.valueToTree(this.getLocalhostProfile()));
+            }
+
+            final com.fasterxml.jackson.databind.node.ObjectNode struct = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+            struct.set("fqn", om.valueToTree("devknativeserving.ServiceSpecTemplateSpecContainersSecurityContextSeccompProfile"));
+            struct.set("data", data);
+
+            final com.fasterxml.jackson.databind.node.ObjectNode obj = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+            obj.set("$jsii.struct", struct);
+
+            return obj;
+        }
+
+        @Override
+        public final boolean equals(final java.lang.Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            ServiceSpecTemplateSpecContainersSecurityContextSeccompProfile.Jsii$Proxy that = (ServiceSpecTemplateSpecContainersSecurityContextSeccompProfile.Jsii$Proxy) o;
+
+            if (!type.equals(that.type)) return false;
+            return this.localhostProfile != null ? this.localhostProfile.equals(that.localhostProfile) : that.localhostProfile == null;
+        }
+
+        @Override
+        public final int hashCode() {
+            int result = this.type.hashCode();
+            result = 31 * result + (this.localhostProfile != null ? this.localhostProfile.hashCode() : 0);
+            return result;
+        }
+    }
+}

@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dws-orchestrator
+  labels:
+    app: dws-orchestrator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dws-orchestrator
+  template:
+    metadata:
+      labels:
+        app: dws-orchestrator
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "dws-orchestrator"
+        dapr.io/app-port: "8080"
+        dapr.io/app-protocol: "http"
+        dapr.io/enable-api-logging: "true"
+    spec:
+      containers:
+        - name: dws-orchestrator
+          # Prebuilt, generic orchestrator image — no per-workflow code.
+          image: sw-orchestrator:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: DWS_DEFINITIONS_PATH
+              value: /etc/dws/definitions
+          volumeMounts:
+            - name: definitions
+              mountPath: /etc/dws/definitions
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+      volumes:
+        - name: definitions
+          configMap:
+            name: dws-definitions

@@ -1,0 +1,1985 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.2
+  name: components.dapr.io
+  labels:
+    app.kubernetes.io/part-of: "dapr"
+spec:
+  group: dapr.io
+  names:
+    kind: Component
+    listKind: ComponentList
+    plural: components
+    singular: component
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Component describes an Dapr component type.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          auth:
+            description: Auth represents authentication details for the component.
+            properties:
+              secretStore:
+                type: string
+            required:
+            - secretStore
+            type: object
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          scopes:
+            items:
+              type: string
+            type: array
+          spec:
+            description: ComponentSpec is the spec for a component.
+            properties:
+              ignoreErrors:
+                type: boolean
+              initTimeout:
+                type: string
+              metadata:
+                items:
+                  description: NameValuePair is a name/value pair.
+                  properties:
+                    envRef:
+                      description: EnvRef is the name of an environmental variable
+                        to read the value from.
+                      type: string
+                    name:
+                      description: Name of the property.
+                      type: string
+                    secretKeyRef:
+                      description: SecretKeyRef is the reference of a value in a secret
+                        store component.
+                      properties:
+                        key:
+                          description: Field in the secret.
+                          type: string
+                        name:
+                          description: Secret name.
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    value:
+                      description: Value of the property, in plaintext.
+                      x-kubernetes-preserve-unknown-fields: true
+                  required:
+                  - name
+                  type: object
+                type: array
+              type:
+                type: string
+              version:
+                type: string
+            required:
+            - metadata
+            - type
+            - version
+            type: object
+        type: object
+    served: true
+    storage: true
+---
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.18.0
+  name: configurations.dapr.io
+  labels:
+    app.kubernetes.io/part-of: "dapr"
+spec:
+  group: dapr.io
+  names:
+    kind: Configuration
+    listKind: ConfigurationList
+    plural: configurations
+    singular: configuration
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Configuration describes an Dapr configuration setting.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ConfigurationSpec is the spec for a configuration.
+            properties:
+              accessControl:
+                description: AccessControlSpec is the spec object in ConfigurationSpec.
+                properties:
+                  defaultAction:
+                    type: string
+                  policies:
+                    items:
+                      description: AppPolicySpec defines the policy data structure
+                        for each app.
+                      properties:
+                        appId:
+                          type: string
+                        defaultAction:
+                          type: string
+                        namespace:
+                          type: string
+                        operations:
+                          items:
+                            description: AppOperationAction defines the data structure
+                              for each app operation.
+                            properties:
+                              action:
+                                type: string
+                              httpVerb:
+                                items:
+                                  type: string
+                                type: array
+                              name:
+                                type: string
+                            required:
+                            - action
+                            - name
+                            type: object
+                          type: array
+                        trustDomain:
+                          type: string
+                      required:
+                      - appId
+                      type: object
+                    type: array
+                  trustDomain:
+                    type: string
+                type: object
+              api:
+                description: APISpec describes the configuration for Dapr APIs.
+                properties:
+                  allowed:
+                    description: List of allowed APIs. Can be used in conjunction
+                      with denied.
+                    items:
+                      description: APIAccessRule describes an access rule for allowing
+                        or denying a Dapr API.
+                      properties:
+                        name:
+                          type: string
+                        protocol:
+                          type: string
+                        version:
+                          type: string
+                      required:
+                      - name
+                      - version
+                      type: object
+                    type: array
+                  denied:
+                    description: List of denied APIs. Can be used in conjunction with
+                      allowed.
+                    items:
+                      description: APIAccessRule describes an access rule for allowing
+                        or denying a Dapr API.
+                      properties:
+                        name:
+                          type: string
+                        protocol:
+                          type: string
+                        version:
+                          type: string
+                      required:
+                      - name
+                      - version
+                      type: object
+                    type: array
+                type: object
+              appHttpPipeline:
+                description: PipelineSpec defines the middleware pipeline.
+                properties:
+                  handlers:
+                    items:
+                      description: HandlerSpec defines a request handlers.
+                      properties:
+                        name:
+                          type: string
+                        selector:
+                          description: SelectorSpec selects target services to which
+                            the handler is to be applied.
+                          properties:
+                            fields:
+                              items:
+                                description: SelectorField defines a selector fields.
+                                properties:
+                                  field:
+                                    type: string
+                                  value:
+                                    type: string
+                                required:
+                                - field
+                                - value
+                                type: object
+                              type: array
+                          required:
+                          - fields
+                          type: object
+                        type:
+                          type: string
+                      required:
+                      - name
+                      - type
+                      type: object
+                    type: array
+                required:
+                - handlers
+                type: object
+              components:
+                description: ComponentsSpec describes the configuration for Dapr components
+                properties:
+                  deny:
+                    description: Denylist of component types that cannot be instantiated
+                    items:
+                      type: string
+                    type: array
+                type: object
+              features:
+                items:
+                  description: FeatureSpec defines the features that are enabled/disabled.
+                  properties:
+                    enabled:
+                      type: boolean
+                    name:
+                      type: string
+                  required:
+                  - enabled
+                  - name
+                  type: object
+                type: array
+              httpPipeline:
+                description: PipelineSpec defines the middleware pipeline.
+                properties:
+                  handlers:
+                    items:
+                      description: HandlerSpec defines a request handlers.
+                      properties:
+                        name:
+                          type: string
+                        selector:
+                          description: SelectorSpec selects target services to which
+                            the handler is to be applied.
+                          properties:
+                            fields:
+                              items:
+                                description: SelectorField defines a selector fields.
+                                properties:
+                                  field:
+                                    type: string
+                                  value:
+                                    type: string
+                                required:
+                                - field
+                                - value
+                                type: object
+                              type: array
+                          required:
+                          - fields
+                          type: object
+                        type:
+                          type: string
+                      required:
+                      - name
+                      - type
+                      type: object
+                    type: array
+                required:
+                - handlers
+                type: object
+              logging:
+                description: LoggingSpec defines the configuration for logging.
+                properties:
+                  apiLogging:
+                    description: Configure API logging.
+                    properties:
+                      enabled:
+                        description: |-
+                          Default value for enabling API logging. Sidecars can always override this by setting `--enable-api-logging` to true or false explicitly.
+                          The default value is false.
+                        type: boolean
+                      obfuscateURLs:
+                        description: |-
+                          When enabled, obfuscates the values of URLs in HTTP API logs, logging the route name rather than the full path being invoked, which could contain PII.
+                          Default: false.
+                          This option has no effect if API logging is disabled.
+                        type: boolean
+                      omitHealthChecks:
+                        description: |-
+                          If true, health checks are not reported in API logs. Default: false.
+                          This option has no effect if API logging is disabled.
+                        type: boolean
+                    type: object
+                type: object
+              metric:
+                default:
+                  enabled: true
+                description: MetricSpec defines metrics configuration.
+                properties:
+                  enabled:
+                    type: boolean
+                  http:
+                    description: MetricHTTP defines configuration for metrics for
+                      the HTTP server
+                    properties:
+                      excludeVerbs:
+                        description: If true (default is false) HTTP verbs (e.g.,
+                          GET, POST) are excluded from the metrics.
+                        type: boolean
+                      increasedCardinality:
+                        description: |-
+                          If false, metrics for the HTTP server are collected with increased cardinality.
+                          The default is true in Dapr 1.13, but will be changed to false in 1.15+
+                        type: boolean
+                      pathMatching:
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                  latencyDistributionBuckets:
+                    description: |-
+                      The LatencyDistributionBuckets variable specifies the latency distribution buckets (in milliseconds) used for
+                      histograms in the application. If this variable is not set or left empty, the application will default to using the standard histogram buckets.
+                      The default histogram latency buckets (in milliseconds) are as follows:
+                         1, 2, 3, 4, 5, 6, 8, 10, 13, 16, 20, 25, 30, 40, 50, 65, 80, 100, 130, 160, 200, 250, 300, 400, 500, 650, 800, 1,000, 2,000, 5,000, 10,000, 20,000, 50,000, 100,000.
+                    items:
+                      type: integer
+                    type: array
+                  recordErrorCodes:
+                    type: boolean
+                  rules:
+                    items:
+                      description: MetricsRule defines configuration options for a
+                        metric.
+                      properties:
+                        labels:
+                          items:
+                            description: MetricsLabel defines an object that allows
+                              to set regex expressions for a label.
+                            properties:
+                              name:
+                                type: string
+                              regex:
+                                additionalProperties:
+                                  type: string
+                                type: object
+                            required:
+                            - name
+                            - regex
+                            type: object
+                          type: array
+                        name:
+                          type: string
+                      required:
+                      - labels
+                      - name
+                      type: object
+                    type: array
+                required:
+                - enabled
+                type: object
+              metrics:
+                default:
+                  enabled: true
+                description: MetricSpec defines metrics configuration.
+                properties:
+                  enabled:
+                    type: boolean
+                  http:
+                    description: MetricHTTP defines configuration for metrics for
+                      the HTTP server
+                    properties:
+                      excludeVerbs:
+                        description: If true (default is false) HTTP verbs (e.g.,
+                          GET, POST) are excluded from the metrics.
+                        type: boolean
+                      increasedCardinality:
+                        description: |-
+                          If false, metrics for the HTTP server are collected with increased cardinality.
+                          The default is true in Dapr 1.13, but will be changed to false in 1.15+
+                        type: boolean
+                      pathMatching:
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                  latencyDistributionBuckets:
+                    description: |-
+                      The LatencyDistributionBuckets variable specifies the latency distribution buckets (in milliseconds) used for
+                      histograms in the application. If this variable is not set or left empty, the application will default to using the standard histogram buckets.
+                      The default histogram latency buckets (in milliseconds) are as follows:
+                         1, 2, 3, 4, 5, 6, 8, 10, 13, 16, 20, 25, 30, 40, 50, 65, 80, 100, 130, 160, 200, 250, 300, 400, 500, 650, 800, 1,000, 2,000, 5,000, 10,000, 20,000, 50,000, 100,000.
+                    items:
+                      type: integer
+                    type: array
+                  recordErrorCodes:
+                    type: boolean
+                  rules:
+                    items:
+                      description: MetricsRule defines configuration options for a
+                        metric.
+                      properties:
+                        labels:
+                          items:
+                            description: MetricsLabel defines an object that allows
+                              to set regex expressions for a label.
+                            properties:
+                              name:
+                                type: string
+                              regex:
+                                additionalProperties:
+                                  type: string
+                                type: object
+                            required:
+                            - name
+                            - regex
+                            type: object
+                          type: array
+                        name:
+                          type: string
+                      required:
+                      - labels
+                      - name
+                      type: object
+                    type: array
+                required:
+                - enabled
+                type: object
+              mtls:
+                description: MTLSSpec defines mTLS configuration.
+                properties:
+                  allowedClockSkew:
+                    type: string
+                  controlPlaneTrustDomain:
+                    type: string
+                  enabled:
+                    type: boolean
+                  sentryAddress:
+                    type: string
+                  tokenValidators:
+                    description: |-
+                      Additional token validators to use.
+                      When Dapr is running in Kubernetes mode, this is in addition to the built-in "kubernetes" validator.
+                      In self-hosted mode, enabling a custom validator will disable the built-in "insecure" validator.
+                    items:
+                      description: ValidatorSpec contains additional token validators
+                        to use.
+                      properties:
+                        name:
+                          description: Name of the validator
+                          enum:
+                          - jwks
+                          type: string
+                        options:
+                          description: Options for the validator, if any
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                      required:
+                      - name
+                      type: object
+                    type: array
+                  workloadCertTTL:
+                    type: string
+                required:
+                - controlPlaneTrustDomain
+                - enabled
+                - sentryAddress
+                type: object
+              nameResolution:
+                description: NameResolutionSpec is the spec for name resolution configuration.
+                properties:
+                  component:
+                    type: string
+                  configuration:
+                    description: DynamicValue is a dynamic value struct for the component.metadata
+                      pair value.
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                  version:
+                    type: string
+                required:
+                - component
+                - configuration
+                - version
+                type: object
+              secrets:
+                description: SecretsSpec is the spec for secrets configuration.
+                properties:
+                  scopes:
+                    items:
+                      description: SecretsScope defines the scope for secrets.
+                      properties:
+                        allowedSecrets:
+                          items:
+                            type: string
+                          type: array
+                        defaultAccess:
+                          type: string
+                        deniedSecrets:
+                          items:
+                            type: string
+                          type: array
+                        storeName:
+                          type: string
+                      required:
+                      - storeName
+                      type: object
+                    type: array
+                required:
+                - scopes
+                type: object
+              tracing:
+                description: TracingSpec defines distributed tracing configuration.
+                properties:
+                  otel:
+                    description: OtelSpec defines Otel exporter configurations.
+                    properties:
+                      endpointAddress:
+                        type: string
+                      headers:
+                        description: |-
+                          Headers to add to the OTLP trace exporter request.
+                          Each header can contain plaintext values, reference secrets, or reference environment variables.
+                        items:
+                          description: NameValuePair is a name/value pair.
+                          properties:
+                            envRef:
+                              description: EnvRef is the name of an environmental
+                                variable to read the value from.
+                              type: string
+                            name:
+                              description: Name of the property.
+                              type: string
+                            secretKeyRef:
+                              description: SecretKeyRef is the reference of a value
+                                in a secret store component.
+                              properties:
+                                key:
+                                  description: Field in the secret.
+                                  type: string
+                                name:
+                                  description: Secret name.
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            value:
+                              description: Value of the property, in plaintext.
+                              x-kubernetes-preserve-unknown-fields: true
+                          required:
+                          - name
+                          type: object
+                        type: array
+                      isSecure:
+                        type: boolean
+                      protocol:
+                        type: string
+                      timeout:
+                        description: Timeout for the OTLP trace exporter request.
+                        type: string
+                    required:
+                    - endpointAddress
+                    - isSecure
+                    - protocol
+                    type: object
+                  samplingRate:
+                    type: string
+                  stdout:
+                    type: boolean
+                  zipkin:
+                    description: ZipkinSpec defines Zipkin trace configurations.
+                    properties:
+                      endpointAddress:
+                        type: string
+                    required:
+                    - endpointAddress
+                    type: object
+                required:
+                - samplingRate
+                type: object
+              wasm:
+                description: WasmSpec describes the security profile for all Dapr
+                  Wasm components.
+                properties:
+                  strictSandbox:
+                    description: |-
+                      Force enabling strict sandbox mode for all WASM components.
+                      When this is enabled, WASM components always run in strict mode regardless of their configuration.
+                      Strict mode enhances security of the WASM sandbox by limiting access to certain capabilities such as real-time clocks and random number generators.
+                    type: boolean
+                type: object
+              workflow:
+                description: WorkflowSpec defines the configuration for Dapr workflows.
+                properties:
+                  activityConcurrencyLimits:
+                    description: |-
+                      activityConcurrencyLimits defines per-activity-name concurrency limits
+                      enforced globally across all replicas by the scheduler.
+                    items:
+                      description: |-
+                        NamedConcurrencyLimit defines a per-name concurrency limit for a specific
+                        workflow or activity name.
+                      properties:
+                        maxConcurrent:
+                          description: |-
+                            MaxConcurrent is the maximum number of concurrent invocations across all
+                            replicas.
+                          format: int32
+                          type: integer
+                        name:
+                          description: Name is the workflow or activity name to limit.
+                          type: string
+                      type: object
+                    type: array
+                  globalMaxConcurrentActivityInvocations:
+                    description: |-
+                      globalMaxConcurrentActivityInvocations is the maximum number of concurrent
+                      activity invocations across all replicas, enforced by the scheduler.
+                      If omitted, no global maximum will be enforced.
+                    format: int32
+                    type: integer
+                  globalMaxConcurrentWorkflowInvocations:
+                    description: |-
+                      globalMaxConcurrentWorkflowInvocations is the maximum number of concurrent
+                      workflow invocations across all replicas, enforced by the scheduler.
+                      If omitted, no global maximum will be enforced.
+                    format: int32
+                    type: integer
+                  maxConcurrentActivityInvocations:
+                    description: |-
+                      maxConcurrentActivityInvocations is the maximum number of concurrent activities that can be processed by a single Dapr instance.
+                      Attempted invocations beyond this will be queued until the number of concurrent invocations drops below this value.
+                      If omitted, no maximum will be enforced.
+                    format: int32
+                    type: integer
+                  maxConcurrentWorkflowInvocations:
+                    description: |-
+                      maxConcurrentWorkflowInvocations is the maximum number of concurrent workflow invocations that can be scheduled by a single Dapr instance.
+                      Attempted invocations beyond this will be queued until the number of concurrent invocations drops below this value.
+                      If omitted, no maximum will be enforced.
+                    format: int32
+                    type: integer
+                  stateRetentionPolicy:
+                    description: |-
+                      StateRetentionPolicy defines the retention configuration for workflow
+                      state once a workflow reaches a terminal state. If not set, workflow
+                      instances will not be automatically purged.
+                    properties:
+                      anyTerminal:
+                        description: |-
+                          AnyTerminal is the TTL for purging workflow instances that reach any
+                          terminal state.
+                        type: string
+                      completed:
+                        description: |-
+                          Completed is the TTL for purging workflow instances that reach the
+                          Completed terminal state.
+                        type: string
+                      failed:
+                        description: |-
+                          Failed is the TTL for purging workflow instances that reach the Failed
+                          terminal state.
+                        type: string
+                      terminated:
+                        description: |-
+                          Terminated is the TTL for purging workflow instances that reach the
+                          Terminated terminal state.
+                        type: string
+                    type: object
+                  workflowConcurrencyLimits:
+                    description: |-
+                      workflowConcurrencyLimits defines per-workflow-name concurrency limits
+                      enforced globally across all replicas by the scheduler.
+                    items:
+                      description: |-
+                        NamedConcurrencyLimit defines a per-name concurrency limit for a specific
+                        workflow or activity name.
+                      properties:
+                        maxConcurrent:
+                          description: |-
+                            MaxConcurrent is the maximum number of concurrent invocations across all
+                            replicas.
+                          format: int32
+                          type: integer
+                        name:
+                          description: Name is the workflow or activity name to limit.
+                          type: string
+                      type: object
+                    type: array
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+---
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.2
+  name: httpendpoints.dapr.io
+  labels:
+    app.kubernetes.io/part-of: "dapr"
+spec:
+  group: dapr.io
+  names:
+    kind: HTTPEndpoint
+    listKind: HTTPEndpointList
+    plural: httpendpoints
+    singular: httpendpoint
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          HTTPEndpoint describes a Dapr HTTPEndpoint type for external service invocation.
+          This endpoint can be external to Dapr, or external to the environment.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          auth:
+            description: Auth represents authentication details for the component.
+            properties:
+              secretStore:
+                type: string
+            required:
+            - secretStore
+            type: object
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          scopes:
+            items:
+              type: string
+            type: array
+          spec:
+            description: HTTPEndpointSpec describes an access specification for allowing
+              external service invocations.
+            properties:
+              baseUrl:
+                type: string
+              clientTLS:
+                description: TLS describes how to build client or server TLS configurations.
+                properties:
+                  certificate:
+                    description: TLSDocument describes and in-line or pointer to a
+                      document to build a TLS configuration.
+                    properties:
+                      secretKeyRef:
+                        description: SecretKeyRef is the reference of a value in a
+                          secret store component.
+                        properties:
+                          key:
+                            description: Field in the secret.
+                            type: string
+                          name:
+                            description: Secret name.
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      value:
+                        description: Value of the property, in plaintext.
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  privateKey:
+                    description: TLSDocument describes and in-line or pointer to a
+                      document to build a TLS configuration.
+                    properties:
+                      secretKeyRef:
+                        description: SecretKeyRef is the reference of a value in a
+                          secret store component.
+                        properties:
+                          key:
+                            description: Field in the secret.
+                            type: string
+                          name:
+                            description: Secret name.
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      value:
+                        description: Value of the property, in plaintext.
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                  renegotiation:
+                    default: Never
+                    description: Renegotiation sets the underlying tls negotiation
+                      strategy for an http channel.
+                    enum:
+                    - Never
+                    - OnceAsClient
+                    - FreelyAsClient
+                    type: string
+                  rootCA:
+                    description: TLSDocument describes and in-line or pointer to a
+                      document to build a TLS configuration.
+                    properties:
+                      secretKeyRef:
+                        description: SecretKeyRef is the reference of a value in a
+                          secret store component.
+                        properties:
+                          key:
+                            description: Field in the secret.
+                            type: string
+                          name:
+                            description: Secret name.
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      value:
+                        description: Value of the property, in plaintext.
+                        x-kubernetes-preserve-unknown-fields: true
+                    type: object
+                type: object
+              headers:
+                items:
+                  description: NameValuePair is a name/value pair.
+                  properties:
+                    envRef:
+                      description: EnvRef is the name of an environmental variable
+                        to read the value from.
+                      type: string
+                    name:
+                      description: Name of the property.
+                      type: string
+                    secretKeyRef:
+                      description: SecretKeyRef is the reference of a value in a secret
+                        store component.
+                      properties:
+                        key:
+                          description: Field in the secret.
+                          type: string
+                        name:
+                          description: Secret name.
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    value:
+                      description: Value of the property, in plaintext.
+                      x-kubernetes-preserve-unknown-fields: true
+                  required:
+                  - name
+                  type: object
+                type: array
+            required:
+            - baseUrl
+            type: object
+        type: object
+    served: true
+    storage: true
+---
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.2
+  name: mcpservers.dapr.io
+  labels:
+    app.kubernetes.io/part-of: "dapr"
+spec:
+  group: dapr.io
+  names:
+    kind: MCPServer
+    listKind: MCPServerList
+    plural: mcpservers
+    singular: mcpserver
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          MCPServer describes a Dapr MCPServer resource that declares a connection to
+          an MCP (Model Context Protocol) server for durable tool execution.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          scopes:
+            items:
+              type: string
+            type: array
+          spec:
+            description: MCPServerSpec is the full configuration for an MCP server
+              connection.
+            properties:
+              catalog:
+                description: |-
+                  Catalog holds user-facing governance metadata (display name, description,
+                  owner, tags, links). It is purely informational and not used at runtime.
+                properties:
+                  description:
+                    type: string
+                  displayName:
+                    type: string
+                  links:
+                    additionalProperties:
+                      type: string
+                    description: Links is a free-form map of named URLs (e.g. "docs",
+                      "runbook", "dashboard").
+                    type: object
+                  owner:
+                    description: MCPCatalogOwner identifies the team responsible for
+                      the MCP server.
+                    properties:
+                      contact:
+                        type: string
+                      team:
+                        type: string
+                    type: object
+                  tags:
+                    items:
+                      type: string
+                    type: array
+                type: object
+              endpoint:
+                description: Endpoint describes the transport and target of the MCP
+                  server.
+                properties:
+                  sse:
+                    description: SSE holds configuration for the legacy SSE transport.
+                    properties:
+                      auth:
+                        description: Auth configures authentication for the MCP server
+                          connection.
+                        properties:
+                          oauth2:
+                            description: OAuth2 configures OAuth2 client credentials
+                              flow for the MCP server.
+                            properties:
+                              audience:
+                                type: string
+                              clientID:
+                                description: |-
+                                  ClientID is the OAuth2 client identifier sent to the token endpoint.
+                                  Required by RFC 6749 for the standard client_credentials flow (form parameter
+                                  or HTTP Basic username). May be left empty for non-standard flows (e.g. JWT-bearer
+                                  assertions or token endpoints that key solely on the client_secret). Client IDs
+                                  are typically public identifiers; use spec.headers with a secretKeyRef if your
+                                  environment requires sourcing the value from a secret store.
+                                type: string
+                              issuer:
+                                description: Issuer is the token endpoint of the authorization
+                                  server.
+                                minLength: 1
+                                type: string
+                              scopes:
+                                items:
+                                  type: string
+                                type: array
+                              secretKeyRef:
+                                description: SecretKeyRef references the client secret
+                                  in the configured secret store.
+                                properties:
+                                  key:
+                                    description: Field in the secret.
+                                    type: string
+                                  name:
+                                    description: Secret name.
+                                    type: string
+                                required:
+                                - name
+                                type: object
+                            required:
+                            - issuer
+                            type: object
+                          secretStore:
+                            description: |-
+                              SecretStore names the Dapr secret store used to resolve secretKeyRef entries
+                              in spec.endpoint.http.headers. auth.oauth2.secretKeyRef is resolved separately
+                              at call time by the MCP worker. Defaults to "kubernetes".
+                            type: string
+                          spiffe:
+                            description: |-
+                              SPIFFE configures workload identity JWT injection via Dapr's Sentry CA.
+                              No secret is required; Sentry issues the SVID automatically.
+                            properties:
+                              jwt:
+                                description: JWT configures how the SPIFFE SVID JWT
+                                  is attached to outbound requests.
+                                properties:
+                                  audience:
+                                    description: Audience is the intended audience
+                                      for the JWT (e.g. "mcp://payments").
+                                    minLength: 1
+                                    type: string
+                                  header:
+                                    description: Header is the HTTP header name to
+                                      inject the JWT into (e.g. "Authorization").
+                                    minLength: 1
+                                    type: string
+                                  headerValuePrefix:
+                                    description: HeaderValuePrefix is an optional
+                                      string prepended to the JWT value (e.g. "Bearer
+                                      ").
+                                    type: string
+                                required:
+                                - audience
+                                - header
+                                type: object
+                            type: object
+                        type: object
+                      headers:
+                        description: Headers are injected on all outbound HTTP requests
+                          to the MCP server.
+                        items:
+                          description: NameValuePair is a name/value pair.
+                          properties:
+                            envRef:
+                              description: EnvRef is the name of an environmental
+                                variable to read the value from.
+                              type: string
+                            name:
+                              description: Name of the property.
+                              type: string
+                            secretKeyRef:
+                              description: SecretKeyRef is the reference of a value
+                                in a secret store component.
+                              properties:
+                                key:
+                                  description: Field in the secret.
+                                  type: string
+                                name:
+                                  description: Secret name.
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            value:
+                              description: Value of the property, in plaintext.
+                              x-kubernetes-preserve-unknown-fields: true
+                          required:
+                          - name
+                          type: object
+                        type: array
+                      protocolVersion:
+                        description: |-
+                          ProtocolVersion pins the MCP spec version the server implements,
+                          using the date-based format defined by the MCP specification (e.g. "2025-06-18").
+                          When unset, the go-sdk negotiates the latest version supported by both sides.
+                        type: string
+                      timeout:
+                        description: Timeout is the per-call deadline for MCP requests.
+                        type: string
+                      url:
+                        description: URL is the endpoint URL of the MCP server.
+                        minLength: 1
+                        type: string
+                    required:
+                    - url
+                    type: object
+                  stdio:
+                    description: Stdio holds configuration for the stdio subprocess
+                      transport.
+                    properties:
+                      args:
+                        items:
+                          type: string
+                        type: array
+                      command:
+                        description: Command is the executable to run.
+                        minLength: 1
+                        type: string
+                      env:
+                        description: |-
+                          Env are environment variables injected into the subprocess.
+                          Supports plain value, secretKeyRef, and envRef.
+                        items:
+                          description: NameValuePair is a name/value pair.
+                          properties:
+                            envRef:
+                              description: EnvRef is the name of an environmental
+                                variable to read the value from.
+                              type: string
+                            name:
+                              description: Name of the property.
+                              type: string
+                            secretKeyRef:
+                              description: SecretKeyRef is the reference of a value
+                                in a secret store component.
+                              properties:
+                                key:
+                                  description: Field in the secret.
+                                  type: string
+                                name:
+                                  description: Secret name.
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            value:
+                              description: Value of the property, in plaintext.
+                              x-kubernetes-preserve-unknown-fields: true
+                          required:
+                          - name
+                          type: object
+                        type: array
+                    required:
+                    - command
+                    type: object
+                  streamableHTTP:
+                    description: StreamableHTTP holds configuration for the streamable_http
+                      transport.
+                    properties:
+                      auth:
+                        description: Auth configures authentication for the MCP server
+                          connection.
+                        properties:
+                          oauth2:
+                            description: OAuth2 configures OAuth2 client credentials
+                              flow for the MCP server.
+                            properties:
+                              audience:
+                                type: string
+                              clientID:
+                                description: |-
+                                  ClientID is the OAuth2 client identifier sent to the token endpoint.
+                                  Required by RFC 6749 for the standard client_credentials flow (form parameter
+                                  or HTTP Basic username). May be left empty for non-standard flows (e.g. JWT-bearer
+                                  assertions or token endpoints that key solely on the client_secret). Client IDs
+                                  are typically public identifiers; use spec.headers with a secretKeyRef if your
+                                  environment requires sourcing the value from a secret store.
+                                type: string
+                              issuer:
+                                description: Issuer is the token endpoint of the authorization
+                                  server.
+                                minLength: 1
+                                type: string
+                              scopes:
+                                items:
+                                  type: string
+                                type: array
+                              secretKeyRef:
+                                description: SecretKeyRef references the client secret
+                                  in the configured secret store.
+                                properties:
+                                  key:
+                                    description: Field in the secret.
+                                    type: string
+                                  name:
+                                    description: Secret name.
+                                    type: string
+                                required:
+                                - name
+                                type: object
+                            required:
+                            - issuer
+                            type: object
+                          secretStore:
+                            description: |-
+                              SecretStore names the Dapr secret store used to resolve secretKeyRef entries
+                              in spec.endpoint.http.headers. auth.oauth2.secretKeyRef is resolved separately
+                              at call time by the MCP worker. Defaults to "kubernetes".
+                            type: string
+                          spiffe:
+                            description: |-
+                              SPIFFE configures workload identity JWT injection via Dapr's Sentry CA.
+                              No secret is required; Sentry issues the SVID automatically.
+                            properties:
+                              jwt:
+                                description: JWT configures how the SPIFFE SVID JWT
+                                  is attached to outbound requests.
+                                properties:
+                                  audience:
+                                    description: Audience is the intended audience
+                                      for the JWT (e.g. "mcp://payments").
+                                    minLength: 1
+                                    type: string
+                                  header:
+                                    description: Header is the HTTP header name to
+                                      inject the JWT into (e.g. "Authorization").
+                                    minLength: 1
+                                    type: string
+                                  headerValuePrefix:
+                                    description: HeaderValuePrefix is an optional
+                                      string prepended to the JWT value (e.g. "Bearer
+                                      ").
+                                    type: string
+                                required:
+                                - audience
+                                - header
+                                type: object
+                            type: object
+                        type: object
+                      headers:
+                        description: |-
+                          Headers are injected on all outbound HTTP requests to the MCP server.
+                          Each entry follows the same NameValuePair contract used by HTTPEndpoint:
+                          plain value, secretKeyRef, or envRef. Secret resolution uses auth.secretStore.
+                        items:
+                          description: NameValuePair is a name/value pair.
+                          properties:
+                            envRef:
+                              description: EnvRef is the name of an environmental
+                                variable to read the value from.
+                              type: string
+                            name:
+                              description: Name of the property.
+                              type: string
+                            secretKeyRef:
+                              description: SecretKeyRef is the reference of a value
+                                in a secret store component.
+                              properties:
+                                key:
+                                  description: Field in the secret.
+                                  type: string
+                                name:
+                                  description: Secret name.
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            value:
+                              description: Value of the property, in plaintext.
+                              x-kubernetes-preserve-unknown-fields: true
+                          required:
+                          - name
+                          type: object
+                        type: array
+                      protocolVersion:
+                        description: |-
+                          ProtocolVersion pins the MCP spec version the server implements,
+                          using the date-based format defined by the MCP specification (e.g. "2025-06-18").
+                          When unset, the go-sdk negotiates the latest version supported by both sides.
+                        type: string
+                      timeout:
+                        description: Timeout is the per-call deadline for MCP requests.
+                        type: string
+                      url:
+                        description: URL is the endpoint URL of the MCP server.
+                        minLength: 1
+                        type: string
+                    required:
+                    - url
+                    type: object
+                type: object
+                x-kubernetes-validations:
+                - message: exactly one of streamableHTTP, sse, or stdio must be set
+                  rule: '(has(self.streamableHTTP) ? 1 : 0) + (has(self.sse) ? 1 :
+                    0) + (has(self.stdio) ? 1 : 0) == 1'
+              ignoreErrors:
+                description: |-
+                  IgnoreErrors, when true, allows daprd to continue running if validation
+                  or secret resolution fails for this MCPServer. When false (default),
+                  such failures cause daprd to exit gracefully.
+                type: boolean
+              middleware:
+                description: Middleware defines optional workflow hooks invoked around
+                  each tool call.
+                properties:
+                  afterCallTool:
+                    description: |-
+                      AfterCallTool hooks are invoked in order after each CallTool.
+                      Receives {mcpServer, toolName, arguments, result} as input.
+                      Errors fail the workflow — after-hooks act as authorization gates.
+                    items:
+                      description: |-
+                        MutatingMCPMiddlewareHook extends MCPMiddlewareHook with the ability to
+                        replace the data flowing through the pipeline when Mutate is true.
+                      properties:
+                        mutate:
+                          description: |-
+                            Mutate, when true, causes the hook's return value to replace the data
+                            flowing through the pipeline:
+                              - beforeCallTool: replaces the arguments sent to the tool call
+                                (e.g. redact PII, inject defaults).
+                              - afterCallTool / afterListTools: replaces the result returned to the caller.
+                            When false (default), the hook validates/observes only — its output is discarded.
+                          type: boolean
+                        workflow:
+                          description: Workflow is the Dapr workflow to invoke as
+                            the hook.
+                          properties:
+                            appID:
+                              description: |-
+                                AppID targets the workflow on a remote Dapr app via service invocation.
+                                When unset, the workflow is invoked locally.
+                              type: string
+                            workflowName:
+                              description: WorkflowName is the name of the workflow
+                                to invoke.
+                              minLength: 1
+                              type: string
+                          required:
+                          - workflowName
+                          type: object
+                      required:
+                      - workflow
+                      type: object
+                    type: array
+                  afterListTools:
+                    description: |-
+                      AfterListTools hooks are invoked in order after each ListTools.
+                      Receives {mcpServer, result} as input.
+                      Errors are logged but do not affect the result.
+                    items:
+                      description: |-
+                        MutatingMCPMiddlewareHook extends MCPMiddlewareHook with the ability to
+                        replace the data flowing through the pipeline when Mutate is true.
+                      properties:
+                        mutate:
+                          description: |-
+                            Mutate, when true, causes the hook's return value to replace the data
+                            flowing through the pipeline:
+                              - beforeCallTool: replaces the arguments sent to the tool call
+                                (e.g. redact PII, inject defaults).
+                              - afterCallTool / afterListTools: replaces the result returned to the caller.
+                            When false (default), the hook validates/observes only — its output is discarded.
+                          type: boolean
+                        workflow:
+                          description: Workflow is the Dapr workflow to invoke as
+                            the hook.
+                          properties:
+                            appID:
+                              description: |-
+                                AppID targets the workflow on a remote Dapr app via service invocation.
+                                When unset, the workflow is invoked locally.
+                              type: string
+                            workflowName:
+                              description: WorkflowName is the name of the workflow
+                                to invoke.
+                              minLength: 1
+                              type: string
+                          required:
+                          - workflowName
+                          type: object
+                      required:
+                      - workflow
+                      type: object
+                    type: array
+                  beforeCallTool:
+                    description: |-
+                      BeforeCallTool hooks are invoked in order before each CallTool.
+                      Receives {mcpServer, toolName, arguments} as input.
+                      If any hook returns an error, the chain stops and the workflow completes
+                      with CallToolResult{isError: true} so the agent/LLM can self-correct.
+                    items:
+                      description: |-
+                        MutatingMCPMiddlewareHook extends MCPMiddlewareHook with the ability to
+                        replace the data flowing through the pipeline when Mutate is true.
+                      properties:
+                        mutate:
+                          description: |-
+                            Mutate, when true, causes the hook's return value to replace the data
+                            flowing through the pipeline:
+                              - beforeCallTool: replaces the arguments sent to the tool call
+                                (e.g. redact PII, inject defaults).
+                              - afterCallTool / afterListTools: replaces the result returned to the caller.
+                            When false (default), the hook validates/observes only — its output is discarded.
+                          type: boolean
+                        workflow:
+                          description: Workflow is the Dapr workflow to invoke as
+                            the hook.
+                          properties:
+                            appID:
+                              description: |-
+                                AppID targets the workflow on a remote Dapr app via service invocation.
+                                When unset, the workflow is invoked locally.
+                              type: string
+                            workflowName:
+                              description: WorkflowName is the name of the workflow
+                                to invoke.
+                              minLength: 1
+                              type: string
+                          required:
+                          - workflowName
+                          type: object
+                      required:
+                      - workflow
+                      type: object
+                    type: array
+                  beforeListTools:
+                    description: |-
+                      BeforeListTools hooks are invoked in order before each ListTools.
+                      Receives {mcpServer} as input.
+                      If any hook returns an error, the chain stops and the error is returned.
+                    items:
+                      description: MCPMiddlewareHook is a single middleware hook.
+                      properties:
+                        workflow:
+                          description: Workflow is the Dapr workflow to invoke as
+                            the hook.
+                          properties:
+                            appID:
+                              description: |-
+                                AppID targets the workflow on a remote Dapr app via service invocation.
+                                When unset, the workflow is invoked locally.
+                              type: string
+                            workflowName:
+                              description: WorkflowName is the name of the workflow
+                                to invoke.
+                              minLength: 1
+                              type: string
+                          required:
+                          - workflowName
+                          type: object
+                      required:
+                      - workflow
+                      type: object
+                    type: array
+                type: object
+            required:
+            - endpoint
+            type: object
+        type: object
+    served: true
+    storage: true
+---
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.2
+  name: resiliencies.dapr.io
+  labels:
+    app.kubernetes.io/part-of: "dapr"
+spec:
+  group: dapr.io
+  names:
+    kind: Resiliency
+    listKind: ResiliencyList
+    plural: resiliencies
+    singular: resiliency
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          scopes:
+            items:
+              type: string
+            type: array
+          spec:
+            properties:
+              policies:
+                properties:
+                  circuitBreakers:
+                    additionalProperties:
+                      properties:
+                        interval:
+                          type: string
+                        maxRequests:
+                          type: integer
+                        timeout:
+                          type: string
+                        trip:
+                          type: string
+                      type: object
+                    type: object
+                  retries:
+                    additionalProperties:
+                      properties:
+                        duration:
+                          type: string
+                        matching:
+                          description: RetryMatching represents the rules to trigger
+                            retry in specific scenarios.
+                          properties:
+                            gRPCStatusCodes:
+                              description: GRPCStatusCodes represents gRPC status
+                                codes to be retried.
+                              type: string
+                            httpStatusCodes:
+                              description: HTTPStatusCodes represents HTTP status
+                                codes to be retried.
+                              type: string
+                          type: object
+                        maxInterval:
+                          type: string
+                        maxRetries:
+                          type: integer
+                        policy:
+                          type: string
+                      type: object
+                    type: object
+                  timeouts:
+                    additionalProperties:
+                      type: string
+                    type: object
+                type: object
+              targets:
+                properties:
+                  actors:
+                    additionalProperties:
+                      properties:
+                        circuitBreaker:
+                          type: string
+                        circuitBreakerCacheSize:
+                          type: integer
+                        circuitBreakerScope:
+                          type: string
+                        retry:
+                          type: string
+                        timeout:
+                          type: string
+                      type: object
+                    type: object
+                  apps:
+                    additionalProperties:
+                      properties:
+                        circuitBreaker:
+                          type: string
+                        circuitBreakerCacheSize:
+                          type: integer
+                        retry:
+                          type: string
+                        timeout:
+                          type: string
+                      type: object
+                    type: object
+                  components:
+                    additionalProperties:
+                      properties:
+                        inbound:
+                          properties:
+                            circuitBreaker:
+                              type: string
+                            retry:
+                              type: string
+                            timeout:
+                              type: string
+                          type: object
+                        outbound:
+                          properties:
+                            circuitBreaker:
+                              type: string
+                            retry:
+                              type: string
+                            timeout:
+                              type: string
+                          type: object
+                      type: object
+                    type: object
+                type: object
+            required:
+            - policies
+            - targets
+            type: object
+        type: object
+    served: true
+    storage: true
+---
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.2
+  name: subscriptions.dapr.io
+  labels:
+    app.kubernetes.io/part-of: "dapr"
+spec:
+  group: dapr.io
+  conversion:
+    strategy: Webhook
+    webhook:
+      clientConfig:
+        service:
+          namespace: replaceme # Patched by post-install webhook
+          name: dapr-webhook
+          path: /convert
+        #caBundle: Patched by post-install webhook
+      conversionReviewVersions:
+      - v1
+      - v2alpha1
+  names:
+    kind: Subscription
+    listKind: SubscriptionList
+    plural: subscriptions
+    singular: subscription
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Subscription describes an pub/sub event subscription.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          scopes:
+            items:
+              type: string
+            type: array
+          spec:
+            description: SubscriptionSpec is the spec for an event subscription.
+            properties:
+              bulkSubscribe:
+                description: BulkSubscribe encapsulates the bulk subscription configuration
+                  for a topic.
+                properties:
+                  enabled:
+                    type: boolean
+                  maxAwaitDurationMs:
+                    format: int32
+                    type: integer
+                  maxMessagesCount:
+                    format: int32
+                    type: integer
+                required:
+                - enabled
+                type: object
+              deadLetterTopic:
+                type: string
+              metadata:
+                additionalProperties:
+                  type: string
+                type: object
+              pubsubname:
+                type: string
+              route:
+                type: string
+              topic:
+                type: string
+            required:
+            - pubsubname
+            - route
+            - topic
+            type: object
+        type: object
+    served: true
+    storage: false
+  - name: v2alpha1
+    schema:
+      openAPIV3Schema:
+        description: Subscription describes an pub/sub event subscription.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          scopes:
+            items:
+              type: string
+            type: array
+          spec:
+            description: SubscriptionSpec is the spec for an event subscription.
+            properties:
+              bulkSubscribe:
+                description: The option to enable bulk subscription for this topic.
+                properties:
+                  enabled:
+                    type: boolean
+                  maxAwaitDurationMs:
+                    format: int32
+                    type: integer
+                  maxMessagesCount:
+                    format: int32
+                    type: integer
+                required:
+                - enabled
+                type: object
+              deadLetterTopic:
+                description: The optional dead letter queue for this topic to send
+                  events to.
+                type: string
+              metadata:
+                additionalProperties:
+                  type: string
+                description: The optional metadata to provide the subscription.
+                type: object
+              pubsubname:
+                description: The PubSub component name.
+                type: string
+              routes:
+                description: The Routes configuration for this topic.
+                properties:
+                  default:
+                    description: The default path for this topic.
+                    type: string
+                  rules:
+                    description: The list of rules for this topic.
+                    items:
+                      description: |-
+                        Rule is used to specify the condition for sending
+                        a message to a specific path.
+                      properties:
+                        match:
+                          description: |-
+                            The optional CEL expression used to match the event.
+                            If the match is not specified, then the route is considered
+                            the default. The rules are tested in the order specified,
+                            so they should be define from most-to-least specific.
+                            The default route should appear last in the list.
+                          type: string
+                        path:
+                          description: The path for events that match this rule.
+                          type: string
+                      required:
+                      - match
+                      - path
+                      type: object
+                    type: array
+                type: object
+              topic:
+                description: The topic name to subscribe to.
+                type: string
+            required:
+            - pubsubname
+            - routes
+            - topic
+            type: object
+        type: object
+    served: true
+    storage: true
+---
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: workflowaccesspolicies.dapr.io
+  labels:
+    app.kubernetes.io/part-of: "dapr"
+spec:
+  group: dapr.io
+  names:
+    kind: WorkflowAccessPolicy
+    listKind: WorkflowAccessPolicyList
+    plural: workflowaccesspolicies
+    singular: workflowaccesspolicy
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          WorkflowAccessPolicy controls which app IDs are permitted to schedule
+          specific workflows and activities on a target application.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          scopes:
+            items:
+              type: string
+            type: array
+          spec:
+            description: WorkflowAccessPolicySpec defines the desired state of WorkflowAccessPolicy.
+            properties:
+              rules:
+                description: Rules defines the allow-list of which callers can perform
+                  which operations.
+                items:
+                  description: |-
+                    WorkflowAccessPolicyRule grants the listed callers access to the listed
+                    workflows and/or activities. Presence of a matching rule grants access; if
+                    no rule matches, the call is denied. At least one of workflows or
+                    activities must be set.
+                  properties:
+                    activities:
+                      description: Activities are the activity rules that the matched
+                        callers are allowed.
+                      items:
+                        description: |-
+                          ActivityRule grants the matched callers access to schedule the activity
+                          whose name matches Name (exact or glob). Activities only have one
+                          operation (schedule).
+                        properties:
+                          name:
+                            description: Name is the exact name or glob pattern for
+                              the activity.
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      type: array
+                    callers:
+                      description: Callers that this rule applies to.
+                      items:
+                        description: WorkflowCaller identifies a calling application.
+                        properties:
+                          appID:
+                            description: AppID is the Dapr app ID of the caller.
+                            minLength: 1
+                            type: string
+                        required:
+                        - appID
+                        type: object
+                      minItems: 1
+                      type: array
+                    workflows:
+                      description: Workflows are the workflow rules that the matched
+                        callers are allowed.
+                      items:
+                        description: |-
+                          WorkflowRule grants the matched callers access to the listed operations on
+                          workflows whose name matches Name (exact or glob).
+                        properties:
+                          name:
+                            description: Name is the exact name or glob pattern for
+                              the workflow.
+                            minLength: 1
+                            type: string
+                          operations:
+                            description: Operations is the set of operations this
+                              rule applies to.
+                            items:
+                              description: WorkflowOperation is the specific workflow
+                                operation being controlled.
+                              enum:
+                              - schedule
+                              - terminate
+                              - raise
+                              - pause
+                              - resume
+                              - purge
+                              - get
+                              - rerun
+                              type: string
+                            minItems: 1
+                            type: array
+                            x-kubernetes-list-type: set
+                        required:
+                        - name
+                        - operations
+                        type: object
+                      type: array
+                  required:
+                  - callers
+                  type: object
+                  x-kubernetes-validations:
+                  - message: at least one of workflows or activities must contain
+                      a rule
+                    rule: (has(self.workflows) && size(self.workflows) > 0) || (has(self.activities)
+                      && size(self.activities) > 0)
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: true
