@@ -21,6 +21,7 @@
     <java.version>25</java.version>
     <dapr.sdk.version>1.18.0</dapr.sdk.version>
     <jackson-jq.version>1.2.0</jackson-jq.version>
+    <serverlessworkflow.version>7.26.0.Final</serverlessworkflow.version>
   </properties>
 
   <dependencyManagement>
@@ -53,6 +54,13 @@
     <dependency>
       <groupId>io.dapr</groupId>
       <artifactId>dapr-sdk</artifactId>
+    </dependency>
+
+    <!-- Serverless Workflow SDK: DSL 1.0 model + reader/validation -->
+    <dependency>
+      <groupId>io.serverlessworkflow</groupId>
+      <artifactId>serverlessworkflow-api</artifactId>
+      <version>${serverlessworkflow.version}</version>
     </dependency>
 
     <!-- jq dialect evaluation of DSL runtime expressions -->

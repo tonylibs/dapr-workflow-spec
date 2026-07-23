@@ -6,12 +6,15 @@ import io.dapr.durabletask.Task;
 import io.dapr.workflows.WorkflowContext;
 import io.dapr.workflows.WorkflowTaskOptions;
 import io.dws.orchestrator.expr.JqEvaluator;
-import io.dws.orchestrator.loader.DefinitionLoader;
-import io.dws.orchestrator.registry.DefinitionRegistry;
+import io.dws.orchestrator.workflow.activity.CallRequest;
 import io.dws.orchestrator.workflow.activity.CallServiceActivity;
+import io.serverlessworkflow.api.WorkflowReader;
+import io.serverlessworkflow.api.types.Workflow;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -22,50 +25,31 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Drives the interpreter's program-counter loop directly against a mocked
- * {@link WorkflowContext}, exercising the order-workflow example end to end:
- * checkInventory (CALL) -> decide (SWITCH on .inStock) -> chargePayment | notifyOutOfStock -> END.
+ * Parses the fixture DSL 1.0 {@code order.yaml} with the Serverless Workflow SDK and drives the
+ * interpreter's program-counter loop against a mocked {@link WorkflowContext}, asserting the task
+ * execution order for both switch branches:
+ * checkInventory -> switch .inStock -> chargePayment | notifyOutOfStock -> end.
  */
 class InterpreterWorkflowIntegrationTest {
-
-  private static final String ORDER_WORKFLOW = """
-      {
-        "document": { "name": "order-workflow", "version": "1.0.0" },
-        "start": "checkInventory",
-        "tasks": {
-          "checkInventory":  { "type": "call", "service": "inventory-service", "then": "decide" },
-          "decide": {
-            "type": "switch",
-            "cases": [ { "when": "${ .inStock }", "then": "chargePayment" } ],
-            "default": "notifyOutOfStock"
-          },
-          "chargePayment":    { "type": "call", "service": "payment-service", "then": "done" },
-          "notifyOutOfStock": { "type": "call", "service": "notification-service", "then": "failed" },
-          "done":   { "type": "end" },
-          "failed": { "type": "end" }
-        }
-      }
-      """;
 
   private final ObjectMapper mapper = new ObjectMapper();
   private final InterpreterWorkflow workflow = new InterpreterWorkflow();
 
   @BeforeEach
   void seedSupport() throws Exception {
-    DefinitionRegistry registry = new DefinitionRegistry();
-    registry.register(new DefinitionLoader(mapper).parse(ORDER_WORKFLOW));
-    WorkflowSupport.init(registry, new JqEvaluator(mapper), mapper,
+    Workflow definition = WorkflowReader.readWorkflowFromClasspath("order.yaml");
+    WorkflowSupport.init(definition, definition.getDocument().getName(),
+        new JqEvaluator(mapper), mapper,
         /* daprClient (unused; activities are mocked) */ null,
         mock(WorkflowTaskOptions.class), "pubsub");
   }
 
   @Test
   @SuppressWarnings("unchecked")
-  void inStockOrderFollowsChargePaymentBranch() throws Exception {
+  void inStockOrderExecutesCheckInventoryThenChargePayment() throws Exception {
     // Arrange
     WorkflowContext ctx = mock(WorkflowContext.class);
-    WorkflowInput input = new WorkflowInput("order-workflow", "1.0.0", mapper.readTree("{\"item\":\"widget\"}"));
-    when(ctx.getInput(WorkflowInput.class)).thenReturn(input);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{\"item\":\"widget\"}"));
 
     JsonNode afterInventory = mapper.readTree("{\"item\":\"widget\",\"inStock\":true}");
     JsonNode afterCharge = mapper.readTree("{\"item\":\"widget\",\"inStock\":true,\"charged\":true}");
@@ -78,8 +62,11 @@ class InterpreterWorkflowIntegrationTest {
     // Act
     workflow.execute(ctx);
 
-    // Assert: two service calls (inventory, payment) and completion with the charged document.
-    verify(ctx, times(2)).callActivity(eq(CallServiceActivity.class.getName()), any(), any(WorkflowTaskOptions.class), eq(JsonNode.class));
+    // Assert: exactly two service invocations, in order inventory -> payment.
+    ArgumentCaptor<Object> requests = ArgumentCaptor.forClass(Object.class);
+    verify(ctx, times(2)).callActivity(eq(CallServiceActivity.class.getName()), requests.capture(), any(WorkflowTaskOptions.class), eq(JsonNode.class));
+    List<String> appIds = requests.getAllValues().stream().map(r -> ((CallRequest) r).appId()).toList();
+    assertThat(appIds).containsExactly("check-inventory", "charge-payment");
 
     ArgumentCaptor<Object> output = ArgumentCaptor.forClass(Object.class);
     verify(ctx).complete(output.capture());
@@ -88,11 +75,10 @@ class InterpreterWorkflowIntegrationTest {
 
   @Test
   @SuppressWarnings("unchecked")
-  void outOfStockOrderFollowsDefaultBranch() throws Exception {
+  void outOfStockOrderExecutesCheckInventoryThenNotify() throws Exception {
     // Arrange
     WorkflowContext ctx = mock(WorkflowContext.class);
-    WorkflowInput input = new WorkflowInput("order-workflow", "1.0.0", mapper.readTree("{\"item\":\"widget\"}"));
-    when(ctx.getInput(WorkflowInput.class)).thenReturn(input);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{\"item\":\"widget\"}"));
 
     JsonNode afterInventory = mapper.readTree("{\"item\":\"widget\",\"inStock\":false}");
     JsonNode afterNotify = mapper.readTree("{\"item\":\"widget\",\"inStock\":false,\"notified\":true}");
@@ -105,7 +91,12 @@ class InterpreterWorkflowIntegrationTest {
     // Act
     workflow.execute(ctx);
 
-    // Assert: routed through notifyOutOfStock and completed with the notified document.
+    // Assert: routed through the default branch, inventory -> notification.
+    ArgumentCaptor<Object> requests = ArgumentCaptor.forClass(Object.class);
+    verify(ctx, times(2)).callActivity(eq(CallServiceActivity.class.getName()), requests.capture(), any(WorkflowTaskOptions.class), eq(JsonNode.class));
+    List<String> appIds = requests.getAllValues().stream().map(r -> ((CallRequest) r).appId()).toList();
+    assertThat(appIds).containsExactly("check-inventory", "notify-out-of-stock");
+
     ArgumentCaptor<Object> output = ArgumentCaptor.forClass(Object.class);
     verify(ctx).complete(output.capture());
     assertThat(((JsonNode) output.getValue()).get("notified").booleanValue()).isTrue();

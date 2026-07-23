@@ -26,10 +26,16 @@ dapr:
 
 # Orchestrator behaviour.
 dws:
-  # Directory of workflow JSON definitions (mounted from a ConfigMap in Kubernetes).
-  definitions-path: ${DWS_DEFINITIONS_PATH:/etc/dws/definitions}
-  # Default pub/sub component for EMIT tasks that do not specify one.
+  # Dapr Configuration store component holding workflow definitions.
+  config-store: ${DAPR_CONFIG_STORE:dws-definitions}
+  # Immutable, versioned key for this pod's single definition (e.g. order-workflow@v3). Required.
+  definition-key: ${DEFINITION_KEY:}
+  # Default pub/sub component for EMIT tasks.
   default-pubsub: ${DWS_DEFAULT_PUBSUB:pubsub}
+  # Retry/backoff for fetching the definition while the Dapr sidecar boots.
+  config-fetch:
+    max-attempts: ${DWS_CONFIG_MAX_ATTEMPTS:30}
+    retry-interval: ${DWS_CONFIG_RETRY_INTERVAL:PT2S}
   # Default activity retry policy applied to CALL and EMIT tasks.
   retry:
     max-attempts: ${DWS_RETRY_MAX_ATTEMPTS:3}

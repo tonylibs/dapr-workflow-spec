@@ -4,19 +4,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dapr.client.DaprClient;
 import io.dapr.workflows.WorkflowTaskOptions;
 import io.dws.orchestrator.expr.JqEvaluator;
-import io.dws.orchestrator.registry.DefinitionRegistry;
+import io.serverlessworkflow.api.types.Workflow;
 
 /**
  * Static bridge between Spring-managed collaborators and the Dapr workflow runtime.
  *
- * <p>{@code WorkflowRuntimeBuilder} instantiates workflow and activity classes reflectively
- * via their no-arg constructors, so those classes cannot receive Spring injection. This holder
- * is populated once during bootstrap and read by {@link InterpreterWorkflow} and the activities.
- * All held collaborators are effectively immutable and thread-safe.
+ * <p>{@code WorkflowRuntimeBuilder} instantiates the workflow and activity classes reflectively
+ * via their no-arg constructors, so those classes cannot receive Spring injection. This holder is
+ * populated once during bootstrap. Each orchestrator pod serves exactly one, immutable workflow
+ * definition for its whole lifetime, so the held {@link Workflow} never changes.
  */
 public final class WorkflowSupport {
 
-  private static volatile DefinitionRegistry registry;
+  private static volatile Workflow definition;
+  private static volatile String workflowName;
   private static volatile JqEvaluator jqEvaluator;
   private static volatile ObjectMapper mapper;
   private static volatile DaprClient daprClient;
@@ -26,13 +27,15 @@ public final class WorkflowSupport {
   private WorkflowSupport() {
   }
 
-  public static void init(DefinitionRegistry registry,
+  public static void init(Workflow definition,
+                          String workflowName,
                           JqEvaluator jqEvaluator,
                           ObjectMapper mapper,
                           DaprClient daprClient,
                           WorkflowTaskOptions defaultTaskOptions,
                           String defaultPubsub) {
-    WorkflowSupport.registry = registry;
+    WorkflowSupport.definition = definition;
+    WorkflowSupport.workflowName = workflowName;
     WorkflowSupport.jqEvaluator = jqEvaluator;
     WorkflowSupport.mapper = mapper;
     WorkflowSupport.daprClient = daprClient;
@@ -40,8 +43,12 @@ public final class WorkflowSupport {
     WorkflowSupport.defaultPubsub = defaultPubsub;
   }
 
-  public static DefinitionRegistry registry() {
-    return require(registry, "registry");
+  public static Workflow definition() {
+    return require(definition, "definition");
+  }
+
+  public static String workflowName() {
+    return require(workflowName, "workflowName");
   }
 
   public static JqEvaluator jq() {

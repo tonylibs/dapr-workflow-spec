@@ -1,0 +1,72 @@
+# Example Knative Service for a single `call: openapi` step.
+#
+# This manifest configures the `get-pet` step: it resolves and executes the
+# petstore `getPetById` operation. Every openapi call step deploys this same
+# image and differs only in the env block and the Dapr app-id (the task name).
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: get-pet
+  labels:
+    dws.io/step-type: call-openapi
+    dws.io/task: get-pet
+spec:
+  template:
+    metadata:
+      annotations:
+        # Scale to zero when idle; scale up on invocation. Raise minScale to 1
+        # (or higher) to keep warm replicas and avoid cold starts for hot steps.
+        autoscaling.knative.dev/minScale: "0"
+        # Dapr sidecar injection. app-id is derived from the task name so the
+        # orchestrator can invoke this step via Dapr service invocation.
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "get-pet"
+        dapr.io/app-port: "8080"
+    spec:
+      containers:
+        - image: registry.io/dws/dws-call-openapi:1.0
+          ports:
+            - name: http1
+              containerPort: 8080
+          env:
+            - name: TASK
+              value: "get-pet"
+            # OpenAPI document location (http|https|file) and its pinned digest.
+            - name: DOCUMENT_URL
+              value: "https://petstore3.swagger.io/api/v3/openapi.json"
+            - name: DOCUMENT_SHA256
+              value: "0000000000000000000000000000000000000000000000000000000000000000"
+            - name: OPERATION_ID
+              value: "getPetById"
+            # Parameter name -> jq expression evaluated against the input data.
+            - name: PARAMETERS
+              value: '{"petId":".petId"}'
+            # Optional knobs (defaults shown for reference):
+            # - name: OUTPUT
+            #   value: "replace"        # replace | merge
+            # - name: TIMEOUT
+            #   value: "30s"
+            # - name: AUTH_TYPE
+            #   value: "apiKey"         # none | bearer | basic | apiKey
+            # Inline secret, or a Dapr secret store reference:
+            # - name: AUTH_SECRET
+            #   value: "..."
+            # - name: AUTH_SECRET_STORE
+            #   value: "petstore-secrets"
+            # - name: AUTH_SECRET_KEY
+            #   value: "api-key"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"

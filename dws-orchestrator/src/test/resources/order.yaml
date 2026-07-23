@@ -1,0 +1,31 @@
+document:
+  dsl: 1.0.0
+  namespace: examples
+  name: order-workflow
+  version: '1.0.0'
+do:
+  - checkInventory:
+      call: http
+      with:
+        method: post
+        endpoint: http://inventory-service/run
+      then: decide
+  - decide:
+      switch:
+        - inStock:
+            when: ${ .inStock }
+            then: chargePayment
+        - outOfStock:
+            then: notifyOutOfStock
+  - chargePayment:
+      call: http
+      with:
+        method: post
+        endpoint: http://payment-service/run
+      then: end
+  - notifyOutOfStock:
+      call: http
+      with:
+        method: post
+        endpoint: http://notification-service/run
+      then: end

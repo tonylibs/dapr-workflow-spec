@@ -6,25 +6,41 @@ import java.time.Duration;
 
 /**
  * Externalised orchestrator configuration bound from {@code dws.*} in application.yaml
- * (and overridable via environment variables, e.g. {@code DWS_DEFINITIONS_PATH}).
+ * (and overridable via environment variables).
+ *
+ * <p>The definition is loaded exactly once at startup from a Dapr Configuration store; each pod
+ * serves the single immutable, versioned {@code definitionKey} for its lifetime.
  */
 @ConfigurationProperties(prefix = "dws")
 public class OrchestratorProperties {
 
-  /** Directory holding workflow JSON definitions (mounted from a ConfigMap). */
-  private String definitionsPath = "/etc/dws/definitions";
+  /** Dapr Configuration store component name ({@code DAPR_CONFIG_STORE}). */
+  private String configStore = "dws-definitions";
 
-  /** Default Dapr pub/sub component used by EMIT tasks that omit an explicit one. */
+  /** Immutable, versioned definition key, e.g. {@code order-workflow@v3} ({@code DEFINITION_KEY}). */
+  private String definitionKey;
+
+  /** Default Dapr pub/sub component used by EMIT tasks. */
   private String defaultPubsub = "pubsub";
+
+  private final ConfigFetch configFetch = new ConfigFetch();
 
   private final Retry retry = new Retry();
 
-  public String getDefinitionsPath() {
-    return definitionsPath;
+  public String getConfigStore() {
+    return configStore;
   }
 
-  public void setDefinitionsPath(String definitionsPath) {
-    this.definitionsPath = definitionsPath;
+  public void setConfigStore(String configStore) {
+    this.configStore = configStore;
+  }
+
+  public String getDefinitionKey() {
+    return definitionKey;
+  }
+
+  public void setDefinitionKey(String definitionKey) {
+    this.definitionKey = definitionKey;
   }
 
   public String getDefaultPubsub() {
@@ -35,8 +51,34 @@ public class OrchestratorProperties {
     this.defaultPubsub = defaultPubsub;
   }
 
+  public ConfigFetch getConfigFetch() {
+    return configFetch;
+  }
+
   public Retry getRetry() {
     return retry;
+  }
+
+  /** Retry/backoff for fetching the definition while the Dapr sidecar boots. */
+  public static class ConfigFetch {
+    private int maxAttempts = 30;
+    private Duration retryInterval = Duration.ofSeconds(2);
+
+    public int getMaxAttempts() {
+      return maxAttempts;
+    }
+
+    public void setMaxAttempts(int maxAttempts) {
+      this.maxAttempts = maxAttempts;
+    }
+
+    public Duration getRetryInterval() {
+      return retryInterval;
+    }
+
+    public void setRetryInterval(Duration retryInterval) {
+      this.retryInterval = retryInterval;
+    }
   }
 
   /** Default activity retry policy applied to CALL and EMIT tasks. */

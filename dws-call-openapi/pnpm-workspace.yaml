@@ -1,6 +1,11 @@
 allowBuilds:
-  esbuild: set this to true or false
-  node-jq: set this to true or false
+  esbuild: true
+  node-jq: true
+  "@scarf/scarf": false
+  "@tree-sitter-grammars/tree-sitter-yaml": false
+  core-js-pure: false
+  tree-sitter-json: false
+  tree-sitter: false
 onlyBuiltDependencies:
   - esbuild
   - node-jq

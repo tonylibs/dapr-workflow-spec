@@ -1,0 +1,28 @@
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: order
+  version: '1.0.0'
+do:
+  - checkInventory:
+      call: http
+      with:
+        method: get
+        endpoint: http://inventory.local/api/check
+  - decide:
+      switch:
+        - inStock:
+            when: ${ .inStock }
+            then: chargePayment
+        - outOfStock:
+            then: notifyOutOfStock
+  - chargePayment:
+      call: http
+      with:
+        method: post
+        endpoint: http://payment.local/api/charge
+  - notifyOutOfStock:
+      call: http
+      with:
+        method: post
+        endpoint: http://notify.local/api/oos

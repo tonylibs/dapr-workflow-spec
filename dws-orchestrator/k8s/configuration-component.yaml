@@ -1,0 +1,22 @@
+# Dapr Configuration store backing the workflow definitions.
+# Applications may only READ from this store via the Configuration API; the controller
+# writes definition keys (e.g. order-workflow@v1) directly into the Redis backing store.
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: dws-definitions
+spec:
+  type: configuration.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      value: redis-master.default.svc.cluster.local:6379
+    - name: redisPassword
+      secretKeyRef:
+        name: redis
+        key: redis-password
+    # Definition values are plain YAML/JSON text; do not treat them as JSON documents.
+    - name: enableTLS
+      value: "false"
+auth:
+  secretStore: kubernetes
