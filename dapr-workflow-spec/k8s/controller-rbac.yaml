@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dws-controller
+  namespace: default
+  labels:
+    app: dws-controller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dws-controller
+  namespace: default
+  labels:
+    app: dws-controller
+rules:
+  # Immutable definition ConfigMaps.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "create", "delete"]
+  # Orchestrator Deployments. `update`/`patch` are needed to stamp dws.io/drain=true on
+  # the superseded version during rollout.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "create", "delete", "update", "patch"]
+  # Step services. `update`/`patch` let a new version re-label an existing, same-named
+  # Knative Service instead of failing on create.
+  - apiGroups: ["serving.knative.dev"]
+    resources: ["services"]
+    verbs: ["get", "list", "create", "delete", "update", "patch"]
+  # Dapr configuration components backing the definition store.
+  - apiGroups: ["dapr.io"]
+    resources: ["components"]
+    verbs: ["get", "list", "create", "delete", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dws-controller
+  namespace: default
+  labels:
+    app: dws-controller
+subjects:
+  - kind: ServiceAccount
+    name: dws-controller
+    namespace: default
+roleRef:
+  kind: Role
+  name: dws-controller
+  apiGroup: rbac.authorization.k8s.io

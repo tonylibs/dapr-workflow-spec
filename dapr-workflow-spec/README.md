@@ -1,5 +1,31 @@
 # dapr-workflow-spec
 
+The DWS controller: it accepts Serverless Workflow DSL 1.0 definitions, compiles them with the
+Serverless Workflow SDK, and deploys one stack per definition — an immutable definition ConfigMap,
+a Dapr configuration Component, one Knative Service per I/O task (from prebuilt images), and a
+dedicated orchestrator Deployment.
+
+## API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/workflows` | Body is DSL 1.0 YAML or JSON. `201` on first deploy, `200` when that exact version is already deployed, `400` with an error list when invalid. `?dryRun=true` returns the computed plan without applying. |
+| `GET` | `/workflows` | List: name, version, status. |
+| `GET` | `/workflows/{name}` | Detail, including the current version and every version present. |
+| `GET` | `/workflows/{name}/plan` | Recomputes the `DeploymentPlan` from the deployed definition. |
+| `DELETE` | `/workflows/{name}` | Tears down the whole stack by label selector. |
+
+Versions are content-addressed: `<workflow>@v<sha256-8>` of the normalized definition, so
+re-posting identical content is a no-op. There is no database — every read comes from live
+cluster state selected by the `dws.io/*` labels.
+
+Configure the prebuilt images and target namespace in `src/main/resources/application.yaml`
+(`dws.images.call-http`, `.call-openapi`, `.run`, `.orchestrator`, `dws.namespace`).
+
+See [k8s/README.md](k8s/README.md) for deployment, RBAC and a worked `POST order.yaml` flow.
+
+## Quarkus
+
 This project uses Quarkus, the Supersonic Subatomic Java Framework.
 
 If you want to learn more about Quarkus, please visit its website: <https://quarkus.io/>.

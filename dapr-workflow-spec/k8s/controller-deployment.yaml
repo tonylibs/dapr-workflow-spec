@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dws-controller
+  namespace: default
+  labels:
+    app: dws-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dws-controller
+  template:
+    metadata:
+      labels:
+        app: dws-controller
+    spec:
+      serviceAccountName: dws-controller
+      containers:
+        - name: controller
+          # Built from src/main/docker/Dockerfile.jvm — that image bundles Node.js because
+          # cdk8s synthesis runs through the jsii runtime.
+          image: dws-controller:1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: DWS_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: DWS_IMAGES_CALL_HTTP
+              value: sw-call-http:1.0
+            - name: DWS_IMAGES_CALL_OPENAPI
+              value: sw-call-openapi:1.0
+            - name: DWS_IMAGES_RUN
+              value: sw-run:1.0
+            - name: DWS_IMAGES_ORCHESTRATOR
+              value: sw-orchestrator:1.0
+          livenessProbe:
+            httpGet:
+              path: /q/health/live
+              port: http
+            initialDelaySeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /q/health/ready
+              port: http
+            initialDelaySeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dws-controller
+  namespace: default
+  labels:
+    app: dws-controller
+spec:
+  selector:
+    app: dws-controller
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

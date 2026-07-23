@@ -14,6 +14,14 @@ public interface DwsConfig {
 
     Images images();
 
+    Reconcile reconcile();
+
+    /** Garbage-collection cadence for drained previous versions. */
+    interface Reconcile {
+        @WithDefault("30s")
+        String every();
+    }
+
     interface Images {
         String callHttp();
 

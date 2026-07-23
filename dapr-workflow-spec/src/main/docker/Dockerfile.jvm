@@ -84,6 +84,13 @@ FROM registry.access.redhat.com/ubi9/openjdk-25-runtime:1.24
 
 ENV LANGUAGE='en_US:en'
 
+# cdk8s synthesis runs through the jsii runtime, which executes its bundled JavaScript in a
+# Node.js child process. Without Node on PATH every apply pass fails at synth time.
+USER root
+RUN microdnf install -y nodejs \
+    && microdnf clean all \
+    && node --version
+USER 185
 
 # We make four distinct layers so if there are application changes the library layers can be re-used
 COPY --chown=185 target/quarkus-app/lib/ /deployments/lib/
