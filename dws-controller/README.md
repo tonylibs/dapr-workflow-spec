@@ -1,4 +1,4 @@
-# dapr-workflow-spec
+# dws-controller
 
 The DWS controller: it accepts Serverless Workflow DSL 1.0 definitions, compiles them with the
 Serverless Workflow SDK, and deploys one stack per definition — an immutable definition ConfigMap,
@@ -75,7 +75,7 @@ Or, if you don't have GraalVM installed, you can run the native executable build
 ./mvnw package -Dnative -Dquarkus.native.container-build=true
 ```
 
-You can then execute your native executable with: `./target/dapr-workflow-spec-1.0.0-SNAPSHOT-runner`
+You can then execute your native executable with: `./target/dws-controller-1.0.0-SNAPSHOT-runner`
 
 If you want to learn more about building native executables, please consult <https://quarkus.io/guides/maven-tooling>.
 
