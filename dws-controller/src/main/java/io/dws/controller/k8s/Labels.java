@@ -14,7 +14,7 @@ public final class Labels {
     public static final String WORKFLOW = "dws.io/workflow";
     public static final String VERSION = "dws.io/version";
     public static final String MANAGED_BY = "dws.io/managed-by";
-    public static final String MANAGED_BY_VALUE = "dapr-workflow-spec";
+    public static final String MANAGED_BY_VALUE = "dws-controller";
     public static final String DRAIN = "dws.io/drain";
 
     private Labels() {}

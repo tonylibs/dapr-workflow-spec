@@ -106,6 +106,6 @@ Every managed resource carries:
 |-------|-------|
 | `dws.io/workflow` | workflow name, kebab-cased |
 | `dws.io/version` | `v<sha256-8>` of the normalized definition |
-| `dws.io/managed-by` | `dapr-workflow-spec` |
+| `dws.io/managed-by` | `dws-controller` |
 
 These selectors drive list, rollout and teardown.
