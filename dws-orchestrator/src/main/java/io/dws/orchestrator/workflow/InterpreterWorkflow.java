@@ -27,7 +27,6 @@ import io.serverlessworkflow.api.types.Task;
 import io.serverlessworkflow.api.types.TaskBase;
 import io.serverlessworkflow.api.types.TaskItem;
 import io.serverlessworkflow.api.types.TimeoutAfter;
-
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -61,8 +60,8 @@ public class InterpreterWorkflow implements Workflow {
   }
 
   /**
-   * Runs the interpreter loop. Extracted from the {@link WorkflowStub} lambda so it can be
-   * driven directly against a mocked {@link WorkflowContext} in tests.
+   * Runs the interpreter loop. Extracted from the {@link WorkflowStub} lambda so it can be driven
+   * directly against a mocked {@link WorkflowContext} in tests.
    */
   public void execute(WorkflowContext ctx) {
     ObjectMapper mapper = WorkflowSupport.mapper();
@@ -89,7 +88,8 @@ public class InterpreterWorkflow implements Workflow {
       int pc = 0;
       for (int steps = 0; pc >= 0 && pc < items.size(); steps++) {
         if (steps > MAX_STEPS) {
-          throw new IllegalStateException("workflow exceeded " + MAX_STEPS + " steps; check for a definition loop");
+          throw new IllegalStateException(
+              "workflow exceeded " + MAX_STEPS + " steps; check for a definition loop");
         }
 
         TaskItem item = items.get(pc);
@@ -127,31 +127,49 @@ public class InterpreterWorkflow implements Workflow {
   }
 
   /** The post-dispatch data document plus the task's flow directive. */
-  private record Dispatch(JsonNode data, FlowDirective then) {
-  }
+  private record Dispatch(JsonNode data, FlowDirective then) {}
 
-  /** Dispatches one task item, returning the (possibly new) data document and its flow directive. */
-  private Dispatch dispatch(WorkflowContext ctx, Task task, String name, JsonNode data,
-                            JqEvaluator jq, ObjectMapper mapper) {
+  /**
+   * Dispatches one task item, returning the (possibly new) data document and its flow directive.
+   */
+  private Dispatch dispatch(
+      WorkflowContext ctx,
+      Task task,
+      String name,
+      JsonNode data,
+      JqEvaluator jq,
+      ObjectMapper mapper) {
     if (task.getSwitchTask() != null) {
       return new Dispatch(data, evaluateSwitch(task.getSwitchTask(), data, jq));
     } else if (task.getCallTask() != null) {
       CallRequest req = new CallRequest(TaskNaming.toKebabCase(name), "run", data);
-      JsonNode next = ctx.callActivity(CallServiceActivity.class.getName(), req,
-          WorkflowSupport.defaultTaskOptions(), JsonNode.class).await();
+      JsonNode next =
+          ctx.callActivity(
+                  CallServiceActivity.class.getName(),
+                  req,
+                  WorkflowSupport.defaultTaskOptions(),
+                  JsonNode.class)
+              .await();
       return new Dispatch(next, thenOf(task.getCallTask().get()));
     } else if (task.getSetTask() != null) {
-      return new Dispatch(applySet(task.getSetTask(), data, jq, mapper), task.getSetTask().getThen());
+      return new Dispatch(
+          applySet(task.getSetTask(), data, jq, mapper), task.getSetTask().getThen());
     } else if (task.getWaitTask() != null) {
       ctx.createTimer(durationOf(task.getWaitTask().getWait())).await();
       return new Dispatch(data, task.getWaitTask().getThen());
     } else if (task.getListenTask() != null) {
-      JsonNode event = ctx.waitForExternalEvent(name, DEFAULT_LISTEN_TIMEOUT, JsonNode.class).await();
+      JsonNode event =
+          ctx.waitForExternalEvent(name, DEFAULT_LISTEN_TIMEOUT, JsonNode.class).await();
       return new Dispatch(mergeObjects(data, event, mapper), task.getListenTask().getThen());
     } else if (task.getEmitTask() != null) {
-      EmitRequest req = new EmitRequest(WorkflowSupport.defaultPubsub(), TaskNaming.toKebabCase(name), data);
-      ctx.callActivity(EmitEventActivity.class.getName(), req,
-          WorkflowSupport.defaultTaskOptions(), Void.class).await();
+      EmitRequest req =
+          new EmitRequest(WorkflowSupport.defaultPubsub(), TaskNaming.toKebabCase(name), data);
+      ctx.callActivity(
+              EmitEventActivity.class.getName(),
+              req,
+              WorkflowSupport.defaultTaskOptions(),
+              Void.class)
+          .await();
       return new Dispatch(data, task.getEmitTask().getThen());
     } else if (task.getForTask() != null || task.getTryTask() != null) {
       throw new UnsupportedOperationException(
@@ -185,8 +203,12 @@ public class InterpreterWorkflow implements Workflow {
 
   /** Publishes a lifecycle event through the admin-event activity (tolerant of publish failure). */
   private void publish(WorkflowContext ctx, AdminEventRequest req) {
-    ctx.callActivity(AdminEventActivity.class.getName(), req,
-        WorkflowSupport.defaultTaskOptions(), Void.class).await();
+    ctx.callActivity(
+            AdminEventActivity.class.getName(),
+            req,
+            WorkflowSupport.defaultTaskOptions(),
+            Void.class)
+        .await();
   }
 
   /** Resolves the next program counter from a flow directive (null = sequential continue). */
@@ -227,14 +249,17 @@ public class InterpreterWorkflow implements Workflow {
     return defaultThen;
   }
 
-  /** Reads the flow directive from any task that is a {@link TaskBase} (including call variants). */
+  /**
+   * Reads the flow directive from any task that is a {@link TaskBase} (including call variants).
+   */
   private FlowDirective thenOf(Object concreteTask) {
     return (concreteTask instanceof TaskBase base) ? base.getThen() : null;
   }
 
   /** Produces a new data document with each {@code set} entry evaluated over the original data. */
   private JsonNode applySet(SetTask setTask, JsonNode data, JqEvaluator jq, ObjectMapper mapper) {
-    ObjectNode result = (data != null && data.isObject()) ? data.deepCopy() : mapper.createObjectNode();
+    ObjectNode result =
+        (data != null && data.isObject()) ? data.deepCopy() : mapper.createObjectNode();
     Set set = setTask.getSet();
     if (set == null) {
       return result;
@@ -272,13 +297,17 @@ public class InterpreterWorkflow implements Workflow {
           .plusMinutes(inline.getMinutes())
           .plusSeconds(inline.getSeconds());
     }
-    String literal = after.getDurationExpression() != null
-        ? after.getDurationExpression()
-        : after.getDurationLiteral();
+    String literal =
+        after.getDurationExpression() != null
+            ? after.getDurationExpression()
+            : after.getDurationLiteral();
     return (literal != null && !literal.isBlank()) ? Duration.parse(literal) : Duration.ZERO;
   }
 
-  /** Overlays {@code overlay} onto a copy of {@code base} when both are objects; else returns overlay. */
+  /**
+   * Overlays {@code overlay} onto a copy of {@code base} when both are objects; else returns
+   * overlay.
+   */
   private JsonNode mergeObjects(JsonNode base, JsonNode overlay, ObjectMapper mapper) {
     if (overlay == null || overlay.isNull()) {
       return base;

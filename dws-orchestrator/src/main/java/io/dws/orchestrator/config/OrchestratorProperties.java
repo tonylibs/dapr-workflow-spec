@@ -1,12 +1,11 @@
 package io.dws.orchestrator.config;
 
+import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-import java.time.Duration;
-
 /**
- * Externalised orchestrator configuration bound from {@code dws.*} in application.yaml
- * (and overridable via environment variables).
+ * Externalised orchestrator configuration bound from {@code dws.*} in application.yaml (and
+ * overridable via environment variables).
  *
  * <p>The definition is loaded exactly once at startup from a Dapr Configuration store; each pod
  * serves the single immutable, versioned {@code definitionKey} for its lifetime.
@@ -17,12 +16,14 @@ public class OrchestratorProperties {
   /** Dapr Configuration store component name ({@code DAPR_CONFIG_STORE}). */
   private String configStore = "dws-definitions";
 
-  /** Immutable, versioned definition key, e.g. {@code order-workflow@v3} ({@code DEFINITION_KEY}). */
+  /**
+   * Immutable, versioned definition key, e.g. {@code order-workflow@v3} ({@code DEFINITION_KEY}).
+   */
   private String definitionKey;
 
   /**
-   * The Dapr app-id of this orchestrator, carried in orchestrator lifecycle events so a consumer can
-   * resolve which deployment produced an instance. Bound from the Dapr-injected {@code APP_ID}
+   * The Dapr app-id of this orchestrator, carried in orchestrator lifecycle events so a consumer
+   * can resolve which deployment produced an instance. Bound from the Dapr-injected {@code APP_ID}
    * ({@code dapr.app-id}); when blank it defaults to the workflow name at bootstrap.
    */
   private String appId;

@@ -23,8 +23,8 @@ import org.springframework.web.bind.annotation.RestController;
  * accepts only that workflow's name and rejects any other with 404. The definition version is
  * pinned by the pod itself, so it is not carried in the instance input.
  *
- * <p>Request bodies are accepted as raw JSON strings and parsed with the orchestrator's own
- * Jackson mapper, decoupling the API from the web layer's serializer configuration.
+ * <p>Request bodies are accepted as raw JSON strings and parsed with the orchestrator's own Jackson
+ * mapper, decoupling the API from the web layer's serializer configuration.
  */
 @RestController
 @RequestMapping("/workflows")
@@ -33,16 +33,17 @@ public class WorkflowController {
   private final DaprWorkflowClient workflowClient;
   private final ObjectMapper mapper;
 
-  public WorkflowController(DaprWorkflowClient workflowClient,
-                            @Qualifier("orchestratorObjectMapper") ObjectMapper mapper) {
+  public WorkflowController(
+      DaprWorkflowClient workflowClient,
+      @Qualifier("orchestratorObjectMapper") ObjectMapper mapper) {
     this.workflowClient = workflowClient;
     this.mapper = mapper;
   }
 
   /** Start a new instance of this pod's workflow. Any other name yields 404. */
   @PostMapping("/{name}/instances")
-  public ResponseEntity<StartInstanceResponse> start(@PathVariable String name,
-                                                     @RequestBody(required = false) String body) {
+  public ResponseEntity<StartInstanceResponse> start(
+      @PathVariable String name, @RequestBody(required = false) String body) {
     String loaded = WorkflowSupport.workflowName();
     if (!loaded.equals(name)) {
       throw new NotFoundException("this orchestrator serves only workflow '" + loaded + "'");
@@ -61,16 +62,15 @@ public class WorkflowController {
       throw new NotFoundException("no workflow instance '" + id + "'");
     }
     return new InstanceStatusResponse(
-        id,
-        String.valueOf(state.getRuntimeStatus()),
-        parseOutput(state.getSerializedOutput()));
+        id, String.valueOf(state.getRuntimeStatus()), parseOutput(state.getSerializedOutput()));
   }
 
   /** Raise an external event that a LISTEN task in the instance may be waiting for. */
   @PostMapping("/instances/{id}/events/{event}")
-  public ResponseEntity<Void> raiseEvent(@PathVariable String id,
-                                         @PathVariable String event,
-                                         @RequestBody(required = false) String body) {
+  public ResponseEntity<Void> raiseEvent(
+      @PathVariable String id,
+      @PathVariable String event,
+      @RequestBody(required = false) String body) {
     workflowClient.raiseEvent(id, event, parseBody(body));
     return ResponseEntity.accepted().build();
   }

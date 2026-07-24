@@ -7,9 +7,7 @@ import io.dws.orchestrator.workflow.WorkflowSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Publishes the current workflow data to a Dapr pub/sub topic on behalf of an EMIT task.
- */
+/** Publishes the current workflow data to a Dapr pub/sub topic on behalf of an EMIT task. */
 public class EmitEventActivity implements WorkflowActivity {
 
   private static final Logger LOG = LoggerFactory.getLogger(EmitEventActivity.class);

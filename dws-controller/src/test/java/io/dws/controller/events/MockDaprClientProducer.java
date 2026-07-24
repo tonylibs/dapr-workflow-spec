@@ -16,9 +16,9 @@ import org.mockito.Mockito;
 @Singleton
 public class MockDaprClientProducer {
 
-    @Produces
-    @Singleton
-    public DaprClient daprClient() {
-        return Mockito.mock(DaprClient.class);
-    }
+  @Produces
+  @Singleton
+  public DaprClient daprClient() {
+    return Mockito.mock(DaprClient.class);
+  }
 }

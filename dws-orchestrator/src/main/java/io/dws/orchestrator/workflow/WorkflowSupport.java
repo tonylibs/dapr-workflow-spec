@@ -9,8 +9,8 @@ import io.serverlessworkflow.api.types.Workflow;
 /**
  * Static bridge between Spring-managed collaborators and the Dapr workflow runtime.
  *
- * <p>{@code WorkflowRuntimeBuilder} instantiates the workflow and activity classes reflectively
- * via their no-arg constructors, so those classes cannot receive Spring injection. This holder is
+ * <p>{@code WorkflowRuntimeBuilder} instantiates the workflow and activity classes reflectively via
+ * their no-arg constructors, so those classes cannot receive Spring injection. This holder is
  * populated once during bootstrap. Each orchestrator pod serves exactly one, immutable workflow
  * definition for its whole lifetime, so the held {@link Workflow} never changes.
  */
@@ -26,18 +26,18 @@ public final class WorkflowSupport {
   private static volatile WorkflowTaskOptions defaultTaskOptions;
   private static volatile String defaultPubsub;
 
-  private WorkflowSupport() {
-  }
+  private WorkflowSupport() {}
 
-  public static void init(Workflow definition,
-                          String workflowName,
-                          String appId,
-                          String definitionKey,
-                          JqEvaluator jqEvaluator,
-                          ObjectMapper mapper,
-                          DaprClient daprClient,
-                          WorkflowTaskOptions defaultTaskOptions,
-                          String defaultPubsub) {
+  public static void init(
+      Workflow definition,
+      String workflowName,
+      String appId,
+      String definitionKey,
+      JqEvaluator jqEvaluator,
+      ObjectMapper mapper,
+      DaprClient daprClient,
+      WorkflowTaskOptions defaultTaskOptions,
+      String defaultPubsub) {
     WorkflowSupport.definition = definition;
     WorkflowSupport.workflowName = workflowName;
     WorkflowSupport.appId = appId;

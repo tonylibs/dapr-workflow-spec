@@ -10,9 +10,10 @@ import io.dws.orchestrator.workflow.activity.AdminEventRequest;
  * instance/task lifecycle events (see {@code docs/events.md}).
  *
  * <p><strong>Replay determinism:</strong> every timestamp and id is derived from the workflow
- * context ({@link WorkflowContext#getCurrentInstant()} and {@link WorkflowContext#getInstanceId()}),
- * never from {@code Instant.now()} or a random generator, so envelopes are identical across replays.
- * The per-instance event {@code id} is a monotonic counter over the deterministic execution order.
+ * context ({@link WorkflowContext#getCurrentInstant()} and {@link
+ * WorkflowContext#getInstanceId()}), never from {@code Instant.now()} or a random generator, so
+ * envelopes are identical across replays. The per-instance event {@code id} is a monotonic counter
+ * over the deterministic execution order.
  */
 public final class AdminEventBuilder {
 
@@ -30,8 +31,15 @@ public final class AdminEventBuilder {
 
   private int seq;
 
-  private AdminEventBuilder(WorkflowContext ctx, ObjectMapper mapper, String appId, String workflow,
-                            String version, String instanceId, String pubsub, String startedAt) {
+  private AdminEventBuilder(
+      WorkflowContext ctx,
+      ObjectMapper mapper,
+      String appId,
+      String workflow,
+      String version,
+      String instanceId,
+      String pubsub,
+      String startedAt) {
     this.ctx = ctx;
     this.mapper = mapper;
     this.source = "dws-orchestrator/" + appId;
@@ -43,7 +51,10 @@ public final class AdminEventBuilder {
     this.startedAt = startedAt;
   }
 
-  /** Seeds a builder from {@link WorkflowSupport} and the context, capturing the instance start time. */
+  /**
+   * Seeds a builder from {@link WorkflowSupport} and the context, capturing the instance start
+   * time.
+   */
   public static AdminEventBuilder forContext(WorkflowContext ctx) {
     return new AdminEventBuilder(
         ctx,

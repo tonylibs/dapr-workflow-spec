@@ -9,5 +9,4 @@ import com.fasterxml.jackson.databind.JsonNode;
  * {@code data} here is the whole envelope, not just workflow data.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record AdminEventRequest(String pubsub, String topic, JsonNode data) {
-}
+public record AdminEventRequest(String pubsub, String topic, JsonNode data) {}

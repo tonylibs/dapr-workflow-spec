@@ -25,30 +25,36 @@ import org.junit.jupiter.api.Test;
  */
 class StackApplierFailurePublishTest {
 
-    private static DeploymentPlan plan() {
-        return new DeploymentPlan(
-                "order", "vabc1234", "order@vabc1234", "dws-def-order-vabc1234", "spec: text",
-                List.of(), List.of(),
-                new OrchestratorSpec("orch-order", "img", "order", 8080, 1, Map.of()));
-    }
+  private static DeploymentPlan plan() {
+    return new DeploymentPlan(
+        "order",
+        "vabc1234",
+        "order@vabc1234",
+        "dws-def-order-vabc1234",
+        "spec: text",
+        List.of(),
+        List.of(),
+        new OrchestratorSpec("orch-order", "img", "order", 8080, 1, Map.of()));
+  }
 
-    @Test
-    @DisplayName("apply error publishes io.dws.deployment.failed and rethrows the original exception")
-    void applyFailurePublishesDeploymentFailed() {
-        KubernetesClient client = mock(KubernetesClient.class);
-        StackSynthesizer synthesizer = mock(StackSynthesizer.class);
-        EventPublisher events = mock(EventPublisher.class);
-        DwsConfig config = mock(DwsConfig.class);
-        when(config.namespace()).thenReturn("default");
-        // Fail on the first cluster interaction inside apply's try block.
-        when(client.configMaps()).thenThrow(new RuntimeException("boom"));
+  @Test
+  @DisplayName("apply error publishes io.dws.deployment.failed and rethrows the original exception")
+  void applyFailurePublishesDeploymentFailed() {
+    KubernetesClient client = mock(KubernetesClient.class);
+    StackSynthesizer synthesizer = mock(StackSynthesizer.class);
+    EventPublisher events = mock(EventPublisher.class);
+    DwsConfig config = mock(DwsConfig.class);
+    when(config.namespace()).thenReturn("default");
+    // Fail on the first cluster interaction inside apply's try block.
+    when(client.configMaps()).thenThrow(new RuntimeException("boom"));
 
-        StackApplier applier = new StackApplier(client, synthesizer, events, config);
+    StackApplier applier = new StackApplier(client, synthesizer, events, config);
 
-        assertThatThrownBy(() -> applier.apply(plan()))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("boom");
+    assertThatThrownBy(() -> applier.apply(plan()))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("boom");
 
-        verify(events).deploymentFailed(eq("order"), eq("vabc1234"), any(), eq("order"), contains("boom"));
-    }
+    verify(events)
+        .deploymentFailed(eq("order"), eq("vabc1234"), any(), eq("order"), contains("boom"));
+  }
 }

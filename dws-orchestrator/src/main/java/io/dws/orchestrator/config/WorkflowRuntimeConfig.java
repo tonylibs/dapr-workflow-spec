@@ -45,8 +45,8 @@ public class WorkflowRuntimeConfig {
   }
 
   @Bean
-  public WorkflowDefinitionLoader workflowDefinitionLoader(DaprClient daprClient,
-                                                           OrchestratorProperties props) {
+  public WorkflowDefinitionLoader workflowDefinitionLoader(
+      DaprClient daprClient, OrchestratorProperties props) {
     return new WorkflowDefinitionLoader(daprClient, props);
   }
 
@@ -59,12 +59,13 @@ public class WorkflowRuntimeConfig {
   @Bean
   public WorkflowTaskOptions defaultTaskOptions(OrchestratorProperties props) {
     OrchestratorProperties.Retry retry = props.getRetry();
-    WorkflowTaskRetryPolicy policy = new WorkflowTaskRetryPolicy(
-        retry.getMaxAttempts(),
-        retry.getFirstRetryInterval(),
-        retry.getBackoffCoefficient(),
-        retry.getMaxRetryInterval(),
-        /* retryTimeout */ null);
+    WorkflowTaskRetryPolicy policy =
+        new WorkflowTaskRetryPolicy(
+            retry.getMaxAttempts(),
+            retry.getFirstRetryInterval(),
+            retry.getBackoffCoefficient(),
+            retry.getMaxRetryInterval(),
+            /* retryTimeout */ null);
     return new WorkflowTaskOptions(policy);
   }
 }

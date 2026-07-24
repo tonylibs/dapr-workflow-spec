@@ -11,20 +11,22 @@ import org.jboss.logging.Logger;
 @ApplicationScoped
 public class ReconcileJob {
 
-    private static final Logger LOG = Logger.getLogger(ReconcileJob.class);
+  private static final Logger LOG = Logger.getLogger(ReconcileJob.class);
 
-    private final StackApplier applier;
+  private final StackApplier applier;
 
-    public ReconcileJob(StackApplier applier) {
-        this.applier = applier;
+  public ReconcileJob(StackApplier applier) {
+    this.applier = applier;
+  }
+
+  @Scheduled(
+      every = "{dws.reconcile.every}",
+      concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
+  void reconcile() {
+    try {
+      applier.reconcile();
+    } catch (RuntimeException e) {
+      LOG.warn("Reconcile pass failed; will retry on next tick", e);
     }
-
-    @Scheduled(every = "{dws.reconcile.every}", concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
-    void reconcile() {
-        try {
-            applier.reconcile();
-        } catch (RuntimeException e) {
-            LOG.warn("Reconcile pass failed; will retry on next tick", e);
-        }
-    }
+  }
 }

@@ -10,11 +10,11 @@ import jakarta.ws.rs.ext.Provider;
 @Provider
 public class CompilationExceptionMapper implements ExceptionMapper<CompilationException> {
 
-    @Override
-    public Response toResponse(CompilationException exception) {
-        return Response.status(Response.Status.BAD_REQUEST)
-                .type(MediaType.APPLICATION_JSON)
-                .entity(new ErrorResponse("Workflow definition is invalid", exception.errors()))
-                .build();
-    }
+  @Override
+  public Response toResponse(CompilationException exception) {
+    return Response.status(Response.Status.BAD_REQUEST)
+        .type(MediaType.APPLICATION_JSON)
+        .entity(new ErrorResponse("Workflow definition is invalid", exception.errors()))
+        .build();
+  }
 }

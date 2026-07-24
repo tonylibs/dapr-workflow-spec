@@ -1,20 +1,19 @@
 package io.dws.orchestrator.config;
 
-import io.dapr.client.DaprClient;
-import io.dapr.client.domain.ConfigurationItem;
-import io.serverlessworkflow.api.types.Workflow;
-import org.junit.jupiter.api.Test;
-import reactor.core.publisher.Mono;
-
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+
+import io.dapr.client.DaprClient;
+import io.dapr.client.domain.ConfigurationItem;
+import io.serverlessworkflow.api.types.Workflow;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Mono;
 
 class WorkflowDefinitionLoaderTest {
 
@@ -59,14 +58,15 @@ class WorkflowDefinitionLoaderTest {
     when(client.getConfiguration(eq(STORE), eq(KEY)))
         .thenReturn(Mono.just(new ConfigurationItem(KEY, "{}", "1")));
 
-    assertThatThrownBy(() -> loader(KEY).load())
-        .isInstanceOf(DefinitionLoadException.class);
+    assertThatThrownBy(() -> loader(KEY).load()).isInstanceOf(DefinitionLoadException.class);
   }
 
   @Test
   void loadsAndValidatesAWellFormedDefinition() throws IOException {
-    String yaml = new String(
-        getClass().getClassLoader().getResourceAsStream("order.yaml").readAllBytes(), StandardCharsets.UTF_8);
+    String yaml =
+        new String(
+            getClass().getClassLoader().getResourceAsStream("order.yaml").readAllBytes(),
+            StandardCharsets.UTF_8);
     when(client.getConfiguration(eq(STORE), eq(KEY)))
         .thenReturn(Mono.just(new ConfigurationItem(KEY, yaml, "1")));
 

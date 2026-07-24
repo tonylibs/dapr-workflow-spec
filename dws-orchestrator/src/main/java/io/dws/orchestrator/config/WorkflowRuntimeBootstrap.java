@@ -21,9 +21,9 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 /**
- * Registers the interpreter workflow (named from {@code document.name}) and its activities with
- * the Dapr workflow runtime, and starts the runtime once the context is ready. Seeds
- * {@link WorkflowSupport} so the reflectively-created workflow/activity instances reach their
+ * Registers the interpreter workflow (named from {@code document.name}) and its activities with the
+ * Dapr workflow runtime, and starts the runtime once the context is ready. Seeds {@link
+ * WorkflowSupport} so the reflectively-created workflow/activity instances reach their
  * collaborators. The definition itself is already loaded (fail-fast) as a bean.
  */
 @Component
@@ -41,12 +41,13 @@ public class WorkflowRuntimeBootstrap implements DisposableBean {
   private volatile WorkflowRuntime runtime;
   private Thread runtimeThread;
 
-  public WorkflowRuntimeBootstrap(Workflow definition,
-                                  JqEvaluator jqEvaluator,
-                                  @Qualifier("orchestratorObjectMapper") ObjectMapper mapper,
-                                  DaprClient daprClient,
-                                  WorkflowTaskOptions defaultTaskOptions,
-                                  OrchestratorProperties props) {
+  public WorkflowRuntimeBootstrap(
+      Workflow definition,
+      JqEvaluator jqEvaluator,
+      @Qualifier("orchestratorObjectMapper") ObjectMapper mapper,
+      DaprClient daprClient,
+      WorkflowTaskOptions defaultTaskOptions,
+      OrchestratorProperties props) {
     this.definition = definition;
     this.jqEvaluator = jqEvaluator;
     this.mapper = mapper;
@@ -58,27 +59,37 @@ public class WorkflowRuntimeBootstrap implements DisposableBean {
   @EventListener(ApplicationReadyEvent.class)
   public void startRuntime() {
     String workflowName = definition.getDocument().getName();
-    String appId = (props.getAppId() != null && !props.getAppId().isBlank())
-        ? props.getAppId()
-        : workflowName;
-    WorkflowSupport.init(definition, workflowName, appId, props.getDefinitionKey(),
-        jqEvaluator, mapper, daprClient, defaultTaskOptions, props.getDefaultPubsub());
+    String appId =
+        (props.getAppId() != null && !props.getAppId().isBlank()) ? props.getAppId() : workflowName;
+    WorkflowSupport.init(
+        definition,
+        workflowName,
+        appId,
+        props.getDefinitionKey(),
+        jqEvaluator,
+        mapper,
+        daprClient,
+        defaultTaskOptions,
+        props.getDefaultPubsub());
 
-    WorkflowRuntimeBuilder builder = new WorkflowRuntimeBuilder()
-        .registerWorkflow(workflowName, InterpreterWorkflow.class);
+    WorkflowRuntimeBuilder builder =
+        new WorkflowRuntimeBuilder().registerWorkflow(workflowName, InterpreterWorkflow.class);
     builder.registerActivity(CallServiceActivity.class);
     builder.registerActivity(EmitEventActivity.class);
     builder.registerActivity(AdminEventActivity.class);
 
     this.runtime = builder.build();
-    this.runtimeThread = new Thread(() -> {
-      try {
-        LOG.info("Starting Dapr workflow runtime for '{}'", workflowName);
-        runtime.start();
-      } catch (Exception e) {
-        LOG.error("Workflow runtime terminated", e);
-      }
-    }, "dws-workflow-runtime");
+    this.runtimeThread =
+        new Thread(
+            () -> {
+              try {
+                LOG.info("Starting Dapr workflow runtime for '{}'", workflowName);
+                runtime.start();
+              } catch (Exception e) {
+                LOG.error("Workflow runtime terminated", e);
+              }
+            },
+            "dws-workflow-runtime");
     runtimeThread.setDaemon(true);
     runtimeThread.start();
   }

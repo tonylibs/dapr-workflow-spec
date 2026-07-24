@@ -1,20 +1,20 @@
 package io.dws.orchestrator.workflow;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dapr.workflows.WorkflowContext;
+import io.dapr.workflows.WorkflowTaskOptions;
 import io.dws.orchestrator.expr.JqEvaluator;
 import io.dws.orchestrator.workflow.activity.AdminEventRequest;
 import io.serverlessworkflow.api.WorkflowReader;
 import io.serverlessworkflow.api.types.Workflow;
-import io.dapr.workflows.WorkflowTaskOptions;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link AdminEventBuilder}: the workflow/version split from the definition key and
@@ -27,10 +27,16 @@ class AdminEventBuilderTest {
   @BeforeEach
   void seedSupport() throws Exception {
     Workflow definition = WorkflowReader.readWorkflowFromClasspath("order.yaml");
-    WorkflowSupport.init(definition, definition.getDocument().getName(),
-        "order-workflow", "order-workflow@v3",
-        new JqEvaluator(mapper), mapper, null,
-        mock(WorkflowTaskOptions.class), "pubsub");
+    WorkflowSupport.init(
+        definition,
+        definition.getDocument().getName(),
+        "order-workflow",
+        "order-workflow@v3",
+        new JqEvaluator(mapper),
+        mapper,
+        null,
+        mock(WorkflowTaskOptions.class),
+        "pubsub");
   }
 
   @Test

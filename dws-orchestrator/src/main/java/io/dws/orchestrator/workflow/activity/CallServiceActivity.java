@@ -10,9 +10,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The single I/O activity. Invokes a target Knative service by its Dapr app-id via
- * service invocation ({@code POST /<path>}), passing the current workflow data as JSON
- * and returning the response JSON as the new data document.
+ * The single I/O activity. Invokes a target Knative service by its Dapr app-id via service
+ * invocation ({@code POST /<path>}), passing the current workflow data as JSON and returning the
+ * response JSON as the new data document.
  */
 public class CallServiceActivity implements WorkflowActivity {
 
@@ -24,12 +24,11 @@ public class CallServiceActivity implements WorkflowActivity {
     DaprClient client = WorkflowSupport.daprClient();
 
     LOG.info("Invoking app-id '{}' method '{}'", request.appId(), request.path());
-    JsonNode response = client.invokeMethod(
-        request.appId(),
-        request.path(),
-        request.data(),
-        HttpExtension.POST,
-        JsonNode.class).block();
+    JsonNode response =
+        client
+            .invokeMethod(
+                request.appId(), request.path(), request.data(), HttpExtension.POST, JsonNode.class)
+            .block();
 
     // A 204/empty response leaves the data document unchanged.
     return response == null ? request.data() : response;

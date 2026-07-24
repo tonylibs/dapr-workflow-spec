@@ -25,126 +25,134 @@ import java.util.Optional;
 @ApplicationScoped
 public class StackReader {
 
-    private final KubernetesClient client;
-    private final String namespace;
+  private final KubernetesClient client;
+  private final String namespace;
 
-    public StackReader(KubernetesClient client, DwsConfig config) {
-        this.client = client;
-        this.namespace = config.namespace();
+  public StackReader(KubernetesClient client, DwsConfig config) {
+    this.client = client;
+    this.namespace = config.namespace();
+  }
+
+  public List<WorkflowSummary> list() {
+    List<WorkflowSummary> summaries = new ArrayList<>();
+    byWorkflow(orchestrators(Labels.managed()))
+        .forEach(
+            (workflow, deployments) ->
+                current(deployments)
+                    .ifPresent(
+                        currentDeployment ->
+                            summaries.add(
+                                new WorkflowSummary(
+                                    workflow,
+                                    WorkflowCompiler.version(
+                                        workflow, StackApplier.versionOf(currentDeployment)),
+                                    statusOf(currentDeployment)))));
+    summaries.sort(Comparator.comparing(WorkflowSummary::name));
+    return summaries;
+  }
+
+  public Optional<WorkflowDetail> get(String workflow) {
+    List<Deployment> deployments = orchestrators(Labels.workflow(workflow));
+    if (deployments.isEmpty()) {
+      return Optional.empty();
     }
+    Deployment currentDeployment = current(deployments).orElse(deployments.get(0));
+    String versionId = StackApplier.versionOf(currentDeployment);
 
-    public List<WorkflowSummary> list() {
-        List<WorkflowSummary> summaries = new ArrayList<>();
-        byWorkflow(orchestrators(Labels.managed())).forEach((workflow, deployments) -> current(deployments)
-                .ifPresent(currentDeployment -> summaries.add(new WorkflowSummary(
-                        workflow,
-                        WorkflowCompiler.version(workflow, StackApplier.versionOf(currentDeployment)),
-                        statusOf(currentDeployment)))));
-        summaries.sort(Comparator.comparing(WorkflowSummary::name));
-        return summaries;
+    List<WorkflowVersionStatus> versions = new ArrayList<>();
+    for (Deployment deployment : deployments) {
+      versions.add(toVersionStatus(workflow, deployment));
     }
+    versions.sort(Comparator.comparing(WorkflowVersionStatus::versionId));
 
-    public Optional<WorkflowDetail> get(String workflow) {
-        List<Deployment> deployments = orchestrators(Labels.workflow(workflow));
-        if (deployments.isEmpty()) {
-            return Optional.empty();
-        }
-        Deployment currentDeployment = current(deployments).orElse(deployments.get(0));
-        String versionId = StackApplier.versionOf(currentDeployment);
+    return Optional.of(
+        new WorkflowDetail(
+            workflow,
+            WorkflowCompiler.version(workflow, versionId),
+            statusOf(currentDeployment),
+            Names.definitionResource(workflow, versionId),
+            stepNames(workflow, versionId),
+            versions));
+  }
 
-        List<WorkflowVersionStatus> versions = new ArrayList<>();
-        for (Deployment deployment : deployments) {
-            versions.add(toVersionStatus(workflow, deployment));
-        }
-        versions.sort(Comparator.comparing(WorkflowVersionStatus::versionId));
+  /** The definition text of the workflow's current version, straight from its ConfigMap. */
+  public Optional<String> definitionText(String workflow) {
+    return get(workflow)
+        .map(WorkflowDetail::definitionResource)
+        .map(name -> client.configMaps().inNamespace(namespace).withName(name).get())
+        .filter(configMap -> configMap.getData() != null)
+        .map(configMap -> configMap.getData().get(StackSynthesizer.DEFINITION_KEY));
+  }
 
-        return Optional.of(new WorkflowDetail(
-                workflow,
-                WorkflowCompiler.version(workflow, versionId),
-                statusOf(currentDeployment),
-                Names.definitionResource(workflow, versionId),
-                stepNames(workflow, versionId),
-                versions));
+  private List<String> stepNames(String workflow, String versionId) {
+    List<String> names = new ArrayList<>();
+    for (GenericKubernetesResource service :
+        client
+            .genericKubernetesResources(ResourceContexts.KNATIVE_SERVICE)
+            .inNamespace(namespace)
+            .withLabels(Labels.version(workflow, versionId))
+            .list()
+            .getItems()) {
+      names.add(service.getMetadata().getName());
     }
+    names.sort(Comparator.naturalOrder());
+    return names;
+  }
 
-    /** The definition text of the workflow's current version, straight from its ConfigMap. */
-    public Optional<String> definitionText(String workflow) {
-        return get(workflow)
-                .map(WorkflowDetail::definitionResource)
-                .map(name -> client.configMaps()
-                        .inNamespace(namespace)
-                        .withName(name)
-                        .get())
-                .filter(configMap -> configMap.getData() != null)
-                .map(configMap -> configMap.getData().get(StackSynthesizer.DEFINITION_KEY));
-    }
+  private WorkflowVersionStatus toVersionStatus(String workflow, Deployment deployment) {
+    String versionId = StackApplier.versionOf(deployment);
+    return new WorkflowVersionStatus(
+        versionId,
+        WorkflowCompiler.version(workflow, versionId),
+        statusOf(deployment),
+        replicas(deployment),
+        readyReplicas(deployment),
+        StackApplier.isDraining(deployment));
+  }
 
-    private List<String> stepNames(String workflow, String versionId) {
-        List<String> names = new ArrayList<>();
-        for (GenericKubernetesResource service : client.genericKubernetesResources(ResourceContexts.KNATIVE_SERVICE)
-                .inNamespace(namespace)
-                .withLabels(Labels.version(workflow, versionId))
-                .list()
-                .getItems()) {
-            names.add(service.getMetadata().getName());
-        }
-        names.sort(Comparator.naturalOrder());
-        return names;
-    }
+  private static Optional<Deployment> current(List<Deployment> deployments) {
+    return deployments.stream().filter(d -> !StackApplier.isDraining(d)).findFirst();
+  }
 
-    private WorkflowVersionStatus toVersionStatus(String workflow, Deployment deployment) {
-        String versionId = StackApplier.versionOf(deployment);
-        return new WorkflowVersionStatus(
-                versionId,
-                WorkflowCompiler.version(workflow, versionId),
-                statusOf(deployment),
-                replicas(deployment),
-                readyReplicas(deployment),
-                StackApplier.isDraining(deployment));
+  private static Map<String, List<Deployment>> byWorkflow(List<Deployment> deployments) {
+    Map<String, List<Deployment>> grouped = new LinkedHashMap<>();
+    for (Deployment deployment : deployments) {
+      String workflow = deployment.getMetadata().getLabels().get(Labels.WORKFLOW);
+      if (workflow != null) {
+        grouped.computeIfAbsent(workflow, k -> new ArrayList<>()).add(deployment);
+      }
     }
+    return grouped;
+  }
 
-    private static Optional<Deployment> current(List<Deployment> deployments) {
-        return deployments.stream().filter(d -> !StackApplier.isDraining(d)).findFirst();
+  private static StackStatus statusOf(Deployment deployment) {
+    if (StackApplier.isDraining(deployment)) {
+      return StackStatus.DRAINING;
     }
+    return readyReplicas(deployment) >= 1 ? StackStatus.READY : StackStatus.PENDING;
+  }
 
-    private static Map<String, List<Deployment>> byWorkflow(List<Deployment> deployments) {
-        Map<String, List<Deployment>> grouped = new LinkedHashMap<>();
-        for (Deployment deployment : deployments) {
-            String workflow = deployment.getMetadata().getLabels().get(Labels.WORKFLOW);
-            if (workflow != null) {
-                grouped.computeIfAbsent(workflow, k -> new ArrayList<>()).add(deployment);
-            }
-        }
-        return grouped;
+  private static int replicas(Deployment deployment) {
+    if (deployment.getStatus() == null || deployment.getStatus().getReplicas() == null) {
+      return 0;
     }
+    return deployment.getStatus().getReplicas();
+  }
 
-    private static StackStatus statusOf(Deployment deployment) {
-        if (StackApplier.isDraining(deployment)) {
-            return StackStatus.DRAINING;
-        }
-        return readyReplicas(deployment) >= 1 ? StackStatus.READY : StackStatus.PENDING;
+  private static int readyReplicas(Deployment deployment) {
+    if (deployment.getStatus() == null || deployment.getStatus().getReadyReplicas() == null) {
+      return 0;
     }
+    return deployment.getStatus().getReadyReplicas();
+  }
 
-    private static int replicas(Deployment deployment) {
-        if (deployment.getStatus() == null || deployment.getStatus().getReplicas() == null) {
-            return 0;
-        }
-        return deployment.getStatus().getReplicas();
-    }
-
-    private static int readyReplicas(Deployment deployment) {
-        if (deployment.getStatus() == null || deployment.getStatus().getReadyReplicas() == null) {
-            return 0;
-        }
-        return deployment.getStatus().getReadyReplicas();
-    }
-
-    private List<Deployment> orchestrators(Map<String, String> selector) {
-        return client.apps()
-                .deployments()
-                .inNamespace(namespace)
-                .withLabels(selector)
-                .list()
-                .getItems();
-    }
+  private List<Deployment> orchestrators(Map<String, String> selector) {
+    return client
+        .apps()
+        .deployments()
+        .inNamespace(namespace)
+        .withLabels(selector)
+        .list()
+        .getItems();
+  }
 }
