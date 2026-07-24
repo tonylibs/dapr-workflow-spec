@@ -1,7 +1,7 @@
 package io.dws.orchestrator.workflow.adapter;
 
 /**
- * Thin adapter mapping a Serverless Workflow task name to the Dapr resource it targets.
+ * Thin adapter mapping an Open Workflow Specification task name to the Dapr resource it targets.
  *
  * <p>By convention a {@code call} task named {@code checkInventory} invokes the Dapr app-id
  * {@code check-inventory}; the same kebab-case mapping is used for {@code emit} topics. This is

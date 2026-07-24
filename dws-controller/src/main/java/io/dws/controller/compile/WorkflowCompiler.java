@@ -32,7 +32,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Pure compile pass: parse + validate a Serverless Workflow DSL 1.0 definition and walk it
+ * Pure compile pass: parse + validate an Open Workflow Specification DSL 1.0 definition and walk it
  * into a {@link DeploymentPlan}. No Kubernetes calls; the only side effect is fetching each
  * referenced OpenAPI document to pin it by content hash (via {@link OpenApiDocumentFetcher}).
  */

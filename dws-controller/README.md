@@ -1,7 +1,7 @@
 # dws-controller
 
-The DWS controller: it accepts Serverless Workflow DSL 1.0 definitions, compiles them with the
-Serverless Workflow SDK, and deploys one stack per definition — an immutable definition ConfigMap,
+The DWS controller: it accepts Open Workflow Specification DSL 1.0 definitions, compiles them with the
+Open Workflow Specification SDK, and deploys one stack per definition — an immutable definition ConfigMap,
 a Dapr configuration Component, one Knative Service per I/O task (from prebuilt images), and a
 dedicated orchestrator Deployment.
 
