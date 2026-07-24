@@ -31,9 +31,9 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: DWS_IMAGES_CALL_HTTP
-              value: sw-call-http:1.0
+              value: ghcr.io/tonylibs/dws-call-http:latest
             - name: DWS_IMAGES_CALL_OPENAPI
-              value: sw-call-openapi:1.0
+              value: ghcr.io/tonylibs/dws-call-openapi:latest
             - name: DWS_IMAGES_RUN
               value: sw-run:1.0
             - name: DWS_IMAGES_ORCHESTRATOR

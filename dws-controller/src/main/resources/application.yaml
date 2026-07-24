@@ -6,8 +6,8 @@ dws:
     every: 30s
   # Prebuilt step/orchestrator images. Override registry and tags per environment.
   images:
-    call-http: sw-call-http:1.0
-    call-openapi: sw-call-openapi:1.0
+    call-http: ghcr.io/tonylibs/dws-call-http:latest
+    call-openapi: ghcr.io/tonylibs/dws-call-openapi:latest
     run: sw-run:1.0
     orchestrator: sw-orchestrator:1.0
 
