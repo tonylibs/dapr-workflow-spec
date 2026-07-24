@@ -27,6 +27,11 @@ resources on the cluster; a generic orchestrator then interprets the definition 
    invoke the corresponding step service via Dapr service invocation, `switch`/`set` are
    evaluated with `jq`, `wait`/`listen`/`emit` map to Dapr timers, external events, and pub/sub.
 
+Both components also publish **lifecycle events** (definition/deployment from the controller,
+instance/task from the orchestrator) to the Dapr pub/sub topic `dws.events` on component `pubsub`.
+The shared event contract — envelope, types, payloads, and the in-cluster `pubsub` component
+prerequisite — is documented in [`docs/events.md`](docs/events.md).
+
 ## Deployed component state
 
 Each deployed workflow gets its own **orchestrator** plus one **step service per `call`
