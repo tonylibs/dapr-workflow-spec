@@ -1,7 +1,7 @@
 # dapr-workflow-spec (DWS)
 
 A config-driven workflow platform for Kubernetes built on [Dapr](https://dapr.io/) and
-the [Serverless Workflow](https://serverlessworkflow.io/) DSL 1.0. Workflow definitions are
+the [Serverless Workflow](https://open-workflow-specification.org/) DSL 1.0. Workflow definitions are
 plain YAML/JSON documents — no per-workflow code is written or generated. A definition is
 posted to the controller, which compiles it and deploys the corresponding Dapr-backed
 resources on the cluster; a generic orchestrator then interprets the definition at runtime.

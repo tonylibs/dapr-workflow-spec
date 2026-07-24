@@ -2,7 +2,7 @@
 
 A generic, **config-driven** Dapr workflow orchestrator built on the **interpreter pattern**.
 
-It ships as the prebuilt image **`sw-orchestrator`** and interprets a [Serverless Workflow](https://serverlessworkflow.io/) **DSL 1.0** definition parsed with the official Java SDK. **No per-workflow code is ever generated** — one registered `InterpreterWorkflow` walks the definition's `do` task list.
+It ships as the prebuilt image **`sw-orchestrator`** and interprets a [Serverless Workflow](https://open-workflow-specification.org/) **DSL 1.0** definition parsed with the official Java SDK. **No per-workflow code is ever generated** — one registered `InterpreterWorkflow` walks the definition's `do` task list.
 
 **Each orchestrator pod serves exactly one workflow definition**, loaded once at startup from a **Dapr Configuration store** by an immutable, versioned key. New versions are rolled out by the controller as **new deployments**, not by mutating a running pod.
 
