@@ -65,28 +65,37 @@ directly (Dapr's own transport wrapper is unwrapped by the SDK before the handle
 handler reads `envelope.id` (idempotency key), `envelope.type` (routing), and
 `envelope.data.<field>` (payload). All event handlers share a small `EventEnvelope` DTO/type-guard
 so this double-`data` shape is decoded in exactly one place, not re-parsed per handler.
-- **Verification risk**: this shape is inferred from the library's documented examples, not a local
-  install (no `node_modules` in this environment). Task list includes an explicit step to confirm
-  the exact runtime payload shape against the installed package once `pnpm install` runs, and to
-  adjust the shared decoder if the outer/inner nesting differs from what's documented here.
+- **Verified** against the installed packages (`@dbc-tech/nest-dapr@0.8.0`'s `dapr.loader.js`,
+  `@dapr/dapr`'s `DaprPubSubCallback.type.d.ts`): `DaprLoader` calls
+  `daprServer.pubsub.subscribe(name, topic, (data) => instance[methodKey].call(instance, data),
+  route)` — the decorated method receives exactly one argument, the pubsub message's `data`, which
+  is our envelope directly (no extra nesting), confirming the shape assumed above. One correction:
+  `@dapr/dapr`'s own callback type documents `data` as "typically string or object," so the decoder
+  also accepts a raw JSON string and parses it before validating, rather than assuming it's always
+  already an object.
 
-### D3: One `DaprEventsModule` provider per publisher, one `@DaprPubSub` handler per event type
-Two providers, `ControllerEventsHandler` and `OrchestratorEventsHandler`, each with one method per
-`type` decorated `@DaprPubSub('pubsub', 'dws.events')` — `@dbc-tech/nest-dapr` dispatches by
-Dapr subscription route, and since every event lands on the same topic, we route on `envelope.type`
-inside a single shared entry method per handler class rather than registering six-plus decorated
-methods that would each receive *every* message and filter internally. Concretely: one
-`@DaprPubSub(pubsubName, topic)` method per handler class that switches on `envelope.type` and
-dispatches to a private per-type method. `pubsubName`/`topic` come from `ConfigService`, read once
-at module init and passed as decorator arguments (the decorator's arguments must be
-statically resolvable at class-definition time, so `ConfigModule` values are read via a small
-`daprConfig()` helper evaluated at import time from `process.env`, not through DI — documented
-inline since it's the one place config bypasses the DI container).
-- *Alternative — one decorated method per event type*: rejected; `@DaprPubSub` subscribes per
-  `(pubsubName, topicName, route)`, and Dapr subscriptions are per-topic, not per-message-type, so
-  N decorated methods on the same topic would each need their own `route`, which doesn't correspond
-  to anything in our single-topic contract — a type-name filter inside one handler matches the
-  actual routing key (`envelope.type`) we have.
+### D3: One `@DaprPubSub` subscriber for the whole topic, dispatching to two processor services
+**Corrected during implementation** (originally this design called for two separate
+`@DaprPubSub('pubsub', 'dws.events')`-decorated classes — one per publisher). Booting the app
+surfaced a real error from `@dapr/dapr`'s `SubscriptionManager`: *"The topic 'dws.events' is
+already subscribed to PubSub 'pubsub', there can be only one topic registered"* — the SDK allows
+only one subscription per `(pubsubName, topic)` pair with no matching `route`, so two decorated
+classes both targeting the bare topic crash at startup. The actual shape: `DwsEventsSubscriber`
+owns the single `@DaprPubSub(pubsubName, topic)` method, decodes the envelope, runs it through the
+idempotency guard (D4), and dispatches by `envelope.type` to whichever of two plain (non-decorated)
+`@Injectable()` services — `ControllerEventsHandler` or `OrchestratorEventsHandler` — reports
+`canHandle(type)` true, calling its `process(tx, envelope)`. This keeps the S2.3/S2.4 split the
+epic describes (one service per publisher's event set) without violating the one-subscription
+constraint. `pubsubName`/`topic` come from `process.env` read at class-definition time (the
+decorator's arguments must be statically resolvable, not DI-resolved) — documented inline since
+it's the one place config bypasses the DI container.
+- *Alternative considered before the crash — one decorated method per event type*: also rejected;
+  same one-subscription-per-topic constraint applies regardless of how many classes or methods
+  target the bare `(pubsubName, topic)` pair with no `route`.
+- *Alternative — give each handler class a distinct Dapr `route`*: rejected; `route` is for
+  content-based routing rules Dapr evaluates against CloudEvent metadata, which would require
+  publishers to tag events accordingly — out of scope for a read-only consumer and unrelated to our
+  actual dispatch key (`envelope.type`, which we already have in hand after decoding).
 
 ### D4: Idempotency via `processed_events` inside a Drizzle transaction
 Every handler's write path is: open a Drizzle transaction (`db.transaction(async (tx) => {...})`
@@ -140,13 +149,32 @@ injected `'DB'` client. A Dapr sidecar-reachability check is left out — Dapr's
 is the sidecar's own liveness surface, and a false-negative app health check from a slow sidecar
 would be more disruptive than useful this early.
 
+### D8: Two HTTP ports — Nest's own app port and a separate Dapr callback port
+**Discovered during S2.5's manual verification.** `@dbc-tech/nest-dapr`'s `DaprModule` runs its own
+`DaprServer` (from `@dapr/dapr`) as a second, independent HTTP listener in the same process — it is
+not mounted into Nest's Express app. Configuring both to the same port silently loses the race (one
+binds, `GET /health` then hits whichever server won and 404s). `ConfigModule` therefore exposes two
+distinct values: `port` (Nest's app — `/health`, later the read API) and `dapr.appPort` (the
+`DaprServer`'s own port, env `DAPR_APP_PORT`, default `3001`). `dapr run --app-port` must target
+`dapr.appPort`, not `port` — documented in the README's local-dev section and `.env.example`.
+A second, related finding: `@dapr/dapr`'s `DaprClient.awaitSidecarStarted` polls until a real Dapr
+sidecar answers before `DaprLoader.onApplicationBootstrap()` resolves, and Nest's `app.listen()`
+runs that lifecycle hook *before* actually binding its own HTTP port — so **the whole app,
+including `/health`, is unreachable until a Dapr sidecar is present**, even though `/health` itself
+doesn't depend on Dapr. This was verified directly: `node dist/main.js` alone hangs with `/health`
+connection-refused; the same binary under `dapr run` starts fully within ~1s of the sidecar
+answering, and `GET /health` returns `200`. This is inherent to the library, not a bug to fix here;
+called out so a future SRE doesn't mistake it for a startup-probe failure.
+- *Alternative — merge the two servers*: not possible without forking `@dbc-tech/nest-dapr`;
+  `DaprServer` is a framework-agnostic raw HTTP server with no knowledge of Nest's router.
+
 ## Risks / Trade-offs
 
-- **[D2's envelope-unwrapping shape is unverified against a real install/runtime]** → if wrong,
-  every handler silently reads `undefined` fields. Mitigation: single shared decoder (D2) so a
-  fix is one-file; task list requires a test that constructs the exact JSON shape from a captured
-  `docs/events.md` example and asserts the decoder extracts `id`/`type`/payload correctly, plus a
-  manual `dapr publish` smoke test against a running instance before calling S2.3/S2.4 done.
+- **[D2's envelope-unwrapping shape]** → verified two ways: against the installed
+  `@dbc-tech/nest-dapr`/`@dapr/dapr` source (see D2), and live — a real `daprd` (installed via the
+  Dapr CLI, `pubsub.in-memory` component) publishing a `definition.created` and an
+  `instance.started` CloudEvent to a running `dws-admin` instance, both landing correctly in the
+  read model, including a same-`id` replay producing no duplicate row. No further action needed.
 - **[Six-plus event types funneled through one `@DaprPubSub` entry point per handler class]** →
   a bug in the type-switch silently drops an event type. Mitigation: one unit test per event type
   asserting it reaches the correct upsert method; exhaustive switch with a default branch that logs

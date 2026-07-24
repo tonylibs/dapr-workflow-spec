@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dws
+      POSTGRES_PASSWORD: dws
+      POSTGRES_DB: dws_admin
+    ports:
+      - "5433:5432"
+    volumes:
+      - dws-admin-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dws -d dws_admin"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  dws-admin-postgres:
