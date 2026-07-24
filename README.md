@@ -27,5 +27,62 @@ resources on the cluster; a generic orchestrator then interprets the definition 
    invoke the corresponding step service via Dapr service invocation, `switch`/`set` are
    evaluated with `jq`, `wait`/`listen`/`emit` map to Dapr timers, external events, and pub/sub.
 
+## Deployed component state
+
+The diagram below shows the desired component state for a **single deployed workflow**
+(`order@v1a2b3c4d`, `checkInventory → switch .inStock → chargePayment | notifyOutOfStock`).
+The controller reconciles the cluster toward this state; every resource in the stack is
+content-addressed by version and selected by the `dws.io/*` labels, so a new definition
+version is a new stack deployed alongside the old one.
+
+```mermaid
+flowchart TB
+  client(["Client"])
+  upstream[("Upstream services / APIs")]
+
+  subgraph cluster["Kubernetes cluster (namespace: default)"]
+    ctrl["dws-controller<br/>Deployment + Service · Quarkus"]
+
+    subgraph dapr["Dapr building blocks"]
+      wfstate[("Workflow state store")]
+      pubsub["Pub/Sub broker"]
+    end
+
+    subgraph stack["Deployed stack — order@v1a2b3c4d (dws.io/workflow=order, dws.io/version=v1a2b3c4d)"]
+      cm[("ConfigMap<br/>dws-def-order-v1a2b3c4d<br/>immutable definition")]
+      dcfg["Dapr Component<br/>dws-def-order-v1a2b3c4d<br/>configuration.kubernetes<br/>scoped to app-id: order"]
+
+      subgraph orch["Orchestrator Deployment: order-v1a2b3c4d"]
+        oapp["dws-orchestrator<br/>Spring Boot · InterpreterWorkflow"]
+        osidecar["Dapr sidecar<br/>app-id: order"]
+      end
+
+      subgraph steps["Knative Services — scale-to-zero, one per call task"]
+        s1["check-inventory<br/>dws-call-http + Dapr sidecar"]
+        s2["charge-payment<br/>dws-call-http + Dapr sidecar"]
+        s3["notify-out-of-stock<br/>dws-call-http + Dapr sidecar"]
+      end
+    end
+  end
+
+  client -->|POST /workflows · DSL 1.0| ctrl
+  ctrl -. deploys + reconciles .-> cm
+  ctrl -. deploys + reconciles .-> dcfg
+  ctrl -. deploys + reconciles .-> orch
+  ctrl -. deploys + reconciles .-> steps
+
+  dcfg -. backed by .-> cm
+  osidecar -->|read definition at startup| dcfg
+  oapp <-->|persist / replay workflow state| wfstate
+  osidecar -->|service invocation · POST /run| s1
+  osidecar -->|service invocation · POST /run| s2
+  osidecar -->|service invocation · POST /run| s3
+  osidecar -->|emit → publish| pubsub
+  pubsub -->|listen → external event| osidecar
+  s1 --> upstream
+  s2 --> upstream
+  s3 --> upstream
+```
+
 See each component's README for API details, configuration, local development, and
 deployment instructions.
