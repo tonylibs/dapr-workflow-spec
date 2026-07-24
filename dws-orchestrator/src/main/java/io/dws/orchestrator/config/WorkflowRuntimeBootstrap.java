@@ -8,6 +8,7 @@ import io.dapr.workflows.runtime.WorkflowRuntimeBuilder;
 import io.dws.orchestrator.expr.JqEvaluator;
 import io.dws.orchestrator.workflow.InterpreterWorkflow;
 import io.dws.orchestrator.workflow.WorkflowSupport;
+import io.dws.orchestrator.workflow.activity.AdminEventActivity;
 import io.dws.orchestrator.workflow.activity.CallServiceActivity;
 import io.dws.orchestrator.workflow.activity.EmitEventActivity;
 import io.serverlessworkflow.api.types.Workflow;
@@ -58,9 +59,13 @@ public class WorkflowRuntimeBootstrap implements DisposableBean {
   @EventListener(ApplicationReadyEvent.class)
   public void startRuntime() {
     String workflowName = definition.getDocument().getName();
+    String appId =
+        (props.getAppId() != null && !props.getAppId().isBlank()) ? props.getAppId() : workflowName;
     WorkflowSupport.init(
         definition,
         workflowName,
+        appId,
+        props.getDefinitionKey(),
         jqEvaluator,
         mapper,
         daprClient,
@@ -71,6 +76,7 @@ public class WorkflowRuntimeBootstrap implements DisposableBean {
         new WorkflowRuntimeBuilder().registerWorkflow(workflowName, InterpreterWorkflow.class);
     builder.registerActivity(CallServiceActivity.class);
     builder.registerActivity(EmitEventActivity.class);
+    builder.registerActivity(AdminEventActivity.class);
 
     this.runtime = builder.build();
     this.runtimeThread =
