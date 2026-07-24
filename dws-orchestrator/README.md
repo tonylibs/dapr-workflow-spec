@@ -2,13 +2,13 @@
 
 A generic, **config-driven** Dapr workflow orchestrator built on the **interpreter pattern**.
 
-It ships as the prebuilt image **`sw-orchestrator`** and interprets a [Serverless Workflow](https://open-workflow-specification.org/) **DSL 1.0** definition parsed with the official Java SDK. **No per-workflow code is ever generated** — one registered `InterpreterWorkflow` walks the definition's `do` task list.
+It ships as the prebuilt image **`sw-orchestrator`** and interprets an [Open Workflow Specification](https://open-workflow-specification.org/) **DSL 1.0** definition parsed with the official Java SDK. **No per-workflow code is ever generated** — one registered `InterpreterWorkflow` walks the definition's `do` task list.
 
 **Each orchestrator pod serves exactly one workflow definition**, loaded once at startup from a **Dapr Configuration store** by an immutable, versioned key. New versions are rolled out by the controller as **new deployments**, not by mutating a running pod.
 
 - **Java 25**, Spring Boot 4.1.0 (`web`, `actuator`)
 - **Dapr** workflow runtime + client + Configuration API (`dapr-sdk-workflows`, `dapr-sdk`, BOM 1.18.0)
-- **Serverless Workflow SDK** `io.serverlessworkflow:serverlessworkflow-api` 7.x (DSL 1.0 model + reader/validation)
+- **Open Workflow Specification SDK** `io.serverlessworkflow:serverlessworkflow-api` 7.x (DSL 1.0 model + reader/validation)
 - **jackson-jq** for `jq`-dialect `when`/`set` expressions
 - Base package `io.dws.orchestrator`
 
@@ -18,7 +18,7 @@ It ships as the prebuilt image **`sw-orchestrator`** and interprets a [Serverles
 
 1. Read env: **`DAPR_CONFIG_STORE`** (default `dws-definitions`) and **`DEFINITION_KEY`** (required; immutable versioned key, e.g. `order-workflow@v3`).
 2. Fetch the definition text via `DaprClient.getConfiguration(store, key)`, retrying with backoff while the sidecar boots.
-3. Parse and structurally validate with the Serverless Workflow SDK (`WorkflowReader`, YAML or JSON). **Any missing key or invalid document is logged clearly and the process exits non-zero.**
+3. Parse and structurally validate with the Open Workflow Specification SDK (`WorkflowReader`, YAML or JSON). **Any missing key or invalid document is logged clearly and the process exits non-zero.**
 4. Register one `InterpreterWorkflow` **named from `document.name`**.
 
 The orchestrator does **not** subscribe to configuration changes — the definition is immutable for the pod's lifetime.
@@ -54,7 +54,7 @@ The single orchestrator-specific convention is that a task's **name in kebab-cas
 
 ## Definition format
 
-A standard Serverless Workflow **DSL 1.0** document (`k8s`/tests use `order.yaml`):
+A standard Open Workflow Specification **DSL 1.0** document (`k8s`/tests use `order.yaml`):
 
 ```yaml
 document:

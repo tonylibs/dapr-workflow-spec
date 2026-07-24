@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-The DWS controller. Accepts Serverless Workflow DSL 1.0 definitions, compiles them, and deploys
+The DWS controller. Accepts Open Workflow Specification DSL 1.0 definitions, compiles them, and deploys
 one stack per definition: an immutable definition ConfigMap + Dapr configuration Component, one
 Knative Service per I/O task (from prebuilt images), and a dedicated orchestrator Deployment.
 Package root is `io.dws.controller`. The sibling projects in the parent directory
@@ -81,7 +81,7 @@ Windows: use `mvnw.cmd`; POSIX shells (Git Bash): use `./mvnw`.
 ### Framework
 
 - **Framework**: Quarkus 3.37.4, Java 25 (`maven.compiler.release=25`), packaging type `quarkus`.
-- **Serverless Workflow SDK**: `io.serverlessworkflow:serverlessworkflow-api` 7.26.0.Final. Note the model
+- **Open Workflow Specification SDK**: `io.serverlessworkflow:serverlessworkflow-api` 7.26.0.Final. Note the model
   shape: `call http`/`call openapi` are *not* direct on `Task` — they hang off `Task.getCallTask()`
   (`CallTask` is a oneOf of `CallHTTP`/`CallOpenAPI`/`CallGRPC`/...).
 - **cdk8s needs Node.js at runtime**: jsii executes its bundled JavaScript in a Node child process, so

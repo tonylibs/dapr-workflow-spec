@@ -25,7 +25,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Parses the fixture DSL 1.0 {@code order.yaml} with the Serverless Workflow SDK and drives the
+ * Parses the fixture DSL 1.0 {@code order.yaml} with the Open Workflow Specification SDK and drives the
  * interpreter's program-counter loop against a mocked {@link WorkflowContext}, asserting the task
  * execution order for both switch branches:
  * checkInventory -> switch .inStock -> chargePayment | notifyOutOfStock -> end.

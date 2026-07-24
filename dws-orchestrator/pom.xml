@@ -15,7 +15,7 @@
   <artifactId>dws-orchestrator</artifactId>
   <version>0.1.0</version>
   <name>dws-orchestrator</name>
-  <description>Generic, config-driven Dapr workflow orchestrator (interpreter pattern) for Serverless Workflow DSL 1.0</description>
+  <description>Generic, config-driven Dapr workflow orchestrator (interpreter pattern) for Open Workflow Specification DSL 1.0</description>
 
   <properties>
     <java.version>25</java.version>
@@ -56,7 +56,7 @@
       <artifactId>dapr-sdk</artifactId>
     </dependency>
 
-    <!-- Serverless Workflow SDK: DSL 1.0 model + reader/validation -->
+    <!-- Open Workflow Specification SDK: DSL 1.0 model + reader/validation -->
     <dependency>
       <groupId>io.serverlessworkflow</groupId>
       <artifactId>serverlessworkflow-api</artifactId>

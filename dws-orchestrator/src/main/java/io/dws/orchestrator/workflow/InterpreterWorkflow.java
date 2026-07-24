@@ -32,7 +32,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The single, generic workflow. It interprets the pod's one immutable Serverless Workflow
+ * The single, generic workflow. It interprets the pod's one immutable Open Workflow Specification
  * definition (SDK {@code io.serverlessworkflow.api.types.Workflow}) directly as a program-counter
  * loop over the {@code do} task list. The definition is fixed for the pod's lifetime, so the loop
  * is deterministic across replays without pinning a version in the instance input.
@@ -204,7 +204,7 @@ public class InterpreterWorkflow implements Workflow {
     return mapper.valueToTree(value);
   }
 
-  /** Converts a Serverless Workflow inline/ISO-8601 duration to a {@link Duration}. */
+  /** Converts an Open Workflow Specification inline/ISO-8601 duration to a {@link Duration}. */
   private Duration durationOf(TimeoutAfter after) {
     if (after == null) {
       return Duration.ZERO;

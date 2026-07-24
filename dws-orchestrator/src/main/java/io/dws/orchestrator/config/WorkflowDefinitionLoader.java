@@ -14,7 +14,7 @@ import java.time.Duration;
  * Loads the single workflow definition for this pod, exactly once, from a Dapr Configuration store.
  *
  * <p>The definition is fetched by its immutable versioned key with retry/backoff (the sidecar may
- * still be starting), then parsed and structurally validated with the Serverless Workflow SDK.
+ * still be starting), then parsed and structurally validated with the Open Workflow Specification SDK.
  * Any missing key or invalid document raises {@link DefinitionLoadException}; the bootstrap turns
  * that into a clear log line and a non-zero exit. Configuration changes are deliberately not
  * subscribed to — new versions are rolled out by the controller as new deployments.

@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Evaluates Serverless Workflow runtime expressions using the jq dialect (jackson-jq).
+ * Evaluates Open Workflow Specification runtime expressions using the jq dialect (jackson-jq).
  *
  * <p>Expressions may be written wrapped as {@code ${ .foo }} (the DSL convention) or as a
  * bare jq program {@code .foo}; both forms are accepted. Evaluation is pure and
