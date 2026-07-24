@@ -101,6 +101,16 @@ pnpm test
 pnpm lint
 ```
 
-CI (`.github/workflows/dws-admin.yml`, added separately) will gate on `pnpm lint && pnpm test &&
-pnpm build` and publish `ghcr.io/tonylibs/dws-admin` on merges to `main`, matching the other
-components' convention.
+CI (`.github/workflows/dws-admin.yml`) gates on `pnpm lint && pnpm test && pnpm build` against a
+Postgres service container, and publishes `ghcr.io/tonylibs/dws-admin` on merges to `main` (PRs
+build the image to validate the `Dockerfile` but don't push), matching the other components'
+convention.
+
+### Container image
+
+```bash
+docker build -t ghcr.io/tonylibs/dws-admin:latest dws-admin
+```
+
+The image runs `node dist/main.js`, which applies pending migrations on boot by default (see
+`RUN_MIGRATIONS_ON_BOOT` above) before listening.
