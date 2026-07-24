@@ -12,7 +12,7 @@ node_modules/
 .idea/
 .vscode/
 *.iml
-.claude/
+.claude/settings.local.json
 
 # OS
 .DS_Store

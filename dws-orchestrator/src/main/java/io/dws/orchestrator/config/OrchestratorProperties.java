@@ -20,6 +20,13 @@ public class OrchestratorProperties {
   /** Immutable, versioned definition key, e.g. {@code order-workflow@v3} ({@code DEFINITION_KEY}). */
   private String definitionKey;
 
+  /**
+   * The Dapr app-id of this orchestrator, carried in orchestrator lifecycle events so a consumer can
+   * resolve which deployment produced an instance. Bound from the Dapr-injected {@code APP_ID}
+   * ({@code dapr.app-id}); when blank it defaults to the workflow name at bootstrap.
+   */
+  private String appId;
+
   /** Default Dapr pub/sub component used by EMIT tasks. */
   private String defaultPubsub = "pubsub";
 
@@ -41,6 +48,14 @@ public class OrchestratorProperties {
 
   public void setDefinitionKey(String definitionKey) {
     this.definitionKey = definitionKey;
+  }
+
+  public String getAppId() {
+    return appId;
+  }
+
+  public void setAppId(String appId) {
+    this.appId = appId;
   }
 
   public String getDefaultPubsub() {

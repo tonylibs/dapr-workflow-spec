@@ -1,0 +1,43 @@
+schema: spec-driven
+
+context: |
+	DWS is a configuration-driven Kubernetes workflow platform built on Dapr and the
+	Open Workflow Specification DSL. Workflow definitions are YAML or JSON and
+	are interpreted generically; do not generate or require per-workflow code.
+
+	This monorepo contains four independently built components. Run commands from the
+	relevant component directory; there is no top-level build.
+	- dws-controller: Java, Quarkus, Maven. Validates and compiles definitions,
+		then deploys Kubernetes, Dapr, and Knative resources.
+	- dws-orchestrator: Java, Spring Boot, Maven. Loads one immutable definition
+		at startup and interprets it with Dapr Workflows.
+	- dws-call-http: Go. Configurable HTTP call-step service.
+	- dws-call-openapi: Node, TypeScript, Fastify, pnpm. Configurable OpenAPI
+		call-step service.
+
+	Preserve cross-component invariants. A call task name maps to its kebab-case Dapr
+	app-id and is invoked at POST /run; with.endpoint is required by the DSL but does
+	not control routing. Definition versions are content-addressed from canonicalized
+	definition content. Step services share POST /run, GET /healthz, OUTPUT=replace or
+	merge, and use HTTP 502 for upstream transport failures so orchestrator retries.
+
+	Each component owns its own tests and CI gate:
+	- controller: mvnw test or mvnw verify
+	- orchestrator: mvnw verify
+	- call-http: go vet ./... and go test ./...
+	- call-openapi: pnpm lint, pnpm test, and pnpm build
+
+rules:
+	proposal:
+		- State the affected component or components and preserve their independent build boundaries.
+		- Identify impacted DSL behavior, deployed resource behavior, and runtime interpretation behavior.
+		- Include explicit non-goals and compatibility considerations for existing workflow definitions.
+	design:
+		- Document any changed cross-component contract, including task-to-resource mapping and step-service HTTP behavior.
+		- Preserve immutable, content-addressed workflow definition versioning unless the change explicitly revises it.
+	specs:
+		- Express requirements as observable behavior with scenarios for success, validation failure, and compatibility where relevant.
+		- Specify the owning component for each requirement.
+	tasks:
+		- Organize implementation work by component and include that component's focused validation command.
+		- Include tests for behavior changes and avoid unrelated refactoring.
