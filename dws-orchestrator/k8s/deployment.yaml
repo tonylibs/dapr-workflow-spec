@@ -26,7 +26,7 @@ spec:
       containers:
         - name: orchestrator
           # Prebuilt, generic orchestrator image — no per-workflow code.
-          image: sw-orchestrator:latest
+          image: ghcr.io/tonylibs/dws-orchestrator:latest
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

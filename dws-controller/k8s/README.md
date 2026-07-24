@@ -14,10 +14,11 @@
 - Knative Serving installed (the step services are Knative Services).
 - Dapr installed, v1.18+ (`configuration.kubernetes` is Alpha).
 - The prebuilt step images reachable from the cluster: `ghcr.io/tonylibs/dws-call-http`,
-  `ghcr.io/tonylibs/dws-call-openapi`, `sw-run`, `sw-orchestrator`. Override the registry/tags
-  via the `DWS_IMAGES_*` env vars in `controller-deployment.yaml`. `dws-call-http` and
-  `dws-call-openapi` are published to GHCR by their own CI (`.github/workflows/dws-call-http.yml`,
-  `.github/workflows/dws-call-openapi.yml`); if the GHCR packages are private, the cluster
+  `ghcr.io/tonylibs/dws-call-openapi`, `sw-run`, `ghcr.io/tonylibs/dws-orchestrator`. Override the
+  registry/tags via the `DWS_IMAGES_*` env vars in `controller-deployment.yaml`. `dws-call-http`,
+  `dws-call-openapi` and `dws-orchestrator` are published to GHCR by their own CI
+  (`.github/workflows/dws-call-http.yml`, `.github/workflows/dws-call-openapi.yml`,
+  `.github/workflows/dws-orchestrator.yml`); if the GHCR packages are private, the cluster
   also needs an `imagePullSecret` for `ghcr.io` (not currently wired into the generated
   Knative Services — either make the packages public or add pull-secret support).
 

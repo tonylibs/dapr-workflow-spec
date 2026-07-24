@@ -37,7 +37,7 @@ spec:
             - name: DWS_IMAGES_RUN
               value: sw-run:1.0
             - name: DWS_IMAGES_ORCHESTRATOR
-              value: sw-orchestrator:1.0
+              value: ghcr.io/tonylibs/dws-orchestrator:latest
           livenessProbe:
             httpGet:
               path: /q/health/live

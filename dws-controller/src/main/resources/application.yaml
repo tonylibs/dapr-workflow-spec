@@ -9,7 +9,7 @@ dws:
     call-http: ghcr.io/tonylibs/dws-call-http:latest
     call-openapi: ghcr.io/tonylibs/dws-call-openapi:latest
     run: sw-run:1.0
-    orchestrator: sw-orchestrator:1.0
+    orchestrator: ghcr.io/tonylibs/dws-orchestrator:latest
 
 quarkus:
   kubernetes-client:
