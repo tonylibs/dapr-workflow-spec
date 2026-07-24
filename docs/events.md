@@ -58,6 +58,14 @@ Example:
 > Dapr itself wraps published bytes in a CloudEvent at the transport layer. This envelope is our own
 > explicit, documented `data` contract; the two are independent and both publishers honor this one.
 
+Because the envelope is CloudEvents-shaped, a consumer may decode it with a CloudEvents SDK —
+`dws-admin` decodes it with the [CloudEvents JS SDK](https://github.com/cloudevents/sdk-javascript)
+and validates it against the v1 schema. Publishers must therefore keep the envelope **spec-valid**:
+`id`/`source`/`type` non-empty (`specversion` is assumed `1.0` when absent), `time` a real RFC 3339
+timestamp, and no extra top-level attributes beyond those above unless they are valid CloudEvents
+extension names (lower-case `a`–`z` / `0`–`9` only) — a payload that fails validation is dropped by
+the consumer, not retried.
+
 ### `source` convention
 
 | Publisher | `source` |

@@ -8,6 +8,7 @@ succeeded or failed, and which workflow instances/tasks are running.
 - **Node 24**, **NestJS**, TypeScript
 - **Drizzle ORM** against Postgres, wired via `@knaadh/nestjs-drizzle-postgres`
 - **Dapr** pub/sub subscription via `@dbc-tech/nest-dapr` (`@DaprPubSub`)
+- **CloudEvents JS SDK** (`cloudevents`) to decode and validate each consumed message
 - Package manager: **pnpm**
 
 This epic (skeleton + read model) ships no read/write REST API beyond a health check —
@@ -21,7 +22,7 @@ This epic (skeleton + read model) ships no read/write REST API beyond a health c
 |---|---|
 | `ConfigModule` | `@nestjs/config`-wrapped env vars (DB URL, Dapr pub/sub name/topic, port). |
 | `StoreModule` | `DrizzlePostgresModule.registerAsync` (tag `'DB'`); re-exports the typed Drizzle client. |
-| `DaprEventsModule` | `@DaprPubSub` subscription handlers that upsert events into the read model. |
+| `DaprEventsModule` | `@DaprPubSub` subscription handlers that upsert events into the read model. The consumed message is decoded as a `CloudEvent` (`cloudevents` SDK) — spec conformance (`specversion`, `source`, `type`, RFC 3339 `time`) is validated by the SDK, and a payload that fails validation is logged and dropped rather than retried. |
 | `WorkflowsModule` / `InstancesModule` | Empty controller scaffolding — real read endpoints land later. |
 | `HealthModule` | `GET /health` (`@nestjs/terminus`), checking DB connectivity. |
 
