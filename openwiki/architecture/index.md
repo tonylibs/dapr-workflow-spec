@@ -1,0 +1,3 @@
+# Files
+
+- [Deployed workflow lifecycle](deployed-workflow.md) - How DWS compiles a workflow definition into Kubernetes resources and runs it through a pinned, generic Dapr Workflow interpreter.
