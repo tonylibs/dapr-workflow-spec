@@ -27,5 +27,36 @@ resources on the cluster; a generic orchestrator then interprets the definition 
    invoke the corresponding step service via Dapr service invocation, `switch`/`set` are
    evaluated with `jq`, `wait`/`listen`/`emit` map to Dapr timers, external events, and pub/sub.
 
+## Deployed component state
+
+Each deployed workflow gets its own **orchestrator** plus one **step service per `call`
+task**. The controller deploys the stack from the definition; at runtime the orchestrator
+loads the definition and invokes each step via Dapr.
+
+```mermaid
+flowchart LR
+  controller["dws-controller"]
+  definition[("Workflow definition")]
+
+  subgraph workflow["Deployed workflow"]
+    orchestrator["dws-orchestrator"]
+    step1["check-inventory"]
+    step2["charge-payment"]
+    step3["notify-out-of-stock"]
+  end
+
+  upstream[("Upstream services / APIs")]
+
+  controller -->|deploys| workflow
+  controller --> definition
+  definition -->|loaded at startup| orchestrator
+  orchestrator -->|call| step1
+  orchestrator -->|call| step2
+  orchestrator -->|call| step3
+  step1 --> upstream
+  step2 --> upstream
+  step3 --> upstream
+```
+
 See each component's README for API details, configuration, local development, and
 deployment instructions.
