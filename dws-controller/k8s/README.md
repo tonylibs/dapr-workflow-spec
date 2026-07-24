@@ -13,9 +13,13 @@
 
 - Knative Serving installed (the step services are Knative Services).
 - Dapr installed, v1.18+ (`configuration.kubernetes` is Alpha).
-- The prebuilt step images reachable from the cluster: `sw-call-http`, `sw-call-openapi`,
-  `sw-run`, `sw-orchestrator`. Override the tags via the `DWS_IMAGES_*` env vars in
-  `controller-deployment.yaml`.
+- The prebuilt step images reachable from the cluster: `ghcr.io/tonylibs/dws-call-http`,
+  `ghcr.io/tonylibs/dws-call-openapi`, `sw-run`, `sw-orchestrator`. Override the registry/tags
+  via the `DWS_IMAGES_*` env vars in `controller-deployment.yaml`. `dws-call-http` and
+  `dws-call-openapi` are published to GHCR by their own CI (`.github/workflows/dws-call-http.yml`,
+  `.github/workflows/dws-call-openapi.yml`); if the GHCR packages are private, the cluster
+  also needs an `imagePullSecret` for `ghcr.io` (not currently wired into the generated
+  Knative Services — either make the packages public or add pull-secret support).
 
 ## Install
 
@@ -59,9 +63,9 @@ kubectl get configmap,deployment,ksvc,components.dapr.io \
 # NAME                                TYPE
 # configmap/dws-def-order-$V          immutable definition, key `definition`
 # deployment.apps/order-$V            orchestrator, DEFINITION_STORE=dws-def-order-$V
-# service.serving.knative.dev/check-inventory        sw-call-http:1.0
-# service.serving.knative.dev/charge-payment         sw-call-http:1.0
-# service.serving.knative.dev/notify-out-of-stock    sw-call-http:1.0
+# service.serving.knative.dev/check-inventory        ghcr.io/tonylibs/dws-call-http:latest
+# service.serving.knative.dev/charge-payment         ghcr.io/tonylibs/dws-call-http:latest
+# service.serving.knative.dev/notify-out-of-stock    ghcr.io/tonylibs/dws-call-http:latest
 # component.dapr.io/dws-def-order-$V  configuration.kubernetes, scoped to app-id `order`
 ```
 
