@@ -29,7 +29,7 @@ The repository has four independently built components; run builds and tests fro
 - For interpreter semantics, begin with `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/InterpreterWorkflow.java`; task execution also produces the [orchestrator lifecycle events](integrations/lifecycle-events.md#orchestrator-events).
 - For cross-component telemetry, treat `docs/events.md` as the source contract and verify controller plus orchestrator tests when changing event types or payloads.
 
-The scheduled GitHub Actions workflow at `.github/workflows/openwiki-update.yml` refreshes this generated documentation.
+The GitHub Actions workflow at `.github/workflows/openwiki-update.yml` refreshes this generated documentation on every merge to `main` (or on manual dispatch).
 
 ## Backlog
 
