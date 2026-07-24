@@ -1,0 +1,19 @@
+name: approval
+deploy:
+  valid: true
+  expectSteps: [ship-order]
+  # a listen task records a LISTEN topic binding named after the task (verbatim, not kebab-cased).
+  expectBindings: [waitForApproval]
+scenarios:
+  - name: approved
+    input: { orderId: "42" }
+    # events[].name must equal the listen task's name: the interpreter waits on
+    # ctx.waitForExternalEvent(<task name>, ...). The payload is merged into the data.
+    events:
+      - name: waitForApproval
+        payload: { approved: true }
+    calls:
+      - appId: ship-order
+        result: { orderId: "42", approved: true, shipped: true }
+    expectCalls: [ship-order]
+    expectOutput: { orderId: "42", approved: true, shipped: true }

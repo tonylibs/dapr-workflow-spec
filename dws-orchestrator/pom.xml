@@ -75,10 +75,27 @@
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- Parses the shared e2e catalog manifests (version managed by the Spring Boot parent). -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.dataformat</groupId>
+      <artifactId>jackson-dataformat-yaml</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
     <finalName>dws-orchestrator</finalName>
+    <!-- Declaring testResources replaces the default, so src/test/resources must be listed too.
+         The second entry mounts the shared e2e definition catalog onto the test classpath. -->
+    <testResources>
+      <testResource>
+        <directory>src/test/resources</directory>
+      </testResource>
+      <testResource>
+        <directory>${project.basedir}/../e2e/catalog</directory>
+        <targetPath>e2e-catalog</targetPath>
+      </testResource>
+    </testResources>
     <plugins>
       <plugin>
         <groupId>org.springframework.boot</groupId>

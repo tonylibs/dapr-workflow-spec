@@ -1,0 +1,6 @@
+# Invalid on purpose: missing document.version and an empty task list.
+document:
+  dsl: '1.0.0'
+  namespace: e2e
+  name: broken
+do: []

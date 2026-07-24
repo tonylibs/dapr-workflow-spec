@@ -1,0 +1,24 @@
+name: order
+deploy:
+  valid: true
+  expectSteps: [check-inventory, charge-payment, notify-out-of-stock]
+  expectBindings: []
+scenarios:
+  - name: in-stock
+    input: { item: widget }
+    calls:
+      - appId: check-inventory
+        result: { item: widget, inStock: true }
+      - appId: charge-payment
+        result: { item: widget, inStock: true, charged: true }
+    expectCalls: [check-inventory, charge-payment]
+    expectOutput: { item: widget, inStock: true, charged: true }
+  - name: out-of-stock
+    input: { item: widget }
+    calls:
+      - appId: check-inventory
+        result: { item: widget, inStock: false }
+      - appId: notify-out-of-stock
+        result: { item: widget, inStock: false, notified: true }
+    expectCalls: [check-inventory, notify-out-of-stock]
+    expectOutput: { item: widget, inStock: false, notified: true }

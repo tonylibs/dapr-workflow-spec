@@ -1,0 +1,15 @@
+document:
+  dsl: '1.0.0'
+  namespace: e2e
+  name: petstore
+  version: '1.0.0'
+do:
+  - findPet:
+      call: openapi
+      with:
+        document:
+          endpoint: http://petstore.local/openapi.json
+        operationId: findPetById
+        parameters:
+          petId: 42
+      then: end

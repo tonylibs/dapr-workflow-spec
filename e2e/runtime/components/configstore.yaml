@@ -1,0 +1,13 @@
+# Definition configuration store, mirroring dws-orchestrator/k8s/configuration-component.yaml:
+# the orchestrator READS the definition through the Dapr Configuration API; run.sh writes
+# the key directly into the backing Redis (apps cannot write via the API).
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: dws-definitions
+spec:
+  type: configuration.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      value: redis:6379

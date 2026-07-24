@@ -1,0 +1,79 @@
+name: e2e
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'e2e/**'
+      - 'dws-controller/**'
+      - 'dws-orchestrator/**'
+      - '.github/workflows/e2e.yml'
+  pull_request:
+    paths:
+      - 'e2e/**'
+      - 'dws-controller/**'
+      - 'dws-orchestrator/**'
+      - '.github/workflows/e2e.yml'
+  workflow_dispatch:
+  schedule:
+    # Nightly: the only trigger (besides manual dispatch) that runs the runtime tier.
+    - cron: '0 3 * * *'
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  controller-e2e:
+    name: controller "visible" tier
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dws-controller
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: maven
+
+      # dws-controller has no module CI workflow, so run its full suite here
+      # (cdk8s synthesis needs Node, preinstalled on ubuntu-latest).
+      - name: Test
+        run: ./mvnw -B -ntp test
+
+  orchestrator-e2e:
+    name: orchestrator "works as the flow" tier
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dws-orchestrator
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: maven
+
+      # The module's own workflow already runs the unit suite; only the e2e tier here.
+      - name: Test
+        run: ./mvnw -B -ntp test -Dtest='io.dws.orchestrator.e2e.*Test' -DfailIfNoTests=false
+
+  runtime-e2e:
+    name: real Dapr runtime tier (nightly / manual)
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run the order flow against real Dapr
+        run: bash e2e/runtime/run.sh

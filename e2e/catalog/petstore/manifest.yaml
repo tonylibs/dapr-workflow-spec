@@ -1,0 +1,15 @@
+name: petstore
+deploy:
+  valid: true
+  expectSteps: [find-pet]
+  expectBindings: []
+scenarios:
+  # call openapi is interpreted exactly like call http: service invocation of the
+  # kebab-cased task name; the step service resolves the OpenAPI operation itself.
+  - name: find-pet
+    input: { petId: 42 }
+    calls:
+      - appId: find-pet
+        result: { pet: { id: 42, name: Rex } }
+    expectCalls: [find-pet]
+    expectOutput: { pet: { id: 42, name: Rex } }

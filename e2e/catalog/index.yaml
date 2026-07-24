@@ -1,0 +1,10 @@
+# Ordered list of catalog case directories. Both module suites iterate this file;
+# classpath directories cannot be enumerated reliably, hence the explicit index.
+cases:
+  - order
+  - discount
+  - delayed-notify
+  - approval
+  - order-events
+  - petstore
+  - broken

@@ -1,0 +1,15 @@
+name: delayed-notify
+deploy:
+  valid: true
+  # wait deploys nothing; only the call task becomes a step service.
+  expectSteps: [send-reminder]
+  expectBindings: []
+scenarios:
+  - name: reminder-after-delay
+    input: { orderId: "42" }
+    calls:
+      - appId: send-reminder
+        result: { orderId: "42", reminded: true }
+    expectCalls: [send-reminder]
+    expectTimers: [PT2S]
+    expectOutput: { orderId: "42", reminded: true }

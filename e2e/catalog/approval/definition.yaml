@@ -1,0 +1,19 @@
+document:
+  dsl: '1.0.0'
+  namespace: e2e
+  name: approval
+  version: '1.0.0'
+do:
+  - waitForApproval:
+      listen:
+        to:
+          one:
+            with:
+              type: approval-granted
+      then: shipOrder
+  - shipOrder:
+      call: http
+      with:
+        method: post
+        endpoint: http://shipping-service/run
+      then: end

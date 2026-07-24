@@ -1,0 +1,15 @@
+document:
+  dsl: '1.0.0'
+  namespace: e2e
+  name: delayed-notify
+  version: '1.0.0'
+do:
+  - pause:
+      wait: PT2S
+      then: sendReminder
+  - sendReminder:
+      call: http
+      with:
+        method: post
+        endpoint: http://reminder-service/run
+      then: end

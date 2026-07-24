@@ -1,0 +1,24 @@
+document:
+  dsl: '1.0.0'
+  namespace: e2e
+  name: discount
+  version: '1.0.0'
+do:
+  - computeTotal:
+      set:
+        total: ${ .price * .quantity }
+  - classify:
+      switch:
+        - bigOrder:
+            when: ${ .total >= 100 }
+            then: applyDiscount
+        - smallOrder:
+            then: noDiscount
+  - applyDiscount:
+      set:
+        discounted: true
+      then: end
+  - noDiscount:
+      set:
+        discounted: false
+      then: end

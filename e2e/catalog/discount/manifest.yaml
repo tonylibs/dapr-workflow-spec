@@ -1,0 +1,15 @@
+name: discount
+deploy:
+  valid: true
+  # set/switch tasks deploy nothing: the stack is definition + orchestrator only.
+  expectSteps: []
+  expectBindings: []
+scenarios:
+  - name: big-order
+    input: { price: 50, quantity: 3 }
+    expectCalls: []
+    expectOutput: { price: 50, quantity: 3, total: 150, discounted: true }
+  - name: small-order
+    input: { price: 10, quantity: 2 }
+    expectCalls: []
+    expectOutput: { price: 10, quantity: 2, total: 20, discounted: false }

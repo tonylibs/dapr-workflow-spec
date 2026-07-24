@@ -1,0 +1,19 @@
+document:
+  dsl: '1.0.0'
+  namespace: e2e
+  name: order-events
+  version: '1.0.0'
+do:
+  - placeOrder:
+      call: http
+      with:
+        method: post
+        endpoint: http://order-service/run
+      then: publishPlaced
+  - publishPlaced:
+      emit:
+        event:
+          with:
+            source: https://dws.e2e/orders
+            type: order-placed
+      then: end

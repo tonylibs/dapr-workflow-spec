@@ -1,0 +1,144 @@
+# Real-runtime e2e for the canonical `order` catalog case: the actual orchestrator image,
+# real Dapr sidecars (placement + scheduler + workflow engine), real dws-call-http step
+# services, Redis as both workflow state store and definition configuration store.
+#
+# Service invocation resolves app-ids via Dapr's sqlite name resolution over the shared
+# /nr volume (mDNS does not work across containers). Run through ./run.sh, not directly:
+# the definition must be seeded into Redis before the orchestrator boots.
+#
+# This tier is exercised by the manually-triggered / nightly `runtime-e2e` CI job only.
+
+x-daprd-base: &daprd-base
+  image: daprio/daprd:1.15.5
+  volumes:
+    - ./components:/components:ro
+    - ./config:/config:ro
+    - name-resolution:/nr
+
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  placement:
+    image: daprio/dapr:1.15.5
+    command: ["./placement", "--port", "50006"]
+
+  scheduler:
+    image: daprio/dapr:1.15.5
+    command: ["./scheduler", "--port", "50007", "--etcd-data-dir", "/data"]
+    volumes:
+      - scheduler-data:/data
+
+  # ---- orchestrator (app-id must equal document.name of the seeded definition) ----
+  orchestrator:
+    build: ../../dws-orchestrator
+    environment:
+      DAPR_CONFIG_STORE: dws-definitions
+      DEFINITION_KEY: definition
+    ports:
+      - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  orchestrator-daprd:
+    <<: *daprd-base
+    network_mode: service:orchestrator
+    command:
+      [
+        "./daprd",
+        "--app-id", "order",
+        "--app-port", "8080",
+        "--dapr-http-port", "3500",
+        "--dapr-grpc-port", "50001",
+        "--placement-host-address", "placement:50006",
+        "--scheduler-host-address", "scheduler:50007",
+        "--resources-path", "/components",
+        "--config", "/config/daprd-config.yaml",
+      ]
+    depends_on:
+      - orchestrator
+      - placement
+      - scheduler
+
+  # ---- step services: generic dws-call-http images, one per `call` task ----
+  # METHOD=get + OUTPUT=merge: fetch the stub's static JSON and shallow-merge it into
+  # the workflow data, mimicking each business step's contribution to the state.
+  check-inventory:
+    build: ../../dws-call-http
+    environment:
+      TASK: check-inventory
+      METHOD: get
+      ENDPOINT: http://stub-upstream:8000/check-inventory.json
+      OUTPUT: merge
+
+  check-inventory-daprd:
+    <<: *daprd-base
+    network_mode: service:check-inventory
+    command:
+      [
+        "./daprd",
+        "--app-id", "check-inventory",
+        "--app-port", "8080",
+        "--resources-path", "/components",
+        "--config", "/config/daprd-config.yaml",
+      ]
+    depends_on: [check-inventory]
+
+  charge-payment:
+    build: ../../dws-call-http
+    environment:
+      TASK: charge-payment
+      METHOD: get
+      ENDPOINT: http://stub-upstream:8000/charge-payment.json
+      OUTPUT: merge
+
+  charge-payment-daprd:
+    <<: *daprd-base
+    network_mode: service:charge-payment
+    command:
+      [
+        "./daprd",
+        "--app-id", "charge-payment",
+        "--app-port", "8080",
+        "--resources-path", "/components",
+        "--config", "/config/daprd-config.yaml",
+      ]
+    depends_on: [charge-payment]
+
+  notify-out-of-stock:
+    build: ../../dws-call-http
+    environment:
+      TASK: notify-out-of-stock
+      METHOD: get
+      ENDPOINT: http://stub-upstream:8000/notify-out-of-stock.json
+      OUTPUT: merge
+
+  notify-out-of-stock-daprd:
+    <<: *daprd-base
+    network_mode: service:notify-out-of-stock
+    command:
+      [
+        "./daprd",
+        "--app-id", "notify-out-of-stock",
+        "--app-port", "8080",
+        "--resources-path", "/components",
+        "--config", "/config/daprd-config.yaml",
+      ]
+    depends_on: [notify-out-of-stock]
+
+  # Static JSON responder standing in for the real upstream business systems.
+  stub-upstream:
+    image: python:3.12-alpine
+    command: ["python", "-m", "http.server", "8000", "--directory", "/www"]
+    volumes:
+      - ./stub:/www:ro
+
+volumes:
+  scheduler-data:
+  name-resolution:
