@@ -110,7 +110,7 @@ class StackApplierTest {
         assertThat(deployment).isNotNull();
         assertThat(deployment.getSpec().getReplicas()).isEqualTo(1);
         var container = deployment.getSpec().getTemplate().getSpec().getContainers().get(0);
-        assertThat(container.getImage()).isEqualTo("sw-orchestrator:1.0");
+        assertThat(container.getImage()).isEqualTo("ghcr.io/tonylibs/dws-orchestrator:latest");
         assertThat(container.getEnv())
                 .extracting(e -> Map.entry(e.getName(), e.getValue()))
                 .contains(

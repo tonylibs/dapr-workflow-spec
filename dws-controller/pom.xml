@@ -17,6 +17,15 @@
         <serverlessworkflow.version>7.26.0.Final</serverlessworkflow.version>
         <skipITs>true</skipITs>
         <surefire-plugin.version>3.5.6</surefire-plugin.version>
+
+        <!-- cdk8s import (Knative/Dapr constructs) is generated at build time. -->
+        <cdk8s-cli.version>2.207.41</cdk8s-cli.version>
+        <exec-plugin.version>3.5.0</exec-plugin.version>
+        <build-helper-plugin.version>3.6.0</build-helper-plugin.version>
+        <!-- cdk8s writes to <cwd>/src/main/{java,resources}/imports; this is that cwd. -->
+        <cdk8s.generated.dir>${project.build.directory}/generated-sources/cdk8s</cdk8s.generated.dir>
+        <!-- Overridden to npx.cmd on Windows by the 'windows' profile below. -->
+        <cdk8s.npx.executable>npx</cdk8s.npx.executable>
     </properties>
 
     <dependencyManagement>
@@ -94,7 +103,93 @@
     </dependencies>
 
     <build>
+        <!--
+          The default src/main/resources plus the jsii metadata ($Module.txt / *.jsii.tgz)
+          that cdk8s emits next to the generated Java. Both must land on the classpath.
+        -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>${cdk8s.generated.dir}/src/main/resources</directory>
+            </resource>
+        </resources>
         <plugins>
+            <!--
+              Generate the cdk8s Knative/Dapr constructs at build time instead of committing
+              them. cdk8s import (jsii) ignores its own output flag for Java and always writes
+              to the working directory's src/main/{java,resources}/imports, so we run it with cdk8s.generated.dir
+              as the working directory and register that tree as an extra source/resource root.
+              Passing both CRD bundles to a single import drops one of them, so import each
+              separately (knative -> imports.dev.knative.*, dapr -> imports.io.dapr.*).
+              Requires Node.js/npx on PATH (already required by the Dockerfiles and by cdk8s at
+              synthesis time).
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>${exec-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>cdk8s-import-knative</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>${cdk8s.npx.executable}</executable>
+                            <workingDirectory>${cdk8s.generated.dir}</workingDirectory>
+                            <arguments>
+                                <argument>-y</argument>
+                                <argument>cdk8s-cli@${cdk8s-cli.version}</argument>
+                                <argument>import</argument>
+                                <argument>${project.basedir}/k8s/serving-crds.yaml</argument>
+                                <argument>--language</argument>
+                                <argument>java</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>cdk8s-import-dapr</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>${cdk8s.npx.executable}</executable>
+                            <workingDirectory>${cdk8s.generated.dir}</workingDirectory>
+                            <arguments>
+                                <argument>-y</argument>
+                                <argument>cdk8s-cli@${cdk8s-cli.version}</argument>
+                                <argument>import</argument>
+                                <argument>${project.basedir}/k8s/dapr-crds.yaml</argument>
+                                <argument>--language</argument>
+                                <argument>java</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>${build-helper-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>add-cdk8s-generated-sources</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${cdk8s.generated.dir}/src/main/java</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>${quarkus.platform.group-id}</groupId>
                 <artifactId>quarkus-maven-plugin</artifactId>
@@ -143,6 +238,18 @@
     </build>
 
     <profiles>
+        <profile>
+            <!-- On Windows the npx launcher is npx.cmd, not npx. -->
+            <id>windows</id>
+            <activation>
+                <os>
+                    <family>windows</family>
+                </os>
+            </activation>
+            <properties>
+                <cdk8s.npx.executable>npx.cmd</cdk8s.npx.executable>
+            </properties>
+        </profile>
         <profile>
             <id>native</id>
             <activation>
