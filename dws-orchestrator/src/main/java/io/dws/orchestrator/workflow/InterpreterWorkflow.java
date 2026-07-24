@@ -7,6 +7,8 @@ import io.dapr.workflows.Workflow;
 import io.dapr.workflows.WorkflowContext;
 import io.dapr.workflows.WorkflowStub;
 import io.dws.orchestrator.expr.JqEvaluator;
+import io.dws.orchestrator.workflow.activity.AdminEventActivity;
+import io.dws.orchestrator.workflow.activity.AdminEventRequest;
 import io.dws.orchestrator.workflow.activity.CallRequest;
 import io.dws.orchestrator.workflow.activity.CallServiceActivity;
 import io.dws.orchestrator.workflow.activity.EmitEventActivity;
@@ -67,69 +69,128 @@ public class InterpreterWorkflow implements Workflow {
     JqEvaluator jq = WorkflowSupport.jq();
     List<TaskItem> items = WorkflowSupport.definition().getDo();
 
+    // All timestamps/ids for lifecycle events come from this builder (workflow-context sourced),
+    // so publishing stays replay-deterministic — no Instant.now()/UUID.randomUUID() in execute.
+    AdminEventBuilder events = AdminEventBuilder.forContext(ctx);
+
     JsonNode data = ctx.getInput(JsonNode.class);
     if (data == null) {
       data = mapper.createObjectNode();
     }
+
+    publish(ctx, events.instanceStarted());
 
     Map<String, Integer> indexByName = new HashMap<>();
     for (int i = 0; i < items.size(); i++) {
       indexByName.put(items.get(i).getName(), i);
     }
 
-    int pc = 0;
-    for (int steps = 0; pc >= 0 && pc < items.size(); steps++) {
-      if (steps > MAX_STEPS) {
-        throw new IllegalStateException("workflow exceeded " + MAX_STEPS + " steps; check for a definition loop");
+    try {
+      int pc = 0;
+      for (int steps = 0; pc >= 0 && pc < items.size(); steps++) {
+        if (steps > MAX_STEPS) {
+          throw new IllegalStateException("workflow exceeded " + MAX_STEPS + " steps; check for a definition loop");
+        }
+
+        TaskItem item = items.get(pc);
+        String name = item.getName();
+        Task task = item.getTask();
+        String taskType = taskTypeOf(task);
+
+        publish(ctx, events.taskStarted(name, taskType));
+        FlowDirective then;
+        try {
+          Dispatch result = dispatch(ctx, task, name, data, jq, mapper);
+          data = result.data();
+          then = result.then();
+        } catch (RuntimeException e) {
+          publish(ctx, events.taskFailed(name, taskType, String.valueOf(e.getMessage())));
+          throw e;
+        }
+        publish(ctx, events.taskCompleted(name, taskType));
+
+        pc = advance(then, pc, indexByName);
+        if (pc == COMPLETE) {
+          publish(ctx, events.instanceCompleted());
+          ctx.complete(data);
+          return;
+        }
       }
 
-      TaskItem item = items.get(pc);
-      String name = item.getName();
-      Task task = item.getTask();
-      FlowDirective then;
-
-      if (task.getSwitchTask() != null) {
-        then = evaluateSwitch(task.getSwitchTask(), data, jq);
-      } else if (task.getCallTask() != null) {
-        CallRequest req = new CallRequest(TaskNaming.toKebabCase(name), "run", data);
-        data = ctx.callActivity(CallServiceActivity.class.getName(), req,
-            WorkflowSupport.defaultTaskOptions(), JsonNode.class).await();
-        then = thenOf(task.getCallTask().get());
-      } else if (task.getSetTask() != null) {
-        data = applySet(task.getSetTask(), data, jq, mapper);
-        then = task.getSetTask().getThen();
-      } else if (task.getWaitTask() != null) {
-        ctx.createTimer(durationOf(task.getWaitTask().getWait())).await();
-        then = task.getWaitTask().getThen();
-      } else if (task.getListenTask() != null) {
-        JsonNode event = ctx.waitForExternalEvent(name, DEFAULT_LISTEN_TIMEOUT, JsonNode.class).await();
-        data = mergeObjects(data, event, mapper);
-        then = task.getListenTask().getThen();
-      } else if (task.getEmitTask() != null) {
-        EmitRequest req = new EmitRequest(WorkflowSupport.defaultPubsub(), TaskNaming.toKebabCase(name), data);
-        ctx.callActivity(EmitEventActivity.class.getName(), req,
-            WorkflowSupport.defaultTaskOptions(), Void.class).await();
-        then = task.getEmitTask().getThen();
-      } else if (task.getForTask() != null || task.getTryTask() != null) {
-        throw new UnsupportedOperationException(
-            "task '" + name + "' uses for/try, which is recognised but not yet interpreted");
-      } else {
-        throw new IllegalStateException("task '" + name + "' has an unsupported type");
-      }
-
-      pc = advance(then, pc, indexByName, ctx, data);
-      if (pc == COMPLETE) {
-        return;
-      }
+      // Ran off the end of the task list: complete with the current data.
+      publish(ctx, events.instanceCompleted());
+      ctx.complete(data);
+    } catch (RuntimeException e) {
+      publish(ctx, events.instanceFailed(String.valueOf(e.getMessage())));
+      throw e;
     }
+  }
 
-    // Ran off the end of the task list: complete with the current data.
-    ctx.complete(data);
+  /** The post-dispatch data document plus the task's flow directive. */
+  private record Dispatch(JsonNode data, FlowDirective then) {
+  }
+
+  /** Dispatches one task item, returning the (possibly new) data document and its flow directive. */
+  private Dispatch dispatch(WorkflowContext ctx, Task task, String name, JsonNode data,
+                            JqEvaluator jq, ObjectMapper mapper) {
+    if (task.getSwitchTask() != null) {
+      return new Dispatch(data, evaluateSwitch(task.getSwitchTask(), data, jq));
+    } else if (task.getCallTask() != null) {
+      CallRequest req = new CallRequest(TaskNaming.toKebabCase(name), "run", data);
+      JsonNode next = ctx.callActivity(CallServiceActivity.class.getName(), req,
+          WorkflowSupport.defaultTaskOptions(), JsonNode.class).await();
+      return new Dispatch(next, thenOf(task.getCallTask().get()));
+    } else if (task.getSetTask() != null) {
+      return new Dispatch(applySet(task.getSetTask(), data, jq, mapper), task.getSetTask().getThen());
+    } else if (task.getWaitTask() != null) {
+      ctx.createTimer(durationOf(task.getWaitTask().getWait())).await();
+      return new Dispatch(data, task.getWaitTask().getThen());
+    } else if (task.getListenTask() != null) {
+      JsonNode event = ctx.waitForExternalEvent(name, DEFAULT_LISTEN_TIMEOUT, JsonNode.class).await();
+      return new Dispatch(mergeObjects(data, event, mapper), task.getListenTask().getThen());
+    } else if (task.getEmitTask() != null) {
+      EmitRequest req = new EmitRequest(WorkflowSupport.defaultPubsub(), TaskNaming.toKebabCase(name), data);
+      ctx.callActivity(EmitEventActivity.class.getName(), req,
+          WorkflowSupport.defaultTaskOptions(), Void.class).await();
+      return new Dispatch(data, task.getEmitTask().getThen());
+    } else if (task.getForTask() != null || task.getTryTask() != null) {
+      throw new UnsupportedOperationException(
+          "task '" + name + "' uses for/try, which is recognised but not yet interpreted");
+    } else {
+      throw new IllegalStateException("task '" + name + "' has an unsupported type");
+    }
+  }
+
+  /** The DSL task-type name used in {@code io.dws.task.*} event payloads. */
+  private String taskTypeOf(Task task) {
+    if (task.getSwitchTask() != null) {
+      return "switch";
+    } else if (task.getCallTask() != null) {
+      return "call";
+    } else if (task.getSetTask() != null) {
+      return "set";
+    } else if (task.getWaitTask() != null) {
+      return "wait";
+    } else if (task.getListenTask() != null) {
+      return "listen";
+    } else if (task.getEmitTask() != null) {
+      return "emit";
+    } else if (task.getForTask() != null) {
+      return "for";
+    } else if (task.getTryTask() != null) {
+      return "try";
+    }
+    return "unknown";
+  }
+
+  /** Publishes a lifecycle event through the admin-event activity (tolerant of publish failure). */
+  private void publish(WorkflowContext ctx, AdminEventRequest req) {
+    ctx.callActivity(AdminEventActivity.class.getName(), req,
+        WorkflowSupport.defaultTaskOptions(), Void.class).await();
   }
 
   /** Resolves the next program counter from a flow directive (null = sequential continue). */
-  private int advance(FlowDirective then, int pc, Map<String, Integer> indexByName,
-                      WorkflowContext ctx, JsonNode data) {
+  private int advance(FlowDirective then, int pc, Map<String, Integer> indexByName) {
     if (then == null) {
       return pc + 1;
     }
@@ -137,7 +198,7 @@ public class InterpreterWorkflow implements Workflow {
     if (keyword != null) {
       return switch (keyword) {
         case CONTINUE -> pc + 1;
-        case END, EXIT -> complete(ctx, data);
+        case END, EXIT -> COMPLETE;
       };
     }
     String target = then.getString();
@@ -149,11 +210,6 @@ public class InterpreterWorkflow implements Workflow {
       return next;
     }
     return pc + 1;
-  }
-
-  private int complete(WorkflowContext ctx, JsonNode data) {
-    ctx.complete(data);
-    return COMPLETE;
   }
 
   /** Returns the target of the first case whose {@code when} is truthy, else the default case. */

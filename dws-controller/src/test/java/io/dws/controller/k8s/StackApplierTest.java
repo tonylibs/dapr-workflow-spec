@@ -1,7 +1,15 @@
 package io.dws.controller.k8s;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import io.dapr.client.DaprClient;
 import io.dws.controller.compile.WorkflowCompiler;
 import io.dws.controller.model.ApplyResult;
 import io.dws.controller.model.DeploymentPlan;
@@ -20,6 +28,8 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import reactor.core.publisher.Mono;
 
 @QuarkusTest
 @WithKubernetesTestServer
@@ -36,9 +46,22 @@ class StackApplierTest {
     @Inject
     StackApplier applier;
 
+    /** The Mockito-mocked Dapr client supplied by {@code MockDaprClientProducer}. */
+    @Inject
+    DaprClient daprClient;
+
     @BeforeEach
     void cleanCluster() {
+        reset(daprClient);
+        when(daprClient.publishEvent(anyString(), anyString(), any())).thenReturn(Mono.empty());
         applier.deleteWorkflow("order");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static boolean publishedType(ArgumentCaptor<Object> bodies, String type) {
+        return bodies.getAllValues().stream()
+                .map(b -> (Map<String, Object>) b)
+                .anyMatch(m -> type.equals(m.get("type")));
     }
 
     @Test
@@ -198,6 +221,34 @@ class StackApplierTest {
                 .withName(v2.orchestrator().name())
                 .get();
         assertThat(current.getMetadata().getAnnotations()).doesNotContainKey(Labels.DRAIN);
+    }
+
+    @Test
+    @DisplayName("a successful apply publishes io.dws.deployment.applied to dws.events")
+    void applyPublishesDeploymentApplied() {
+        applier.apply(compiler.compile(fixture("order.yaml")));
+
+        ArgumentCaptor<Object> bodies = ArgumentCaptor.forClass(Object.class);
+        verify(daprClient, atLeastOnce()).publishEvent(eq("pubsub"), eq("dws.events"), bodies.capture());
+        assertThat(publishedType(bodies, "io.dws.deployment.applied")).isTrue();
+    }
+
+    @Test
+    @DisplayName("a publish failure does not break the apply pass")
+    void publishFailureDoesNotBreakApply() {
+        when(daprClient.publishEvent(anyString(), anyString(), any()))
+                .thenThrow(new RuntimeException("pubsub unavailable"));
+
+        ApplyResult result = applier.apply(compiler.compile(fixture("order.yaml")));
+
+        assertThat(result.created()).isTrue();
+        assertThat(client.apps()
+                        .deployments()
+                        .inNamespace(NAMESPACE)
+                        .withLabels(Labels.workflow("order"))
+                        .list()
+                        .getItems())
+                .isNotEmpty();
     }
 
     @SuppressWarnings("unchecked")

@@ -30,6 +30,9 @@ dws:
   config-store: ${DAPR_CONFIG_STORE:dws-definitions}
   # Immutable, versioned key for this pod's single definition (e.g. order-workflow@v3). Required.
   definition-key: ${DEFINITION_KEY:}
+  # Dapr app-id of this orchestrator, stamped into instance/task lifecycle events. Defaults to the
+  # workflow name when blank (see WorkflowRuntimeBootstrap).
+  app-id: ${APP_ID:}
   # Default pub/sub component for EMIT tasks.
   default-pubsub: ${DWS_DEFAULT_PUBSUB:pubsub}
   # Retry/backoff for fetching the definition while the Dapr sidecar boots.

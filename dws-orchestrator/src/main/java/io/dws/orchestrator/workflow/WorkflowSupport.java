@@ -18,6 +18,8 @@ public final class WorkflowSupport {
 
   private static volatile Workflow definition;
   private static volatile String workflowName;
+  private static volatile String appId;
+  private static volatile String definitionKey;
   private static volatile JqEvaluator jqEvaluator;
   private static volatile ObjectMapper mapper;
   private static volatile DaprClient daprClient;
@@ -29,6 +31,8 @@ public final class WorkflowSupport {
 
   public static void init(Workflow definition,
                           String workflowName,
+                          String appId,
+                          String definitionKey,
                           JqEvaluator jqEvaluator,
                           ObjectMapper mapper,
                           DaprClient daprClient,
@@ -36,6 +40,8 @@ public final class WorkflowSupport {
                           String defaultPubsub) {
     WorkflowSupport.definition = definition;
     WorkflowSupport.workflowName = workflowName;
+    WorkflowSupport.appId = appId;
+    WorkflowSupport.definitionKey = definitionKey;
     WorkflowSupport.jqEvaluator = jqEvaluator;
     WorkflowSupport.mapper = mapper;
     WorkflowSupport.daprClient = daprClient;
@@ -49,6 +55,15 @@ public final class WorkflowSupport {
 
   public static String workflowName() {
     return require(workflowName, "workflowName");
+  }
+
+  public static String appId() {
+    return require(appId, "appId");
+  }
+
+  /** Immutable versioned key for this pod's definition, e.g. {@code order-workflow@v3}. */
+  public static String definitionKey() {
+    return require(definitionKey, "definitionKey");
   }
 
   public static JqEvaluator jq() {
