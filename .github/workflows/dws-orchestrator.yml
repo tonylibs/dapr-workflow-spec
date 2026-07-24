@@ -1,23 +1,23 @@
-name: dws-call-http
+name: dws-orchestrator
 
 on:
   push:
     branches: [main]
     paths:
-      - 'dws-call-http/**'
-      - '.github/workflows/dws-call-http.yml'
+      - 'dws-orchestrator/**'
+      - '.github/workflows/dws-orchestrator.yml'
   pull_request:
     paths:
-      - 'dws-call-http/**'
-      - '.github/workflows/dws-call-http.yml'
+      - 'dws-orchestrator/**'
+      - '.github/workflows/dws-orchestrator.yml'
   workflow_dispatch:
 
 concurrency:
-  group: dws-call-http-${{ github.workflow }}-${{ github.ref }}
+  group: dws-orchestrator-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/dws-call-http
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/dws-orchestrator
 
 jobs:
   test:
@@ -25,34 +25,23 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: dws-call-http
+        working-directory: dws-orchestrator
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
         with:
-          go-version-file: dws-call-http/go.mod
-          cache: false
+          distribution: temurin
+          java-version: 25
+          cache: maven
 
-      - name: go vet
-        run: go vet ./...
-
-      - name: gofmt check
-        run: |
-          unformatted=$(gofmt -l .)
-          if [ -n "$unformatted" ]; then
-            echo "gofmt needed on:"
-            echo "$unformatted"
-            exit 1
-          fi
-
-      - name: Build
-        run: go build -trimpath -ldflags="-s -w" -o bin/dws-call-http .
+      - name: Compile
+        run: ./mvnw -B -ntp clean compile
 
       - name: Test
-        run: go test -race ./...
+        run: ./mvnw -B -ntp test
 
   build-image:
     name: build & push image
@@ -90,10 +79,10 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: dws-call-http
+          context: dws-orchestrator
           # Build on PRs to validate the Dockerfile; only push on merge to main.
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=dws-call-http
-          cache-to: type=gha,mode=max,scope=dws-call-http
+          cache-from: type=gha,scope=dws-orchestrator
+          cache-to: type=gha,mode=max,scope=dws-orchestrator
