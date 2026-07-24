@@ -12,26 +12,25 @@ import java.time.Duration;
 @ApplicationScoped
 public class HttpOpenApiDocumentFetcher implements OpenApiDocumentFetcher {
 
-    private static final Duration TIMEOUT = Duration.ofSeconds(30);
+  private static final Duration TIMEOUT = Duration.ofSeconds(30);
 
-    private final HttpClient client = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
+  private final HttpClient client = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
 
-    @Override
-    public byte[] fetch(String url) {
-        HttpRequest request =
-                HttpRequest.newBuilder(URI.create(url)).timeout(TIMEOUT).GET().build();
-        try {
-            HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
-            if (response.statusCode() / 100 != 2) {
-                throw new DocumentFetchException(
-                        "OpenAPI document fetch returned HTTP " + response.statusCode() + " for " + url, null);
-            }
-            return response.body();
-        } catch (IOException e) {
-            throw new DocumentFetchException("Failed to fetch OpenAPI document " + url, e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new DocumentFetchException("Interrupted fetching OpenAPI document " + url, e);
-        }
+  @Override
+  public byte[] fetch(String url) {
+    HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(TIMEOUT).GET().build();
+    try {
+      HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+      if (response.statusCode() / 100 != 2) {
+        throw new DocumentFetchException(
+            "OpenAPI document fetch returned HTTP " + response.statusCode() + " for " + url, null);
+      }
+      return response.body();
+    } catch (IOException e) {
+      throw new DocumentFetchException("Failed to fetch OpenAPI document " + url, e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new DocumentFetchException("Interrupted fetching OpenAPI document " + url, e);
     }
+  }
 }

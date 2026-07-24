@@ -24,56 +24,62 @@ import java.util.List;
 @Produces(MediaType.APPLICATION_JSON)
 public class WorkflowResource {
 
-    private final WorkflowCompiler compiler;
-    private final StackApplier applier;
-    private final StackReader reader;
+  private final WorkflowCompiler compiler;
+  private final StackApplier applier;
+  private final StackReader reader;
 
-    public WorkflowResource(WorkflowCompiler compiler, StackApplier applier, StackReader reader) {
-        this.compiler = compiler;
-        this.applier = applier;
-        this.reader = reader;
-    }
+  public WorkflowResource(WorkflowCompiler compiler, StackApplier applier, StackReader reader) {
+    this.compiler = compiler;
+    this.applier = applier;
+    this.reader = reader;
+  }
 
-    /** Accepts a DSL 1.0 definition as YAML or JSON. {@code ?dryRun=true} compiles without applying. */
-    @POST
-    @Consumes(MediaType.WILDCARD)
-    public Response deploy(@QueryParam("dryRun") boolean dryRun, String definition) {
-        DeploymentPlan plan = compiler.compile(definition);
-        if (dryRun) {
-            return Response.ok(plan).build();
-        }
-        ApplyResult result = applier.apply(plan);
-        return Response.status(result.created() ? Response.Status.CREATED : Response.Status.OK)
-                .entity(result)
-                .build();
+  /**
+   * Accepts a DSL 1.0 definition as YAML or JSON. {@code ?dryRun=true} compiles without applying.
+   */
+  @POST
+  @Consumes(MediaType.WILDCARD)
+  public Response deploy(@QueryParam("dryRun") boolean dryRun, String definition) {
+    DeploymentPlan plan = compiler.compile(definition);
+    if (dryRun) {
+      return Response.ok(plan).build();
     }
+    ApplyResult result = applier.apply(plan);
+    return Response.status(result.created() ? Response.Status.CREATED : Response.Status.OK)
+        .entity(result)
+        .build();
+  }
 
-    @GET
-    public List<WorkflowSummary> list() {
-        return reader.list();
-    }
+  @GET
+  public List<WorkflowSummary> list() {
+    return reader.list();
+  }
 
-    @GET
-    @Path("/{name}")
-    public WorkflowDetail get(@PathParam("name") String name) {
-        return reader.get(name).orElseThrow(() -> new WorkflowNotFoundException(name));
-    }
+  @GET
+  @Path("/{name}")
+  public WorkflowDetail get(@PathParam("name") String name) {
+    return reader.get(name).orElseThrow(() -> new WorkflowNotFoundException(name));
+  }
 
-    /** Recomputes the plan for the deployed definition — a dry run over what is already in the cluster. */
-    @GET
-    @Path("/{name}/plan")
-    public DeploymentPlan plan(@PathParam("name") String name) {
-        return reader.definitionText(name)
-                .map(compiler::compile)
-                .orElseThrow(() -> new WorkflowNotFoundException(name));
-    }
+  /**
+   * Recomputes the plan for the deployed definition — a dry run over what is already in the
+   * cluster.
+   */
+  @GET
+  @Path("/{name}/plan")
+  public DeploymentPlan plan(@PathParam("name") String name) {
+    return reader
+        .definitionText(name)
+        .map(compiler::compile)
+        .orElseThrow(() -> new WorkflowNotFoundException(name));
+  }
 
-    @DELETE
-    @Path("/{name}")
-    public Response delete(@PathParam("name") String name) {
-        if (!applier.deleteWorkflow(name)) {
-            throw new WorkflowNotFoundException(name);
-        }
-        return Response.noContent().build();
+  @DELETE
+  @Path("/{name}")
+  public Response delete(@PathParam("name") String name) {
+    if (!applier.deleteWorkflow(name)) {
+      throw new WorkflowNotFoundException(name);
     }
+    return Response.noContent().build();
+  }
 }

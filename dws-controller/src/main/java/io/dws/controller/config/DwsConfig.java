@@ -8,32 +8,32 @@ import io.smallrye.config.WithDefault;
 @ConfigMapping(prefix = "dws")
 public interface DwsConfig {
 
-    /** Namespace the controller deploys managed stacks into. */
-    @WithDefault("default")
-    String namespace();
+  /** Namespace the controller deploys managed stacks into. */
+  @WithDefault("default")
+  String namespace();
 
-    Images images();
+  Images images();
 
-    Reconcile reconcile();
+  Reconcile reconcile();
 
-    /** Garbage-collection cadence for drained previous versions. */
-    interface Reconcile {
-        @WithDefault("30s")
-        String every();
-    }
+  /** Garbage-collection cadence for drained previous versions. */
+  interface Reconcile {
+    @WithDefault("30s")
+    String every();
+  }
 
-    interface Images {
-        String callHttp();
+  interface Images {
+    String callHttp();
 
-        String callOpenapi();
+    String callOpenapi();
 
-        String run();
+    String run();
 
-        String orchestrator();
-    }
+    String orchestrator();
+  }
 
-    default ImageCatalog catalog() {
-        return new ImageCatalog(
-                images().callHttp(), images().callOpenapi(), images().run(), images().orchestrator());
-    }
+  default ImageCatalog catalog() {
+    return new ImageCatalog(
+        images().callHttp(), images().callOpenapi(), images().run(), images().orchestrator());
+  }
 }

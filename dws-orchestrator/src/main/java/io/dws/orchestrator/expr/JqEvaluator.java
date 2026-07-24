@@ -3,6 +3,8 @@ package io.dws.orchestrator.expr;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
+import java.util.ArrayList;
+import java.util.List;
 import net.thisptr.jackson.jq.BuiltinFunctionLoader;
 import net.thisptr.jackson.jq.JsonQuery;
 import net.thisptr.jackson.jq.Scope;
@@ -10,15 +12,12 @@ import net.thisptr.jackson.jq.Version;
 import net.thisptr.jackson.jq.Versions;
 import net.thisptr.jackson.jq.exception.JsonQueryException;
 
-import java.util.ArrayList;
-import java.util.List;
-
 /**
  * Evaluates Open Workflow Specification runtime expressions using the jq dialect (jackson-jq).
  *
- * <p>Expressions may be written wrapped as {@code ${ .foo }} (the DSL convention) or as a
- * bare jq program {@code .foo}; both forms are accepted. Evaluation is pure and
- * deterministic, so it is safe to run inline inside a workflow (no I/O, replay-safe).
+ * <p>Expressions may be written wrapped as {@code ${ .foo }} (the DSL convention) or as a bare jq
+ * program {@code .foo}; both forms are accepted. Evaluation is pure and deterministic, so it is
+ * safe to run inline inside a workflow (no I/O, replay-safe).
  */
 public class JqEvaluator {
 
@@ -39,7 +38,9 @@ public class JqEvaluator {
     return results.isEmpty() ? NullNode.getInstance() : results.get(0);
   }
 
-  /** jq truthiness of the first result: everything except {@code null} and {@code false} is true. */
+  /**
+   * jq truthiness of the first result: everything except {@code null} and {@code false} is true.
+   */
   public boolean evaluateBoolean(String expression, JsonNode input) {
     JsonNode result = evaluate(expression, input);
     if (result == null || result.isNull()) {
