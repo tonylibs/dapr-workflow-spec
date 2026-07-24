@@ -167,3 +167,13 @@ When all 5 hold → proactively suggest "ready to `/opsx:propose`?" — wait for
 - Opening a change for bug fix / typo
 
 Full detail: [superpowers-bridge README §Entry & exit gates](https://github.com/JiangWay/openspec-schemas/blob/main/superpowers-bridge/README.md#entry--exit-gates).
+
+<!-- OPENWIKI:START -->
+
+## OpenWiki
+
+This repository uses OpenWiki for recurring code documentation. Start with `openwiki/quickstart.md`, then follow its links to architecture, workflows, domain concepts, operations, integrations, testing guidance, and source maps.
+
+The OpenWiki GitHub Actions workflow refreshes the repository wiki on every merge to `main` (or on manual dispatch). Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
+
+<!-- OPENWIKI:END -->
