@@ -1,0 +1,280 @@
+# Instincts generated from https://github.com/tonylibs/dapr-workflow-spec
+# Generated: 2026-07-24T07:46:49.085Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: dapr-workflow-spec-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/tonylibs/dapr-workflow-spec
+---
+
+# Dapr Workflow Spec Commit Length
+
+## Action
+
+Write moderate-length commit messages (~63 characters)
+
+## Evidence
+
+- Average commit message length: 63 chars
+- Based on 3 commits
+
+---
+id: dapr-workflow-spec-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/tonylibs/dapr-workflow-spec
+---
+
+# Dapr Workflow Spec Naming Files
+
+## Action
+
+Use kebab-case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: kebab-case
+
+---
+id: dapr-workflow-spec-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/tonylibs/dapr-workflow-spec
+---
+
+# Dapr Workflow Spec Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: dapr-workflow-spec-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/tonylibs/dapr-workflow-spec
+---
+
+# Dapr Workflow Spec Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: dapr-workflow-spec-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/tonylibs/dapr-workflow-spec
+---
+
+# Dapr Workflow Spec Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: dapr-workflow-spec-instinct-file-naming
+trigger: "When creating a new file"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: tonylibs/dapr-workflow-spec
+---
+
+# Dapr Workflow Spec Instinct File Naming
+
+## Action
+
+Name the file using kebab-case
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.files
+
+---
+id: dapr-workflow-spec-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: tonylibs/dapr-workflow-spec
+---
+
+# Dapr Workflow Spec Instinct Function Naming
+
+## Action
+
+Name the function using camelCase
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.functions
+
+---
+id: dapr-workflow-spec-instinct-class-naming
+trigger: "When defining a new class"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: tonylibs/dapr-workflow-spec
+---
+
+# Dapr Workflow Spec Instinct Class Naming
+
+## Action
+
+Name the class using PascalCase
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.classes
+
+---
+id: dapr-workflow-spec-instinct-constant-naming
+trigger: "When defining a constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: tonylibs/dapr-workflow-spec
+---
+
+# Dapr Workflow Spec Instinct Constant Naming
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.constants
+
+---
+id: dapr-workflow-spec-instinct-import-style
+trigger: "When importing modules"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: tonylibs/dapr-workflow-spec
+---
+
+# Dapr Workflow Spec Instinct Import Style
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- Pattern in codeStyle.importStyle
+
+---
+id: dapr-workflow-spec-instinct-export-style
+trigger: "When exporting from a module"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: tonylibs/dapr-workflow-spec
+---
+
+# Dapr Workflow Spec Instinct Export Style
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in codeStyle.exportStyle
+
+---
+id: dapr-workflow-spec-instinct-test-location
+trigger: "When adding new tests"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: tonylibs/dapr-workflow-spec
+---
+
+# Dapr Workflow Spec Instinct Test Location
+
+## Action
+
+Place test files in a separate location from source files
+
+## Evidence
+
+- Pattern in architecture.folderStructure.testLocation
+
+---
+id: dapr-workflow-spec-instinct-commit-format
+trigger: "When writing a commit message"
+confidence: 0.8
+domain: git
+source: repo-analysis
+source_repo: tonylibs/dapr-workflow-spec
+---
+
+# Dapr Workflow Spec Instinct Commit Format
+
+## Action
+
+Write a concise, freeform message without a required prefix
+
+## Evidence
+
+- Seen in commit: 'Add CI workflows for dws-call-http and dws-call-openapi'
+- Seen in commit: 'Fix pnpm/action-setup: point it at the service's package.json'
+- Pattern in commits.prefixes (none)
+
+---
+id: dapr-workflow-spec-instinct-ci-workflow-location
+trigger: "When adding or updating CI workflows"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: tonylibs/dapr-workflow-spec
+---
+
+# Dapr Workflow Spec Instinct Ci Workflow Location
+
+## Action
+
+Place workflow YAML files in .github/workflows/
+
+## Evidence
+
+- Pattern in architecture.configFiles
+- Pattern in architecture.folderStructure.commonFolders
+
