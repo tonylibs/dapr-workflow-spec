@@ -212,9 +212,3 @@ func (r *Runner) commandArgs() ([]string, error) {
 	}
 	return []string{r.evalFlag, src}, nil
 }
-
-// shape is a placeholder: Task 4 adds RETURN selection and exit-code
-// semantics, Task 5 adds OUTPUT shaping.
-func (r *Runner) shape(_ map[string]any, res result) (any, error) {
-	return res.Stdout, nil
-}
