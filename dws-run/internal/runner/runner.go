@@ -178,27 +178,39 @@ func (r *Runner) execute(ctx context.Context, input map[string]any) (result, err
 }
 
 // subprocessEnv extends the service's own environment so PATH and interpreter
-// discovery keep working; ENVIRONMENT entries win on conflict.
+// discovery keep working; ENVIRONMENT entries win on conflict. Arguments (if
+// any) are also exposed as DWS_ARGUMENTS, a JSON object, so script preludes
+// can bind them without interpolating values into generated source.
 func (r *Runner) subprocessEnv() []string {
 	env := os.Environ()
 	for k, v := range r.cfg.Environment {
 		env = append(env, k+"="+v)
 	}
+	if len(r.cfg.Arguments) > 0 {
+		obj := make(map[string]any, len(r.cfg.Arguments))
+		for _, a := range r.cfg.Arguments {
+			obj[a.Name] = a.Value
+		}
+		if b, err := json.Marshal(obj); err == nil {
+			env = append(env, "DWS_ARGUMENTS="+string(b))
+		}
+	}
 	return env
 }
 
-// commandArgs builds the interpreter arguments for the configured mode. The
-// script branch already uses the correct per-interpreter eval flag
-// (evalFlag, from interpreterFor). The shell branch is a placeholder: Task 3
-// replaces it with a renderer that applies ARGUMENTS instead of passing
-// cfg.Command through unmodified.
+// commandArgs builds the interpreter arguments for the configured mode: shell
+// arguments are rendered as sh positional parameters (shellArgv), script
+// arguments are bound via a generated prelude (scriptSource) and run with the
+// interpreter's own eval flag (evalFlag, from interpreterFor).
 func (r *Runner) commandArgs() ([]string, error) {
-	switch r.cfg.Mode {
-	case config.ModeShell:
-		return []string{"-c", r.cfg.Command}, nil
-	default:
-		return []string{r.evalFlag, r.cfg.Script}, nil
+	if r.cfg.Mode == config.ModeShell {
+		return shellArgv(r.cfg.Command, r.cfg.Arguments), nil
 	}
+	src, err := scriptSource(r.cfg.Mode, r.cfg.Script, r.cfg.Arguments)
+	if err != nil {
+		return nil, err
+	}
+	return []string{r.evalFlag, src}, nil
 }
 
 // shape is a placeholder: Task 4 adds RETURN selection and exit-code
