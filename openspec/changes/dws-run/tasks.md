@@ -92,15 +92,15 @@
 - [x] 6.5 Rewrite `WorkflowCompiler.runStep()` for `run.shell`: forward `command`, `arguments`
       (JSON object, key order preserved), and `environment`; select `RUN_SHELL` +
       `images.runShell()`.
-- [ ] 6.6 Extend `runStep()` for `run.script`: read `language` from the `Script` base class, accept
+- [x] 6.6 Extend `runStep()` for `run.script`: read `language` from the `Script` base class, accept
       only `js` and `python`, require `getInlineScript()`, forward `code` to `SCRIPT` plus
       `arguments`/`environment`, and select the matching kind and image.
 - [x] 6.7 Forward `run.return` to `RETURN` using `ProcessReturnType.value()`, defaulting to
       `stdout` when unset.
-- [ ] 6.8 Throw `CompilationException` with a subtype-naming message for `run.container`,
+- [x] 6.8 Throw `CompilationException` with a subtype-naming message for `run.container`,
       `run.workflow`, an unsupported script `language`, and `run.script` with `source` instead of
       `code`.
-- [ ] 6.9 Validate script argument names as identifiers for the target language and throw
+- [x] 6.9 Validate script argument names as identifiers for the target language and throw
       `CompilationException` naming the invalid argument.
 - [ ] 6.10 Check whether `RunTask`'s inherited `TaskBase.getTimeout()` can be forwarded to
       `TIMEOUT` as a Go duration; forward it if so, otherwise leave `TIMEOUT` unset and record why
@@ -111,22 +111,22 @@
 - [x] 7.1 `WorkflowCompilerTest`: `run.shell` with `arguments` and `environment` — assert `COMMAND`,
       `ARGUMENTS` JSON object with keys in document order, `ENVIRONMENT`, kind `RUN_SHELL`, and the
       shell image.
-- [ ] 7.2 `run.script` with `language: js`, arguments, environment, and an explicit `return` —
+- [x] 7.2 `run.script` with `language: js`, arguments, environment, and an explicit `return` —
       assert `SCRIPT`, `RETURN`, kind `RUN_SCRIPT_JS`, and the js image.
-- [ ] 7.3 `run.script` with `language: python` and no `return` — assert `RETURN` = `stdout` and kind
+- [x] 7.3 `run.script` with `language: python` and no `return` — assert `RETURN` = `stdout` and kind
       `RUN_SCRIPT_PYTHON`.
-- [ ] 7.4 Rejection cases, one test each: unsupported script `language`; `run.container`;
+- [x] 7.4 Rejection cases, one test each: unsupported script `language`; `run.container`;
       `run.workflow`; `run.script` with `source` instead of `code`; and an invalid script argument
       name — each asserting `CompilationException` and a message naming the cause.
-- [ ] 7.5 Assert no `StepService` is emitted when compilation fails on an unsupported subtype.
-- [ ] 7.6 Validate: `cd dws-controller && ./mvnw test`
+- [x] 7.5 Assert no `StepService` is emitted when compilation fails on an unsupported subtype.
+- [x] 7.6 Validate: `cd dws-controller && ./mvnw test`
 
 ## 8. Cross-component verification
 
-- [ ] 8.1 Confirm `git diff` touches no file under `dws-orchestrator/` — an empty orchestrator diff
+- [x] 8.1 Confirm `git diff` touches no file under `dws-orchestrator/` — an empty orchestrator diff
       is an acceptance criterion, not an observation.
-- [ ] 8.2 Update the root `CLAUDE.md` component table and the task-to-resource mapping so `run`
+- [x] 8.2 Update the root `CLAUDE.md` component table and the task-to-resource mapping so `run`
       names the three `dws-run` images alongside the existing step images.
-- [ ] 8.3 Update the root `README.md` deployment diagram if it enumerates step images.
-- [ ] 8.4 Full gate: `cd dws-run && make test && make lint` and
+- [x] 8.3 Update the root `README.md` deployment diagram if it enumerates step images.
+- [x] 8.4 Full gate: `cd dws-run && make test && make lint` and
       `cd dws-controller && ./mvnw test`, both green.
