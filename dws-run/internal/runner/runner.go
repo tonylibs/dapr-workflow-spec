@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -121,7 +122,14 @@ func (r *Runner) execute(ctx context.Context, input map[string]any) (result, err
 	// the immediate child (which may leave grandchildren running and holding
 	// the output pipes open).
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// killedByUs records whether our own Cancel hook actually fired. cmd.Run()
+	// alone can't tell "we killed it" apart from "it happened to exit
+	// non-zero right around when the deadline elapsed" — both produce a real
+	// *exec.ExitError. Cancel runs on a goroutine managed by os/exec, so this
+	// must be set race-safely.
+	var killedByUs atomic.Bool
 	cmd.Cancel = func() error {
+		killedByUs.Store(true)
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 	cmd.WaitDelay = killDrainDelay
@@ -147,12 +155,24 @@ func (r *Runner) execute(ctx context.Context, input map[string]any) (result, err
 	if runErr != nil {
 		var exitErr *exec.ExitError
 		if !errors.As(runErr, &exitErr) {
-			// Never started, or was killed by the timeout.
+			// Never started at all.
 			return result{}, &SpawnError{Task: r.cfg.Task, Err: runErr}
 		}
-		if ctx.Err() != nil {
-			return result{}, &SpawnError{Task: r.cfg.Task, Err: fmt.Errorf("timed out after %s", r.cfg.Timeout)}
+		if killedByUs.Load() {
+			// Our Cancel hook fired, so this *exec.ExitError reflects the
+			// SIGKILL we sent, not a genuine exit. Distinguish why: our own
+			// TIMEOUT deadline elapsed, versus the caller's context being
+			// canceled for some unrelated reason (e.g. an upstream
+			// disconnect once this is wired into a server).
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return result{}, &SpawnError{Task: r.cfg.Task, Err: fmt.Errorf("timed out after %s", r.cfg.Timeout)}
+			}
+			return result{}, &SpawnError{Task: r.cfg.Task, Err: errors.New("canceled before completion")}
 		}
+		// killedByUs was never set: this *exec.ExitError is a genuine
+		// non-zero exit, not something we caused. Fall through and return
+		// the populated result with its real code and captured output —
+		// shape() (Task 4) decides whether that's a failure.
 	}
 	return res, nil
 }
@@ -167,10 +187,11 @@ func (r *Runner) subprocessEnv() []string {
 	return env
 }
 
-// commandArgs builds the interpreter arguments for the configured mode. This
-// is a placeholder: Task 3 replaces the shell branch with a renderer that
-// applies ARGUMENTS, and the script branch with correct per-interpreter eval
-// flags.
+// commandArgs builds the interpreter arguments for the configured mode. The
+// script branch already uses the correct per-interpreter eval flag
+// (evalFlag, from interpreterFor). The shell branch is a placeholder: Task 3
+// replaces it with a renderer that applies ARGUMENTS instead of passing
+// cfg.Command through unmodified.
 func (r *Runner) commandArgs() ([]string, error) {
 	switch r.cfg.Mode {
 	case config.ModeShell:

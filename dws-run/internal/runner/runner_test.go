@@ -105,6 +105,57 @@ func TestCapturedStderrTrimsTrailingNewline(t *testing.T) {
 	}
 }
 
+func TestNonZeroExitNearDeadlineIsNotMisreportedAsTimeout(t *testing.T) {
+	// The subprocess exits on its own, just inside a short TIMEOUT, with a
+	// genuine non-zero code. It must never be killed (killedByUs stays
+	// false), so execute must return the populated result — not a
+	// SpawnError claiming a timeout that never happened.
+	cfg := shellCfg("sleep 0.28; echo done; exit 7")
+	cfg.Timeout = 400 * time.Millisecond
+	res, err := New(cfg).execute(context.Background(), map[string]any{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Code != 7 {
+		t.Fatalf("got code %d, want 7", res.Code)
+	}
+	if res.Stdout != "done" {
+		t.Fatalf("got stdout %q, want %q", res.Stdout, "done")
+	}
+}
+
+func TestCallerCancellationIsReportedAsCanceled(t *testing.T) {
+	// TIMEOUT is generous; the parent context is canceled first, for a
+	// reason unrelated to TIMEOUT (e.g. an upstream disconnect). The
+	// resulting SpawnError must say so, not claim a timeout.
+	cfg := shellCfg("sleep 5")
+	cfg.Timeout = 10 * time.Second
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	_, err := New(cfg).execute(ctx, map[string]any{})
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("subprocess was not terminated promptly (took %s)", elapsed)
+	}
+
+	var spawn *SpawnError
+	if !errors.As(err, &spawn) {
+		t.Fatalf("expected *SpawnError, got %#v", err)
+	}
+	msg := spawn.Error()
+	if strings.Contains(msg, "timed out") {
+		t.Errorf("expected cancellation, not a timeout claim: %v", spawn)
+	}
+	if !strings.Contains(msg, "cancel") {
+		t.Errorf("expected error to report cancellation: %v", spawn)
+	}
+}
+
 func TestSpawnFailureIsSpawnError(t *testing.T) {
 	cfg := shellCfg("x")
 	cfg.Mode = config.ModeScriptPython
