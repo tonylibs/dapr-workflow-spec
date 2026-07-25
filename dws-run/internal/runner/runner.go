@@ -133,9 +133,15 @@ func (r *Runner) execute(ctx context.Context, input map[string]any) (result, err
 
 	runErr := cmd.Run()
 	res := result{
-		Code:   cmd.ProcessState.ExitCode(),
+		Code: cmd.ProcessState.ExitCode(),
+		// Trim only the trailing newline(s) shell commands almost always
+		// emit (e.g. `echo`) — not leading whitespace or interior blank
+		// lines, and not with TrimSpace, since a script that deliberately
+		// emits trailing spaces should keep them. Applied identically to
+		// stdout and stderr so RETURN=all and ExitError.Stderr don't end up
+		// with one trimmed and the other not.
 		Stdout: strings.TrimRight(stdout.String(), "\n"),
-		Stderr: stderr.String(),
+		Stderr: strings.TrimRight(stderr.String(), "\n"),
 	}
 
 	if runErr != nil {

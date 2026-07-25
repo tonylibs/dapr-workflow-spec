@@ -79,6 +79,32 @@ func TestTimeoutTerminatesSubprocess(t *testing.T) {
 	}
 }
 
+func TestCapturedStdoutTrimsTrailingNewline(t *testing.T) {
+	// echo (unlike printf) always emits a trailing newline; the capture
+	// should strip it rather than surface it as workflow data.
+	r := New(shellCfg("echo hello"))
+	res, err := r.execute(context.Background(), map[string]any{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Stdout != "hello" {
+		t.Fatalf("got %q, want %q", res.Stdout, "hello")
+	}
+}
+
+func TestCapturedStderrTrimsTrailingNewline(t *testing.T) {
+	// stdout and stderr must be trimmed identically, or RETURN=all and
+	// ExitError.Stderr end up asymmetric with RETURN=stdout.
+	r := New(shellCfg("echo oops >&2"))
+	res, err := r.execute(context.Background(), map[string]any{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Stderr != "oops" {
+		t.Fatalf("got %q, want %q", res.Stderr, "oops")
+	}
+}
+
 func TestSpawnFailureIsSpawnError(t *testing.T) {
 	cfg := shellCfg("x")
 	cfg.Mode = config.ModeScriptPython
