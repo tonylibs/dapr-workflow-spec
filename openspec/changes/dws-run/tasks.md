@@ -75,7 +75,7 @@
       annotations, and `/healthz` probes, mirroring `dws-call-http/k8s/knative-service.yaml`.
 - [x] 5.4 Write `dws-run/README.md` documenting the env contract, the `RETURN`/`OUTPUT`
       composition, exit-code semantics, and the argument-rendering rules per runtime.
-- [ ] 5.5 Add `.github/workflows/dws-run.yml`: path-filtered on `dws-run/**`; `go vet ./... && go
+- [x] 5.5 Add `.github/workflows/dws-run.yml`: path-filtered on `dws-run/**`; `go vet ./... && go
       test ./...` on every push and PR; build all three images on PRs without pushing; build and
       push to `ghcr.io/tonylibs/dws-run-shell`, `dws-run-script-js`, and `dws-run-script-python`
       only on merge to `main`.

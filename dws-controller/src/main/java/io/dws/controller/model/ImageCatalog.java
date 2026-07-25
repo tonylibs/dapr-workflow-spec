@@ -5,4 +5,10 @@ package io.dws.controller.model;
  * {@code dws.images.*} in application config; passed to the pure compiler so it stays free of any
  * framework wiring.
  */
-public record ImageCatalog(String callHttp, String callOpenapi, String run, String orchestrator) {}
+public record ImageCatalog(
+    String callHttp,
+    String callOpenapi,
+    String runShell,
+    String runScriptJs,
+    String runScriptPython,
+    String orchestrator) {}

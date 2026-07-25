@@ -18,7 +18,12 @@ class WorkflowCompilerTest {
 
   private static final ImageCatalog IMAGES =
       new ImageCatalog(
-          "sw-call-http:1.0", "sw-call-openapi:1.0", "sw-run:1.0", "sw-orchestrator:1.0");
+          "sw-call-http:1.0",
+          "sw-call-openapi:1.0",
+          "sw-run-shell:1.0",
+          "sw-run-script-js:1.0",
+          "sw-run-script-python:1.0",
+          "sw-orchestrator:1.0");
   private static final byte[] OPENAPI_DOC =
       "OPENAPI-DOCUMENT-BYTES".getBytes(StandardCharsets.UTF_8);
 
