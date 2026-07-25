@@ -89,13 +89,13 @@
 - [x] 6.3 Replace `DwsConfig.Images.run()` with the three accessors and update `catalog()`.
 - [x] 6.4 Update `application.yaml`: `dws.images.run` becomes `run-shell`, `run-script-js`, and
       `run-script-python`, each defaulting to `ghcr.io/tonylibs/<name>:latest`.
-- [ ] 6.5 Rewrite `WorkflowCompiler.runStep()` for `run.shell`: forward `command`, `arguments`
+- [x] 6.5 Rewrite `WorkflowCompiler.runStep()` for `run.shell`: forward `command`, `arguments`
       (JSON object, key order preserved), and `environment`; select `RUN_SHELL` +
       `images.runShell()`.
 - [ ] 6.6 Extend `runStep()` for `run.script`: read `language` from the `Script` base class, accept
       only `js` and `python`, require `getInlineScript()`, forward `code` to `SCRIPT` plus
       `arguments`/`environment`, and select the matching kind and image.
-- [ ] 6.7 Forward `run.return` to `RETURN` using `ProcessReturnType.value()`, defaulting to
+- [x] 6.7 Forward `run.return` to `RETURN` using `ProcessReturnType.value()`, defaulting to
       `stdout` when unset.
 - [ ] 6.8 Throw `CompilationException` with a subtype-naming message for `run.container`,
       `run.workflow`, an unsupported script `language`, and `run.script` with `source` instead of
@@ -108,7 +108,7 @@
 
 ## 7. dws-controller tests
 
-- [ ] 7.1 `WorkflowCompilerTest`: `run.shell` with `arguments` and `environment` — assert `COMMAND`,
+- [x] 7.1 `WorkflowCompilerTest`: `run.shell` with `arguments` and `environment` — assert `COMMAND`,
       `ARGUMENTS` JSON object with keys in document order, `ENVIRONMENT`, kind `RUN_SHELL`, and the
       shell image.
 - [ ] 7.2 `run.script` with `language: js`, arguments, environment, and an explicit `return` —
