@@ -53,8 +53,32 @@ the subprocess's stdout, stderr, and exit code.
 
 #### Scenario: Timeout terminates the subprocess
 - **WHEN** a subprocess runs longer than the configured `TIMEOUT`
-- **THEN** the subprocess is terminated
+- **THEN** the subprocess and any children it spawned are terminated
 - **AND** the service responds `502` so the orchestrator's retry policy engages
+
+### Requirement: Captured output is trailing-newline trimmed
+The service SHALL strip trailing newlines from both captured stdout and captured stderr, and MUST
+treat the two identically wherever they are surfaced — as a `RETURN` value, inside the
+`RETURN=all` object, and in the `stderr` field of a `502` failure body. Shell commands and scripts
+almost always emit a trailing newline, and carrying it into the workflow data would surprise
+downstream comparisons. Only trailing newlines are stripped: leading whitespace, interior blank
+lines, and trailing spaces MUST be preserved, since a script may emit them deliberately.
+
+#### Scenario: Trailing newline is stripped from stdout
+- **WHEN** a command runs `echo hello` and `RETURN=stdout`
+- **THEN** the raw result value is exactly `hello`, with no trailing newline
+
+#### Scenario: Trailing newline is stripped from stderr
+- **WHEN** a command runs `echo oops >&2` and `RETURN=stderr`
+- **THEN** the raw result value is exactly `oops`, with no trailing newline
+
+#### Scenario: Both streams are treated identically under RETURN=all
+- **WHEN** `RETURN=all` and the subprocess emits a trailing newline on both streams
+- **THEN** neither the `stdout` nor the `stderr` field carries a trailing newline
+
+#### Scenario: Meaningful whitespace is preserved
+- **WHEN** a script emits leading indentation, interior blank lines, or trailing spaces
+- **THEN** that whitespace is preserved in the captured output
 
 ### Requirement: RETURN selects the raw result value
 The service SHALL select the raw result value according to `RETURN`: `stdout` yields the captured

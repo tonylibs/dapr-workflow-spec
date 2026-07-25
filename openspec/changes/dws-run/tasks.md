@@ -1,41 +1,41 @@
 ## 1. dws-run scaffold
 
-- [ ] 1.1 Create `dws-run/` with `go.mod` (module `github.com/dws/dws-run`, Go 1.26), `.gitignore`,
+- [x] 1.1 Create `dws-run/` with `go.mod` (module `github.com/dws/dws-run`, Go 1.26), `.gitignore`,
       and `.dockerignore`, mirroring `dws-call-http`'s files.
 - [ ] 1.2 Add `dws-run/Makefile` with `build`, `test` (`go test -race ./...`), `vet`, `fmt-check`,
       `lint`, `docker-shell`, `docker-script-js`, `docker-script-python`, and `clean` targets.
 - [ ] 1.3 Add `dws-run/main.go` — load config, build the runner, start the server, exit non-zero on
       any configuration error.
-- [ ] 1.4 Validate: `cd dws-run && go build ./...`
+- [x] 1.4 Validate: `cd dws-run && go build ./...`
 
 ## 2. dws-run configuration (`internal/config`)
 
-- [ ] 2.1 Define `Config` with `Task`, `Port`, `Command`, `Script`, `Arguments`, `Environment`,
+- [x] 2.1 Define `Config` with `Task`, `Port`, `Command`, `Script`, `Arguments`, `Environment`,
       `Return`, `Output`, `Timeout`, plus a `Mode` (shell / script-js / script-python) baked in at
       build or set by the image's entrypoint.
-- [ ] 2.2 Parse and validate `RETURN` against exactly `stdout|stderr|code|all|none`, defaulting to
+- [x] 2.2 Parse and validate `RETURN` against exactly `stdout|stderr|code|all|none`, defaulting to
       `stdout`; reject anything else at startup with a message listing the accepted values.
-- [ ] 2.3 Parse `ARGUMENTS` as a JSON **object** (`map[string]any`) preserving key order; reject
+- [x] 2.3 Parse `ARGUMENTS` as a JSON **object** (`map[string]any`) preserving key order; reject
       arrays and non-objects with a message stating a JSON object is required.
-- [ ] 2.4 Parse `ENVIRONMENT` as a JSON object of strings; reject non-string values.
-- [ ] 2.5 Reuse `dws-call-http`'s `OUTPUT` (`replace|merge`, default `replace`) and `TIMEOUT`
+- [x] 2.4 Parse `ENVIRONMENT` as a JSON object of strings; reject non-string values.
+- [x] 2.5 Reuse `dws-call-http`'s `OUTPUT` (`replace|merge`, default `replace`) and `TIMEOUT`
       (Go duration, positive) parsing and error style.
-- [ ] 2.6 Require `COMMAND` in shell mode and `SCRIPT` in script mode; fail startup otherwise.
-- [ ] 2.7 Write `config_test.go` covering: each `RETURN` value, unknown `RETURN`, `ARGUMENTS` as
+- [x] 2.6 Require `COMMAND` in shell mode and `SCRIPT` in script mode; fail startup otherwise.
+- [x] 2.7 Write `config_test.go` covering: each `RETURN` value, unknown `RETURN`, `ARGUMENTS` as
       array (rejected), `ARGUMENTS` key order preserved, `ENVIRONMENT` non-string (rejected),
       invalid `OUTPUT`, invalid and non-positive `TIMEOUT`, and missing `COMMAND`/`SCRIPT`.
-- [ ] 2.8 Validate: `cd dws-run && go test -race ./internal/config/`
+- [x] 2.8 Validate: `cd dws-run && go test -race ./internal/config/`
 
 ## 3. dws-run execution (`internal/runner`)
 
-- [ ] 3.1 Spawn the subprocess per mode: `sh -c` for shell, `node` for script-js, `python3` for
+- [x] 3.1 Spawn the subprocess per mode: `sh -c` for shell, `node` for script-js, `python3` for
       script-python; extend (do not replace) the process environment with `ENVIRONMENT` entries.
-- [ ] 3.2 Write the JSON-encoded `POST /run` body to the subprocess's stdin and close stdin.
+- [x] 3.2 Write the JSON-encoded `POST /run` body to the subprocess's stdin and close stdin.
 - [ ] 3.3 Render shell `ARGUMENTS` as ordered `--key value` argv entries passed as positional
       parameters to `sh -c` — never string-concatenated into the command.
 - [ ] 3.4 Generate the script prelude that binds `ARGUMENTS` entries as in-scope variables
       (`const` for JS, module-level globals for Python) preserving JSON types.
-- [ ] 3.5 Capture stdout, stderr, and exit code; enforce `TIMEOUT` by terminating the subprocess.
+- [x] 3.5 Capture stdout, stderr, and exit code; enforce `TIMEOUT` by terminating the subprocess.
 - [ ] 3.6 Implement `RETURN` selection: stdout string, stderr string, exit-code number,
       `{code, stdout, stderr}` for `all`, empty for `none`.
 - [ ] 3.7 Implement `OUTPUT` shaping over the selected value — `replace` verbatim, `merge`
@@ -43,7 +43,7 @@
 - [ ] 3.8 For `RETURN=stdout|stderr` with `OUTPUT=replace`, JSON-parse the trimmed output and fall
       back to a raw JSON string when it does not parse (diverging from `dws-call-http`, which
       hard-fails).
-- [ ] 3.9 Define `ExitError` (non-zero exit) and `SpawnError` (interpreter missing, permission,
+- [x] 3.9 Define `ExitError` (non-zero exit) and `SpawnError` (interpreter missing, permission,
       timeout) as the retryable error types.
 - [ ] 3.10 Implement the exit-code rule: non-zero exit is data under `RETURN=code|all`, and an
       `ExitError` under `stdout|stderr|none`.
