@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { DaprPubSub } from '@dbc-tech/nest-dapr';
+import type { CloudEventV1 } from 'cloudevents';
 import { DB } from '../store/store.module';
 import type { Db } from '../store/db.type';
 import { decodeEventEnvelope, InvalidEventEnvelopeError } from './event-envelope';
@@ -30,11 +31,20 @@ export class DwsEventsSubscriber {
     private readonly orchestratorEvents: OrchestratorEventsHandler,
   ) {}
 
+  /**
+   * The message Dapr delivers is our documented CloudEvent (docs/events.md),
+   * carried as the `data` of Dapr's own transport CloudEvent. It arrives here
+   * as an already-parsed object, or — per @dapr/dapr's callback contract
+   * ("typically string or object") — as its JSON text; `decodeEventEnvelope`
+   * accepts either and validates it with the CloudEvents SDK. The declared
+   * type states that expectation; it is not a runtime guarantee, so a
+   * non-conforming payload is still rejected below rather than trusted.
+   */
   @DaprPubSub(PUBSUB_NAME, TOPIC)
-  async onMessage(raw: unknown): Promise<void> {
+  async onMessage(message: CloudEventV1<unknown> | string): Promise<void> {
     let envelope;
     try {
-      envelope = decodeEventEnvelope(raw);
+      envelope = decodeEventEnvelope(message);
     } catch (err) {
       if (err instanceof InvalidEventEnvelopeError) {
         this.logger.warn(`Discarding malformed event: ${err.message}`);

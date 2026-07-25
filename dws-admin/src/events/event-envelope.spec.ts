@@ -1,4 +1,7 @@
+import { CloudEvent } from 'cloudevents';
 import { decodeEventEnvelope, InvalidEventEnvelopeError } from './event-envelope';
+
+const TIME = '2026-07-24T15:37:12.851Z';
 
 describe('decodeEventEnvelope', () => {
   it('decodes a definition.created example from docs/events.md', () => {
@@ -13,6 +16,7 @@ describe('decodeEventEnvelope', () => {
 
     const envelope = decodeEventEnvelope(raw);
 
+    expect(envelope).toBeInstanceOf(CloudEvent);
     expect(envelope.id).toBe('order@vab12cd34-1');
     expect(envelope.type).toBe('io.dws.definition.created');
     expect(envelope.data).toEqual({ workflow: 'order', version: 'vab12cd34', createdAt: '2026-07-24T15:37:12.851Z' });
@@ -45,22 +49,46 @@ describe('decodeEventEnvelope', () => {
   });
 
   it('rejects a payload missing id', () => {
-    expect(() => decodeEventEnvelope({ type: 'io.dws.instance.started', source: 's', time: 't', data: {} })).toThrow(
+    expect(() => decodeEventEnvelope({ type: 'io.dws.instance.started', source: 's', time: TIME, data: {} })).toThrow(
       InvalidEventEnvelopeError,
     );
   });
 
   it('rejects a payload missing data', () => {
-    expect(() => decodeEventEnvelope({ id: '1', type: 't', source: 's', time: 't' })).toThrow(InvalidEventEnvelopeError);
+    expect(() => decodeEventEnvelope({ id: '1', type: 't', source: 's', time: TIME })).toThrow(InvalidEventEnvelopeError);
+  });
+
+  it('rejects a payload missing type (CloudEvents-required attribute)', () => {
+    expect(() => decodeEventEnvelope({ id: '1', source: 's', time: TIME, data: {} })).toThrow(InvalidEventEnvelopeError);
+  });
+
+  it('rejects a payload missing source (CloudEvents-required attribute)', () => {
+    expect(() => decodeEventEnvelope({ id: '1', type: 't', time: TIME, data: {} })).toThrow(InvalidEventEnvelopeError);
+  });
+
+  it('rejects a time that is not an RFC 3339 timestamp', () => {
+    expect(() => decodeEventEnvelope({ id: '1', type: 't', source: 's', time: 'not-a-timestamp', data: {} })).toThrow(
+      InvalidEventEnvelopeError,
+    );
+  });
+
+  it('defaults specversion to 1.0 when absent (Dapr publishers omit it from the inner envelope)', () => {
+    const envelope = decodeEventEnvelope({ id: '1', type: 't', source: 's', time: TIME, data: {} });
+    expect(envelope.specversion).toBe('1.0');
+  });
+
+  it('preserves an explicit specversion', () => {
+    const envelope = decodeEventEnvelope({ id: '1', type: 't', source: 's', specversion: '1.0', time: TIME, data: {} });
+    expect(envelope.specversion).toBe('1.0');
   });
 
   it('defaults datacontenttype when absent', () => {
-    const envelope = decodeEventEnvelope({ id: '1', type: 't', source: 's', time: 't', data: {} });
+    const envelope = decodeEventEnvelope({ id: '1', type: 't', source: 's', time: TIME, data: {} });
     expect(envelope.datacontenttype).toBe('application/json');
   });
 
   it('parses a raw JSON string payload (per @dapr/dapr\'s documented "string or object" callback type)', () => {
-    const raw = JSON.stringify({ id: '1', type: 'io.dws.instance.started', source: 's', time: 't', data: { instanceId: 'x' } });
+    const raw = JSON.stringify({ id: '1', type: 'io.dws.instance.started', source: 's', time: TIME, data: { instanceId: 'x' } });
 
     const envelope = decodeEventEnvelope(raw);
 

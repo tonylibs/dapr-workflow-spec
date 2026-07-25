@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventType } from './event-types';
-import type { EventEnvelope } from './event-envelope';
+import type { DwsEvent } from './event-envelope';
 import type { InstancePayload, TaskPayload } from './event-types';
 import type { Transaction } from './idempotent-handler';
 import { insertTaskEvent, upsertWorkflowInstance } from './upserts';
@@ -29,7 +29,7 @@ export class OrchestratorEventsHandler {
     return HANDLED_TYPES.includes(type);
   }
 
-  async process(tx: Transaction, envelope: EventEnvelope): Promise<void> {
+  async process(tx: Transaction, envelope: DwsEvent): Promise<void> {
     switch (envelope.type) {
       case EventType.InstanceStarted:
         await upsertWorkflowInstance(tx, 'started', envelope.data as InstancePayload);
