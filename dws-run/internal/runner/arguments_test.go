@@ -2,6 +2,8 @@ package runner
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -46,6 +48,28 @@ func TestShellMetacharactersStayInsideOneArgument(t *testing.T) {
 	}
 }
 
+// TestShellArgumentValueIsNeverExecuted demonstrates the actual danger the
+// metacharacter guard exists for, without the `#` workaround the assertion
+// above needs: a naive string-concatenating shellArgv would let this payload
+// break out and genuinely run `touch` on the filesystem. The command here
+// (`echo`) tolerates the shellArgv-appended `"$@"` operands instead of
+// re-applying a format string over them (unlike printf), so it doesn't need
+// a `#` to stay clean — this test asserts on the filesystem, not stdout.
+func TestShellArgumentValueIsNeverExecuted(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "pwned")
+
+	cfg := shellCfg(`echo "$2"`)
+	cfg.Arguments = []config.Argument{{Name: "payload", Value: "; touch " + marker}}
+	if _, err := New(cfg).Run(context.Background(), map[string]any{}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("marker file exists — the argument value was executed as shell code, not passed as data (stat err: %v)", err)
+	}
+}
+
 func TestScriptSourcePreludeBindsTypedVariables(t *testing.T) {
 	args := []config.Argument{
 		{Name: "count", Value: float64(3)},
@@ -76,6 +100,50 @@ func TestScriptSourceRejectsInvalidIdentifiers(t *testing.T) {
 	for _, name := range []string{"1foo", "has-dash", "with space", ""} {
 		if _, err := scriptSource(config.ModeScriptJS, "x", []config.Argument{{Name: name}}); err == nil {
 			t.Errorf("expected an error for argument name %q", name)
+		}
+	}
+}
+
+func TestScriptSourceRejectsReservedWordsPerLanguage(t *testing.T) {
+	// A name that's a charset-valid identifier can still be unusable as a
+	// binding in the target language: `const const = ...;` and
+	// `class = ...` are both SyntaxErrors. Reserved-ness is per language, so
+	// a name invalid in one script mode may be perfectly fine in the other.
+	jsReserved := []string{"const", "class", "for", "import", "with", "in", "let", "function", "return"}
+	for _, name := range jsReserved {
+		if _, err := scriptSource(config.ModeScriptJS, "x", []config.Argument{{Name: name}}); err == nil {
+			t.Errorf("expected scriptSource(js) to reject reserved word %q", name)
+		}
+		// Not necessarily reserved in Python — only assert the ones that
+		// genuinely aren't Python keywords stay accepted there.
+	}
+	if _, err := scriptSource(config.ModeScriptPython, "x", []config.Argument{{Name: "class"}}); err == nil {
+		t.Errorf(`expected scriptSource(python) to reject reserved word "class"`)
+	}
+
+	pyReserved := []string{"def", "class", "import", "from", "with", "in", "True", "False", "None", "lambda", "pass", "global", "nonlocal"}
+	for _, name := range pyReserved {
+		if _, err := scriptSource(config.ModeScriptPython, "x", []config.Argument{{Name: name}}); err == nil {
+			t.Errorf("expected scriptSource(python) to reject reserved word %q", name)
+		}
+	}
+
+	// A word reserved in JS but not in Python (and vice versa) must still be
+	// usable where it isn't reserved.
+	if _, err := scriptSource(config.ModeScriptPython, "class", []config.Argument{{Name: "const"}}); err != nil {
+		t.Errorf(`"const" is not a Python keyword, expected it to be accepted: %v`, err)
+	}
+	if _, err := scriptSource(config.ModeScriptJS, "None", []config.Argument{{Name: "None"}}); err != nil {
+		t.Errorf(`"None" is not a JS reserved word, expected it to be accepted: %v`, err)
+	}
+}
+
+func TestScriptSourceRejectsInternalPreludeNames(t *testing.T) {
+	for _, mode := range []config.Mode{config.ModeScriptJS, config.ModeScriptPython} {
+		for _, name := range []string{"__dwsArgs", "__dws_args", "__dws_json", "__dws_os"} {
+			if _, err := scriptSource(mode, "x", []config.Argument{{Name: name}}); err == nil {
+				t.Errorf("expected scriptSource(%s) to reject internal name %q", mode, name)
+			}
 		}
 	}
 }
