@@ -1,0 +1,13 @@
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: pyflow
+  version: '1.0.0'
+do:
+  - transformOrder:
+      run:
+        script:
+          language: python
+          code: "print(1)"
+          arguments:
+            count: 3

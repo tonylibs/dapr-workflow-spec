@@ -19,11 +19,14 @@ import io.serverlessworkflow.api.types.EmitTask;
 import io.serverlessworkflow.api.types.Endpoint;
 import io.serverlessworkflow.api.types.EndpointUri;
 import io.serverlessworkflow.api.types.HTTPArguments;
+import io.serverlessworkflow.api.types.InlineScript;
 import io.serverlessworkflow.api.types.OpenAPIArguments;
+import io.serverlessworkflow.api.types.RunScript;
 import io.serverlessworkflow.api.types.RunShell;
 import io.serverlessworkflow.api.types.RunTask;
 import io.serverlessworkflow.api.types.RunTaskConfiguration;
 import io.serverlessworkflow.api.types.RunTaskConfigurationUnion;
+import io.serverlessworkflow.api.types.ScriptUnion;
 import io.serverlessworkflow.api.types.Shell;
 import io.serverlessworkflow.api.types.Task;
 import io.serverlessworkflow.api.types.TaskItem;
@@ -33,6 +36,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Pure compile pass: parse + validate an Open Workflow Specification DSL 1.0 definition and walk it
@@ -243,9 +247,222 @@ public class WorkflowCompiler {
       return new StepService(Names.kebab(taskName), TaskKind.RUN_SHELL, images.runShell(), env);
     }
 
+    if (cfg.getRunScript() != null) {
+      return scriptStep(taskName, cfg.getRunScript());
+    }
+
+    if (cfg.getRunContainer() != null) {
+      throw new CompilationException(
+          List.of("task '" + taskName + "': run: container is not yet supported"));
+    }
+
+    if (cfg.getRunWorkflow() != null) {
+      throw new CompilationException(
+          List.of("task '" + taskName + "': run: workflow is not yet supported"));
+    }
+
     throw new CompilationException(
-        List.of(
-            "task '" + taskName + "': unsupported run configuration (script handled in Task 11)"));
+        List.of("task '" + taskName + "': unrecognized run configuration"));
+  }
+
+  private StepService scriptStep(String taskName, RunScript runScript) {
+    ScriptUnion union = runScript.getScript();
+    if (union == null) {
+      throw new CompilationException(
+          List.of("task '" + taskName + "': run.script has no configuration"));
+    }
+    if (union.getExternalScript() != null) {
+      throw new CompilationException(
+          List.of(
+              "task '"
+                  + taskName
+                  + "': run.script external script sources are not supported; use inline 'code'"));
+    }
+    InlineScript inline = union.getInlineScript();
+    if (inline == null) {
+      throw new CompilationException(
+          List.of("task '" + taskName + "': run.script requires inline 'code'"));
+    }
+
+    String language = inline.getLanguage() == null ? "" : inline.getLanguage().toLowerCase();
+    TaskKind kind;
+    String image;
+    switch (language) {
+      case "js" -> {
+        kind = TaskKind.RUN_SCRIPT_JS;
+        image = images.runScriptJs();
+      }
+      case "python" -> {
+        kind = TaskKind.RUN_SCRIPT_PYTHON;
+        image = images.runScriptPython();
+      }
+      default ->
+          throw new CompilationException(
+              List.of(
+                  "task '"
+                      + taskName
+                      + "': run.script language '"
+                      + inline.getLanguage()
+                      + "' is not supported; use 'js' or 'python'"));
+    }
+
+    Map<String, String> env = new LinkedHashMap<>();
+    putIfPresent(env, "SCRIPT", inline.getCode());
+    if (inline.getArguments() != null) {
+      Map<String, Object> args = inline.getArguments().getAdditionalProperties();
+      args.keySet().forEach(name -> requireIdentifier(taskName, name, language));
+      putIfPresent(env, "ARGUMENTS", toOrderedJson(args));
+    }
+    if (inline.getEnvironment() != null) {
+      putIfPresent(
+          env, "ENVIRONMENT", toOrderedJson(inline.getEnvironment().getAdditionalProperties()));
+    }
+    env.put("RETURN", returnValue(runScript));
+
+    return new StepService(Names.kebab(taskName), kind, image, env);
+  }
+
+  // Identifiers the generated prelude in dws-run itself declares (see
+  // dws-run/internal/runner/arguments.go's reservedInternalNames). An argument sharing one of
+  // these names would redeclare it -- a SyntaxError in both target languages -- so these are
+  // rejected regardless of language. Keep this set in sync with dws-run.
+  private static final Set<String> RESERVED_INTERNAL_NAMES =
+      Set.of("__dwsArgs", "__dws_args", "__dws_json", "__dws_os");
+
+  // ECMAScript keywords and reserved words. Binding one as `const <word> = ...;` is a
+  // SyntaxError, so these are rejected for language "js". Mirrors
+  // dws-run/internal/runner/arguments.go's jsReservedWords -- keep the two in sync.
+  private static final Set<String> JS_RESERVED_WORDS =
+      Set.of(
+          "break",
+          "case",
+          "catch",
+          "class",
+          "const",
+          "continue",
+          "debugger",
+          "default",
+          "delete",
+          "do",
+          "else",
+          "enum",
+          "export",
+          "extends",
+          "false",
+          "finally",
+          "for",
+          "function",
+          "if",
+          "implements",
+          "import",
+          "in",
+          "instanceof",
+          "interface",
+          "let",
+          "new",
+          "null",
+          "package",
+          "private",
+          "protected",
+          "public",
+          "return",
+          "static",
+          "super",
+          "switch",
+          "this",
+          "throw",
+          "true",
+          "try",
+          "typeof",
+          "var",
+          "void",
+          "while",
+          "with",
+          "yield",
+          "await");
+
+  // Python's reserved keywords (keyword.kwlist). Binding one as `<word> = ...` is a SyntaxError,
+  // so these are rejected for language "python". Mirrors
+  // dws-run/internal/runner/arguments.go's pythonReservedWords -- keep the two in sync.
+  private static final Set<String> PYTHON_RESERVED_WORDS =
+      Set.of(
+          "False",
+          "None",
+          "True",
+          "and",
+          "as",
+          "assert",
+          "async",
+          "await",
+          "break",
+          "class",
+          "continue",
+          "def",
+          "del",
+          "elif",
+          "else",
+          "except",
+          "finally",
+          "for",
+          "from",
+          "global",
+          "if",
+          "import",
+          "in",
+          "is",
+          "lambda",
+          "nonlocal",
+          "not",
+          "or",
+          "pass",
+          "raise",
+          "return",
+          "try",
+          "while",
+          "with",
+          "yield");
+
+  /**
+   * Script arguments become in-scope variables in the generated prelude, so a name that is a valid
+   * map key but not a valid bindable identifier for the target language would produce a syntax
+   * error inside a deployed container. Reject it at compile time instead: names that aren't
+   * JS/Python identifiers at all, names that collide with the prelude's own internal variables, and
+   * names that are reserved keywords in the target language (a name invalid in one script language
+   * may be perfectly valid in the other -- {@code def} is a Python keyword but a fine JS
+   * identifier; {@code const} is the reverse).
+   */
+  private static void requireIdentifier(String taskName, String name, String language) {
+    if (name == null || name.isEmpty() || !name.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+      throw new CompilationException(
+          List.of(
+              "task '" + taskName + "': argument name '" + name + "' is not a valid identifier"));
+    }
+    if (RESERVED_INTERNAL_NAMES.contains(name)) {
+      throw new CompilationException(
+          List.of(
+              "task '"
+                  + taskName
+                  + "': argument name '"
+                  + name
+                  + "' collides with an identifier the generated prelude uses internally"));
+    }
+    boolean reserved =
+        switch (language) {
+          case "js" -> JS_RESERVED_WORDS.contains(name);
+          case "python" -> PYTHON_RESERVED_WORDS.contains(name);
+          default -> false;
+        };
+    if (reserved) {
+      throw new CompilationException(
+          List.of(
+              "task '"
+                  + taskName
+                  + "': argument name '"
+                  + name
+                  + "' is a reserved "
+                  + (language.equals("js") ? "JavaScript" : "Python")
+                  + " keyword"));
+    }
   }
 
   /**
