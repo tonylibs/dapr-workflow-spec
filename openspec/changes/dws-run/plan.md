@@ -769,7 +769,13 @@ func TestShellArgvPreservesOrderAndUsesPositionalParams(t *testing.T) {
 }
 
 func TestShellMetacharactersStayInsideOneArgument(t *testing.T) {
-	cfg := shellCfg(`printf '%s' "$2"`)
+	// The trailing `#` comments out the `"$@"` that shellArgv appends after
+	// the command. Without it, printf would receive those appended operands
+	// too and re-apply its format string across them, corrupting the output
+	// for reasons unrelated to what this test guards. The payload still
+	// reaches the command only through the quoted "$2" positional parameter,
+	// so a string-concatenating shellArgv still fails this test.
+	cfg := shellCfg(`printf '%s' "$2" #`)
 	cfg.Arguments = []config.Argument{{Name: "payload", Value: "; rm -rf /"}}
 	out, err := New(cfg).Run(context.Background(), map[string]any{})
 	if err != nil {
