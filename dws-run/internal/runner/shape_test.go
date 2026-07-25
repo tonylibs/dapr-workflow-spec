@@ -141,3 +141,54 @@ func TestReturnAllZeroExit(t *testing.T) {
 		t.Errorf("stdout/stderr: got %#v / %#v", m["stdout"], m["stderr"])
 	}
 }
+
+func TestReplaceParsesJSONStdout(t *testing.T) {
+	out, err := runWith(t, `printf '{"id":1}'`, config.ReturnStdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m, ok := out.(map[string]any)
+	if !ok || m["id"] != float64(1) {
+		t.Fatalf("got %#v, want the parsed object {\"id\":1}", out)
+	}
+}
+
+func TestReplaceFallsBackToRawString(t *testing.T) {
+	out, err := runWith(t, "printf 'deployment complete'", config.ReturnStdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "deployment complete" {
+		t.Fatalf("got %#v, want the raw string", out)
+	}
+}
+
+func TestMergeFoldsObjectIntoInput(t *testing.T) {
+	cfg := shellCfg(`printf '{"b":2}'`)
+	cfg.Output = config.OutputMerge
+	out, err := New(cfg).Run(context.Background(), map[string]any{"a": float64(1)})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m, ok := out.(map[string]any)
+	if !ok {
+		t.Fatalf("expected an object, got %#v", out)
+	}
+	if m["a"] != float64(1) || m["b"] != float64(2) {
+		t.Fatalf("got %#v, want both a=1 and b=2", m)
+	}
+}
+
+func TestMergeRejectsNonObjectValue(t *testing.T) {
+	cfg := shellCfg("printf 'plain text'")
+	cfg.Output = config.OutputMerge
+	_, err := New(cfg).Run(context.Background(), map[string]any{"a": float64(1)})
+	if err == nil {
+		t.Fatal("expected an error when merging a non-object value")
+	}
+	var exitErr *ExitError
+	var spawnErr *SpawnError
+	if errors.As(err, &exitErr) || errors.As(err, &spawnErr) {
+		t.Fatalf("merge failure must not be retryable, got %#v", err)
+	}
+}
