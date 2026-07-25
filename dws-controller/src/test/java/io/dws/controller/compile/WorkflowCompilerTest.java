@@ -111,6 +111,25 @@ class WorkflowCompilerTest {
   }
 
   @Test
+  @DisplayName("run.shell compiles to a RUN_SHELL step with ordered arguments")
+  void runShellCompiles() {
+    DeploymentPlan plan = compiler.compile(fixture("run-shell.yaml"));
+
+    assertThat(plan.steps()).hasSize(1);
+    StepService step = plan.steps().get(0);
+    assertThat(step.name()).isEqualTo("sync-inventory");
+    assertThat(step.kind()).isEqualTo(TaskKind.RUN_SHELL);
+    assertThat(step.image()).isEqualTo("sw-run-shell:1.0");
+    assertThat(step.env())
+        .containsEntry("COMMAND", "./sync.sh")
+        .containsEntry("ENVIRONMENT", "{\"API_TOKEN\":\"abc\"}")
+        .containsEntry("RETURN", "stdout");
+    // ARGUMENTS must be a JSON object with keys in definition order (region, then env — the
+    // reverse of alphabetical order, so a key-sorting mapper would produce a different string).
+    assertThat(step.env().get("ARGUMENTS")).isEqualTo("{\"region\":\"eu\",\"env\":\"prod\"}");
+  }
+
+  @Test
   @DisplayName("invalid definition throws with a non-empty error list and nothing is produced")
   void invalidDefinitionThrows() {
     assertThatThrownBy(() -> compiler.compile(fixture("broken.yaml")))
