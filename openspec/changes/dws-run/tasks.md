@@ -60,7 +60,8 @@
       and everything else to `500`, so the orchestrator's retry policy engages on exactly the
       retryable cases.
 - [ ] 4.3 Write `server_test.go` covering healthz, empty body, malformed body, a `200` success, a
-      `502` on non-zero exit under `RETURN=stdout`, and a `200` on non-zero exit under `RETURN=code`.
+      `502` on non-zero exit under `RETURN=stdout`, a `200` on non-zero exit under `RETURN=code`, and
+      a `500` (explicitly not `502`) on a `merge` failure.
 - [ ] 4.4 Validate: `cd dws-run && make test && make lint`
 
 ## 5. dws-run packaging
