@@ -38,19 +38,19 @@
 - [x] 3.5 Capture stdout, stderr, and exit code; enforce `TIMEOUT` by terminating the subprocess.
 - [x] 3.6 Implement `RETURN` selection: stdout string, stderr string, exit-code number,
       `{code, stdout, stderr}` for `all`, empty for `none`.
-- [ ] 3.7 Implement `OUTPUT` shaping over the selected value — `replace` verbatim, `merge`
+- [x] 3.7 Implement `OUTPUT` shaping over the selected value — `replace` verbatim, `merge`
       shallow-merged into the input, erroring when the value is not an object.
-- [ ] 3.8 For `RETURN=stdout|stderr` with `OUTPUT=replace`, JSON-parse the trimmed output and fall
+- [x] 3.8 For `RETURN=stdout|stderr` with `OUTPUT=replace`, JSON-parse the trimmed output and fall
       back to a raw JSON string when it does not parse (diverging from `dws-call-http`, which
       hard-fails).
 - [x] 3.9 Define `ExitError` (non-zero exit) and `SpawnError` (interpreter missing, permission,
       timeout) as the retryable error types.
 - [x] 3.10 Implement the exit-code rule: non-zero exit is data under `RETURN=code|all`, and an
       `ExitError` under `stdout|stderr|none`.
-- [ ] 3.11 Write `runner_test.go` covering each scenario in
+- [x] 3.11 Write `runner_test.go` covering each scenario in
       `specs/run-step-execution/spec.md`, including shell metacharacters in an argument value,
       argument order, plain-text output fallback, timeout, and both exit-code branches.
-- [ ] 3.12 Validate: `cd dws-run && go test -race ./internal/runner/`
+- [x] 3.12 Validate: `cd dws-run && go test -race ./internal/runner/`
 
 ## 4. dws-run HTTP surface (`internal/server`)
 
