@@ -128,9 +128,10 @@ var pythonReservedWords = map[string]bool{
 // JS/Python identifiers at all, names that collide with the prelude's own
 // internal variables, and names that are reserved keywords in the target
 // language (a name invalid in one script language may be perfectly valid in
-// the other, e.g. `class` is a JS keyword but a fine Python identifier;
-// `None` is the reverse). dws-controller rejects these at compile time; this
-// is the defense in depth for hand-written manifests.
+// the other, e.g. `const` is a JS keyword but a fine Python identifier;
+// `None`/`def` are Python keywords but fine JS identifiers). dws-controller
+// rejects these at compile time; this is the defense in depth for
+// hand-written manifests.
 func validIdentifier(mode config.Mode, name string) error {
 	if name == "" {
 		return fmt.Errorf("argument name must not be empty")

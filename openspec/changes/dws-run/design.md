@@ -234,14 +234,16 @@ version pinned in `dws-controller/pom.xml`) rather than assumed:
    and need no rollback. Definitions using `run.container`/`run.workflow` would go back to compiling
    silently, which is a regression to the old broken behavior rather than a new failure.
 
-## Open Questions
+## Resolved Questions
 
-- **Node base image version.** The DSL requires ES2024, which Node 20+ satisfies; `node:24-slim`
-  matches `dws-call-openapi`'s Node 24 toolchain and is the default unless the implementation finds
-  a reason to differ. Owner: implementation. Impact scope: one `FROM` line.
-- **`TIMEOUT` source.** `RunTask` inherits `getTimeout()` (a `TaskTimeout`) from `TaskBase`, but
-  `httpStep()` currently forwards `CallTask.getTimeout()` via `toJson(...)` — whose serialized shape
-  is not a Go duration. Whether `runStep()` should forward the task-level timeout, and in what
-  format, is deferred to implementation; if it cannot be forwarded faithfully, the image's own
-  `TIMEOUT` default stands and the compiler leaves it unset. Impact scope: one env var, defaulted
-  in the image either way.
+- **Node base image version.** Resolved: `node:24-slim`, matching `dws-call-openapi`'s Node 24
+  toolchain. The DSL requires ES2024, which Node 20+ satisfies, so no newer pin was needed.
+  `Dockerfile.script-js` uses this base.
+- **`TIMEOUT` source.** Resolved: `TIMEOUT` is **not** forwarded for `run` tasks. `RunTask` inherits
+  `getTimeout()` (a `TaskTimeout`) from `TaskBase`, but the existing `call: http` path
+  (`WorkflowCompiler.httpStep()`, `WorkflowCompiler.java:203-204`) forwards `CallTask.getTimeout()`
+  via `toJson(call.getTimeout())`, which serializes the `TaskTimeout` object to JSON — not a Go
+  duration string like `30s`. Reusing that same serialization for `run` would hand `dws-run` a
+  `TIMEOUT` value it cannot parse. Rather than invent a new duration-formatting path for `run` alone,
+  `runStep()`/`scriptStep()` leave `TIMEOUT` unset, and `dws-run`'s own 30s default applies. Impact
+  scope: one env var, defaulted in the image either way; no compiler code forwards it.
