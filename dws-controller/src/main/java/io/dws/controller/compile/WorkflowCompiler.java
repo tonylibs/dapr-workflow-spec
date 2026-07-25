@@ -20,8 +20,11 @@ import io.serverlessworkflow.api.types.Endpoint;
 import io.serverlessworkflow.api.types.EndpointUri;
 import io.serverlessworkflow.api.types.HTTPArguments;
 import io.serverlessworkflow.api.types.OpenAPIArguments;
+import io.serverlessworkflow.api.types.RunShell;
 import io.serverlessworkflow.api.types.RunTask;
+import io.serverlessworkflow.api.types.RunTaskConfiguration;
 import io.serverlessworkflow.api.types.RunTaskConfigurationUnion;
+import io.serverlessworkflow.api.types.Shell;
 import io.serverlessworkflow.api.types.Task;
 import io.serverlessworkflow.api.types.TaskItem;
 import io.serverlessworkflow.api.types.UriTemplate;
@@ -45,6 +48,11 @@ public class WorkflowCompiler {
   private final OpenApiDocumentFetcher documentFetcher;
   private final ObjectMapper json =
       JsonMapper.builder().configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true).build();
+
+  // Deliberately does NOT sort keys — unlike `json` above, which is used for content-addressed
+  // versioning and canonicalization. `run.shell`/`run.script` arguments must preserve the
+  // definition's document order because dws-run renders `--key value` pairs positionally.
+  private final ObjectMapper orderedJson = JsonMapper.builder().build();
 
   public WorkflowCompiler(ImageCatalog images, OpenApiDocumentFetcher documentFetcher) {
     this.images = images;
@@ -212,19 +220,42 @@ public class WorkflowCompiler {
   }
 
   private StepService runStep(String taskName, RunTask run) {
-    Map<String, String> env = new LinkedHashMap<>();
     RunTaskConfigurationUnion cfg = run.getRun();
-    if (cfg != null && cfg.getRunShell() != null) {
-      putIfPresent(env, "COMMAND", cfg.getRunShell().getShell().getCommand());
-    } else if (cfg != null
-        && cfg.getRunScript() != null
-        && cfg.getRunScript().getScript() != null) {
-      var script = cfg.getRunScript().getScript();
-      if (script.getInlineScript() != null) {
-        putIfPresent(env, "SCRIPT", script.getInlineScript().getCode());
-      }
+    if (cfg == null) {
+      throw new CompilationException(
+          List.of("task '" + taskName + "': run task has no configuration"));
     }
-    return new StepService(Names.kebab(taskName), TaskKind.RUN_SHELL, images.runShell(), env);
+
+    if (cfg.getRunShell() != null) {
+      RunShell runShell = cfg.getRunShell();
+      Shell shell = runShell.getShell();
+      Map<String, String> env = new LinkedHashMap<>();
+      putIfPresent(env, "COMMAND", shell.getCommand());
+      if (shell.getArguments() != null) {
+        putIfPresent(
+            env, "ARGUMENTS", toOrderedJson(shell.getArguments().getAdditionalProperties()));
+      }
+      if (shell.getEnvironment() != null) {
+        putIfPresent(
+            env, "ENVIRONMENT", toOrderedJson(shell.getEnvironment().getAdditionalProperties()));
+      }
+      env.put("RETURN", returnValue(runShell));
+      return new StepService(Names.kebab(taskName), TaskKind.RUN_SHELL, images.runShell(), env);
+    }
+
+    throw new CompilationException(
+        List.of(
+            "task '" + taskName + "': unsupported run configuration (script handled in Task 11)"));
+  }
+
+  /**
+   * Resolves the DSL's process return type, defaulting to {@code stdout} so the deployed step's
+   * behavior is explicit in its manifest rather than dependent on an image default.
+   */
+  private static String returnValue(RunTaskConfiguration cfg) {
+    return cfg.getReturn() != null
+        ? cfg.getReturn().value()
+        : RunTaskConfiguration.ProcessReturnType.STDOUT.value();
   }
 
   private java.util.Optional<TopicBinding> emitBinding(String taskName, EmitTask emit) {
@@ -280,6 +311,22 @@ public class WorkflowCompiler {
     }
     try {
       return json.writeValueAsString(value);
+    } catch (Exception e) {
+      return String.valueOf(value);
+    }
+  }
+
+  /**
+   * Like {@link #toJson}, but preserves the source map's key order instead of sorting it. Used for
+   * {@code run.shell}/{@code run.script} arguments and environment, whose document order is
+   * observable by the deployed step (dws-run renders {@code --key value} pairs positionally).
+   */
+  private String toOrderedJson(Object value) {
+    if (value == null) {
+      return null;
+    }
+    try {
+      return orderedJson.writeValueAsString(value);
     } catch (Exception e) {
       return String.valueOf(value);
     }
