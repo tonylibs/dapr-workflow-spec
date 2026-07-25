@@ -1022,7 +1022,7 @@ git commit -m "feat(dws-run): render arguments as shell flags and script binding
 
 **Interfaces:**
 - Consumes: `result` and `ExitError` (Task 2), `config.ReturnMode` (Task 1).
-- Produces: `(r *Runner) selectValue(res result) (any, bool, error)` returning the raw value and
+- Produces: `(r *Runner) selectValue(res result) (any, bool)` returning the raw value and
   whether it is present (`false` for `RETURN=none`), and the updated
   `(r *Runner) shape(input map[string]any, res result) (any, error)`.
 

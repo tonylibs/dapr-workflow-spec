@@ -36,7 +36,7 @@
 - [x] 3.4 Generate the script prelude that binds `ARGUMENTS` entries as in-scope variables
       (`const` for JS, module-level globals for Python) preserving JSON types.
 - [x] 3.5 Capture stdout, stderr, and exit code; enforce `TIMEOUT` by terminating the subprocess.
-- [ ] 3.6 Implement `RETURN` selection: stdout string, stderr string, exit-code number,
+- [x] 3.6 Implement `RETURN` selection: stdout string, stderr string, exit-code number,
       `{code, stdout, stderr}` for `all`, empty for `none`.
 - [ ] 3.7 Implement `OUTPUT` shaping over the selected value — `replace` verbatim, `merge`
       shallow-merged into the input, erroring when the value is not an object.
@@ -45,7 +45,7 @@
       hard-fails).
 - [x] 3.9 Define `ExitError` (non-zero exit) and `SpawnError` (interpreter missing, permission,
       timeout) as the retryable error types.
-- [ ] 3.10 Implement the exit-code rule: non-zero exit is data under `RETURN=code|all`, and an
+- [x] 3.10 Implement the exit-code rule: non-zero exit is data under `RETURN=code|all`, and an
       `ExitError` under `stdout|stderr|none`.
 - [ ] 3.11 Write `runner_test.go` covering each scenario in
       `specs/run-step-execution/spec.md`, including shell metacharacters in an argument value,
