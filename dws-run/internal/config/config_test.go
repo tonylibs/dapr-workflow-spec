@@ -1,0 +1,109 @@
+package config
+
+import (
+	"testing"
+	"time"
+)
+
+func load(t *testing.T, env map[string]string) (Config, error) {
+	t.Helper()
+	for k, v := range env {
+		t.Setenv(k, v)
+	}
+	return Load()
+}
+
+func TestDefaults(t *testing.T) {
+	c, err := load(t, map[string]string{"MODE": "shell", "COMMAND": "echo hi"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.Port != "8080" {
+		t.Errorf("port: got %q, want 8080", c.Port)
+	}
+	if c.Task != "run" {
+		t.Errorf("task: got %q, want run", c.Task)
+	}
+	if c.Return != ReturnStdout {
+		t.Errorf("return: got %q, want stdout", c.Return)
+	}
+	if c.Output != OutputReplace {
+		t.Errorf("output: got %q, want replace", c.Output)
+	}
+	if c.Timeout != 30*time.Second {
+		t.Errorf("timeout: got %s, want 30s", c.Timeout)
+	}
+}
+
+func TestRequiredPerMode(t *testing.T) {
+	if _, err := load(t, map[string]string{"MODE": "shell"}); err == nil {
+		t.Fatal("expected error when COMMAND is unset in shell mode")
+	}
+	if _, err := load(t, map[string]string{"MODE": "script-js"}); err == nil {
+		t.Fatal("expected error when SCRIPT is unset in script mode")
+	}
+	if _, err := load(t, map[string]string{"MODE": "wat", "COMMAND": "x"}); err == nil {
+		t.Fatal("expected error for unknown MODE")
+	}
+}
+
+func TestReturnModes(t *testing.T) {
+	for _, v := range []string{"stdout", "stderr", "code", "all", "none"} {
+		if _, err := load(t, map[string]string{"MODE": "shell", "COMMAND": "x", "RETURN": v}); err != nil {
+			t.Errorf("RETURN=%s: unexpected error %v", v, err)
+		}
+	}
+	if _, err := load(t, map[string]string{"MODE": "shell", "COMMAND": "x", "RETURN": "exitcode"}); err == nil {
+		t.Fatal("expected error for unknown RETURN")
+	}
+}
+
+func TestArgumentsIsOrderedObject(t *testing.T) {
+	c, err := load(t, map[string]string{
+		"MODE": "shell", "COMMAND": "x",
+		"ARGUMENTS": `{"env":"prod","region":"eu","count":3}`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"env", "region", "count"}
+	if len(c.Arguments) != len(want) {
+		t.Fatalf("arguments: got %d, want %d", len(c.Arguments), len(want))
+	}
+	for i, name := range want {
+		if c.Arguments[i].Name != name {
+			t.Errorf("arguments[%d]: got %q, want %q", i, c.Arguments[i].Name, name)
+		}
+	}
+	if c.Arguments[2].Value != float64(3) {
+		t.Errorf("count: got %#v, want 3", c.Arguments[2].Value)
+	}
+}
+
+func TestArgumentsRejectsArray(t *testing.T) {
+	if _, err := load(t, map[string]string{
+		"MODE": "shell", "COMMAND": "x", "ARGUMENTS": `["a","b"]`,
+	}); err == nil {
+		t.Fatal("expected error: ARGUMENTS must be a JSON object")
+	}
+}
+
+func TestEnvironmentRejectsNonStrings(t *testing.T) {
+	if _, err := load(t, map[string]string{
+		"MODE": "shell", "COMMAND": "x", "ENVIRONMENT": `{"PORT":8080}`,
+	}); err == nil {
+		t.Fatal("expected error: ENVIRONMENT must be a JSON object of strings")
+	}
+}
+
+func TestOutputAndTimeoutValidation(t *testing.T) {
+	if _, err := load(t, map[string]string{"MODE": "shell", "COMMAND": "x", "OUTPUT": "append"}); err == nil {
+		t.Fatal("expected error for unknown OUTPUT")
+	}
+	if _, err := load(t, map[string]string{"MODE": "shell", "COMMAND": "x", "TIMEOUT": "45 seconds"}); err == nil {
+		t.Fatal("expected error for unparseable TIMEOUT")
+	}
+	if _, err := load(t, map[string]string{"MODE": "shell", "COMMAND": "x", "TIMEOUT": "0s"}); err == nil {
+		t.Fatal("expected error for non-positive TIMEOUT")
+	}
+}
