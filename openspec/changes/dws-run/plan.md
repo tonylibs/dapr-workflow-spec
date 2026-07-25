@@ -1381,7 +1381,11 @@ git commit -m "feat(dws-run): shape output with JSON fallback and merge support"
 
 - [ ] **Step 1: Write the failing server test**
 
-Create `dws-run/internal/server/server_test.go`:
+Create `dws-run/internal/server/server_test.go`. Note the test list below omits a case it should
+have had: a `merge` failure mapping to `500` and explicitly **not** `502`. The 502/500 split is the
+reason the orchestrator retries correctly, and leaving one branch uncovered lets a refactor collapse
+them silently. Add that test alongside the six here — make `OUTPUT` settable in the `handler`
+helper to do it.
 
 ```go
 package server
