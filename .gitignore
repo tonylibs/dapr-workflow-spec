@@ -13,6 +13,8 @@ node_modules/
 .vscode/
 *.iml
 .claude/settings.local.json
+.claude/worktrees/
+.superpowers/
 
 # OS
 .DS_Store
