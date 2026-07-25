@@ -102,7 +102,7 @@
       `code`.
 - [x] 6.9 Validate script argument names as identifiers for the target language and throw
       `CompilationException` naming the invalid argument.
-- [ ] 6.10 Check whether `RunTask`'s inherited `TaskBase.getTimeout()` can be forwarded to
+- [x] 6.10 Check whether `RunTask`'s inherited `TaskBase.getTimeout()` can be forwarded to
       `TIMEOUT` as a Go duration; forward it if so, otherwise leave `TIMEOUT` unset and record why
       in `design.md`'s Open Questions.
 
