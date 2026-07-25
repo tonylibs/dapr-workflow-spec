@@ -19,6 +19,11 @@ import io.dws.orchestrator.workflow.activity.AdminEventActivity;
 import io.dws.orchestrator.workflow.activity.AdminEventRequest;
 import io.dws.orchestrator.workflow.activity.CallRequest;
 import io.dws.orchestrator.workflow.activity.CallServiceActivity;
+import io.dws.orchestrator.workflow.activity.EvaluateSetActivity;
+import io.dws.orchestrator.workflow.activity.EvaluateSetRequest;
+import io.dws.orchestrator.workflow.activity.EvaluateSwitchActivity;
+import io.dws.orchestrator.workflow.activity.EvaluateSwitchRequest;
+import io.dws.orchestrator.workflow.activity.FlowOutcome;
 import io.serverlessworkflow.api.WorkflowReader;
 import io.serverlessworkflow.api.types.Workflow;
 import java.time.Instant;
@@ -53,7 +58,11 @@ class InterpreterWorkflowIntegrationTest {
         "pubsub");
   }
 
-  /** Stubs admin-event activity scheduling (Void) and the replay-safe context values. */
+  /**
+   * Stubs admin-event activity scheduling (Void), the two local evaluation activities, and the
+   * replay-safe context values. SWITCH/SET dispatch through activities like CALL/EMIT do, so the
+   * stubs run the real activity bodies — the interpreter never evaluates jq itself.
+   */
   @SuppressWarnings("unchecked")
   private Task<Void> stubContext(WorkflowContext ctx) {
     when(ctx.getInstanceId()).thenReturn("inst-1");
@@ -66,7 +75,32 @@ class InterpreterWorkflowIntegrationTest {
             any(WorkflowTaskOptions.class),
             eq(Void.class)))
         .thenReturn(adminTask);
+
+    when(ctx.callActivity(
+            eq(EvaluateSwitchActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(FlowOutcome.class)))
+        .thenAnswer(
+            inv ->
+                completed(
+                    EvaluateSwitchActivity.evaluate((EvaluateSwitchRequest) inv.getArgument(1))));
+    when(ctx.callActivity(
+            eq(EvaluateSetActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenAnswer(
+            inv -> completed(EvaluateSetActivity.apply((EvaluateSetRequest) inv.getArgument(1))));
     return adminTask;
+  }
+
+  /** A already-resolved durable task yielding {@code value}. */
+  @SuppressWarnings("unchecked")
+  private static <T> Task<T> completed(T value) {
+    Task<T> task = mock(Task.class);
+    when(task.await()).thenReturn(value);
+    return task;
   }
 
   private static List<String> adminEventTypes(WorkflowContext ctx) {
@@ -210,5 +244,49 @@ class InterpreterWorkflowIntegrationTest {
             "io.dws.instance.failed");
     // The interpreter never completed the instance.
     verify(ctx, org.mockito.Mockito.never()).complete(any());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void switchDispatchesThroughTheEvaluateSwitchActivity() throws Exception {
+    // Arrange
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{\"item\":\"widget\"}"));
+
+    Task<JsonNode> callTask = mock(Task.class);
+    when(callTask.await())
+        .thenReturn(
+            mapper.readTree("{\"item\":\"widget\",\"inStock\":true}"),
+            mapper.readTree("{\"charged\":true}"));
+    when(ctx.callActivity(
+            eq(CallServiceActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenReturn(callTask);
+
+    // Act
+    workflow.execute(ctx);
+
+    // Assert: the one switch task was resolved by scheduling the activity, not inline.
+    ArgumentCaptor<Object> requests = ArgumentCaptor.forClass(Object.class);
+    verify(ctx)
+        .callActivity(
+            eq(EvaluateSwitchActivity.class.getName()),
+            requests.capture(),
+            any(WorkflowTaskOptions.class),
+            eq(FlowOutcome.class));
+    assertThat(((EvaluateSwitchRequest) requests.getValue()).taskName()).isEqualTo("decide");
+  }
+
+  @Test
+  void flowOutcomeRoundTripsThroughJackson() throws Exception {
+    for (FlowOutcome outcome :
+        List.of(
+            FlowOutcome.CONTINUE, new FlowOutcome("END", null), new FlowOutcome(null, "next"))) {
+      FlowOutcome back = mapper.readValue(mapper.writeValueAsString(outcome), FlowOutcome.class);
+      assertThat(back).isEqualTo(outcome);
+    }
   }
 }
