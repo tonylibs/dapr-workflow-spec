@@ -4,7 +4,7 @@
       and `.dockerignore`, mirroring `dws-call-http`'s files.
 - [ ] 1.2 Add `dws-run/Makefile` with `build`, `test` (`go test -race ./...`), `vet`, `fmt-check`,
       `lint`, `docker-shell`, `docker-script-js`, `docker-script-python`, and `clean` targets.
-- [ ] 1.3 Add `dws-run/main.go` — load config, build the runner, start the server, exit non-zero on
+- [x] 1.3 Add `dws-run/main.go` — load config, build the runner, start the server, exit non-zero on
       any configuration error.
 - [x] 1.4 Validate: `cd dws-run && go build ./...`
 
@@ -54,12 +54,12 @@
 
 ## 4. dws-run HTTP surface (`internal/server`)
 
-- [ ] 4.1 Implement `POST /run` and `GET /healthz`, mirroring `dws-call-http/internal/server/server.go`
+- [x] 4.1 Implement `POST /run` and `GET /healthz`, mirroring `dws-call-http/internal/server/server.go`
       — empty body means `{}`, malformed JSON means `400`.
-- [ ] 4.2 Map `ExitError` and `SpawnError` to `502` (with `task`, `exitCode`, `stderr` for exits)
+- [x] 4.2 Map `ExitError` and `SpawnError` to `502` (with `task`, `exitCode`, `stderr` for exits)
       and everything else to `500`, so the orchestrator's retry policy engages on exactly the
       retryable cases.
-- [ ] 4.3 Write `server_test.go` covering healthz, empty body, malformed body, a `200` success, a
+- [x] 4.3 Write `server_test.go` covering healthz, empty body, malformed body, a `200` success, a
       `502` on non-zero exit under `RETURN=stdout`, a `200` on non-zero exit under `RETURN=code`, and
       a `500` (explicitly not `502`) on a `merge` failure.
 - [ ] 4.4 Validate: `cd dws-run && make test && make lint`
