@@ -22,8 +22,6 @@ func shellCfg(command string) config.Config {
 }
 
 func TestStdinReceivesFullInput(t *testing.T) {
-	t.Skip("shaped in Task 5 — placeholder shape returns a raw string")
-
 	r := New(shellCfg("cat"))
 	out, err := r.Run(context.Background(), map[string]any{"order": map[string]any{"id": float64(7)}})
 	if err != nil {
