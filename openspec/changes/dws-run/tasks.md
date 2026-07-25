@@ -31,9 +31,9 @@
 - [x] 3.1 Spawn the subprocess per mode: `sh -c` for shell, `node` for script-js, `python3` for
       script-python; extend (do not replace) the process environment with `ENVIRONMENT` entries.
 - [x] 3.2 Write the JSON-encoded `POST /run` body to the subprocess's stdin and close stdin.
-- [ ] 3.3 Render shell `ARGUMENTS` as ordered `--key value` argv entries passed as positional
+- [x] 3.3 Render shell `ARGUMENTS` as ordered `--key value` argv entries passed as positional
       parameters to `sh -c` — never string-concatenated into the command.
-- [ ] 3.4 Generate the script prelude that binds `ARGUMENTS` entries as in-scope variables
+- [x] 3.4 Generate the script prelude that binds `ARGUMENTS` entries as in-scope variables
       (`const` for JS, module-level globals for Python) preserving JSON types.
 - [x] 3.5 Capture stdout, stderr, and exit code; enforce `TIMEOUT` by terminating the subprocess.
 - [ ] 3.6 Implement `RETURN` selection: stdout string, stderr string, exit-code number,
