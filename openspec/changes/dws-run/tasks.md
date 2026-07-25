@@ -2,7 +2,7 @@
 
 - [x] 1.1 Create `dws-run/` with `go.mod` (module `github.com/dws/dws-run`, Go 1.26), `.gitignore`,
       and `.dockerignore`, mirroring `dws-call-http`'s files.
-- [ ] 1.2 Add `dws-run/Makefile` with `build`, `test` (`go test -race ./...`), `vet`, `fmt-check`,
+- [x] 1.2 Add `dws-run/Makefile` with `build`, `test` (`go test -race ./...`), `vet`, `fmt-check`,
       `lint`, `docker-shell`, `docker-script-js`, `docker-script-python`, and `clean` targets.
 - [x] 1.3 Add `dws-run/main.go` — load config, build the runner, start the server, exit non-zero on
       any configuration error.
@@ -62,18 +62,18 @@
 - [x] 4.3 Write `server_test.go` covering healthz, empty body, malformed body, a `200` success, a
       `502` on non-zero exit under `RETURN=stdout`, a `200` on non-zero exit under `RETURN=code`, and
       a `500` (explicitly not `502`) on a `merge` failure.
-- [ ] 4.4 Validate: `cd dws-run && make test && make lint`
+- [x] 4.4 Validate: `cd dws-run && make test && make lint`
 
 ## 5. dws-run packaging
 
-- [ ] 5.1 Write the three Dockerfiles sharing an identical Go build stage and differing only in
+- [x] 5.1 Write the three Dockerfiles sharing an identical Go build stage and differing only in
       final-stage `FROM` and exec command: minimal/distroless for shell, `node:24-slim` for js,
       `python:3.13-slim` for python.
-- [ ] 5.2 Confirm by diffing the three files that nothing outside the final stage differs.
-- [ ] 5.3 Add `dws-run/k8s/knative-service.yaml` with one example Service per image, carrying
+- [x] 5.2 Confirm by diffing the three files that nothing outside the final stage differs.
+- [x] 5.3 Add `dws-run/k8s/knative-service.yaml` with one example Service per image, carrying
       `dws.io/step-type` and `dws.io/task` labels, Dapr app-id = task name, scale-to-zero
       annotations, and `/healthz` probes, mirroring `dws-call-http/k8s/knative-service.yaml`.
-- [ ] 5.4 Write `dws-run/README.md` documenting the env contract, the `RETURN`/`OUTPUT`
+- [x] 5.4 Write `dws-run/README.md` documenting the env contract, the `RETURN`/`OUTPUT`
       composition, exit-code semantics, and the argument-rendering rules per runtime.
 - [ ] 5.5 Add `.github/workflows/dws-run.yml`: path-filtered on `dws-run/**`; `go vet ./... && go
       test ./...` on every push and PR; build all three images on PRs without pushing; build and
