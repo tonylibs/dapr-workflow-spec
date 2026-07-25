@@ -27,13 +27,22 @@ public interface DwsConfig {
 
     String callOpenapi();
 
-    String run();
+    String runShell();
+
+    String runScriptJs();
+
+    String runScriptPython();
 
     String orchestrator();
   }
 
   default ImageCatalog catalog() {
     return new ImageCatalog(
-        images().callHttp(), images().callOpenapi(), images().run(), images().orchestrator());
+        images().callHttp(),
+        images().callOpenapi(),
+        images().runShell(),
+        images().runScriptJs(),
+        images().runScriptPython(),
+        images().orchestrator());
   }
 }

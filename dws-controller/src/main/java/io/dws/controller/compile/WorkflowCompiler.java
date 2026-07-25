@@ -224,7 +224,7 @@ public class WorkflowCompiler {
         putIfPresent(env, "SCRIPT", script.getInlineScript().getCode());
       }
     }
-    return new StepService(Names.kebab(taskName), TaskKind.RUN, images.run(), env);
+    return new StepService(Names.kebab(taskName), TaskKind.RUN_SHELL, images.runShell(), env);
   }
 
   private java.util.Optional<TopicBinding> emitBinding(String taskName, EmitTask emit) {
