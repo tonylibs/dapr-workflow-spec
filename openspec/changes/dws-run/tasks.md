@@ -83,11 +83,11 @@
 
 ## 6. dws-controller compilation
 
-- [ ] 6.1 Replace `TaskKind.RUN` with `RUN_SHELL`, `RUN_SCRIPT_JS`, `RUN_SCRIPT_PYTHON`.
-- [ ] 6.2 Replace `ImageCatalog.run()` with `runShell()`, `runScriptJs()`, `runScriptPython()`,
+- [x] 6.1 Replace `TaskKind.RUN` with `RUN_SHELL`, `RUN_SCRIPT_JS`, `RUN_SCRIPT_PYTHON`.
+- [x] 6.2 Replace `ImageCatalog.run()` with `runShell()`, `runScriptJs()`, `runScriptPython()`,
       updating the record and every construction site.
-- [ ] 6.3 Replace `DwsConfig.Images.run()` with the three accessors and update `catalog()`.
-- [ ] 6.4 Update `application.yaml`: `dws.images.run` becomes `run-shell`, `run-script-js`, and
+- [x] 6.3 Replace `DwsConfig.Images.run()` with the three accessors and update `catalog()`.
+- [x] 6.4 Update `application.yaml`: `dws.images.run` becomes `run-shell`, `run-script-js`, and
       `run-script-python`, each defaulting to `ghcr.io/tonylibs/<name>:latest`.
 - [ ] 6.5 Rewrite `WorkflowCompiler.runStep()` for `run.shell`: forward `command`, `arguments`
       (JSON object, key order preserved), and `environment`; select `RUN_SHELL` +
