@@ -130,6 +130,194 @@ class WorkflowCompilerTest {
   }
 
   @Test
+  @DisplayName("run.script with language js compiles to a RUN_SCRIPT_JS step")
+  void runScriptJsCompiles() {
+    DeploymentPlan plan = compiler.compile(fixture("run-script-js.yaml"));
+
+    StepService step = plan.steps().get(0);
+    assertThat(step.name()).isEqualTo("transform-order");
+    assertThat(step.kind()).isEqualTo(TaskKind.RUN_SCRIPT_JS);
+    assertThat(step.image()).isEqualTo("sw-run-script-js:1.0");
+    assertThat(step.env())
+        .containsEntry("SCRIPT", "console.log(JSON.stringify({ok: true}));")
+        .containsEntry("ARGUMENTS", "{\"count\":3}")
+        .containsEntry("RETURN", "all");
+    assertThat(step.env()).doesNotContainKey("LANGUAGE");
+  }
+
+  @Test
+  @DisplayName("run.script with language python defaults RETURN to stdout")
+  void runScriptPythonCompiles() {
+    DeploymentPlan plan = compiler.compile(fixture("run-script-python.yaml"));
+
+    StepService step = plan.steps().get(0);
+    assertThat(step.kind()).isEqualTo(TaskKind.RUN_SCRIPT_PYTHON);
+    assertThat(step.image()).isEqualTo("sw-run-script-python:1.0");
+    assertThat(step.env()).containsEntry("RETURN", "stdout");
+  }
+
+  @Test
+  @DisplayName("run.script with an unsupported language is rejected")
+  void runScriptUnsupportedLanguageRejected() {
+    assertThatThrownBy(() -> compiler.compile(fixture("run-script-bad-language.yaml")))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("ruby");
+  }
+
+  @Test
+  @DisplayName("run.script with an external source is rejected")
+  void runScriptExternalSourceRejected() {
+    assertThatThrownBy(() -> compiler.compile(fixture("run-script-source.yaml")))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("external script");
+  }
+
+  @Test
+  @DisplayName("run.container is rejected with a clear message")
+  void runContainerRejected() {
+    assertThatThrownBy(() -> compiler.compile(fixture("run-container.yaml")))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("container");
+  }
+
+  @Test
+  @DisplayName("run.workflow is rejected with a clear message")
+  void runWorkflowRejected() {
+    assertThatThrownBy(() -> compiler.compile(fixture("run-workflow.yaml")))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("workflow");
+  }
+
+  @Test
+  @DisplayName("an argument name that is not a valid identifier is rejected for script tasks")
+  void runScriptInvalidArgumentNameRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: badargs
+          version: '1.0.0'
+        do:
+          - transformOrder:
+              run:
+                script:
+                  language: js
+                  code: "1"
+                  arguments:
+                    has-dash: 1
+        """;
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("has-dash");
+  }
+
+  @Test
+  @DisplayName("run.script with a JS argument name that is a reserved JS keyword is rejected")
+  void runScriptJsReservedKeywordRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: jskeyword
+          version: '1.0.0'
+        do:
+          - transformOrder:
+              run:
+                script:
+                  language: js
+                  code: "1"
+                  arguments:
+                    const: 1
+        """;
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("const")
+        .hasMessageContaining("reserved");
+  }
+
+  @Test
+  @DisplayName(
+      "run.script with a Python argument name that is a reserved Python keyword is rejected")
+  void runScriptPythonReservedKeywordRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: pykeyword
+          version: '1.0.0'
+        do:
+          - transformOrder:
+              run:
+                script:
+                  language: python
+                  code: "1"
+                  arguments:
+                    None: 1
+        """;
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("None")
+        .hasMessageContaining("reserved");
+  }
+
+  @Test
+  @DisplayName(
+      "run.script with a JS argument name that is a reserved Python keyword (but valid JS) is accepted")
+  void runScriptJsAllowsPythonOnlyKeyword() {
+    // "def" is a Python keyword but a perfectly valid JS identifier -- only "class" appears in
+    // both lists, so it wouldn't demonstrate cross-language independence.
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: crosslang
+          version: '1.0.0'
+        do:
+          - transformOrder:
+              run:
+                script:
+                  language: js
+                  code: "1"
+                  arguments:
+                    def: 1
+        """;
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(plan.steps()).hasSize(1);
+    assertThat(plan.steps().get(0).env()).containsEntry("ARGUMENTS", "{\"def\":1}");
+  }
+
+  @Test
+  @DisplayName(
+      "run.script with an argument name colliding with an internal prelude identifier is rejected")
+  void runScriptInternalNameCollisionRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: internalcollision
+          version: '1.0.0'
+        do:
+          - transformOrder:
+              run:
+                script:
+                  language: js
+                  code: "1"
+                  arguments:
+                    __dwsArgs: 1
+        """;
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("__dwsArgs")
+        .hasMessageContaining("internal");
+  }
+
+  @Test
   @DisplayName("invalid definition throws with a non-empty error list and nothing is produced")
   void invalidDefinitionThrows() {
     assertThatThrownBy(() -> compiler.compile(fixture("broken.yaml")))

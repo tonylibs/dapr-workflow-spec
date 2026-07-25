@@ -1,0 +1,12 @@
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: srcflow
+  version: '1.0.0'
+do:
+  - remoteScript:
+      run:
+        script:
+          language: js
+          source:
+            endpoint: https://example.test/script.js
