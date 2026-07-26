@@ -49,7 +49,9 @@ version pinned in `dws-controller/pom.xml`) rather than assumed:
 - Keep a deployed step's runtime identifiable from cluster state alone, via `dws.io/step-type`.
 - Convert the two unsupported `run` subtypes from silent half-implementations into compile-time
   rejections with messages that name the offending subtype.
-- Leave `dws-orchestrator` untouched.
+- Keep the `dws-orchestrator` change minimal: one dispatch branch reusing the existing
+  `CallServiceActivity`, plus a task-type label. (Originally stated as "leave it untouched" — see D8
+  for why that was wrong.)
 
 **Non-Goals:**
 
@@ -174,14 +176,33 @@ version pinned in `dws-controller/pom.xml`) rather than assumed:
   requires parsing an image string to answer "what runtime is this step", and breaks when a
   registry override renames the image).
 
-### D8: `dws-orchestrator` does not change
+### D8: `dws-orchestrator` needs one dispatch branch — the original decision was wrong
 
-- **Choice**: `run` tasks reach `dws-run-*` through the same `CallServiceActivity` / Dapr
-  service-invocation path that `call` tasks already use, unchanged.
-- **Rationale**: routing is derived from the kebab-cased task name, not the task kind, so it already
-  covers `run`. Treating this as an acceptance criterion rather than an observation makes it a
-  tripwire: if the implementation finds itself editing the orchestrator, an assumption in this
-  design is wrong.
+- **Original choice (WRONG, corrected during implementation)**: `run` tasks reach `dws-run-*`
+  through the same `CallServiceActivity` / Dapr service-invocation path that `call` tasks already
+  use, with **no orchestrator change at all**. The stated rationale was that routing is derived from
+  the kebab-cased task name rather than the task kind, so `run` was already covered.
+- **Why that was wrong**: name-derived routing is true *inside* `CallServiceActivity` — but
+  *reaching* that activity requires satisfying `task.getCallTask() != null` in
+  `InterpreterWorkflow.dispatch()`. `Task.getRunTask()` is a distinct getter (verified via `javap` on
+  `serverlessworkflow-types:7.26.0.Final`), so a `run` task matched no branch and fell through to
+  `throw new IllegalStateException("task '<name>' has an unsupported type")`. The controller would
+  have deployed a healthy `dws-run` Knative Service that the orchestrator failed the instance before
+  ever invoking — the step sitting at scale-zero, never called.
+- **Corrected choice**: add a `getRunTask()` branch to `dispatch()` that reuses the existing
+  `CallServiceActivity` and `CallRequest` unchanged, plus a `taskTypeOf()` case returning `"run"` so
+  `io.dws.task.*` lifecycle events label it correctly instead of `"unknown"`. No new activity, no
+  change to the `call` path, no change to the step-service contract. The name-derived routing claim
+  holds once the branch exists.
+- **How the error survived to final review**: the design made "empty `dws-orchestrator` diff" an
+  **acceptance criterion**, which inverted the intended tripwire. Every task dutifully confirmed the
+  diff was empty, and that confirmation was read as evidence the assumption held rather than as the
+  thing still needing proof. A criterion asserting the *absence* of a change can only ever confirm
+  itself; the assumption should have been verified by tracing the dispatch path, or by an end-to-end
+  test exercising a `run` task through the interpreter. The orchestrator had zero `run` coverage, so
+  nothing caught it.
+- **Lesson for future changes**: "component X needs no change" is a claim to be proven by reading
+  X's code, never an acceptance criterion to be satisfied by a clean `git diff`.
 
 ## Risks / Trade-offs
 

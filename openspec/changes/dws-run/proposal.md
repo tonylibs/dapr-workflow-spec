@@ -40,7 +40,8 @@ Additions to the compiled env, all sourced from the DSL: `ARGUMENTS` (a JSON **o
 **Out of scope**: `run.container` and `run.workflow` (separate design efforts — `container` needs a
 Kubernetes-API security boundary, `workflow` belongs in `dws-orchestrator` as a child-workflow
 activity); `run.script.source`; `await: false` (orchestrator-side); any change to `call: http` /
-`call: openapi` behavior; any change to `dws-orchestrator`.
+`call: openapi` behavior. (`dws-orchestrator` was originally scoped out entirely; it now takes a
+minimal dispatch branch — see Impact.)
 
 ## Capabilities
 
@@ -69,10 +70,14 @@ activity); `run.script.source`; `await: false` (orchestrator-side); any change t
 - **Modified code** (`dws-controller`): `TaskKind`, `ImageCatalog`, `DwsConfig.Images`,
   `WorkflowCompiler.runStep()`, `application.yaml` (`dws.images.run` → three keys), and
   `WorkflowCompilerTest`.
-- **Unchanged**: `dws-orchestrator` — `run` tasks reach `dws-run-*` through the same
-  `CallServiceActivity` / Dapr service-invocation path as `call` tasks, since routing is derived
-  from the kebab-cased task name, not the task kind. An empty orchestrator diff is an acceptance
-  criterion.
+- **Modified code** (`dws-orchestrator`, minimal): `InterpreterWorkflow.dispatch()` gains a
+  `getRunTask()` branch and `taskTypeOf()` a `run` case, plus tests. This change was originally
+  scoped to leave the orchestrator untouched, on the reasoning that routing is name-derived. That
+  was wrong: name-derived routing applies *inside* `CallServiceActivity`, but reaching it requires
+  `task.getCallTask() != null`, which a `run` task never satisfies — so `run` tasks fell through to
+  an unsupported-type error and the deployed step was never invoked. The branch reuses the existing
+  `CallServiceActivity` and `CallRequest` unchanged; the `call` path and the step-service contract
+  are untouched.
 - **Dependencies**: none added to `dws-controller`; `dws-run` uses the Go standard library only,
   matching `dws-call-http`.
 - **Deployment**: operators overriding `dws.images.run` must migrate to `dws.images.run-shell`,
