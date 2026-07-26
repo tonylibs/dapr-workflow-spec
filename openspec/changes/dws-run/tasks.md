@@ -123,8 +123,9 @@
 
 ## 8. Cross-component verification
 
-- [x] 8.1 Confirm `git diff` touches no file under `dws-orchestrator/` — an empty orchestrator diff
-      is an acceptance criterion, not an observation.
+- [x] 8.1 Confirm the `dws-orchestrator` diff is limited to the `run` dispatch branch, the `run`
+      task-type case, and their tests. (Originally "confirm the diff is empty" — that criterion
+      inverted the tripwire and let the missing branch reach final review.)
 - [x] 8.2 Update the root `CLAUDE.md` component table and the task-to-resource mapping so `run`
       names the three `dws-run` images alongside the existing step images.
 - [x] 8.3 Update the root `README.md` deployment diagram if it enumerates step images.
