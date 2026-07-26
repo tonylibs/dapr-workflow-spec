@@ -1,0 +1,14 @@
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: jsflow
+  version: '1.0.0'
+do:
+  - transformOrder:
+      run:
+        script:
+          language: js
+          code: "console.log(JSON.stringify({ok: true}));"
+          arguments:
+            count: 3
+        return: all

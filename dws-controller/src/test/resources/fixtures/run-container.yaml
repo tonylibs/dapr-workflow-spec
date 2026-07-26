@@ -1,0 +1,11 @@
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: containerflow
+  version: '1.0.0'
+do:
+  - buildImage:
+      run:
+        container:
+          image: alpine:3
+          command: echo hi

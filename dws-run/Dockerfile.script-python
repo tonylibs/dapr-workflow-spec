@@ -1,0 +1,19 @@
+# syntax=docker/dockerfile:1
+
+# --- build stage (identical across all three dws-run images) ---
+FROM golang:1.26 AS build
+WORKDIR /src
+COPY go.mod ./
+RUN go mod download
+COPY . .
+ENV CGO_ENABLED=0 GOOS=linux
+RUN go build -trimpath -ldflags="-s -w" -o /out/dws-run .
+
+# --- runtime stage ---
+FROM python:3.13-slim
+WORKDIR /
+COPY --from=build /out/dws-run /dws-run
+ENV MODE=script-python
+USER 65532:65532
+EXPOSE 8080
+ENTRYPOINT ["/dws-run"]

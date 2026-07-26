@@ -1,0 +1,14 @@
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: rubyflow
+  version: '1.0.0'
+do:
+  - transformOrder:
+      run:
+        script:
+          language: ruby
+          code: "puts 1"
+          arguments:
+            count: 3
+        return: all

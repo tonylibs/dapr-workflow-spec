@@ -8,7 +8,9 @@ dws:
   images:
     call-http: ghcr.io/tonylibs/dws-call-http:latest
     call-openapi: ghcr.io/tonylibs/dws-call-openapi:latest
-    run: sw-run:1.0
+    run-shell: ghcr.io/tonylibs/dws-run-shell:latest
+    run-script-js: ghcr.io/tonylibs/dws-run-script-js:latest
+    run-script-python: ghcr.io/tonylibs/dws-run-script-python:latest
     orchestrator: ghcr.io/tonylibs/dws-orchestrator:latest
 
 quarkus:

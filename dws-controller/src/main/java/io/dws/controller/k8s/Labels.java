@@ -1,6 +1,7 @@
 package io.dws.controller.k8s;
 
 import io.dws.controller.model.DeploymentPlan;
+import io.dws.controller.model.TaskKind;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -16,11 +17,27 @@ public final class Labels {
   public static final String MANAGED_BY = "dws.io/managed-by";
   public static final String MANAGED_BY_VALUE = "dws-controller";
   public static final String DRAIN = "dws.io/drain";
+  public static final String STEP_TYPE = "dws.io/step-type";
 
   private Labels() {}
 
   public static Map<String, String> forPlan(DeploymentPlan plan) {
     return of(plan.workflow(), plan.versionId());
+  }
+
+  /**
+   * The {@link #STEP_TYPE} slug for one {@link TaskKind}. Must match the values hand-written into
+   * the example manifests under {@code dws-call-http/k8s/}, {@code dws-call-openapi/k8s/}, and
+   * {@code dws-run/k8s/} — read those before changing this mapping.
+   */
+  public static String stepType(TaskKind kind) {
+    return switch (kind) {
+      case CALL_HTTP -> "call-http";
+      case CALL_OPENAPI -> "call-openapi";
+      case RUN_SHELL -> "run-shell";
+      case RUN_SCRIPT_JS -> "run-script-js";
+      case RUN_SCRIPT_PYTHON -> "run-script-python";
+    };
   }
 
   public static Map<String, String> of(String workflow, String versionId) {
