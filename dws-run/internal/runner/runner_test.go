@@ -154,6 +154,37 @@ func TestCallerCancellationIsReportedAsCanceled(t *testing.T) {
 	}
 }
 
+// TestInvalidIdentifierIsNotSpawnError guards the request-time defense in
+// depth in scriptSource: config.Load already rejects a bad argument name at
+// startup, but if a Config bypassing Load ever carries one anyway, execute
+// must not wrap it in *SpawnError (which the server maps to a retryable
+// 502) — retrying can never fix a permanently invalid argument name, so it
+// must surface as a plain error (mapped to 500 by the server's fallback
+// branch) instead.
+func TestInvalidIdentifierIsNotSpawnError(t *testing.T) {
+	cfg := config.Config{
+		Mode:      config.ModeScriptJS,
+		Task:      "t",
+		Script:    "1",
+		Return:    config.ReturnStdout,
+		Output:    config.OutputReplace,
+		Timeout:   10 * time.Second,
+		Arguments: []config.Argument{{Name: "const", Value: "x"}},
+	}
+	_, err := New(cfg).Run(context.Background(), map[string]any{})
+	if err == nil {
+		t.Fatal("expected an error for a JS-reserved argument name")
+	}
+	var spawn *SpawnError
+	if errors.As(err, &spawn) {
+		t.Fatalf("expected a plain (non-retryable) error, got *SpawnError: %v", spawn)
+	}
+	var invalidIdent *config.InvalidIdentifierError
+	if !errors.As(err, &invalidIdent) {
+		t.Fatalf("expected *config.InvalidIdentifierError, got %#v", err)
+	}
+}
+
 func TestSpawnFailureIsSpawnError(t *testing.T) {
 	cfg := shellCfg("x")
 	cfg.Mode = config.ModeScriptPython

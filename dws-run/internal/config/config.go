@@ -113,6 +113,17 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	// Only script modes bind arguments as language identifiers (shell passes
+	// them as `--name value` flags, which has no such constraint). Validate
+	// here so a bad argument name fails at startup rather than at first
+	// invocation — see run-step-configuration/spec.md.
+	if cfg.Mode == ModeScriptJS || cfg.Mode == ModeScriptPython {
+		for _, a := range args {
+			if err := ValidIdentifier(cfg.Mode, a.Name); err != nil {
+				return Config{}, fmt.Errorf("ARGUMENTS: %w", err)
+			}
+		}
+	}
 	cfg.Arguments = args
 
 	env, err := parseStringMap("ENVIRONMENT", os.Getenv("ENVIRONMENT"))
@@ -162,20 +173,9 @@ func parseArguments(raw string) ([]Argument, error) {
 		if err := dec.Decode(&value); err != nil {
 			return nil, fmt.Errorf("ARGUMENTS[%s]: %w", name, err)
 		}
-		args = append(args, Argument{Name: name, Value: normalize(value)})
+		args = append(args, Argument{Name: name, Value: value})
 	}
 	return args, nil
-}
-
-// normalize converts json.Number back to float64 so argument values compare
-// and marshal like ordinary decoded JSON.
-func normalize(v any) any {
-	if n, ok := v.(json.Number); ok {
-		if f, err := n.Float64(); err == nil {
-			return f
-		}
-	}
-	return v
 }
 
 func parseStringMap(key, raw string) (map[string]string, error) {

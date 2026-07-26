@@ -94,6 +94,31 @@ func TestNonZeroExitIs200UnderReturnCode(t *testing.T) {
 	}
 }
 
+// TestInvalidArgumentIdentifierIs500NotRetryable guards the same
+// non-retryable contract as TestMergeFailureIs500NotRetryable, for the other
+// permanently-broken-config case: config.Load rejects a bad script argument
+// name at startup, but if a Config bypassing Load reaches the runner anyway,
+// the resulting error must map to 500, not 502 — retrying a bad identifier
+// can never succeed, so folding it into the retryable branch would make the
+// orchestrator retry a deterministic failure until its retry policy
+// exhausts.
+func TestInvalidArgumentIdentifierIs500NotRetryable(t *testing.T) {
+	cfg := config.Config{
+		Mode: config.ModeScriptJS, Task: "t", Script: "1",
+		Return: config.ReturnStdout, Output: config.OutputReplace,
+		Timeout:   10 * time.Second,
+		Arguments: []config.Argument{{Name: "const", Value: "x"}},
+	}
+	h := New(cfg, runner.New(cfg), slog.New(slog.DiscardHandler)).Handler()
+	res, body := do(t, h, http.MethodPost, "/run", "{}")
+	if res.StatusCode == http.StatusBadGateway {
+		t.Fatalf("status: got 502, want 500 — a bad argument name is not retryable (body: %s)", body)
+	}
+	if res.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status: got %d, want 500 (body: %s)", res.StatusCode, body)
+	}
+}
+
 // TestMergeFailureIs500NotRetryable guards the generic error branch of
 // writeRunError. OUTPUT=merge requires the raw value to be a JSON object;
 // "echo hello" produces stdout "hello", which parses as a plain string, so

@@ -111,6 +111,16 @@ func (r *Runner) execute(ctx context.Context, input map[string]any) (result, err
 
 	args, err := r.commandArgs()
 	if err != nil {
+		// An invalid argument name is a permanently broken configuration —
+		// config.Load already rejects it at startup, so this is only a
+		// defense-in-depth backstop (see scriptSource). Retrying can never
+		// fix it, so it must not be wrapped in SpawnError (which the server
+		// maps to a retryable 502); return it plain so the server's fallback
+		// branch maps it to 500 instead.
+		var invalidIdent *config.InvalidIdentifierError
+		if errors.As(err, &invalidIdent) {
+			return result{}, err
+		}
 		return result{}, &SpawnError{Task: r.cfg.Task, Err: err}
 	}
 
