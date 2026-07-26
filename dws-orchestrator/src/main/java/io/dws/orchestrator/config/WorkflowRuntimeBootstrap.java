@@ -11,6 +11,8 @@ import io.dws.orchestrator.workflow.WorkflowSupport;
 import io.dws.orchestrator.workflow.activity.AdminEventActivity;
 import io.dws.orchestrator.workflow.activity.CallServiceActivity;
 import io.dws.orchestrator.workflow.activity.EmitEventActivity;
+import io.dws.orchestrator.workflow.activity.EvaluateSetActivity;
+import io.dws.orchestrator.workflow.activity.EvaluateSwitchActivity;
 import io.serverlessworkflow.api.types.Workflow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,6 +79,8 @@ public class WorkflowRuntimeBootstrap implements DisposableBean {
     builder.registerActivity(CallServiceActivity.class);
     builder.registerActivity(EmitEventActivity.class);
     builder.registerActivity(AdminEventActivity.class);
+    builder.registerActivity(EvaluateSwitchActivity.class);
+    builder.registerActivity(EvaluateSetActivity.class);
 
     this.runtime = builder.build();
     this.runtimeThread =

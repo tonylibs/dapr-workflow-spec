@@ -15,8 +15,8 @@ Two different readiness axes get conflated below — worth separating:
 | `call` (openapi) | ✅ | StepService via `dws-call-openapi` (built) |
 | `call` (grpc/asyncapi/a2a) | ❌ | not started |
 | `run` | ⚠️ | compiler emits a `StepService` referencing `images.run()`, but **no `dws-call-run` image exists** — undeployable today |
-| `switch` | ✅ | inline jq eval, no image needed |
-| `set` | ✅ | inline jq eval, no image needed |
+| `switch` | ✅ | jq eval in a local in-process activity, no image needed |
+| `set` | ✅ | jq eval in a local in-process activity, no image needed |
 | `wait` | ✅ | Dapr timer, no image needed |
 | `listen` | ✅ | single external event only, no correlation (`one`/`any`/`all`); no image needed |
 | `emit` | ✅ | pub/sub, no image needed |
