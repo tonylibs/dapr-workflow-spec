@@ -1,4 +1,7 @@
 {
+  "marketplaces": {
+    "claude-plugins-official": "anthropics/claude-plugins-official"
+  },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true
   }

@@ -11,7 +11,7 @@ generated**. A definition is `POST`ed to the controller, which compiles it and d
 corresponding Dapr-backed resources; a generic orchestrator then interprets the definition at
 runtime.
 
-This is a **monorepo of four independently-built components**, each with its own toolchain,
+This is a **monorepo of five independently-built components**, each with its own toolchain,
 `Dockerfile`, and path-filtered CI workflow. There is no shared build system — always `cd` into
 the component directory before running its commands.
 
@@ -21,20 +21,21 @@ the component directory before running its commands.
 | [`dws-orchestrator`](dws-orchestrator) | Java 25, Spring Boot | Generic, config-driven Dapr workflow orchestrator (interpreter pattern). Loads one workflow definition at startup and walks its task list. |
 | [`dws-call-http`](dws-call-http) | Go 1.26 | Prebuilt step image for `call: http` tasks. One image serves every HTTP call step; behavior is entirely environment-configured. |
 | [`dws-call-openapi`](dws-call-openapi) | Node 24, TypeScript, Fastify | Prebuilt step image for `call: openapi` tasks. Loads an OpenAPI document, resolves an operation, executes it via `swagger-client` + `undici`. |
+| [`dws-run`](dws-run) | Go 1.26 | Prebuilt step images for `run: shell` and `run: script` tasks. One codebase produces three images (`dws-run-shell`, `dws-run-script-js`, `dws-run-script-python`) differing only in base layer and interpreter. |
 
 ### How it fits together
 
 1. A client `POST`s a DSL 1.0 definition to `dws-controller`.
 2. The controller validates and compiles it, then deploys: an immutable, versioned definition
-   (stored in a Dapr Configuration component), one scale-to-zero Knative Service per I/O (`call`)
-   task using the prebuilt `dws-call-http`/`dws-call-openapi` images, and a dedicated
-   `dws-orchestrator` Deployment.
-3. `dws-orchestrator` loads the definition once at startup and interprets it: `call` tasks invoke
-   the corresponding step service via Dapr service invocation, `switch`/`set` are evaluated with
-   `jq`, `wait`/`listen`/`emit` map to Dapr timers, external events, and pub/sub.
+   (stored in a Dapr Configuration component), one scale-to-zero Knative Service per I/O (`call`
+   or `run`) task using the prebuilt `dws-call-http`/`dws-call-openapi`/`dws-run-*` images, and a
+   dedicated `dws-orchestrator` Deployment.
+3. `dws-orchestrator` loads the definition once at startup and interprets it: `call` and `run`
+   tasks invoke the corresponding step service via Dapr service invocation, `switch`/`set` are
+   evaluated with `jq`, `wait`/`listen`/`emit` map to Dapr timers, external events, and pub/sub.
 
-Each deployed workflow gets its own orchestrator plus one step service per `call` task. See the
-root [`README.md`](README.md) for the full deployment diagram.
+Each deployed workflow gets its own orchestrator plus one step service per `call`/`run` task. See
+the root [`README.md`](README.md) for the full deployment diagram.
 
 ## Commands
 
@@ -77,6 +78,24 @@ make docker         # build registry.io/dws/dws-call-http:1.0
 
 CI gate: `go vet ./... && go test ./...`.
 
+### dws-run (Go 1.26)
+
+```shell
+cd dws-run
+make build          # compile bin/dws-run
+make test           # go test -race ./...
+make vet            # go vet ./...
+make fmt-check      # gofmt check
+make lint           # vet + fmt-check (+ golangci-lint if installed)
+make docker         # build all three images (dws-run-shell, dws-run-script-js, dws-run-script-python)
+```
+
+One Go codebase produces three images (`dws-run-shell`, `dws-run-script-js`,
+`dws-run-script-python`) from three Dockerfiles sharing an identical Go build stage and differing
+only in final-stage base image and exec command; `MODE` selects the interpreter at runtime.
+
+CI gate: `go vet ./... && go test ./...`.
+
 ### dws-call-openapi (Node 24, TypeScript, pnpm)
 
 ```shell
@@ -98,9 +117,13 @@ These conventions span multiple components — understanding them requires readi
 codebase, so they're captured here rather than in a single component's docs.
 
 - **Task → resource mapping** (applied by `dws-controller` at compile time): `call http` /
-  `call openapi` / `run` tasks each become a `StepService` (a deployed Knative Service); `emit` /
-  `listen` become a topic binding only (nothing deployed); `switch` / `set` / `wait` / `for` /
-  `try` / `raise` deploy nothing — they're interpreted in-process by the orchestrator.
+  `call openapi` / `run shell` / `run script` tasks each become a `StepService` (a deployed
+  Knative Service) using the corresponding prebuilt image — `dws-call-http`, `dws-call-openapi`,
+  or one of `dws-run-shell` / `dws-run-script-js` / `dws-run-script-python` (chosen by the
+  script's `language`); `run container` and `run workflow` are rejected at compile time (no
+  deployable image exists for either). `emit` / `listen` become a topic binding only (nothing
+  deployed); `switch` / `set` / `wait` / `for` / `try` / `raise` deploy nothing — they're
+  interpreted in-process by the orchestrator.
 - **Task name → Dapr app-id (kebab-case adapter)**: `dws-orchestrator` resolves a `call` task's
   target purely from its task name — `checkInventory` → Dapr app-id `check-inventory`, invoked at
   `POST /run`. The `with.endpoint` field in the DSL is schema-required but **ignored** for
@@ -112,11 +135,11 @@ codebase, so they're captured here rather than in a single component's docs.
   no-op. Definition storage is immutable; Knative Service names are **not** version-suffixed
   (they're the stable Dapr app-id), so a new version updates the same object in place and old,
   dropped steps are garbage-collected by label.
-- **Shared step-service HTTP contract**: `dws-call-http` and `dws-call-openapi` independently
-  implement the *same* contract — `POST /run` (body = current workflow data JSON, empty body =
-  `{}`), `GET /healthz`, `OUTPUT=replace|merge` response shaping, and `502` (not `400`/`500`) for
-  upstream/transport failures specifically so the orchestrator's retry policy re-invokes the step.
-  A new call-type step image should follow this same contract.
+- **Shared step-service HTTP contract**: `dws-call-http`, `dws-call-openapi`, and `dws-run`
+  independently implement the *same* contract — `POST /run` (body = current workflow data JSON,
+  empty body = `{}`), `GET /healthz`, `OUTPUT=replace|merge` response shaping, and `502` (not
+  `400`/`500`) for upstream/transport failures specifically so the orchestrator's retry policy
+  re-invokes the step. A new step image should follow this same contract.
 - **No persistence layer anywhere**: `dws-controller` answers every `GET` from live cluster state
   selected by `dws.io/*` labels; `dws-orchestrator` holds only its one pinned, immutable
   definition for the pod's lifetime (no config-change subscription, no DB).
@@ -174,6 +197,6 @@ Full detail: [superpowers-bridge README §Entry & exit gates](https://github.com
 
 This repository uses OpenWiki for recurring code documentation. Start with `openwiki/quickstart.md`, then follow its links to architecture, workflows, domain concepts, operations, integrations, testing guidance, and source maps.
 
-The OpenWiki GitHub Actions workflow refreshes the repository wiki on every merge to `main` (or on manual dispatch). Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
+The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
 
 <!-- OPENWIKI:END -->

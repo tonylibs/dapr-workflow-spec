@@ -1,0 +1,111 @@
+name: dws-run
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dws-run/**'
+      - '.github/workflows/dws-run.yml'
+  pull_request:
+    paths:
+      - 'dws-run/**'
+      - '.github/workflows/dws-run.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: dws-run-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: compile & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dws-run
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: dws-run/go.mod
+          cache: false
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: gofmt check
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed on:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Build
+        run: go build -trimpath -ldflags="-s -w" -o bin/dws-run .
+
+      - name: Test
+        run: go test -race ./...
+
+  build-image:
+    name: build & push image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - dockerfile: Dockerfile.shell
+            image: dws-run-shell
+          - dockerfile: Dockerfile.script-js
+            image: dws-run-script-js
+          - dockerfile: Dockerfile.script-python
+            image: dws-run-script-python
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        # Skip on PRs: the image is built for validation but not pushed.
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute short SHA
+        id: vars
+        run: echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: dws-run
+          file: dws-run/${{ matrix.dockerfile }}
+          # Build on PRs to validate the Dockerfile; only push on merge to main.
+          push: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:latest
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ steps.vars.outputs.sha_short }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=dws-run-${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=dws-run-${{ matrix.image }}

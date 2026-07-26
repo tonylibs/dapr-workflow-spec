@@ -1,0 +1,8 @@
+bin/
+*.md
+k8s/
+.git/
+.gitignore
+Makefile
+Dockerfile
+.dockerignore

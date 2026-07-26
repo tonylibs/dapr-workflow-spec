@@ -1,0 +1,15 @@
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: shellflow
+  version: '1.0.0'
+do:
+  - syncInventory:
+      run:
+        shell:
+          command: ./sync.sh
+          arguments:
+            region: eu
+            env: prod
+          environment:
+            API_TOKEN: abc

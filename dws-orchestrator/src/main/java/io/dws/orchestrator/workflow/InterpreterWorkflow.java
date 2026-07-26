@@ -152,6 +152,16 @@ public class InterpreterWorkflow implements Workflow {
                   JsonNode.class)
               .await();
       return new Dispatch(next, FlowOutcome.of(thenOf(task.getCallTask().get())));
+    } else if (task.getRunTask() != null) {
+      CallRequest req = new CallRequest(TaskNaming.toKebabCase(name), "run", data);
+      JsonNode next =
+          ctx.callActivity(
+                  CallServiceActivity.class.getName(),
+                  req,
+                  WorkflowSupport.defaultTaskOptions(),
+                  JsonNode.class)
+              .await();
+      return new Dispatch(next, FlowOutcome.of(task.getRunTask().getThen()));
     } else if (task.getSetTask() != null) {
       EvaluateSetRequest req = new EvaluateSetRequest(name, data);
       JsonNode next =
@@ -194,6 +204,8 @@ public class InterpreterWorkflow implements Workflow {
       return "switch";
     } else if (task.getCallTask() != null) {
       return "call";
+    } else if (task.getRunTask() != null) {
+      return "run";
     } else if (task.getSetTask() != null) {
       return "set";
     } else if (task.getWaitTask() != null) {

@@ -289,4 +289,114 @@ class InterpreterWorkflowIntegrationTest {
       assertThat(back).isEqualTo(outcome);
     }
   }
+
+  /**
+   * Regression guard for the {@code run} task fall-through: before the fix, {@code dispatch()} had
+   * no branch for {@code Task.getRunTask()} and threw {@code IllegalStateException("task '...' has
+   * an unsupported type")} instead of invoking the step service the controller deployed for it.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void runTaskIsDispatchedAsServiceInvocationAndCompletes() throws Exception {
+    // Arrange: a separate fixture holding a single `run: shell` task.
+    Workflow definition = WorkflowReader.readWorkflowFromClasspath("run.yaml");
+    WorkflowSupport.init(
+        definition,
+        definition.getDocument().getName(),
+        "run-workflow",
+        "run-workflow@v1",
+        new JqEvaluator(mapper),
+        mapper,
+        /* daprClient (unused; activities are mocked) */ null,
+        mock(WorkflowTaskOptions.class),
+        "pubsub");
+
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{}"));
+
+    JsonNode afterRun = mapper.readTree("{\"synced\":true}");
+    Task<JsonNode> callTask = mock(Task.class);
+    when(callTask.await()).thenReturn(afterRun);
+    when(ctx.callActivity(
+            eq(CallServiceActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenReturn(callTask);
+
+    // Act
+    workflow.execute(ctx);
+
+    // Assert: the run task is dispatched through the same activity/contract as call, routed by
+    // the kebab-cased task name.
+    ArgumentCaptor<Object> requests = ArgumentCaptor.forClass(Object.class);
+    verify(ctx, times(1))
+        .callActivity(
+            eq(CallServiceActivity.class.getName()),
+            requests.capture(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class));
+    CallRequest req = (CallRequest) requests.getValue();
+    assertThat(req.appId()).isEqualTo("sync-inventory");
+    assertThat(req.path()).isEqualTo("run");
+
+    ArgumentCaptor<Object> output = ArgumentCaptor.forClass(Object.class);
+    verify(ctx).complete(output.capture());
+    assertThat(((JsonNode) output.getValue()).get("synced").booleanValue()).isTrue();
+
+    assertThat(adminEventTypes(ctx))
+        .containsExactly(
+            "io.dws.instance.started",
+            "io.dws.task.started",
+            "io.dws.task.completed",
+            "io.dws.instance.completed");
+  }
+
+  /** {@code taskTypeOf} must label a {@code run} task {@code "run"}, not {@code "unknown"}. */
+  @Test
+  @SuppressWarnings("unchecked")
+  void runTaskTypeIsReportedAsRunInLifecycleEvents() throws Exception {
+    Workflow definition = WorkflowReader.readWorkflowFromClasspath("run.yaml");
+    WorkflowSupport.init(
+        definition,
+        definition.getDocument().getName(),
+        "run-workflow",
+        "run-workflow@v1",
+        new JqEvaluator(mapper),
+        mapper,
+        /* daprClient (unused; activities are mocked) */ null,
+        mock(WorkflowTaskOptions.class),
+        "pubsub");
+
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{}"));
+
+    Task<JsonNode> callTask = mock(Task.class);
+    when(callTask.await()).thenReturn(mapper.readTree("{}"));
+    when(ctx.callActivity(
+            eq(CallServiceActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenReturn(callTask);
+
+    workflow.execute(ctx);
+
+    ArgumentCaptor<Object> reqs = ArgumentCaptor.forClass(Object.class);
+    verify(ctx, org.mockito.Mockito.atLeastOnce())
+        .callActivity(
+            eq(AdminEventActivity.class.getName()),
+            reqs.capture(),
+            any(WorkflowTaskOptions.class),
+            eq(Void.class));
+    List<String> taskTypes =
+        reqs.getAllValues().stream()
+            .map(r -> ((AdminEventRequest) r).data().get("data"))
+            .filter(d -> d != null && d.has("taskType"))
+            .map(d -> d.get("taskType").asText())
+            .toList();
+    assertThat(taskTypes).contains("run");
+  }
 }

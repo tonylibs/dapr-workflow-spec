@@ -1,0 +1,174 @@
+# Example Knative Services for `run: shell` and `run: script` steps.
+#
+# One codebase produces three images (dws-run-shell, dws-run-script-js,
+# dws-run-script-python); each deployed step uses exactly one of them,
+# selected by the workflow's `run` subtype. Every step differs only in the
+# env block and the Dapr app-id (which is the task name).
+
+# --- run: shell ---
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: sync-inventory
+  labels:
+    dws.io/step-type: run-shell
+    dws.io/task: sync-inventory
+spec:
+  template:
+    metadata:
+      annotations:
+        # Scale to zero when idle; scale up on invocation.
+        autoscaling.knative.dev/minScale: "0"
+        # Dapr sidecar injection. app-id is derived from the task name so the
+        # orchestrator can invoke this step via Dapr service invocation.
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "sync-inventory"
+        dapr.io/app-port: "8080"
+    spec:
+      containers:
+        - image: registry.io/dws/dws-run-shell:1.0
+          ports:
+            - name: http1
+              containerPort: 8080
+          env:
+            - name: TASK
+              value: "sync-inventory"
+            - name: COMMAND
+              value: "./sync.sh"
+            # Optional knobs (defaults shown for reference):
+            # - name: ARGUMENTS
+            #   value: '{"env":"prod","region":"eu"}'   # JSON object, order preserved
+            # - name: ENVIRONMENT
+            #   value: '{"API_TOKEN":"..."}'
+            # - name: RETURN
+            #   value: "stdout"        # stdout | stderr | code | all | none
+            # - name: OUTPUT
+            #   value: "replace"       # replace | merge
+            # - name: TIMEOUT
+            #   value: "30s"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
+---
+# --- run: script (language: js) ---
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: score-lead
+  labels:
+    dws.io/step-type: run-script-js
+    dws.io/task: score-lead
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "score-lead"
+        dapr.io/app-port: "8080"
+    spec:
+      containers:
+        - image: registry.io/dws/dws-run-script-js:1.0
+          ports:
+            - name: http1
+              containerPort: 8080
+          env:
+            - name: TASK
+              value: "score-lead"
+            - name: SCRIPT
+              value: |
+                console.log(JSON.stringify({ score: 42 }));
+            # Optional knobs (defaults shown for reference):
+            # - name: ARGUMENTS
+            #   value: '{"threshold":10}'   # JSON object, order preserved
+            # - name: ENVIRONMENT
+            #   value: '{"API_TOKEN":"..."}'
+            # - name: RETURN
+            #   value: "stdout"        # stdout | stderr | code | all | none
+            # - name: OUTPUT
+            #   value: "replace"       # replace | merge
+            # - name: TIMEOUT
+            #   value: "30s"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
+---
+# --- run: script (language: python) ---
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: normalize-address
+  labels:
+    dws.io/step-type: run-script-python
+    dws.io/task: normalize-address
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "normalize-address"
+        dapr.io/app-port: "8080"
+    spec:
+      containers:
+        - image: registry.io/dws/dws-run-script-python:1.0
+          ports:
+            - name: http1
+              containerPort: 8080
+          env:
+            - name: TASK
+              value: "normalize-address"
+            - name: SCRIPT
+              value: |
+                import json
+                print(json.dumps({"normalized": True}))
+            # Optional knobs (defaults shown for reference):
+            # - name: ARGUMENTS
+            #   value: '{"country":"DE"}'   # JSON object, order preserved
+            # - name: ENVIRONMENT
+            #   value: '{"API_TOKEN":"..."}'
+            # - name: RETURN
+            #   value: "stdout"        # stdout | stderr | code | all | none
+            # - name: OUTPUT
+            #   value: "replace"       # replace | merge
+            # - name: TIMEOUT
+            #   value: "30s"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
