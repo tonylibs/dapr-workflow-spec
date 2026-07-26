@@ -44,7 +44,7 @@ Version identity is `<workflow>@v<sha256-8>` of the canonicalized definition. Th
 
 ## Interpreter conventions
 
-Each orchestrator pod loads one definition once at startup from the Dapr Configuration API, using a required immutable `DEFINITION_KEY`; it does not subscribe to definition updates. `InterpreterWorkflow` walks the definition task list with a program counter and supports `call`, `switch`, `set`, `wait`, `listen`, and `emit`. `for` and `try` are recognized but currently rejected as unsupported. See `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/InterpreterWorkflow.java`.
+Each orchestrator pod loads one definition once at startup from the Dapr Configuration API, using a required immutable `DEFINITION_KEY`; it does not subscribe to definition updates. `InterpreterWorkflow` walks the definition task list with a program counter and supports `call`, `run`, `switch`, `set`, `wait`, `listen`, and `emit`. Every supported task dispatches through a durable mechanism: `call` and `run` invoke a step-service activity, `switch` and `set` invoke local replay-safe evaluation activities, `wait` and `listen` use workflow timer/event primitives, and `emit` invokes its pub/sub activity. `for` and `try` are recognized but currently rejected as unsupported. See `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/InterpreterWorkflow.java`.
 
 Task names are the common deployment/runtime adapter:
 

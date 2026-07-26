@@ -20,9 +20,9 @@ Two readiness axes matter here. Control-flow tasks run in-process in the orchest
 | `call` (http) | Done | StepService via `dws-call-http` |
 | `call` (openapi) | Done | StepService via `dws-call-openapi` |
 | `call` (grpc/asyncapi/a2a) | Not started | |
-| `run` | Partial | Compiler emits a `StepService` referencing `images.run()`, but no `dws-call-run` image exists in the repo — undeployable today |
-| `switch` | Done | inline jq eval, no image needed |
-| `set` | Done | inline jq eval, no image needed |
+| `run` (shell / inline JS / inline Python) | Done | StepService backed by the matching `dws-run` image; `run: container`, `run: workflow`, and external script sources remain unsupported |
+| `switch` | Done | local replay-safe jq evaluation activity; no image needed |
+| `set` | Done | local replay-safe jq evaluation activity; no image needed |
 | `wait` | Done | Dapr timer, no image needed |
 | `listen` | Done | single external event only, no correlation (`one`/`any`/`all`); no image needed |
 | `emit` | Done | pub/sub, no image needed |
@@ -54,7 +54,6 @@ Source: `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/Interpreter
 ```mermaid
 flowchart TD
   P0[Phase 0: Lifecycle events<br/>in flight] --> P8[Phase 8: dws-admin read model]
-  P0dot5[Phase 0.5: dws-call-run image] --> P2
   P1[Phase 1: Data flow pipeline] --> P2[Phase 2: Core flow completeness<br/>try/catch, raise, fork, nested do]
   P1 --> P3[Phase 3: Fault tolerance<br/>Problem Details, timeouts]
   P2 --> P3
@@ -71,7 +70,6 @@ Data flow (Phase 1) is the foundation: retry/catch, extensions, and error handli
 | Phase | Scope | Components |
 |---|---|---|
 | 0 (in flight) | Finish lifecycle CloudEvents publishing | controller, orchestrator |
-| 0.5 | Build `dws-call-run` prebuilt image (script/shell/container) | new `dws-call-run` component |
 | 1 | `input.from/schema`, `output.as/schema`, `export.as/schema`, validation faults | orchestrator |
 | 2 | `try`/`catch`/`retry`, `raise`, `fork` (parallel), nested `do` | orchestrator |
 | 3 | RFC 7807 error model, standard error types, task/workflow timeouts | orchestrator |
