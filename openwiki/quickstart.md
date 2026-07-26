@@ -23,6 +23,7 @@ The repository has four independently built components; run builds and tests fro
 | `dws-orchestrator` | Spring Boot Dapr Workflow interpreter for one pinned definition per pod | `./mvnw verify` |
 | `dws-call-http` | Go step image for `call: http` tasks | `make test` |
 | `dws-call-openapi` | TypeScript/Fastify step image for `call: openapi` tasks | `pnpm lint && pnpm test && pnpm build` |
+| `dws-run` | Go step images for `run: shell` and inline JavaScript/Python `run: script` tasks | `make lint && make test` |
 
 ## Change guide
 
@@ -34,4 +35,4 @@ The GitHub Actions workflow at `.github/workflows/openwiki-update.yml` refreshes
 
 ## Backlog
 
-- **Step-runner internals** — `dws-call-http/` and `dws-call-openapi/`: deferred because the current cross-component change is lifecycle-event publishing; document their HTTP contract when their implementation changes or a dedicated runtime page is needed.
+- **Step-runner internals** — `dws-call-http/`, `dws-call-openapi/`, and `dws-run/`: the platform-level task-to-step-service contract is documented, but individual runner request/response and configuration details remain deferred until a dedicated runtime page is needed.
