@@ -113,6 +113,17 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	// Only script modes bind arguments as language identifiers (shell passes
+	// them as `--name value` flags, which has no such constraint). Validate
+	// here so a bad argument name fails at startup rather than at first
+	// invocation — see run-step-configuration/spec.md.
+	if cfg.Mode == ModeScriptJS || cfg.Mode == ModeScriptPython {
+		for _, a := range args {
+			if err := ValidIdentifier(cfg.Mode, a.Name); err != nil {
+				return Config{}, fmt.Errorf("ARGUMENTS: %w", err)
+			}
+		}
+	}
 	cfg.Arguments = args
 
 	env, err := parseStringMap("ENVIRONMENT", os.Getenv("ENVIRONMENT"))

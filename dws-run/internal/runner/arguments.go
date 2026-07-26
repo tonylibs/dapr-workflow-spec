@@ -63,8 +63,15 @@ func stringify(v any) string {
 // DWS_ARGUMENTS environment variable rather than being interpolated into the
 // source, so quoting and JSON types are both preserved exactly.
 func scriptSource(mode config.Mode, script string, args []config.Argument) (string, error) {
+	// config.Load already rejects a bad argument name at startup (see
+	// run-step-configuration/spec.md: invalid config must fail at startup,
+	// not at first invocation). This call is defense in depth for the rare
+	// caller that builds a Runner from a Config that bypassed Load — it
+	// should never fire in the deployed image, but if it does, the caller
+	// (runner.execute) must not wrap it in something that maps to a
+	// retryable response.
 	for _, a := range args {
-		if err := validIdentifier(mode, a.Name); err != nil {
+		if err := config.ValidIdentifier(mode, a.Name); err != nil {
 			return "", err
 		}
 	}
@@ -87,81 +94,4 @@ func scriptSource(mode config.Mode, script string, args []config.Argument) (stri
 	}
 	b.WriteString(script)
 	return b.String(), nil
-}
-
-// reservedInternalNames are the identifiers the generated prelude itself
-// declares (see scriptSource). An argument sharing one of these names would
-// redeclare it — a SyntaxError in both target languages — so these are
-// rejected regardless of mode.
-var reservedInternalNames = map[string]bool{
-	"__dwsArgs":  true,
-	"__dws_args": true,
-	"__dws_json": true,
-	"__dws_os":   true,
-}
-
-// jsReservedWords are ECMAScript keywords and reserved words. Binding one as
-// `const <word> = ...;` is a SyntaxError, so these are rejected for
-// config.ModeScriptJS.
-var jsReservedWords = map[string]bool{
-	"break": true, "case": true, "catch": true, "class": true, "const": true,
-	"continue": true, "debugger": true, "default": true, "delete": true, "do": true,
-	"else": true, "enum": true, "export": true, "extends": true, "false": true,
-	"finally": true, "for": true, "function": true, "if": true, "implements": true,
-	"import": true, "in": true, "instanceof": true, "interface": true, "let": true,
-	"new": true, "null": true, "package": true, "private": true, "protected": true,
-	"public": true, "return": true, "static": true, "super": true, "switch": true,
-	"this": true, "throw": true, "true": true, "try": true, "typeof": true,
-	"var": true, "void": true, "while": true, "with": true, "yield": true,
-	"await": true,
-}
-
-// pythonReservedWords are Python's reserved keywords (keyword.kwlist).
-// Binding one as `<word> = ...` is a SyntaxError, so these are rejected for
-// config.ModeScriptPython.
-var pythonReservedWords = map[string]bool{
-	"False": true, "None": true, "True": true, "and": true, "as": true,
-	"assert": true, "async": true, "await": true, "break": true, "class": true,
-	"continue": true, "def": true, "del": true, "elif": true, "else": true,
-	"except": true, "finally": true, "for": true, "from": true, "global": true,
-	"if": true, "import": true, "in": true, "is": true, "lambda": true,
-	"nonlocal": true, "not": true, "or": true, "pass": true, "raise": true,
-	"return": true, "try": true, "while": true, "with": true, "yield": true,
-}
-
-// validIdentifier rejects argument names that are valid map keys but not
-// valid bindable identifiers for the target runtime: names that aren't
-// JS/Python identifiers at all, names that collide with the prelude's own
-// internal variables, and names that are reserved keywords in the target
-// language (a name invalid in one script language may be perfectly valid in
-// the other, e.g. `const` is a JS keyword but a fine Python identifier;
-// `None`/`def` are Python keywords but fine JS identifiers). dws-controller
-// rejects these at compile time; this is the defense in depth for
-// hand-written manifests.
-func validIdentifier(mode config.Mode, name string) error {
-	if name == "" {
-		return fmt.Errorf("argument name must not be empty")
-	}
-	for i, r := range name {
-		isLetter := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_'
-		isDigit := r >= '0' && r <= '9'
-		if isLetter || (i > 0 && isDigit) {
-			continue
-		}
-		return fmt.Errorf("argument name %q is not a valid identifier", name)
-	}
-	if reservedInternalNames[name] {
-		return fmt.Errorf("argument name %q collides with an identifier the generated prelude uses internally", name)
-	}
-	switch mode {
-	case config.ModeScriptJS:
-		if jsReservedWords[name] {
-			return fmt.Errorf("argument name %q is a reserved JavaScript keyword", name)
-		}
-	case config.ModeScriptPython:
-		if pythonReservedWords[name] {
-			return fmt.Errorf("argument name %q is a reserved Python keyword", name)
-		}
-	}
-	return nil
 }

@@ -133,6 +133,61 @@ func TestLargeIntegerArgumentsSurviveExactly(t *testing.T) {
 	}
 }
 
+// TestLoadRejectsBadArgumentNamesAtStartup guards run-step-configuration/
+// spec.md's requirement that invalid config fail at startup rather than at
+// first invocation: a bad argument name must not make it past Load, or the
+// process starts successfully and the failure only surfaces (as a retryable
+// 502, forever) on the first /run request.
+func TestLoadRejectsBadArgumentNamesAtStartup(t *testing.T) {
+	cases := []struct {
+		name string
+		mode string
+		arg  string
+	}{
+		{"JS-reserved word under script-js", "script-js", `{"const":1}`},
+		{"Python-reserved word under script-python", "script-python", `{"def":1}`},
+		{"internal prelude name", "script-js", `{"__dwsArgs":1}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := load(t, map[string]string{
+				"MODE": tc.mode, "SCRIPT": "x", "ARGUMENTS": tc.arg,
+			})
+			if err == nil {
+				t.Fatalf("expected Load to reject %s under MODE=%s", tc.arg, tc.mode)
+			}
+		})
+	}
+}
+
+// TestLoadAcceptsLanguageSpecificallyLegalNames confirms the flip side of the
+// above: a name reserved in one script language but not the other must still
+// be accepted where it's legal (e.g. "None" is a Python keyword but a fine JS
+// identifier; "const" is a JS keyword but a fine Python identifier).
+func TestLoadAcceptsLanguageSpecificallyLegalNames(t *testing.T) {
+	if _, err := load(t, map[string]string{
+		"MODE": "script-js", "SCRIPT": "x", "ARGUMENTS": `{"None":1}`,
+	}); err != nil {
+		t.Errorf(`"None" is not a JS reserved word, expected Load to accept it: %v`, err)
+	}
+	if _, err := load(t, map[string]string{
+		"MODE": "script-python", "SCRIPT": "x", "ARGUMENTS": `{"const":1}`,
+	}); err != nil {
+		t.Errorf(`"const" is not a Python keyword, expected Load to accept it: %v`, err)
+	}
+}
+
+// TestLoadDoesNotValidateIdentifiersForShellMode confirms shell arguments
+// (rendered as `--name value` flags, not bound as language identifiers) are
+// exempt from identifier validation.
+func TestLoadDoesNotValidateIdentifiersForShellMode(t *testing.T) {
+	if _, err := load(t, map[string]string{
+		"MODE": "shell", "COMMAND": "x", "ARGUMENTS": `{"const":1,"has-dash":2}`,
+	}); err != nil {
+		t.Errorf("shell mode should not validate argument names as identifiers: %v", err)
+	}
+}
+
 func TestArgumentsRejectsArray(t *testing.T) {
 	if _, err := load(t, map[string]string{
 		"MODE": "shell", "COMMAND": "x", "ARGUMENTS": `["a","b"]`,
