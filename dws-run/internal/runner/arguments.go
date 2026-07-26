@@ -38,6 +38,12 @@ func stringify(v any) string {
 			return "true"
 		}
 		return "false"
+	case json.Number:
+		// json.Number's underlying string is the original decoded text, so
+		// rendering it directly preserves values that lose precision (or
+		// blow up into 1e+20-style notation) as float64 — large integers
+		// like order IDs, Snowflake IDs, and ns timestamps.
+		return t.String()
 	case float64:
 		if t == float64(int64(t)) {
 			return fmt.Sprintf("%d", int64(t))

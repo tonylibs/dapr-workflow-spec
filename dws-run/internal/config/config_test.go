@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -75,8 +76,60 @@ func TestArgumentsIsOrderedObject(t *testing.T) {
 			t.Errorf("arguments[%d]: got %q, want %q", i, c.Arguments[i].Name, name)
 		}
 	}
-	if c.Arguments[2].Value != float64(3) {
-		t.Errorf("count: got %#v, want 3", c.Arguments[2].Value)
+	if c.Arguments[2].Value != json.Number("3") {
+		t.Errorf("count: got %#v, want json.Number(3)", c.Arguments[2].Value)
+	}
+}
+
+// TestLargeIntegerArgumentsSurviveExactly guards against a regression where
+// normalize() converted json.Number to float64, which has only 53 bits of
+// integer precision. That silently corrupted values beyond 2^53 (order IDs,
+// Snowflake IDs, ns timestamps) — and did so only for top-level argument
+// values, since nested numbers were never normalized, producing two different
+// renderings of the identical value in the same payload.
+func TestLargeIntegerArgumentsSurviveExactly(t *testing.T) {
+	const big = "12345678901234567890"
+	c, err := load(t, map[string]string{
+		"MODE": "shell", "COMMAND": "x",
+		"ARGUMENTS": `{"orderId":` + big + `,"nested":{"orderId":` + big + `}}`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var top any
+	for _, a := range c.Arguments {
+		if a.Name == "orderId" {
+			top = a.Value
+		}
+	}
+	n, ok := top.(json.Number)
+	if !ok {
+		t.Fatalf("top-level orderId: got %#v (%T), want json.Number", top, top)
+	}
+	if n.String() != big {
+		t.Errorf("top-level orderId: got %s, want %s", n.String(), big)
+	}
+
+	var nested any
+	for _, a := range c.Arguments {
+		if a.Name == "nested" {
+			nested = a.Value
+		}
+	}
+	nestedMap, ok := nested.(map[string]any)
+	if !ok {
+		t.Fatalf("nested: got %#v (%T), want map[string]any", nested, nested)
+	}
+	nestedNum, ok := nestedMap["orderId"].(json.Number)
+	if !ok {
+		t.Fatalf("nested orderId: got %#v (%T), want json.Number", nestedMap["orderId"], nestedMap["orderId"])
+	}
+	if nestedNum.String() != big {
+		t.Errorf("nested orderId: got %s, want %s", nestedNum.String(), big)
+	}
+	if n.String() != nestedNum.String() {
+		t.Errorf("top-level and nested renderings diverge: %s vs %s", n.String(), nestedNum.String())
 	}
 }
 

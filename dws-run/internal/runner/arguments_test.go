@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,6 +68,20 @@ func TestShellArgumentValueIsNeverExecuted(t *testing.T) {
 
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Fatalf("marker file exists — the argument value was executed as shell code, not passed as data (stat err: %v)", err)
+	}
+}
+
+// TestStringifyRendersJSONNumberVerbatim guards the shell-rendering half of
+// the large-integer fix: config no longer collapses json.Number into float64,
+// so stringify must render json.Number by its own literal text rather than
+// falling through to the default JSON-marshal branch (which would produce
+// identical output here, but would mangle precision for values beyond
+// float64's exact range, e.g. 1e+20-style notation for a >2^53 integer).
+func TestStringifyRendersJSONNumberVerbatim(t *testing.T) {
+	for _, s := range []string{"3", "12345678901234567890", "-42", "3.14"} {
+		if got := stringify(json.Number(s)); got != s {
+			t.Errorf("stringify(json.Number(%q)) = %q, want %q", s, got, s)
+		}
 	}
 }
 
