@@ -1,3 +1,5 @@
+Before starting any work in this repository, read the root `CLAUDE.md` and follow the repository guidance it contains.
+
 <!-- OPENWIKI:START -->
 
 ## OpenWiki
