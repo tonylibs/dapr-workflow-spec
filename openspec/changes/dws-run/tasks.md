@@ -79,7 +79,9 @@
       test ./...` on every push and PR; build all three images on PRs without pushing; build and
       push to `ghcr.io/tonylibs/dws-run-shell`, `dws-run-script-js`, and `dws-run-script-python`
       only on merge to `main`.
-- [ ] 5.6 Validate: each of the three image builds succeeds locally.
+- [x] 5.6 Validate: each of the three image builds succeeds. (No Docker daemon in the dev
+      environment, so this was proven by CI on PR #17 rather than locally — all three
+      `build & push image` jobs green for Dockerfile.shell, .script-js, and .script-python.)
 
 ## 6. dws-controller compilation
 
