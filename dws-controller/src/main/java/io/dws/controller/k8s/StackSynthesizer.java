@@ -101,6 +101,8 @@ public class StackSynthesizer {
   private GenericKubernetesResource knativeService(
       DeploymentPlan plan, StepService step, String namespace) {
     Chart chart = Testing.chart();
+    Map<String, String> stepLabels = new LinkedHashMap<>(Labels.forPlan(plan));
+    stepLabels.put(Labels.STEP_TYPE, Labels.stepType(step.kind()));
     new Service(
         chart,
         step.name(),
@@ -109,7 +111,7 @@ public class StackSynthesizer {
                 ApiObjectMetadata.builder()
                     .name(step.name())
                     .namespace(namespace)
-                    .labels(Labels.forPlan(plan))
+                    .labels(stepLabels)
                     .build())
             .spec(
                 ServiceSpec.builder()
@@ -117,7 +119,7 @@ public class StackSynthesizer {
                         ServiceSpecTemplate.builder()
                             .metadata(
                                 ServiceSpecTemplateMetadata.builder()
-                                    .labels(Labels.forPlan(plan))
+                                    .labels(stepLabels)
                                     .annotations(stepAnnotations(step))
                                     .build())
                             .spec(

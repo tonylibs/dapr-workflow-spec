@@ -116,6 +116,35 @@ class StackApplierTest {
   }
 
   @Test
+  @DisplayName("a synthesized Knative Service carries dws.io/step-type distinguishing its kind")
+  void knativeServiceCarriesStepTypeLabel() {
+    DeploymentPlan callPlan = compiler.compile(fixture("order.yaml"));
+    applier.apply(callPlan);
+
+    GenericKubernetesResource callService =
+        client
+            .genericKubernetesResources(ResourceContexts.KNATIVE_SERVICE)
+            .inNamespace(NAMESPACE)
+            .withName("check-inventory")
+            .get();
+    assertThat(callService.getMetadata().getLabels()).containsEntry(Labels.STEP_TYPE, "call-http");
+
+    applier.deleteWorkflow("order");
+    DeploymentPlan runPlan = compiler.compile(fixture("run-shell.yaml"));
+    applier.apply(runPlan);
+
+    GenericKubernetesResource runService =
+        client
+            .genericKubernetesResources(ResourceContexts.KNATIVE_SERVICE)
+            .inNamespace(NAMESPACE)
+            .withName("sync-inventory")
+            .get();
+    assertThat(runService.getMetadata().getLabels()).containsEntry(Labels.STEP_TYPE, "run-shell");
+
+    applier.deleteWorkflow("shellflow");
+  }
+
+  @Test
   @DisplayName(
       "apply creates a single-replica orchestrator Deployment pointed at the definition store")
   void createsOrchestratorDeployment() {
