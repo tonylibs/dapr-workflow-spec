@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class JqEvaluatorTest {
@@ -70,5 +71,72 @@ class JqEvaluatorTest {
 
     assertThatThrownBy(() -> evaluator.evaluate("${ .. || }", input))
         .isInstanceOf(JqEvaluator.ExpressionException.class);
+  }
+
+  @Test
+  void boundVariableIsReadableAsDollarContext() throws Exception {
+    // Arrange
+    JsonNode input = json("{\"amount\": 2}");
+    JsonNode context = json("{\"total\": 40}");
+
+    // Act
+    JsonNode result =
+        evaluator.evaluate("${ $context.total + .amount }", input, Map.of("context", context));
+
+    // Assert
+    assertThat(result.intValue()).isEqualTo(42);
+  }
+
+  @Test
+  void unboundContextVariableIsAnEmptyObjectWhenBoundAsSuch() throws Exception {
+    JsonNode result =
+        evaluator.evaluate(
+            "${ $context.missing // \"none\" }", json("{}"), Map.of("context", json("{}")));
+
+    assertThat(result.textValue()).isEqualTo("none");
+  }
+
+  @Test
+  void structuredFormEvaluatesWrappedStringsAndKeepsLiterals() throws Exception {
+    // Arrange: only the ${ }-wrapped value is an expression; "active" is a literal string.
+    JsonNode template = json("{\"total\": \"${ .price * .qty }\", \"status\": \"active\"}");
+
+    // Act
+    JsonNode result =
+        evaluator.evaluateStructured(template, json("{\"price\":5,\"qty\":3}"), Map.of());
+
+    // Assert
+    assertThat(result.get("total").intValue()).isEqualTo(15);
+    assertThat(result.get("status").textValue()).isEqualTo("active");
+  }
+
+  @Test
+  void structuredFormRecursesObjectsAndArraysAndKeepsNonStringScalars() throws Exception {
+    JsonNode template =
+        json(
+            "{\"nested\": {\"id\": \"${ .orderId }\"},"
+                + " \"items\": [\"${ .first }\", \"literal\"],"
+                + " \"count\": 7, \"enabled\": true}");
+
+    JsonNode result =
+        evaluator.evaluateStructured(
+            template, json("{\"orderId\":\"o-1\",\"first\":\"a\"}"), Map.of());
+
+    assertThat(result.get("nested").get("id").textValue()).isEqualTo("o-1");
+    assertThat(result.get("items").get(0).textValue()).isEqualTo("a");
+    assertThat(result.get("items").get(1).textValue()).isEqualTo("literal");
+    assertThat(result.get("count").intValue()).isEqualTo(7);
+    assertThat(result.get("enabled").booleanValue()).isTrue();
+  }
+
+  @Test
+  void structuredFormCanReadTheContextVariable() throws Exception {
+    JsonNode template = json("{\"seen\": \"${ $context.seen }\"}");
+
+    JsonNode result =
+        evaluator.evaluateStructured(
+            template, json("{}"), Map.of("context", json("{\"seen\": 3}")));
+
+    assertThat(result.get("seen").intValue()).isEqualTo(3);
   }
 }

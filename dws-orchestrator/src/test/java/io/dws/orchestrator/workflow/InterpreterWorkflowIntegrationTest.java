@@ -14,11 +14,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dapr.durabletask.Task;
 import io.dapr.workflows.WorkflowContext;
 import io.dapr.workflows.WorkflowTaskOptions;
+import io.dws.orchestrator.dataflow.DataFlowException;
 import io.dws.orchestrator.expr.JqEvaluator;
 import io.dws.orchestrator.workflow.activity.AdminEventActivity;
 import io.dws.orchestrator.workflow.activity.AdminEventRequest;
 import io.dws.orchestrator.workflow.activity.CallRequest;
 import io.dws.orchestrator.workflow.activity.CallServiceActivity;
+import io.dws.orchestrator.workflow.activity.DataFlowInputActivity;
+import io.dws.orchestrator.workflow.activity.DataFlowInputRequest;
+import io.dws.orchestrator.workflow.activity.DataFlowOutputActivity;
+import io.dws.orchestrator.workflow.activity.DataFlowOutputRequest;
+import io.dws.orchestrator.workflow.activity.DataFlowPipeline;
+import io.dws.orchestrator.workflow.activity.DataFlowResult;
 import io.dws.orchestrator.workflow.activity.EvaluateSetActivity;
 import io.dws.orchestrator.workflow.activity.EvaluateSetRequest;
 import io.dws.orchestrator.workflow.activity.EvaluateSwitchActivity;
@@ -351,6 +358,140 @@ class InterpreterWorkflowIntegrationTest {
             "io.dws.task.started",
             "io.dws.task.completed",
             "io.dws.instance.completed");
+  }
+
+  /**
+   * Seeds {@link WorkflowSupport} with the {@code dataflow.yaml} fixture and stubs both data-flow
+   * phases so the real pipeline logic runs, exactly as {@code stubContext} does for switch/set.
+   */
+  @SuppressWarnings("unchecked")
+  private void stubDataFlow(WorkflowContext ctx) throws Exception {
+    Workflow definition = WorkflowReader.readWorkflowFromClasspath("dataflow.yaml");
+    WorkflowSupport.init(
+        definition,
+        definition.getDocument().getName(),
+        "dataflow-workflow",
+        "dataflow-workflow@v1",
+        new JqEvaluator(mapper),
+        mapper,
+        /* daprClient (unused; activities are mocked) */ null,
+        mock(WorkflowTaskOptions.class),
+        "pubsub");
+
+    when(ctx.callActivity(
+            eq(DataFlowInputActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenAnswer(
+            inv ->
+                completed(DataFlowPipeline.applyInput((DataFlowInputRequest) inv.getArgument(1))));
+    when(ctx.callActivity(
+            eq(DataFlowOutputActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(DataFlowResult.class)))
+        .thenAnswer(
+            inv ->
+                completed(
+                    DataFlowPipeline.applyOutput((DataFlowOutputRequest) inv.getArgument(1))));
+  }
+
+  /**
+   * The full Phase 1 pipeline end to end: {@code input.from} narrows what the first step sees,
+   * {@code output.as} reshapes what flows on, {@code export.as} writes the workflow context, a
+   * later task reads it back through {@code $context}, and a task declaring no data flow passes its
+   * document through untouched.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void dataFlowPipelineTransformsInputOutputAndCarriesTheExportedContext() throws Exception {
+    // Arrange
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    stubDataFlow(ctx);
+    when(ctx.getInput(JsonNode.class))
+        .thenReturn(mapper.readTree("{\"orderId\":\"o-1\",\"price\":9.5,\"unrelated\":\"x\"}"));
+
+    // chargePayment's step returns a receipt; passThrough's step echoes what it is given.
+    Task<JsonNode> callTask = mock(Task.class);
+    when(callTask.await())
+        .thenReturn(
+            mapper.readTree("{\"receipt\":\"r-77\",\"noise\":1}"),
+            mapper.readTree("{\"archived\":true}"));
+    when(ctx.callActivity(
+            eq(CallServiceActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenReturn(callTask);
+
+    // Act
+    workflow.execute(ctx);
+
+    // Assert: input.from narrowed the document the first step service was invoked with.
+    ArgumentCaptor<Object> requests = ArgumentCaptor.forClass(Object.class);
+    verify(ctx, times(2))
+        .callActivity(
+            eq(CallServiceActivity.class.getName()),
+            requests.capture(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class));
+    JsonNode sentToCharge = ((CallRequest) requests.getAllValues().get(0)).data();
+    assertThat(sentToCharge.get("orderId").textValue()).isEqualTo("o-1");
+    assertThat(sentToCharge.get("amount").doubleValue()).isEqualTo(9.5);
+    assertThat(sentToCharge.has("unrelated")).isFalse();
+
+    // recordAudit read the context chargePayment exported, and output.as reshaped it;
+    // passThrough declares no data flow, so it received that document unchanged.
+    JsonNode sentToPassThrough = ((CallRequest) requests.getAllValues().get(1)).data();
+    assertThat(sentToPassThrough.get("audited").textValue()).isEqualTo("r-77");
+
+    // The instance completes with the last step's own output — the context is not part of it.
+    ArgumentCaptor<Object> output = ArgumentCaptor.forClass(Object.class);
+    verify(ctx).complete(output.capture());
+    JsonNode completed = (JsonNode) output.getValue();
+    assertThat(completed.get("archived").booleanValue()).isTrue();
+    assertThat(completed.has("charged")).isFalse();
+  }
+
+  /**
+   * A schema-validation failure must fail the instance through the ordinary task-failure path, with
+   * the offending field named in the message that crosses the activity boundary.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void outputSchemaViolationFailsTheInstanceNamingTheField() throws Exception {
+    // Arrange: the step returns a numeric receipt, so output.as yields a non-string `reference`.
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    stubDataFlow(ctx);
+    when(ctx.getInput(JsonNode.class))
+        .thenReturn(mapper.readTree("{\"orderId\":\"o-1\",\"price\":9.5}"));
+
+    Task<JsonNode> callTask = mock(Task.class);
+    when(callTask.await()).thenReturn(mapper.readTree("{\"receipt\":404}"));
+    when(ctx.callActivity(
+            eq(CallServiceActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenReturn(callTask);
+
+    // Act + Assert
+    assertThatThrownBy(() -> workflow.execute(ctx))
+        .isInstanceOf(DataFlowException.class)
+        .hasMessageContaining("chargePayment")
+        .hasMessageContaining("output")
+        .hasMessageContaining("reference");
+
+    assertThat(adminEventTypes(ctx))
+        .containsExactly(
+            "io.dws.instance.started",
+            "io.dws.task.started",
+            "io.dws.task.failed",
+            "io.dws.instance.failed");
+    verify(ctx, org.mockito.Mockito.never()).complete(any());
   }
 
   /** {@code taskTypeOf} must label a {@code run} task {@code "run"}, not {@code "unknown"}. */
