@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "format": "biome format",
     "lint": "biome lint",
+    "typecheck": "tsc --noEmit",
     "check": "biome check"
   },
   "dependencies": {
