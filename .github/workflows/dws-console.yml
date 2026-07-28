@@ -1,0 +1,57 @@
+name: dws-console
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dws-console/**'
+      - '.github/workflows/dws-console.yml'
+  pull_request:
+    paths:
+      - 'dws-console/**'
+      - '.github/workflows/dws-console.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: dws-console-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: lint, typecheck & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dws-console
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # dws-console is the one component on npm rather than pnpm: it ships a
+      # package-lock.json and no pnpm-lock.yaml.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: dws-console/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # vite build does not type-check, so tsc runs as its own gate.
+      - name: Typecheck
+        run: npm run typecheck
+
+      # routeTree.gen.ts is generated from src/routes and committed; fail if a
+      # route was added or renamed without regenerating it.
+      - name: Check generated route tree is up to date
+        run: |
+          npm run generate-routes
+          git diff --exit-code -- src/routeTree.gen.ts
+
+      - name: Build
+        run: npm run build
