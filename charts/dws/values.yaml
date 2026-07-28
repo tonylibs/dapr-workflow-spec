@@ -2,6 +2,27 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
+# Namespace to deploy into. Defaults to the release namespace when empty.
+namespaceOverride: ""
+
+# dws-controller control plane (Phase 2). Toggle the whole stack with controller.enabled.
+controller:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/tonylibs/dws-controller
+    tag: "1.0"
+    pullPolicy: IfNotPresent
+  service:
+    port: 80
+  # Step-image references the controller stamps into per-workflow resources
+  # (rendered as DWS_IMAGES_* env vars on the controller container).
+  images:
+    callHttp: ghcr.io/tonylibs/dws-call-http:latest
+    callOpenapi: ghcr.io/tonylibs/dws-call-openapi:latest
+    run: sw-run:1.0
+    orchestrator: ghcr.io/tonylibs/dws-orchestrator:latest
+
 # This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
 replicaCount: 1
 

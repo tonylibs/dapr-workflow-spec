@@ -51,6 +51,29 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+Namespace to deploy into. Defaults to the release namespace, overridable via namespaceOverride.
+*/}}
+{{- define "dws.namespace" -}}
+{{- default .Release.Namespace .Values.namespaceOverride }}
+{{- end }}
+
+{{/*
+Controller fully qualified name.
+*/}}
+{{- define "dws.controller.fullname" -}}
+{{- printf "%s-controller" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Controller selector labels — the common selector labels plus a component marker so the
+controller Deployment/Service cannot match sibling components (admin, postgres).
+*/}}
+{{- define "dws.controller.selectorLabels" -}}
+{{ include "dws.selectorLabels" . }}
+app.kubernetes.io/component: controller
+{{- end }}
+
+{{/*
 Create the name of the service account to use
 */}}
 {{- define "dws.serviceAccountName" -}}
