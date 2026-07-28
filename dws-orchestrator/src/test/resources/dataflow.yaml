@@ -1,0 +1,51 @@
+document:
+  dsl: 1.0.0
+  namespace: examples
+  name: dataflow-workflow
+  version: '1.0.0'
+do:
+  # Full pipeline: narrow the input, validate it, reshape the output, validate that,
+  # and export a running total into the workflow context.
+  # Expressions are quoted: an unquoted ${ { ... } } would parse as a YAML flow mapping.
+  - chargePayment:
+      call: http
+      with:
+        method: post
+        endpoint: http://payment-service/run
+      input:
+        from: '${ { orderId: .orderId, amount: .price } }'
+        schema:
+          document:
+            type: object
+            properties:
+              orderId: { type: string }
+              amount: { type: number }
+            required: [orderId, amount]
+      output:
+        as:
+          reference: '${ .receipt }'
+          settled: true
+        schema:
+          document:
+            type: object
+            properties:
+              reference: { type: string }
+              settled: { type: boolean }
+            required: [reference]
+      export:
+        as: '${ { charged: .reference } }'
+      then: recordAudit
+  # Reads what the earlier task exported, proving the context persists across tasks.
+  - recordAudit:
+      set:
+        auditEnabled: true
+      output:
+        as: '${ { audited: $context.charged } }'
+      then: passThrough
+  # Declares no input/output/export: must pass its data through untouched.
+  - passThrough:
+      call: http
+      with:
+        method: post
+        endpoint: http://archive-service/run
+      then: end

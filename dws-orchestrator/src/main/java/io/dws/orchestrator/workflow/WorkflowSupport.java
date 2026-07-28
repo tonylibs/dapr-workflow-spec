@@ -1,6 +1,8 @@
 package io.dws.orchestrator.workflow;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.networknt.schema.SchemaRegistry;
+import com.networknt.schema.SpecificationVersion;
 import io.dapr.client.DaprClient;
 import io.dapr.workflows.WorkflowTaskOptions;
 import io.dws.orchestrator.expr.JqEvaluator;
@@ -15,6 +17,15 @@ import io.serverlessworkflow.api.types.Workflow;
  * definition for its whole lifetime, so the held {@link Workflow} never changes.
  */
 public final class WorkflowSupport {
+
+  /**
+   * Process-wide JSON Schema registry for {@code input.schema}/{@code output.schema} validation.
+   * Thread-safe and reusable, so it is built once at class load rather than per validation. It
+   * needs no per-workflow configuration, which is why it is not an {@link #init} parameter. An
+   * explicit {@code $schema} in a schema document still wins over this default dialect.
+   */
+  private static final SchemaRegistry SCHEMA_REGISTRY =
+      SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12);
 
   private static volatile Workflow definition;
   private static volatile String workflowName;
@@ -72,6 +83,11 @@ public final class WorkflowSupport {
 
   public static ObjectMapper mapper() {
     return require(mapper, "mapper");
+  }
+
+  /** Shared JSON Schema registry used to compile task input/output schemas. */
+  public static SchemaRegistry schemaRegistry() {
+    return SCHEMA_REGISTRY;
   }
 
   public static DaprClient daprClient() {

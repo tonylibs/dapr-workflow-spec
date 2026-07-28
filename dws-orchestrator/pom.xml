@@ -21,6 +21,7 @@
     <java.version>25</java.version>
     <dapr.sdk.version>1.18.0</dapr.sdk.version>
     <jackson-jq.version>1.2.0</jackson-jq.version>
+    <json-schema-validator.version>2.0.0</json-schema-validator.version>
     <serverlessworkflow.version>7.26.0.Final</serverlessworkflow.version>
     <spotless-plugin.version>3.8.0</spotless-plugin.version>
     <google-java-format.version>1.32.0</google-java-format.version>
@@ -70,6 +71,17 @@
       <groupId>net.thisptr</groupId>
       <artifactId>jackson-jq</artifactId>
       <version>${jackson-jq.version}</version>
+    </dependency>
+
+    <!--
+      JSON Schema validation of task input.schema/output.schema. Already on the classpath
+      transitively through serverlessworkflow-api; pinned here as a direct dependency at the same
+      version so the classpath is unchanged and the API we compile against is explicit.
+    -->
+    <dependency>
+      <groupId>com.networknt</groupId>
+      <artifactId>json-schema-validator</artifactId>
+      <version>${json-schema-validator.version}</version>
     </dependency>
 
     <dependency>

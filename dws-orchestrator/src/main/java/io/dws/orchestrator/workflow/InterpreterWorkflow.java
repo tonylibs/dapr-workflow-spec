@@ -10,6 +10,12 @@ import io.dws.orchestrator.workflow.activity.AdminEventActivity;
 import io.dws.orchestrator.workflow.activity.AdminEventRequest;
 import io.dws.orchestrator.workflow.activity.CallRequest;
 import io.dws.orchestrator.workflow.activity.CallServiceActivity;
+import io.dws.orchestrator.workflow.activity.DataFlowInputActivity;
+import io.dws.orchestrator.workflow.activity.DataFlowInputRequest;
+import io.dws.orchestrator.workflow.activity.DataFlowOutputActivity;
+import io.dws.orchestrator.workflow.activity.DataFlowOutputRequest;
+import io.dws.orchestrator.workflow.activity.DataFlowPipeline;
+import io.dws.orchestrator.workflow.activity.DataFlowResult;
 import io.dws.orchestrator.workflow.activity.EmitEventActivity;
 import io.dws.orchestrator.workflow.activity.EmitRequest;
 import io.dws.orchestrator.workflow.activity.EvaluateSetActivity;
@@ -75,6 +81,11 @@ public class InterpreterWorkflow implements Workflow {
       data = mapper.createObjectNode();
     }
 
+    // The workflow context is a second document, distinct from `data`: `export.as` writes it and it
+    // persists for the instance's life. It is threaded through the loop (never stored externally)
+    // so replay stays deterministic, and it is not part of the instance's completion output.
+    JsonNode context = mapper.createObjectNode();
+
     publish(ctx, events.instanceStarted());
 
     Map<String, Integer> indexByName = new HashMap<>();
@@ -98,8 +109,9 @@ public class InterpreterWorkflow implements Workflow {
         publish(ctx, events.taskStarted(name, taskType));
         FlowOutcome then;
         try {
-          Dispatch result = dispatch(ctx, task, name, data, mapper);
+          Dispatch result = dispatch(ctx, task, name, data, context, mapper);
           data = result.data();
+          context = result.context();
           then = result.then();
         } catch (RuntimeException e) {
           publish(ctx, events.taskFailed(name, taskType, String.valueOf(e.getMessage())));
@@ -124,13 +136,61 @@ public class InterpreterWorkflow implements Workflow {
     }
   }
 
-  /** The post-dispatch data document plus the task's resolved flow outcome. */
-  private record Dispatch(JsonNode data, FlowOutcome then) {}
+  /** The post-dispatch data and context documents plus the task's resolved flow outcome. */
+  private record Dispatch(JsonNode data, JsonNode context, FlowOutcome then) {}
+
+  /** The task body's own result: its raw output document and its flow directive. */
+  private record Body(JsonNode data, FlowOutcome then) {}
 
   /**
-   * Dispatches one task item, returning the (possibly new) data document and its flow directive.
+   * Runs one task item's full Open Workflow Specification data-flow pipeline around its body:
+   * {@code input.from}/{@code input.schema} before, {@code output.as}/{@code output.schema} and
+   * {@code export.as}/{@code export.schema} after. Both phases are skipped entirely — no activity
+   * scheduled, data passed straight through — for a task that declares no {@code input}/{@code
+   * output}/{@code export}, which is every definition that predates this pipeline.
    */
   private Dispatch dispatch(
+      WorkflowContext ctx,
+      Task task,
+      String name,
+      JsonNode data,
+      JsonNode context,
+      ObjectMapper mapper) {
+    TaskBase base = DataFlowPipeline.baseOf(task);
+    boolean hasInput = base != null && base.getInput() != null;
+    boolean hasOutput = base != null && (base.getOutput() != null || base.getExport() != null);
+
+    JsonNode input = data;
+    if (hasInput) {
+      input =
+          ctx.callActivity(
+                  DataFlowInputActivity.class.getName(),
+                  new DataFlowInputRequest(name, data, context),
+                  WorkflowSupport.defaultTaskOptions(),
+                  JsonNode.class)
+              .await();
+    }
+
+    Body body = dispatchBody(ctx, task, name, input, mapper);
+
+    if (!hasOutput) {
+      return new Dispatch(body.data(), context, body.then());
+    }
+    DataFlowResult shaped =
+        ctx.callActivity(
+                DataFlowOutputActivity.class.getName(),
+                new DataFlowOutputRequest(name, body.data(), context),
+                WorkflowSupport.defaultTaskOptions(),
+                DataFlowResult.class)
+            .await();
+    return new Dispatch(shaped.data(), shaped.context(), body.then());
+  }
+
+  /**
+   * Runs one task item's body against its (already transformed) input, returning the body's raw
+   * output document and its flow directive. The data-flow pipeline is strictly outside this method.
+   */
+  private Body dispatchBody(
       WorkflowContext ctx, Task task, String name, JsonNode data, ObjectMapper mapper) {
     if (task.getSwitchTask() != null) {
       EvaluateSwitchRequest req = new EvaluateSwitchRequest(name, data);
@@ -141,7 +201,7 @@ public class InterpreterWorkflow implements Workflow {
                   WorkflowSupport.defaultTaskOptions(),
                   FlowOutcome.class)
               .await();
-      return new Dispatch(data, then);
+      return new Body(data, then);
     } else if (task.getCallTask() != null) {
       CallRequest req = new CallRequest(TaskNaming.toKebabCase(name), "run", data);
       JsonNode next =
@@ -151,7 +211,7 @@ public class InterpreterWorkflow implements Workflow {
                   WorkflowSupport.defaultTaskOptions(),
                   JsonNode.class)
               .await();
-      return new Dispatch(next, FlowOutcome.of(thenOf(task.getCallTask().get())));
+      return new Body(next, FlowOutcome.of(thenOf(task.getCallTask().get())));
     } else if (task.getRunTask() != null) {
       CallRequest req = new CallRequest(TaskNaming.toKebabCase(name), "run", data);
       JsonNode next =
@@ -161,7 +221,7 @@ public class InterpreterWorkflow implements Workflow {
                   WorkflowSupport.defaultTaskOptions(),
                   JsonNode.class)
               .await();
-      return new Dispatch(next, FlowOutcome.of(task.getRunTask().getThen()));
+      return new Body(next, FlowOutcome.of(task.getRunTask().getThen()));
     } else if (task.getSetTask() != null) {
       EvaluateSetRequest req = new EvaluateSetRequest(name, data);
       JsonNode next =
@@ -171,14 +231,14 @@ public class InterpreterWorkflow implements Workflow {
                   WorkflowSupport.defaultTaskOptions(),
                   JsonNode.class)
               .await();
-      return new Dispatch(next, FlowOutcome.of(task.getSetTask().getThen()));
+      return new Body(next, FlowOutcome.of(task.getSetTask().getThen()));
     } else if (task.getWaitTask() != null) {
       ctx.createTimer(durationOf(task.getWaitTask().getWait())).await();
-      return new Dispatch(data, FlowOutcome.of(task.getWaitTask().getThen()));
+      return new Body(data, FlowOutcome.of(task.getWaitTask().getThen()));
     } else if (task.getListenTask() != null) {
       JsonNode event =
           ctx.waitForExternalEvent(name, DEFAULT_LISTEN_TIMEOUT, JsonNode.class).await();
-      return new Dispatch(
+      return new Body(
           mergeObjects(data, event, mapper), FlowOutcome.of(task.getListenTask().getThen()));
     } else if (task.getEmitTask() != null) {
       EmitRequest req =
@@ -189,7 +249,7 @@ public class InterpreterWorkflow implements Workflow {
               WorkflowSupport.defaultTaskOptions(),
               Void.class)
           .await();
-      return new Dispatch(data, FlowOutcome.of(task.getEmitTask().getThen()));
+      return new Body(data, FlowOutcome.of(task.getEmitTask().getThen()));
     } else if (task.getForTask() != null || task.getTryTask() != null) {
       throw new UnsupportedOperationException(
           "task '" + name + "' uses for/try, which is recognised but not yet interpreted");
