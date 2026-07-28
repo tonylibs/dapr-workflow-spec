@@ -1,0 +1,37 @@
+# PVCs backing the build caches mounted in sandbox.yaml.
+# TODO: confirm storageClassName and sizes for your cluster.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dws-sandbox-m2-cache
+  namespace: agent-sandboxes
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: TODO
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dws-sandbox-go-cache
+  namespace: agent-sandboxes
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: TODO
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dws-sandbox-pnpm-store
+  namespace: agent-sandboxes
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: TODO
+  resources:
+    requests:
+      storage: 2Gi

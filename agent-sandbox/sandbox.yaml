@@ -1,0 +1,37 @@
+# TODO: confirm installed CRD apiVersion before applying —
+#   kubectl get crd sandboxes.agents.x-k8s.io -o jsonpath='{.spec.versions[*].name}'
+# v0.4.x agent-sandbox releases only serve v1alpha1 (no conversion webhook).
+apiVersion: agents.x-k8s.io/v1beta1  # TODO: change to v1alpha1 if that's what's installed
+kind: Sandbox
+metadata:
+  name: dws-dev-sandbox   # TODO: template per session, e.g. dws-dev-<session-id>
+  namespace: agent-sandboxes  # TODO: confirm/create namespace, wire RBAC
+spec:
+  podTemplate:
+    spec:
+      # TODO: runtimeClassName: gvisor  (or kata) once confirmed available on nodes
+      containers:
+        - name: agent
+          image: REGISTRY/dws-agent-sandbox:TODO-TAG
+          workingDir: /workspace
+          volumeMounts:
+            - name: repo
+              mountPath: /workspace
+            - name: m2-cache
+              mountPath: /root/.m2
+            - name: go-cache
+              mountPath: /root/go/pkg/mod
+            - name: pnpm-store
+              mountPath: /root/.local/share/pnpm/store
+      volumes:
+        - name: repo
+          emptyDir: {}   # TODO: replace with git-clone init container or PVC if repo state must persist
+        - name: m2-cache
+          persistentVolumeClaim:
+            claimName: dws-sandbox-m2-cache
+        - name: go-cache
+          persistentVolumeClaim:
+            claimName: dws-sandbox-go-cache
+        - name: pnpm-store
+          persistentVolumeClaim:
+            claimName: dws-sandbox-pnpm-store
