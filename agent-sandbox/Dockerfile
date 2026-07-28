@@ -17,14 +17,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # --- gh CLI ---
 # Official apt repo per https://github.com/cli/cli/blob/trunk/docs/install_linux.md.
-# Pinned version; bump by checking https://github.com/cli/cli/releases for a newer tag.
-ARG GH_VERSION=2.65.0
+# That repo (unlike Docker Hub tags) carries only the single current stable release --
+# there is no history of old versions to pin against -- so, like the other apt packages
+# installed above, this resolves to whatever that repo currently serves.
 RUN mkdir -p -m 755 /etc/apt/keyrings \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
     && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends gh="${GH_VERSION}*" \
+    && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
 # --- JDK 25 (dws-controller, dws-orchestrator use ./mvnw, no separate Maven install needed;
@@ -65,7 +66,7 @@ RUN set -eux; \
     node -v | grep -q '^v24\.'; \
     pnpm -v | grep -q '^11\.10\.0$'; \
     jq --version | grep -q '^jq-1'; \
-    gh --version | grep -q "${GH_VERSION}"; \
+    gh --version | grep -q '^gh version'; \
     git --version; \
     make --version | head -1
 
