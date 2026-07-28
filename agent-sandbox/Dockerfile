@@ -49,6 +49,10 @@ ENV PATH="/usr/local/go/bin:${GOPATH}/bin:${PATH}"
 # so partial copies break corepack's own module resolution.
 COPY --from=node /usr/local /usr/local
 
+# pnpm's default global bin dir (where corepack's own pnpm shim lands); corepack refuses to
+# activate unless it's on PATH.
+ENV PATH="/root/.local/share/pnpm/bin:${PATH}"
+
 # pnpm store lives on the pnpm-store PVC mount declared in sandbox.yaml
 # (/root/.local/share/pnpm/store); set explicitly so it doesn't depend on XDG defaults.
 # `corepack enable` with no args also tries to shim yarn, which node:24-slim doesn't ship a
