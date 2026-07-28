@@ -44,11 +44,10 @@ ENV PATH="/usr/local/go/bin:${GOPATH}/bin:${PATH}"
 
 # --- Node 24 + pnpm (dws-call-openapi; also needed at build time by dws-controller, whose
 #     Maven build shells out to Node/npx for cdk8s import -- see dws-controller/CLAUDE.md) ---
-COPY --from=node /usr/local/bin/node /usr/local/bin/node
-COPY --from=node /usr/local/bin/npm /usr/local/bin/npm
-COPY --from=node /usr/local/bin/npx /usr/local/bin/npx
-COPY --from=node /usr/local/bin/corepack /usr/local/bin/corepack
-COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+# Copy the node image's whole /usr/local rather than hand-picking files: node/npm/npx/corepack
+# are a mix of real files and symlinks with relative requires into sibling lib/ directories,
+# so partial copies break corepack's own module resolution.
+COPY --from=node /usr/local /usr/local
 
 # pnpm store lives on the pnpm-store PVC mount declared in sandbox.yaml
 # (/root/.local/share/pnpm/store); set explicitly so it doesn't depend on XDG defaults.
