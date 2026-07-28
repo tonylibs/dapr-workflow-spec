@@ -11,8 +11,10 @@ FROM node:24-slim AS node
 
 FROM ubuntu:24.04
 
+# gcc/libc6-dev: `go test -race` (dws-call-http, dws-run CI gate) needs cgo, which needs a C
+# compiler on PATH -- Go auto-disables cgo without one.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git curl ca-certificates jq make unzip gnupg \
+    git curl ca-certificates jq make unzip gnupg gcc libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # --- gh CLI ---
