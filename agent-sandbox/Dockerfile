@@ -51,7 +51,9 @@ COPY --from=node /usr/local /usr/local
 
 # pnpm store lives on the pnpm-store PVC mount declared in sandbox.yaml
 # (/root/.local/share/pnpm/store); set explicitly so it doesn't depend on XDG defaults.
-RUN corepack enable \
+# `corepack enable` with no args also tries to shim yarn, which node:24-slim doesn't ship a
+# placeholder for and fails realpath-ing; scope it to pnpm only, which is all this image needs.
+RUN corepack enable pnpm \
     && corepack prepare pnpm@11.10.0 --activate \
     && pnpm config set store-dir /root/.local/share/pnpm/store --global
 
