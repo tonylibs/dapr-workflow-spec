@@ -1,1 +1,58 @@
-{{/* placeholder — chart reset to fresh `helm create` state, not yet built out */}}
+{{- if .Values.controller.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dws.controller.fullname" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  replicas: {{ .Values.controller.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "dws.controller.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dws.labels" . | nindent 8 }}
+        app.kubernetes.io/component: controller
+    spec:
+      serviceAccountName: {{ include "dws.controller.fullname" . }}
+      containers:
+        - name: controller
+          image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: DWS_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: DWS_IMAGES_CALL_HTTP
+              value: {{ .Values.controller.images.callHttp | quote }}
+            - name: DWS_IMAGES_CALL_OPENAPI
+              value: {{ .Values.controller.images.callOpenapi | quote }}
+            - name: DWS_IMAGES_RUN
+              value: {{ .Values.controller.images.run | quote }}
+            - name: DWS_IMAGES_ORCHESTRATOR
+              value: {{ .Values.controller.images.orchestrator | quote }}
+          livenessProbe:
+            httpGet:
+              path: /q/health/live
+              port: http
+            initialDelaySeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /q/health/ready
+              port: http
+            initialDelaySeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+{{- end }}

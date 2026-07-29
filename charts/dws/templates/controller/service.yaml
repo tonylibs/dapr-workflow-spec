@@ -1,1 +1,17 @@
-{{/* placeholder — chart reset to fresh `helm create` state, not yet built out */}}
+{{- if .Values.controller.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "dws.controller.fullname" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  selector:
+    {{- include "dws.controller.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.controller.service.port }}
+      targetPort: http
+{{- end }}

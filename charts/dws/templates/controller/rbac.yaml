@@ -1,1 +1,46 @@
-{{/* placeholder — chart reset to fresh `helm create` state, not yet built out */}}
+{{- if .Values.controller.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "dws.controller.fullname" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+rules:
+  # Immutable definition ConfigMaps.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "create", "delete"]
+  # Orchestrator Deployments. `update`/`patch` are needed to stamp dws.io/drain=true on
+  # the superseded version during rollout.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "create", "delete", "update", "patch"]
+  # Step services. `update`/`patch` let a new version re-label an existing, same-named
+  # Knative Service instead of failing on create.
+  - apiGroups: ["serving.knative.dev"]
+    resources: ["services"]
+    verbs: ["get", "list", "create", "delete", "update", "patch"]
+  # Dapr configuration components backing the definition store.
+  - apiGroups: ["dapr.io"]
+    resources: ["components"]
+    verbs: ["get", "list", "create", "delete", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "dws.controller.fullname" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "dws.controller.fullname" . }}
+    namespace: {{ include "dws.namespace" . }}
+roleRef:
+  kind: Role
+  name: {{ include "dws.controller.fullname" . }}
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
