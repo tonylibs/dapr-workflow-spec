@@ -12,7 +12,7 @@ sessions with persistent caches.
 
 | File | Purpose | Status |
 |---|---|---|
-| `Dockerfile` | Shared dev image: JDK 25, Go 1.26, Node 24/pnpm, git/gh/jq | skeleton — TODO fill in versions/pins |
+| `Dockerfile` | Shared dev image: JDK 25, Go 1.26, Node 24/pnpm, git/gh/jq | pinned, with a build-time smoke test — see `.github/workflows/agent-sandbox.yml` |
 | `sandbox.yaml` | `Sandbox` CRD manifest for one agent session | skeleton — confirm installed CRD apiVersion first |
 | `cache-pvcs.yaml` | PVCs for `~/.m2`, Go module cache, pnpm store | skeleton — confirm storageClass |
 
@@ -25,6 +25,13 @@ sessions with persistent caches.
 
 ## Not scaffolded yet
 
-- CI job to build/push this image
 - RBAC/namespace scoping for the sandbox service account
 - Image build tooling inside the sandbox itself (buildah/kaniko), if Dockerfile validation is needed in-session
+- `kubectl`/`dapr` CLI in the image (deferred — add only once the agent needs to validate against a live cluster)
+
+`.github/workflows/agent-sandbox.yml` builds the image on every push/PR touching this directory
+(the Dockerfile's smoke-test `RUN` step fails the build if a toolchain is missing or the wrong
+version, and the workflow then runs each component's real CI-gate command inside the built image:
+`./mvnw verify` for `dws-controller`/`dws-orchestrator`, `make vet && make test` for
+`dws-call-http`/`dws-run`, `pnpm lint && pnpm test && pnpm build` for `dws-call-openapi`) and pushes
+to `ghcr.io/tonylibs/dws-agent-sandbox` only on merge to `main`.
