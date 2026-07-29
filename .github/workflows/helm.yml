@@ -18,8 +18,10 @@ concurrency:
 
 env:
   CHART_DIR: charts/dws
-  # OCI registry namespace for the packaged chart: ghcr.io/<owner>/charts
-  OCI_REGISTRY: ghcr.io/${{ github.repository_owner }}/charts
+  # TEMP CI TEST: push to a throwaway namespace so we can validate the release path
+  # on this PR without publishing a real charts/dws package. Revert to
+  # ghcr.io/${{ github.repository_owner }}/charts before merge.
+  OCI_REGISTRY: ghcr.io/${{ github.repository_owner }}/charts-citest
 
 jobs:
   verify:
@@ -70,8 +72,9 @@ jobs:
 
   release:
     name: package & push (OCI)
-    # Publish only on merge to the default branch — PRs verify but never push.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # TEMP CI TEST: run on this PR to validate the publish path. Revert to
+    # `github.event_name == 'push' && github.ref == 'refs/heads/main'` before merge.
+    if: github.event_name == 'pull_request'
     needs: verify
     runs-on: ubuntu-latest
     permissions:
