@@ -1,0 +1,101 @@
+name: helm-chart
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'charts/**'
+      - '.github/workflows/helm.yml'
+  pull_request:
+    paths:
+      - 'charts/**'
+      - '.github/workflows/helm.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: helm-chart-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CHART_DIR: charts/dws
+  # OCI registry namespace for the packaged chart: ghcr.io/<owner>/charts
+  OCI_REGISTRY: ghcr.io/${{ github.repository_owner }}/charts
+
+jobs:
+  verify:
+    name: lint, template & dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: Lint
+        run: helm lint ${{ env.CHART_DIR }}
+
+      - name: Template (default values)
+        run: helm template dws ${{ env.CHART_DIR }} > /tmp/render-default.yaml
+
+      - name: Template (controller disabled)
+        run: |
+          out=$(helm template dws ${{ env.CHART_DIR }} --set controller.enabled=false)
+          if echo "$out" | grep -q 'app.kubernetes.io/component: controller'; then
+            echo "::error::controller resources rendered while controller.enabled=false"
+            exit 1
+          fi
+
+      - name: Template (value overrides)
+        run: |
+          helm template dws ${{ env.CHART_DIR }} \
+            --set controller.replicaCount=3 \
+            --set controller.image.repository=ghcr.io/${{ github.repository_owner }}/dws-controller \
+            --set controller.image.tag=ci-test \
+            --set controller.service.port=9090 \
+            --set controller.images.run=ghcr.io/${{ github.repository_owner }}/dws-run:ci > /dev/null
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+
+      - name: Server-side dry-run install
+        # Validates the rendered manifests against a real API server. The controller
+        # stack is core/rbac/apps only, so no external CRDs are required.
+        run: |
+          helm install dws ${{ env.CHART_DIR }} \
+            --namespace dws-system --create-namespace \
+            --dry-run=server
+
+  release:
+    name: package & push (OCI)
+    # Publish only on merge to the default branch — PRs verify but never push.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: Log in to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Package chart
+        run: helm package ${{ env.CHART_DIR }} --destination /tmp/chart
+
+      - name: Push chart to OCI registry
+        run: |
+          chart_pkg=$(ls /tmp/chart/*.tgz)
+          echo "Pushing $chart_pkg to oci://${{ env.OCI_REGISTRY }}"
+          helm push "$chart_pkg" "oci://${{ env.OCI_REGISTRY }}"
