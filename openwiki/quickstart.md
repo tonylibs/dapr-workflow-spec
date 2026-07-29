@@ -14,6 +14,7 @@ DWS (`dapr-workflow-spec`) is a config-driven workflow platform for Kubernetes. 
 - [Deployed workflow architecture](architecture/deployed-workflow.md) explains how a definition becomes an immutable, versioned deployment and how the orchestrator executes its tasks.
 - [Lifecycle events](integrations/lifecycle-events.md) explains the shared Dapr pub/sub stream that observes controller deployment and orchestrator execution lifecycles.
 - [OWS DSL feature roadmap](architecture/roadmap.md) tracks DSL 1.0 task-type and cross-cutting feature coverage against the current implementation, phased into build order.
+- [Cluster-hosted agent sandbox](architecture/agent-sandbox.md) explains the CI-validated development image and Kubernetes session templates for persistent agent work.
 
 The repository has four independently built components; run builds and tests from each component directory rather than from the repository root:
 
