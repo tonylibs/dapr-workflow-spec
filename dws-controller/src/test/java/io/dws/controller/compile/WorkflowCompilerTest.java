@@ -7,6 +7,7 @@ import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.ImageCatalog;
 import io.dws.controller.model.StepService;
 import io.dws.controller.model.TaskKind;
+import io.dws.controller.model.TopicBinding;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -323,6 +324,162 @@ class WorkflowCompilerTest {
     assertThatThrownBy(() -> compiler.compile(fixture("broken.yaml")))
         .isInstanceOf(CompilationException.class)
         .satisfies(e -> assertThat(((CompilationException) e).errors()).isNotEmpty());
+  }
+
+  @Test
+  @DisplayName("call/run tasks nested in try/catch.do compile to step services")
+  void nestedTryTasksCompileToStepServices() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: trycompile
+          version: '1.0.0'
+        do:
+          - guarded:
+              try:
+                - fetchOrder:
+                    call: http
+                    with:
+                      method: get
+                      endpoint: http://orders.local/api/one
+              catch:
+                errors:
+                  with:
+                    status: 503
+                do:
+                  - notifyFailure:
+                      run:
+                        shell:
+                          command: "echo failed"
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(plan.steps())
+        .extracting(StepService::name)
+        .containsExactlyInAnyOrder("fetch-order", "notify-failure");
+    assertThat(step(plan, "fetch-order").kind()).isEqualTo(TaskKind.CALL_HTTP);
+    assertThat(step(plan, "fetch-order").image()).isEqualTo("sw-call-http:1.0");
+    assertThat(step(plan, "notify-failure").kind()).isEqualTo(TaskKind.RUN_SHELL);
+    assertThat(step(plan, "notify-failure").image()).isEqualTo("sw-run-shell:1.0");
+  }
+
+  @Test
+  @DisplayName("emit/listen tasks nested in try/catch.do produce topic bindings")
+  void nestedTryTasksProduceTopicBindings() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: trybindings
+          version: '1.0.0'
+        do:
+          - guarded:
+              try:
+                - orderFetched:
+                    emit:
+                      event:
+                        with:
+                          source: https://shop.local
+                          type: shop.order.fetched
+              catch:
+                do:
+                  - awaitRetrySignal:
+                      listen:
+                        to:
+                          one:
+                            with:
+                              type: shop.order.retry
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(plan.bindings())
+        .extracting(TopicBinding::task)
+        .containsExactlyInAnyOrder("orderFetched", "awaitRetrySignal");
+    assertThat(plan.bindings())
+        .filteredOn(b -> b.task().equals("orderFetched"))
+        .singleElement()
+        .extracting(TopicBinding::direction)
+        .isEqualTo(TopicBinding.Direction.EMIT);
+    assertThat(plan.bindings())
+        .filteredOn(b -> b.task().equals("awaitRetrySignal"))
+        .singleElement()
+        .extracting(TopicBinding::direction)
+        .isEqualTo(TopicBinding.Direction.LISTEN);
+  }
+
+  @Test
+  @DisplayName("a task name duplicated across depths is rejected")
+  void duplicateTaskNameAcrossDepthsRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: dupnested
+          version: '1.0.0'
+        do:
+          - fetchOrder:
+              call: http
+              with:
+                method: get
+                endpoint: http://orders.local/api/a
+          - guarded:
+              try:
+                - fetchOrder:
+                    call: http
+                    with:
+                      method: get
+                      endpoint: http://orders.local/api/b
+              catch: {}
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("fetchOrder");
+  }
+
+  @Test
+  @DisplayName("a task name duplicated at the same depth is rejected")
+  void duplicateTaskNameAtSameDepthRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: dupflat
+          version: '1.0.0'
+        do:
+          - fetchOrder:
+              call: http
+              with:
+                method: get
+                endpoint: http://orders.local/api/a
+          - fetchOrder:
+              call: http
+              with:
+                method: get
+                endpoint: http://orders.local/api/b
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("fetchOrder");
+  }
+
+  @Test
+  @DisplayName("a definition without a try task compiles to an unchanged resource set")
+  void definitionWithoutTryCompilesUnchanged() {
+    DeploymentPlan plan = compiler.compile(fixture("order.yaml"));
+
+    assertThat(plan.steps())
+        .extracting(StepService::name)
+        .containsExactly("check-inventory", "charge-payment", "notify-out-of-stock");
+    assertThat(plan.bindings()).isEmpty();
   }
 
   private static StepService step(DeploymentPlan plan, String name) {

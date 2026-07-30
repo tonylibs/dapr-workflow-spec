@@ -73,7 +73,12 @@ Windows: use `mvnw.cmd`; POSIX shells (Git Bash): use `./mvnw`.
   version; that is what makes label-scoped GC of the old version safe. Steps dropped in the new version
   keep the old label and get collected.
 - **Task mapping**: `call http`/`call openapi`/`run` → a `StepService`; `emit`/`listen` → a topic binding
-  only; `switch`/`set`/`wait`/`for`/`try`/`raise` deploy nothing.
+  only; `switch`/`set`/`wait`/`for`/`try`/`raise` deploy nothing *themselves*. A `try` task's nested
+  `try`/`catch.do` lists **are** walked, so `call`/`run`/`emit`/`listen` inside them compile exactly
+  as at top level; lists nested under `for`/`fork` are not walked.
+- **Task names are unique across the whole definition**, at every depth — the app-id/Knative Service
+  name derives from the task name alone, so a duplicate is a deployed-object collision. Rejected at
+  compile time.
 - **Rollout**: the controller only annotates the superseded orchestrator `dws.io/drain=true`. Draining is
   the orchestrator's concern; the controller collects that version once its Deployment reports
   `status.replicas == 0` (a null status means "not reported yet", never "drained").

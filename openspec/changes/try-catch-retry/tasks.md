@@ -1,9 +1,9 @@
 ## 1. Controller: nested compilation & name uniqueness (`dws-controller`)
 
-- [ ] 1.1 Make `WorkflowCompiler.walk()` recurse into a `try` task's `getTry()` list and its `getCatch().getDo()` list, emitting the same `StepService`s and `TopicBinding`s for nested `call`/`run`/`emit`/`listen` tasks as at top level; leave `for`/`fork` lists unwalked and update the `// switch/set/wait/for/try/raise (and do/fork) deploy nothing.` comment to match reality
-- [ ] 1.2 Add a definition-wide task-name uniqueness validation that collects names at every depth (top-level, `try`, `catch.do`) and raises a `CompilationException` naming the duplicated name — the app-id/Knative Service name is derived from the task name alone, so a duplicate is a deployed-resource collision
-- [ ] 1.3 Unit tests in `WorkflowCompilerTest`: a `call: http` inside `try` compiles to a step service with the same image/naming rule as a top-level one; a `run: shell` inside `catch.do` likewise; `emit`/`listen` inside `try` produce topic bindings; a definition with no `try` compiles to an unchanged resource set; duplicate names (same depth and across depths) are rejected
-- [ ] 1.4 Run `./mvnw test` in `dws-controller/` and confirm green
+- [x] 1.1 Make `WorkflowCompiler.walk()` recurse into a `try` task's `getTry()` list and its `getCatch().getDo()` list, emitting the same `StepService`s and `TopicBinding`s for nested `call`/`run`/`emit`/`listen` tasks as at top level; leave `for`/`fork` lists unwalked and update the `// switch/set/wait/for/try/raise (and do/fork) deploy nothing.` comment to match reality
+- [x] 1.2 Add a definition-wide task-name uniqueness validation that collects names at every depth (top-level, `try`, `catch.do`) and raises a `CompilationException` naming the duplicated name — the app-id/Knative Service name is derived from the task name alone, so a duplicate is a deployed-resource collision
+- [x] 1.3 Unit tests in `WorkflowCompilerTest`: a `call: http` inside `try` compiles to a step service with the same image/naming rule as a top-level one; a `run: shell` inside `catch.do` likewise; `emit`/`listen` inside `try` produce topic bindings; a definition with no `try` compiles to an unchanged resource set; duplicate names (same depth and across depths) are rejected
+- [x] 1.4 Run `./mvnw test` in `dws-controller/` and confirm green
 
 ## 2. Orchestrator: scope-aware task-list runner
 
