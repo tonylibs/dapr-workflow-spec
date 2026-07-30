@@ -35,6 +35,7 @@ import io.serverlessworkflow.api.WorkflowReader;
 import io.serverlessworkflow.api.types.Workflow;
 import java.time.Instant;
 import java.util.List;
+import java.util.function.Function;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -105,8 +106,23 @@ class InterpreterWorkflowIntegrationTest {
   /** A already-resolved durable task yielding {@code value}. */
   @SuppressWarnings("unchecked")
   private static <T> Task<T> completed(T value) {
-    Task<T> task = mock(Task.class);
+    Task<T> task = taskWithThenApply();
     when(task.await()).thenReturn(value);
+    return task;
+  }
+
+  /** A mock durable task whose continuations map its eventual value, like Dapr's real task API. */
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  private static <T> Task<T> taskWithThenApply() {
+    Task<T> task = mock(Task.class);
+    when(task.thenApply(any()))
+        .thenAnswer(
+            invocation -> {
+              Function<T, Object> transform = invocation.getArgument(0);
+              Task<Object> mapped = mock(Task.class);
+              when(mapped.await()).thenAnswer(ignored -> transform.apply(task.await()));
+              return mapped;
+            });
     return task;
   }
 
@@ -135,7 +151,7 @@ class InterpreterWorkflowIntegrationTest {
     JsonNode afterCharge =
         mapper.readTree("{\"item\":\"widget\",\"inStock\":true,\"charged\":true}");
 
-    Task<JsonNode> callTask = mock(Task.class);
+    Task<JsonNode> callTask = taskWithThenApply();
     when(callTask.await()).thenReturn(afterInventory, afterCharge);
     when(ctx.callActivity(
             eq(CallServiceActivity.class.getName()),
@@ -189,7 +205,7 @@ class InterpreterWorkflowIntegrationTest {
     JsonNode afterNotify =
         mapper.readTree("{\"item\":\"widget\",\"inStock\":false,\"notified\":true}");
 
-    Task<JsonNode> callTask = mock(Task.class);
+    Task<JsonNode> callTask = taskWithThenApply();
     when(callTask.await()).thenReturn(afterInventory, afterNotify);
     when(ctx.callActivity(
             eq(CallServiceActivity.class.getName()),
@@ -228,7 +244,7 @@ class InterpreterWorkflowIntegrationTest {
     stubContext(ctx);
     when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{\"item\":\"widget\"}"));
 
-    Task<JsonNode> callTask = mock(Task.class);
+    Task<JsonNode> callTask = taskWithThenApply();
     when(callTask.await()).thenThrow(new RuntimeException("inventory down"));
     when(ctx.callActivity(
             eq(CallServiceActivity.class.getName()),
@@ -261,7 +277,7 @@ class InterpreterWorkflowIntegrationTest {
     stubContext(ctx);
     when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{\"item\":\"widget\"}"));
 
-    Task<JsonNode> callTask = mock(Task.class);
+    Task<JsonNode> callTask = taskWithThenApply();
     when(callTask.await())
         .thenReturn(
             mapper.readTree("{\"item\":\"widget\",\"inStock\":true}"),
@@ -323,7 +339,7 @@ class InterpreterWorkflowIntegrationTest {
     when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{}"));
 
     JsonNode afterRun = mapper.readTree("{\"synced\":true}");
-    Task<JsonNode> callTask = mock(Task.class);
+    Task<JsonNode> callTask = taskWithThenApply();
     when(callTask.await()).thenReturn(afterRun);
     when(ctx.callActivity(
             eq(CallServiceActivity.class.getName()),
@@ -414,7 +430,7 @@ class InterpreterWorkflowIntegrationTest {
         .thenReturn(mapper.readTree("{\"orderId\":\"o-1\",\"price\":9.5,\"unrelated\":\"x\"}"));
 
     // chargePayment's step returns a receipt; passThrough's step echoes what it is given.
-    Task<JsonNode> callTask = mock(Task.class);
+    Task<JsonNode> callTask = taskWithThenApply();
     when(callTask.await())
         .thenReturn(
             mapper.readTree("{\"receipt\":\"r-77\",\"noise\":1}"),
@@ -469,7 +485,7 @@ class InterpreterWorkflowIntegrationTest {
     when(ctx.getInput(JsonNode.class))
         .thenReturn(mapper.readTree("{\"orderId\":\"o-1\",\"price\":9.5}"));
 
-    Task<JsonNode> callTask = mock(Task.class);
+    Task<JsonNode> callTask = taskWithThenApply();
     when(callTask.await()).thenReturn(mapper.readTree("{\"receipt\":404}"));
     when(ctx.callActivity(
             eq(CallServiceActivity.class.getName()),
@@ -514,7 +530,7 @@ class InterpreterWorkflowIntegrationTest {
     stubContext(ctx);
     when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{}"));
 
-    Task<JsonNode> callTask = mock(Task.class);
+    Task<JsonNode> callTask = taskWithThenApply();
     when(callTask.await()).thenReturn(mapper.readTree("{}"));
     when(ctx.callActivity(
             eq(CallServiceActivity.class.getName()),

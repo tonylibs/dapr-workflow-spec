@@ -40,6 +40,7 @@ import io.serverlessworkflow.api.types.Workflow;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -86,8 +87,7 @@ class TryCatchInterpreterTest {
     when(ctx.getCurrentInstant()).thenReturn(Instant.parse("2026-07-30T00:00:00Z"));
     when(ctx.getInput(JsonNode.class)).thenReturn(mapper.createObjectNode());
 
-    Task<Void> voidTask = mock(Task.class);
-    when(voidTask.await()).thenReturn(null);
+    Task<Void> voidTask = completed(null);
     when(ctx.callActivity(
             eq(AdminEventActivity.class.getName()),
             any(),
@@ -148,10 +148,22 @@ class TryCatchInterpreterTest {
         .thenThrow(new StepInvocationException(appId, status, "upstream down", null));
   }
 
-  @SuppressWarnings("unchecked")
+  /**
+   * A mock durable task that also honours {@code thenApply}, matching Dapr's real task API — the
+   * interpreter maps continuations rather than awaiting and then constructing.
+   */
+  @SuppressWarnings({"unchecked", "rawtypes"})
   private static <T> Task<T> completed(T value) {
     Task<T> task = mock(Task.class);
     when(task.await()).thenReturn(value);
+    when(task.thenApply(any()))
+        .thenAnswer(
+            invocation -> {
+              Function<T, Object> transform = invocation.getArgument(0);
+              Task<Object> mapped = mock(Task.class);
+              when(mapped.await()).thenAnswer(ignored -> transform.apply(task.await()));
+              return mapped;
+            });
     return task;
   }
 

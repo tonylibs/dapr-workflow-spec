@@ -13,4 +13,5 @@ import java.util.Map;
  * threaded alongside (not merged into) the data document so the binding disappears with its scope.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record EvaluateSetRequest(String taskName, JsonNode data, Map<String, JsonNode> variables) {}
+public record EvaluateSetRequest(String taskName, JsonNode data, Map<String, JsonNode> variables)
+    implements StepRequest {}
