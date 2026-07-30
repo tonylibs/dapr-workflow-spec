@@ -1327,14 +1327,16 @@ git commit -m "test(orchestrator): cover try/catch/retry end to end"
 
 ## Self-Review Notes
 
-Checked against `specs/workflow-error-handling/spec.md` and `specs/nested-task-execution/spec.md`:
+Checked against `specs/workflow-error-handling/spec.md`, the change's only delta spec:
 
-- Every `workflow-error-handling` requirement maps to a task — try body (T5.1), propagation (T5.2),
-  error object (T3), static filter (T4.5), dynamic filter (T4.5), error variable (T5.1/T5.5),
-  policy resolution (T4.5), retry loop (T5.5), backoff/jitter/limits (T4.5), recovery block (T5.5),
-  shared pipeline (T5.1 + T6.8), catch-path directive (T5.5).
-- Every `nested-task-execution` requirement maps to a task — scopes (T2), `exit`/`end` (T2 + T6.5),
-  depth bound (T2 + T6.6), lookup at depth (T3.8), name uniqueness (T1.4), nested compilation (T1.3).
+- Every requirement maps to a task — try body (T5.1), propagation (T5.2), error object (T3), static
+  filter (T4.5), dynamic filter (T4.5), error variable (T5.1/T5.5), policy resolution (T4.5), retry
+  loop (T5.5), backoff/jitter/limits (T4.5), recovery block (T5.5), shared pipeline (T5.1 + T6.8),
+  catch-path directive (T5.5), try/catch scopes (T2 + T6.5), depth bound (T2 + T6.6), lookup at
+  depth (T3.8), nested compilation and name uniqueness (T1.3 + T1.4).
+- The scope runner built in Task 2 is general by construction, but this change specs and tests it
+  **only** for `try`/`catch`. Do not add `for`/`fork` scope handling here — that is a later Phase 2
+  slice, and `for` must keep throwing `UnsupportedOperationException` (Task 5 Step 5).
 - Type consistency: `ScopeResult`/`ScopeEnd`/`CatchDecision`/`CatchDecisionRequest`/`Body` field
   names are used identically in Tasks 2, 4, and 5. `Body` gains its `context`/`end` components in
   Task 5 Step 5 — Task 2 must not treat `Body` as final.

@@ -66,12 +66,15 @@ Additions with no "before" state:
 - `workflow-error-handling`: `dws-orchestrator`'s interpretation of `try`/`catch`/`retry` — running
   the try list, synthesising the runtime error object, static and dynamic error filtering, the
   error variable binding, retry policy resolution with backoff/jitter/limits, the `catch.do`
-  recovery block, and propagation of unhandled faults.
-- `nested-task-execution`: the scope-aware task-list runner in `dws-orchestrator` (per-scope flow
-  directives, `exit` vs `end`, nesting depth guard, task lookup across nested lists) **and**
-  `dws-controller`'s recursion into nested task lists when compiling, plus the global task-name
-  uniqueness rule both components depend on. Split out from error handling because Phase 2's later
-  slices (`for`, `fork`) extend this, not `try`/`catch`.
+  recovery block, and propagation of unhandled faults. It also covers the **`try`-scoped** nesting
+  behavior this slice needs: the `try` and `catch.do` lists run as their own scopes (scope-local
+  flow directives, `exit` vs `end`, a nesting depth bound, task lookup at depth), and
+  `dws-controller` compiles the tasks nested inside them while rejecting duplicate task names.
+
+  A general `nested-task-execution` capability — the same scope rules applied to `for`, `fork`, and
+  nested `do` for other task types — is **deliberately not proposed here**. It lands with the Phase 2
+  slice that needs it. The requirements above are written against `try`/`catch` specifically so that
+  later slice generalises them rather than inheriting a spec no code satisfies.
 
 ### Modified Capabilities
 <!-- None. workflow-data-flow is consumed unchanged: tasks inside `try` and `catch.do` go through
@@ -102,7 +105,9 @@ Additions with no "before" state:
   app-id mapping and content-addressed versioning are all unchanged. The one behavioral tightening
   is the duplicate-task-name rejection.
 - **Non-goals**: `raise`, `fork`, nested `do` for other task types (`for` keeps its
-  `UnsupportedOperationException`); RFC 7807 Problem Details and the standard error-type catalogue;
+  `UnsupportedOperationException`), and the general nested-task-execution capability those slices
+  need — the scope runner built here is exercised only by `try`/`catch`; RFC 7807 Problem Details
+  and the standard error-type catalogue;
   task/workflow timeouts including `retry.limit.attempt.duration`; `catch.then`, which the pinned
   SDK (`serverlessworkflow-types:7.26.0.Final`) does not expose.
 - **CI**: covered by the existing per-component path-filtered workflows; no CI changes.

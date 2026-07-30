@@ -219,6 +219,83 @@ identically. The `try` task itself SHALL also be wrapped by that pipeline as an 
 - **THEN** the inner task is reported failed
 - **AND** the `try` task is reported completed rather than failed
 
+### Requirement: Try and catch bodies run as their own task scope
+`dws-orchestrator` SHALL run the `try` list and the `catch.do` list each as its own task scope. A
+task's `then` target SHALL resolve only against the tasks declared in the same list, and a directive
+naming a task the scope does not declare SHALL fail with a message naming the unresolvable target.
+`exit` SHALL complete only the scope that declares it, returning control to the enclosing `try` task;
+`end` SHALL complete the whole workflow instance from any depth. The orchestrator SHALL enforce a
+maximum nesting depth and fail with a clear message when a definition exceeds it, and SHALL resolve a
+task by name at any depth so in-process activities can look up nested tasks. Scope rules for task
+types other than `try`/`catch` are out of scope for this capability. Owning component:
+`dws-orchestrator`.
+
+#### Scenario: Directive jumps within the try list
+- **WHEN** a task inside a `try` list declares a `then` naming another task in the same list
+- **THEN** execution continues at that task
+
+#### Scenario: Directive cannot leave the scope
+- **WHEN** a task inside a `try` list declares a `then` naming a task declared outside that list
+- **THEN** the task fails with a message naming the unresolvable target
+
+#### Scenario: `exit` returns to the enclosing try task
+- **WHEN** a task inside a `try` list declares `then: exit`
+- **THEN** the remaining tasks in that list are skipped
+- **AND** the enclosing `try` task completes and the workflow continues after it
+
+#### Scenario: `end` completes the instance from inside a try list
+- **WHEN** a task inside a `try` list declares `then: end`
+- **THEN** the workflow instance completes and no task after the enclosing `try` task runs
+
+#### Scenario: Running off the end of the try list returns to the enclosing task
+- **WHEN** the last task in a `try` list completes without a directive
+- **THEN** control returns to the `try` task rather than continuing into the outer list
+
+#### Scenario: Excessive nesting fails with a clear message
+- **WHEN** a definition nests `try` tasks beyond the maximum supported depth
+- **THEN** the workflow fails with a message naming the depth limit
+
+#### Scenario: Nested task is resolvable by name
+- **WHEN** an in-process activity resolves a task declared inside a `try` or `catch.do` list
+- **THEN** the task is found and evaluated
+
+#### Scenario: Top-level execution is unchanged
+- **WHEN** a definition contains no `try` task
+- **THEN** it executes exactly as it did before this capability
+
+### Requirement: Tasks nested in `try` and `catch.do` compile to their resources
+`dws-controller` SHALL walk the task lists nested under a `try` task's `try` and `catch.do` keys when
+compiling a definition, emitting the same step services and topic bindings for the tasks it finds
+there as for top-level tasks of the same kind. Task lists nested under task types other than
+`try`/`catch` SHALL NOT be walked. `dws-controller` SHALL additionally reject a definition that
+declares the same task name more than once at any depth, naming the duplicated name — a `call` or
+`run` task's Dapr app-id, and therefore its deployed Knative Service name, is derived from its task
+name alone, and tasks are resolved by name at runtime. Owning component: `dws-controller`.
+
+#### Scenario: Call task inside `try` deploys a step service
+- **WHEN** a definition declares a `call: http` task inside a `try` list
+- **THEN** a step service is compiled for it using the same image and naming rule as a top-level
+  `call: http` task
+
+#### Scenario: Run task inside `catch.do` deploys a step service
+- **WHEN** a definition declares a `run: shell` task inside a `catch.do` list
+- **THEN** a step service is compiled for it using the same image and naming rule as a top-level
+  `run: shell` task
+
+#### Scenario: Emit and listen nested in a try task produce topic bindings
+- **WHEN** a definition declares an `emit` or `listen` task inside a `try` or `catch.do` list
+- **THEN** the same topic binding is produced as for the equivalent top-level task
+
+#### Scenario: Duplicate names are rejected at compile time
+- **WHEN** a posted definition declares two tasks with the same name, whether at the same depth or
+  at different depths
+- **THEN** compilation fails with an error naming the duplicated task name
+- **AND** nothing is deployed
+
+#### Scenario: Definitions without a try task compile unchanged
+- **WHEN** a definition declares no `try` task
+- **THEN** the compiled set of step services and topic bindings is unchanged
+
 ### Requirement: Catch-path flow directive is not supported
 `dws-orchestrator` SHALL continue after a handled error using the `try` task's own `then`. The
 `catch.then` directive defined by the Open Workflow Specification is not available in the pinned SDK
