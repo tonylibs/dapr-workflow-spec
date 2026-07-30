@@ -22,13 +22,13 @@
 
 ## 4. Orchestrator: catch-decision activity
 
-- [ ] 4.1 Add `CatchDecisionActivity` (in-process, registered in `WorkflowRuntimeBootstrap` alongside the existing activities) taking `{tryTaskName, failedTaskName, errorKind, errorMessage, attempt, firstFailureAt, now, data, context}` and returning `{caught, retry, delayMillis, error}` (D3)
-- [ ] 4.2 Static filter matching against `catch.errors.with`: compare only the fields the filter declares, treating `ErrorFilter.getStatus() == 0` as absent, and map the SDK's plural `getDetails()` to the error object's `detail`
-- [ ] 4.3 Dynamic filtering: catch only when the static filter matches **and** `catch.when` is absent or truthy **and** `catch.exceptWhen` is absent or falsy, evaluating both with `$context` and the error bound under `catch.as` (default `error`)
-- [ ] 4.4 Retry-policy resolution: inline `Retry.getRetryPolicyDefinition()` or `getRetryPolicyReference()` looked up in `Workflow.getUse().getRetries().getAdditionalProperties()`; an unresolvable name fails with a message naming the missing policy
-- [ ] 4.5 Retry gating: evaluate the policy's `when`/`exceptWhen`; stop retrying at `limit.attempt.count` attempts (treating `0` as absent) or when `now − firstFailureAt` exceeds `limit.duration`; reject `limit.attempt.duration` with a message naming it as an unsupported per-attempt timeout (D7)
-- [ ] 4.6 Delay computation: `constant`/absent → `delay`; `linear` → `delay × attempt`; `exponential` → `delay × 2^(attempt−1)`; add a uniform random draw from `[jitter.from, jitter.to]` when `jitter` is present — drawn **inside** the activity so Dapr's recorded result makes replay deterministic (D8); reuse the existing `TimeoutAfter` → `Duration` conversion
-- [ ] 4.7 Unit tests for the activity: each filter outcome (matched / status mismatch / empty clause catches all), `when` and `exceptWhen` gating, inline vs named policy, missing named policy, each backoff shape, jitter within range, both limits ending retries, and the `limit.attempt.duration` rejection
+- [x] 4.1 Add `CatchDecisionActivity` (in-process, registered in `WorkflowRuntimeBootstrap` alongside the existing activities) taking `{tryTaskName, failedTaskName, errorKind, errorMessage, attempt, firstFailureAt, now, data, context}` and returning `{caught, retry, delayMillis, error}` (D3)
+- [x] 4.2 Static filter matching against `catch.errors.with`: compare only the fields the filter declares, treating `ErrorFilter.getStatus() == 0` as absent, and map the SDK's plural `getDetails()` to the error object's `detail`
+- [x] 4.3 Dynamic filtering: catch only when the static filter matches **and** `catch.when` is absent or truthy **and** `catch.exceptWhen` is absent or falsy, evaluating both with `$context` and the error bound under `catch.as` (default `error`)
+- [x] 4.4 Retry-policy resolution: inline `Retry.getRetryPolicyDefinition()` or `getRetryPolicyReference()` looked up in `Workflow.getUse().getRetries().getAdditionalProperties()`; an unresolvable name fails with a message naming the missing policy
+- [x] 4.5 Retry gating: evaluate the policy's `when`/`exceptWhen`; stop retrying at `limit.attempt.count` attempts (treating `0` as absent) or when `now − firstFailureAt` exceeds `limit.duration`; reject `limit.attempt.duration` with a message naming it as an unsupported per-attempt timeout (D7)
+- [x] 4.6 Delay computation: `constant`/absent → `delay`; `linear` → `delay × attempt`; `exponential` → `delay × 2^(attempt−1)`; add a uniform random draw from `[jitter.from, jitter.to]` when `jitter` is present — drawn **inside** the activity so Dapr's recorded result makes replay deterministic (D8); reuse the existing `TimeoutAfter` → `Duration` conversion
+- [x] 4.7 Unit tests for the activity: each filter outcome (matched / status mismatch / empty clause catches all), `when` and `exceptWhen` gating, inline vs named policy, missing named policy, each backoff shape, jitter within range, both limits ending retries, and the `limit.attempt.duration` rejection
 
 ## 5. Orchestrator: `try` dispatch and retry loop
 
