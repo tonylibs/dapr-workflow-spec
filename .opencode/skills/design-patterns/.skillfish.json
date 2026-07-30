@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "design-patterns",
+  "owner": "vladyslavbabiy",
+  "repo": "ai-java-setup",
+  "path": "claude-code/.claude/skills/design-patterns",
+  "branch": "main",
+  "sha": "a658331c189f47eee793637156f0d3bb3b411fe1",
+  "source": "manual"
+}

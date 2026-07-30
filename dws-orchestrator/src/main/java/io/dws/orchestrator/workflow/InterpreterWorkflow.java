@@ -6,35 +6,14 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.dapr.workflows.Workflow;
 import io.dapr.workflows.WorkflowContext;
 import io.dapr.workflows.WorkflowStub;
-import io.dws.orchestrator.workflow.activity.AdminEventActivity;
-import io.dws.orchestrator.workflow.activity.AdminEventRequest;
-import io.dws.orchestrator.workflow.activity.CallRequest;
-import io.dws.orchestrator.workflow.activity.CallServiceActivity;
-import io.dws.orchestrator.workflow.activity.DataFlowInputActivity;
-import io.dws.orchestrator.workflow.activity.DataFlowInputRequest;
-import io.dws.orchestrator.workflow.activity.DataFlowOutputActivity;
-import io.dws.orchestrator.workflow.activity.DataFlowOutputRequest;
-import io.dws.orchestrator.workflow.activity.DataFlowPipeline;
-import io.dws.orchestrator.workflow.activity.DataFlowResult;
-import io.dws.orchestrator.workflow.activity.EmitEventActivity;
-import io.dws.orchestrator.workflow.activity.EmitRequest;
-import io.dws.orchestrator.workflow.activity.EvaluateSetActivity;
-import io.dws.orchestrator.workflow.activity.EvaluateSetRequest;
-import io.dws.orchestrator.workflow.activity.EvaluateSwitchActivity;
-import io.dws.orchestrator.workflow.activity.EvaluateSwitchRequest;
-import io.dws.orchestrator.workflow.activity.FlowOutcome;
+import io.dws.orchestrator.workflow.activity.*;
 import io.dws.orchestrator.workflow.adapter.TaskNaming;
-import io.serverlessworkflow.api.types.DurationInline;
-import io.serverlessworkflow.api.types.FlowDirective;
-import io.serverlessworkflow.api.types.FlowDirectiveEnum;
-import io.serverlessworkflow.api.types.Task;
-import io.serverlessworkflow.api.types.TaskBase;
-import io.serverlessworkflow.api.types.TaskItem;
-import io.serverlessworkflow.api.types.TimeoutAfter;
+import io.serverlessworkflow.api.types.*;
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import one.util.streamex.StreamEx;
 
 /**
  * The single, generic workflow. It interprets the pod's one immutable Open Workflow Specification
@@ -76,64 +55,85 @@ public class InterpreterWorkflow implements Workflow {
     // so publishing stays replay-deterministic — no Instant.now()/UUID.randomUUID() in execute.
     AdminEventBuilder events = AdminEventBuilder.forContext(ctx);
 
-    JsonNode data = ctx.getInput(JsonNode.class);
-    if (data == null) {
-      data = mapper.createObjectNode();
-    }
-
+    JsonNode initialData =
+        Optional.ofNullable(ctx.getInput(JsonNode.class)).orElse(mapper.createObjectNode());
     // The workflow context is a second document, distinct from `data`: `export.as` writes it and it
     // persists for the instance's life. It is threaded through the loop (never stored externally)
     // so replay stays deterministic, and it is not part of the instance's completion output.
-    JsonNode context = mapper.createObjectNode();
+    JsonNode initialContext = mapper.createObjectNode();
 
     publish(ctx, events.instanceStarted());
 
-    Map<String, Integer> indexByName = new HashMap<>();
-    for (int i = 0; i < items.size(); i++) {
-      indexByName.put(items.get(i).getName(), i);
+    if (items.isEmpty()) {
+      publish(ctx, events.instanceCompleted());
+      ctx.complete(initialData);
+      return;
     }
 
+    Map<String, Integer> indexByName = StreamEx.of(items).toMap(TaskItem::getName, items::indexOf);
+
     try {
-      int pc = 0;
-      for (int steps = 0; pc >= 0 && pc < items.size(); steps++) {
-        if (steps > MAX_STEPS) {
-          throw new IllegalStateException(
-              "workflow exceeded " + MAX_STEPS + " steps; check for a definition loop");
-        }
-
-        TaskItem item = items.get(pc);
-        String name = item.getName();
-        Task task = item.getTask();
-        String taskType = taskTypeOf(task);
-
-        publish(ctx, events.taskStarted(name, taskType));
-        FlowOutcome then;
-        try {
-          Dispatch result = dispatch(ctx, task, name, data, context, mapper);
-          data = result.data();
-          context = result.context();
-          then = result.then();
-        } catch (RuntimeException e) {
-          publish(ctx, events.taskFailed(name, taskType, String.valueOf(e.getMessage())));
-          throw e;
-        }
-        publish(ctx, events.taskCompleted(name, taskType));
-
-        pc = advance(then, pc, indexByName);
-        if (pc == COMPLETE) {
-          publish(ctx, events.instanceCompleted());
-          ctx.complete(data);
-          return;
-        }
-      }
-
-      // Ran off the end of the task list: complete with the current data.
-      publish(ctx, events.instanceCompleted());
-      ctx.complete(data);
+      // The program counter can jump to any named task (via `then: target`), so the loop is
+      // driven as a chain of states rather than a simple in-order forEach: each state carries the
+      // pc plus the current data/context documents, and `step` both executes the task at that pc
+      // (side effects included) and resolves the following state. Iteration stops as soon as a
+      // state is produced with `complete = true`, at which point completion has already been
+      // published/committed inside `step`.
+      StreamEx.iterate(
+              new LoopState(0, initialData, initialContext, 0, false),
+              state -> !state.complete(),
+              state -> step(ctx, items, indexByName, events, mapper, state))
+          .forEach(_ -> {});
     } catch (RuntimeException e) {
       publish(ctx, events.instanceFailed(String.valueOf(e.getMessage())));
       throw e;
     }
+  }
+
+  /** Loop-carried state for the {@code StreamEx.iterate}-driven program-counter interpreter. */
+  private record LoopState(int pc, JsonNode data, JsonNode context, int steps, boolean complete) {}
+
+  /**
+   * Executes the task at {@code state.pc()} and resolves the next {@link LoopState}: either the
+   * state to run next, or a terminal state (with {@code complete = true}) once the instance has
+   * been published/completed.
+   */
+  private LoopState step(
+      WorkflowContext ctx,
+      List<TaskItem> items,
+      Map<String, Integer> indexByName,
+      AdminEventBuilder events,
+      ObjectMapper mapper,
+      LoopState state) {
+    if (state.steps() > MAX_STEPS) {
+      throw new IllegalStateException(
+          "workflow exceeded " + MAX_STEPS + " steps; check for a definition loop");
+    }
+
+    TaskItem item = items.get(state.pc());
+    String name = item.getName();
+    Task task = item.getTask();
+    String taskType = taskTypeOf(task);
+
+    publish(ctx, events.taskStarted(name, taskType));
+
+    Dispatch result;
+    try {
+      result = dispatch(ctx, task, name, state.data(), state.context(), mapper);
+    } catch (RuntimeException e) {
+      publish(ctx, events.taskFailed(name, taskType, String.valueOf(e.getMessage())));
+      throw e;
+    }
+    publish(ctx, events.taskCompleted(name, taskType));
+
+    int nextPc = advance(result.then(), state.pc(), indexByName);
+    if (nextPc == COMPLETE || nextPc < 0 || nextPc >= items.size()) {
+      // Explicit end/exit, or ran off the end of the task list: complete with the current data.
+      publish(ctx, events.instanceCompleted());
+      ctx.complete(result.data());
+      return new LoopState(COMPLETE, result.data(), result.context(), state.steps() + 1, true);
+    }
+    return new LoopState(nextPc, result.data(), result.context(), state.steps() + 1, false);
   }
 
   /** The post-dispatch data and context documents plus the task's resolved flow outcome. */
@@ -192,70 +192,89 @@ public class InterpreterWorkflow implements Workflow {
    */
   private Body dispatchBody(
       WorkflowContext ctx, Task task, String name, JsonNode data, ObjectMapper mapper) {
-    if (task.getSwitchTask() != null) {
-      EvaluateSwitchRequest req = new EvaluateSwitchRequest(name, data);
-      FlowOutcome then =
+    return StreamEx.of(
+            task.getSwitchTask(),
+            task.getCallTask(),
+            task.getRunTask(),
+            task.getSetTask(),
+            task.getWaitTask(),
+            task.getListenTask(),
+            task.getEmitTask(),
+            task.getForTask(),
+            task.getTryTask())
+        .nonNull()
+        .map(concreteTask -> dispatchConcreteTask(ctx, concreteTask, name, data, mapper))
+        .findFirst()
+        .orElseThrow(
+            () -> new IllegalStateException("task '" + name + "' has an unsupported type"));
+  }
+
+  /**
+   * Executes the selected task exactly once, returning its raw output and resolved flow outcome.
+   */
+  private Body dispatchConcreteTask(
+      WorkflowContext ctx, Object concreteTask, String name, JsonNode data, ObjectMapper mapper) {
+    return switch (concreteTask) {
+      case SwitchTask _ ->
           ctx.callActivity(
                   EvaluateSwitchActivity.class.getName(),
-                  req,
+                  new EvaluateSwitchRequest(name, data),
                   WorkflowSupport.defaultTaskOptions(),
                   FlowOutcome.class)
+              .thenApply(then -> new Body(data, then))
               .await();
-      return new Body(data, then);
-    } else if (task.getCallTask() != null) {
-      CallRequest req = new CallRequest(TaskNaming.toKebabCase(name), "run", data);
-      JsonNode next =
+      case CallTask callTask ->
           ctx.callActivity(
                   CallServiceActivity.class.getName(),
-                  req,
+                  new CallRequest(TaskNaming.toKebabCase(name), "run", data),
                   WorkflowSupport.defaultTaskOptions(),
                   JsonNode.class)
+              .thenApply(next -> new Body(next, FlowOutcome.of(thenOf(callTask.get()))))
               .await();
-      return new Body(next, FlowOutcome.of(thenOf(task.getCallTask().get())));
-    } else if (task.getRunTask() != null) {
-      CallRequest req = new CallRequest(TaskNaming.toKebabCase(name), "run", data);
-      JsonNode next =
+      case RunTask runTask ->
           ctx.callActivity(
                   CallServiceActivity.class.getName(),
-                  req,
+                  new CallRequest(TaskNaming.toKebabCase(name), "run", data),
                   WorkflowSupport.defaultTaskOptions(),
                   JsonNode.class)
+              .thenApply(next -> new Body(next, FlowOutcome.of(runTask.getThen())))
               .await();
-      return new Body(next, FlowOutcome.of(task.getRunTask().getThen()));
-    } else if (task.getSetTask() != null) {
-      EvaluateSetRequest req = new EvaluateSetRequest(name, data);
-      JsonNode next =
+      case SetTask setTask ->
           ctx.callActivity(
                   EvaluateSetActivity.class.getName(),
-                  req,
+                  new EvaluateSetRequest(name, data),
                   WorkflowSupport.defaultTaskOptions(),
                   JsonNode.class)
+              .thenApply(next -> new Body(next, FlowOutcome.of(setTask.getThen())))
               .await();
-      return new Body(next, FlowOutcome.of(task.getSetTask().getThen()));
-    } else if (task.getWaitTask() != null) {
-      ctx.createTimer(durationOf(task.getWaitTask().getWait())).await();
-      return new Body(data, FlowOutcome.of(task.getWaitTask().getThen()));
-    } else if (task.getListenTask() != null) {
-      JsonNode event =
-          ctx.waitForExternalEvent(name, DEFAULT_LISTEN_TIMEOUT, JsonNode.class).await();
-      return new Body(
-          mergeObjects(data, event, mapper), FlowOutcome.of(task.getListenTask().getThen()));
-    } else if (task.getEmitTask() != null) {
-      EmitRequest req =
-          new EmitRequest(WorkflowSupport.defaultPubsub(), TaskNaming.toKebabCase(name), data);
-      ctx.callActivity(
-              EmitEventActivity.class.getName(),
-              req,
-              WorkflowSupport.defaultTaskOptions(),
-              Void.class)
-          .await();
-      return new Body(data, FlowOutcome.of(task.getEmitTask().getThen()));
-    } else if (task.getForTask() != null || task.getTryTask() != null) {
-      throw new UnsupportedOperationException(
-          "task '" + name + "' uses for/try, which is recognised but not yet interpreted");
-    } else {
-      throw new IllegalStateException("task '" + name + "' has an unsupported type");
-    }
+      case WaitTask waitTask ->
+          ctx.createTimer(durationOf(waitTask.getWait()))
+              .thenApply(ignored -> new Body(data, FlowOutcome.of(waitTask.getThen())))
+              .await();
+      case ListenTask listenTask ->
+          ctx.waitForExternalEvent(name, DEFAULT_LISTEN_TIMEOUT, JsonNode.class)
+              .thenApply(
+                  event ->
+                      new Body(
+                          mergeObjects(data, event, mapper), FlowOutcome.of(listenTask.getThen())))
+              .await();
+      case EmitTask emitTask ->
+          ctx.callActivity(
+                  EmitEventActivity.class.getName(),
+                  new EmitRequest(
+                      WorkflowSupport.defaultPubsub(), TaskNaming.toKebabCase(name), data),
+                  WorkflowSupport.defaultTaskOptions(),
+                  Void.class)
+              .thenApply(ignored -> new Body(data, FlowOutcome.of(emitTask.getThen())))
+              .await();
+      case ForTask forTask ->
+          throw new UnsupportedOperationException(
+              "task '" + name + "' uses for/try, which is recognised but not yet interpreted");
+      case TryTask tryTask ->
+          throw new UnsupportedOperationException(
+              "task '" + name + "' uses for/try, which is recognised but not yet interpreted");
+      default -> throw new IllegalStateException("task '" + name + "' has an unsupported type");
+    };
   }
 
   /** The DSL task-type name used in {@code io.dws.task.*} event payloads. */

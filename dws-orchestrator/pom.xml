@@ -23,6 +23,7 @@
     <jackson-jq.version>1.2.0</jackson-jq.version>
     <json-schema-validator.version>2.0.0</json-schema-validator.version>
     <serverlessworkflow.version>7.26.0.Final</serverlessworkflow.version>
+    <streamex.version>0.8.3</streamex.version>
     <spotless-plugin.version>3.8.0</spotless-plugin.version>
     <google-java-format.version>1.32.0</google-java-format.version>
   </properties>
@@ -47,6 +48,11 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <optional>true</optional>
     </dependency>
 
     <!-- Dapr: workflow authoring/runtime + core client (service invocation, pub/sub) -->
@@ -82,6 +88,13 @@
       <groupId>com.networknt</groupId>
       <artifactId>json-schema-validator</artifactId>
       <version>${json-schema-validator.version}</version>
+    </dependency>
+
+    <!-- Enhanced Stream API utilities -->
+    <dependency>
+      <groupId>one.util</groupId>
+      <artifactId>streamex</artifactId>
+      <version>${streamex.version}</version>
     </dependency>
 
     <dependency>
