@@ -47,22 +47,36 @@ public class EvaluateSetActivity implements WorkflowActivity {
     SetTaskConfiguration cfg = set.getSetTaskConfiguration();
     if (cfg != null && cfg.getAdditionalProperties() != null) {
       for (Map.Entry<String, Object> entry : cfg.getAdditionalProperties().entrySet()) {
-        result.set(entry.getKey(), evalSetValue(entry.getValue(), data, jq, mapper));
+        result.set(
+            entry.getKey(), evalSetValue(entry.getValue(), data, request.variables(), jq, mapper));
       }
       return result;
     }
     if (set.getString() != null) {
-      JsonNode whole = jq.evaluate(set.getString(), data);
+      JsonNode whole = jq.evaluate(set.getString(), data, scope(request.variables()));
       return (whole != null && whole.isObject()) ? whole : result;
     }
     return result;
   }
 
   private static JsonNode evalSetValue(
-      Object value, JsonNode data, JqEvaluator jq, ObjectMapper mapper) {
+      Object value,
+      JsonNode data,
+      Map<String, JsonNode> variables,
+      JqEvaluator jq,
+      ObjectMapper mapper) {
     if (value instanceof String expr) {
-      return jq.evaluate(expr, data);
+      return jq.evaluate(expr, data, scope(variables));
     }
     return mapper.valueToTree(value);
+  }
+
+  /**
+   * Scope-local jq bindings for this task — today only the error caught by an enclosing {@code
+   * catch}, so a recovery task can read it. Null-tolerant because a request serialized before this
+   * component existed omits it.
+   */
+  static Map<String, JsonNode> scope(Map<String, JsonNode> variables) {
+    return variables == null ? Map.of() : variables;
   }
 }

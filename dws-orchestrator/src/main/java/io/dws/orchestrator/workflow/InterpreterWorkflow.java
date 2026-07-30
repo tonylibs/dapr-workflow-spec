@@ -50,11 +50,11 @@ import java.util.Map;
  */
 public class InterpreterWorkflow implements Workflow {
 
-  /** Guard against definitions that loop forever between tasks. */
+  /** Guard against definitions that loop forever between tasks, counted per scope. */
   private static final int MAX_STEPS = 10_000;
 
-  /** Sentinel program-counter value meaning "workflow already completed". */
-  private static final int COMPLETE = Integer.MIN_VALUE;
+  /** Guard against pathologically nested definitions exhausting the call stack. */
+  static final int MAX_DEPTH = 16;
 
   /** Fallback wait for a LISTEN task that does not constrain a timeout. */
   private static final Duration DEFAULT_LISTEN_TIMEOUT = Duration.ofDays(1);
@@ -88,59 +88,115 @@ public class InterpreterWorkflow implements Workflow {
 
     publish(ctx, events.instanceStarted());
 
-    Map<String, Integer> indexByName = new HashMap<>();
-    for (int i = 0; i < items.size(); i++) {
-      indexByName.put(items.get(i).getName(), i);
-    }
-
     try {
-      int pc = 0;
-      for (int steps = 0; pc >= 0 && pc < items.size(); steps++) {
-        if (steps > MAX_STEPS) {
-          throw new IllegalStateException(
-              "workflow exceeded " + MAX_STEPS + " steps; check for a definition loop");
-        }
-
-        TaskItem item = items.get(pc);
-        String name = item.getName();
-        Task task = item.getTask();
-        String taskType = taskTypeOf(task);
-
-        publish(ctx, events.taskStarted(name, taskType));
-        FlowOutcome then;
-        try {
-          Dispatch result = dispatch(ctx, task, name, data, context, mapper);
-          data = result.data();
-          context = result.context();
-          then = result.then();
-        } catch (RuntimeException e) {
-          publish(ctx, events.taskFailed(name, taskType, String.valueOf(e.getMessage())));
-          throw e;
-        }
-        publish(ctx, events.taskCompleted(name, taskType));
-
-        pc = advance(then, pc, indexByName);
-        if (pc == COMPLETE) {
-          publish(ctx, events.instanceCompleted());
-          ctx.complete(data);
-          return;
-        }
-      }
-
-      // Ran off the end of the task list: complete with the current data.
+      // The top-level `do` is just the outermost scope. Whichever way it ends — ran off the end,
+      // `exit`, or `end` — completing the outermost scope is completing the instance.
+      ScopeResult result = runTaskList(ctx, items, data, context, Map.of(), 0, events, mapper);
       publish(ctx, events.instanceCompleted());
-      ctx.complete(data);
+      ctx.complete(result.data());
     } catch (RuntimeException e) {
       publish(ctx, events.instanceFailed(String.valueOf(e.getMessage())));
       throw e;
     }
   }
 
-  /** The post-dispatch data and context documents plus the task's resolved flow outcome. */
-  private record Dispatch(JsonNode data, JsonNode context, FlowOutcome then) {}
+  /**
+   * Runs one task list as its own scope.
+   *
+   * <p>The flow-directive index is built from {@code items} alone, which is the DSL's own rule that
+   * a directive "may only redirect to tasks declared within their own scope … they cannot target
+   * tasks at a different depth". The same routine runs the top-level {@code do} and a try task's
+   * {@code try}/{@code catch.do} lists, so a nested task is dispatched — and therefore pipelined
+   * and reported — exactly like a top-level one.
+   *
+   * @param variables scope-local jq variable bindings (the caught error inside a {@code catch.do});
+   *     empty at the top level
+   * @param depth current nesting depth, 0 for the top-level {@code do}
+   */
+  ScopeResult runTaskList(
+      WorkflowContext ctx,
+      List<TaskItem> items,
+      JsonNode data,
+      JsonNode context,
+      Map<String, JsonNode> variables,
+      int depth,
+      AdminEventBuilder events,
+      ObjectMapper mapper) {
+    if (depth > MAX_DEPTH) {
+      throw new IllegalStateException(
+          "workflow exceeded the maximum task nesting depth of " + MAX_DEPTH);
+    }
+    if (items == null || items.isEmpty()) {
+      return new ScopeResult(data, context, ScopeEnd.FELL_THROUGH);
+    }
 
-  /** The task body's own result: its raw output document and its flow directive. */
-  private record Body(JsonNode data, FlowOutcome then) {}
+    Map<String, Integer> indexByName = new HashMap<>();
+    for (int i = 0; i < items.size(); i++) {
+      indexByName.put(items.get(i).getName(), i);
+    }
+
+    int pc = 0;
+    for (int steps = 0; pc >= 0 && pc < items.size(); steps++) {
+      if (steps > MAX_STEPS) {
+        throw new IllegalStateException(
+            "workflow exceeded " + MAX_STEPS + " steps; check for a definition loop");
+      }
+
+      TaskItem item = items.get(pc);
+      String name = item.getName();
+      Task task = item.getTask();
+      String taskType = taskTypeOf(task);
+
+      publish(ctx, events.taskStarted(name, taskType));
+      FlowOutcome then;
+      try {
+        Dispatch result =
+            dispatch(ctx, task, name, data, context, variables, depth, events, mapper);
+        data = result.data();
+        context = result.context();
+        then = result.then();
+        if (result.end() == ScopeEnd.END) {
+          // A nested scope ended the whole instance: report this task, then unwind immediately.
+          publish(ctx, events.taskCompleted(name, taskType));
+          return new ScopeResult(data, context, ScopeEnd.END);
+        }
+      } catch (RuntimeException e) {
+        publish(ctx, events.taskFailed(name, taskType, String.valueOf(e.getMessage())));
+        throw e;
+      }
+      publish(ctx, events.taskCompleted(name, taskType));
+
+      FlowDirectiveEnum keyword = then == null ? null : then.directive();
+      if (keyword == FlowDirectiveEnum.END) {
+        return new ScopeResult(data, context, ScopeEnd.END);
+      }
+      if (keyword == FlowDirectiveEnum.EXIT) {
+        return new ScopeResult(data, context, ScopeEnd.EXIT);
+      }
+      pc = advance(then, pc, indexByName);
+    }
+
+    return new ScopeResult(data, context, ScopeEnd.FELL_THROUGH);
+  }
+
+  /**
+   * The post-dispatch data and context documents, the task's resolved flow outcome, and — for a
+   * task whose body is itself a task scope ({@code try}) — how that inner scope ended.
+   */
+  private record Dispatch(JsonNode data, JsonNode context, FlowOutcome then, ScopeEnd end) {}
+
+  /**
+   * The task body's own result: its raw output document, the context as the body left it, its flow
+   * directive, and how the body's own scope ended. Only a {@code try} body can end a scope; every
+   * other body returns the incoming context and {@link ScopeEnd#FELL_THROUGH}.
+   */
+  private record Body(JsonNode data, JsonNode context, FlowOutcome then, ScopeEnd end) {
+
+    /** A leaf body: no nested scope, context untouched. */
+    static Body leaf(JsonNode data, JsonNode context, FlowOutcome then) {
+      return new Body(data, context, then, ScopeEnd.FELL_THROUGH);
+    }
+  }
 
   /**
    * Runs one task item's full Open Workflow Specification data-flow pipeline around its body:
@@ -155,6 +211,9 @@ public class InterpreterWorkflow implements Workflow {
       String name,
       JsonNode data,
       JsonNode context,
+      Map<String, JsonNode> variables,
+      int depth,
+      AdminEventBuilder events,
       ObjectMapper mapper) {
     TaskBase base = DataFlowPipeline.baseOf(task);
     boolean hasInput = base != null && base.getInput() != null;
@@ -165,25 +224,25 @@ public class InterpreterWorkflow implements Workflow {
       input =
           ctx.callActivity(
                   DataFlowInputActivity.class.getName(),
-                  new DataFlowInputRequest(name, data, context),
+                  new DataFlowInputRequest(name, data, context, variables),
                   WorkflowSupport.defaultTaskOptions(),
                   JsonNode.class)
               .await();
     }
 
-    Body body = dispatchBody(ctx, task, name, input, mapper);
+    Body body = dispatchBody(ctx, task, name, input, context, variables, depth, events, mapper);
 
     if (!hasOutput) {
-      return new Dispatch(body.data(), context, body.then());
+      return new Dispatch(body.data(), body.context(), body.then(), body.end());
     }
     DataFlowResult shaped =
         ctx.callActivity(
                 DataFlowOutputActivity.class.getName(),
-                new DataFlowOutputRequest(name, body.data(), context),
+                new DataFlowOutputRequest(name, body.data(), body.context(), variables),
                 WorkflowSupport.defaultTaskOptions(),
                 DataFlowResult.class)
             .await();
-    return new Dispatch(shaped.data(), shaped.context(), body.then());
+    return new Dispatch(shaped.data(), shaped.context(), body.then(), body.end());
   }
 
   /**
@@ -191,9 +250,17 @@ public class InterpreterWorkflow implements Workflow {
    * output document and its flow directive. The data-flow pipeline is strictly outside this method.
    */
   private Body dispatchBody(
-      WorkflowContext ctx, Task task, String name, JsonNode data, ObjectMapper mapper) {
+      WorkflowContext ctx,
+      Task task,
+      String name,
+      JsonNode data,
+      JsonNode context,
+      Map<String, JsonNode> variables,
+      int depth,
+      AdminEventBuilder events,
+      ObjectMapper mapper) {
     if (task.getSwitchTask() != null) {
-      EvaluateSwitchRequest req = new EvaluateSwitchRequest(name, data);
+      EvaluateSwitchRequest req = new EvaluateSwitchRequest(name, data, variables);
       FlowOutcome then =
           ctx.callActivity(
                   EvaluateSwitchActivity.class.getName(),
@@ -201,7 +268,7 @@ public class InterpreterWorkflow implements Workflow {
                   WorkflowSupport.defaultTaskOptions(),
                   FlowOutcome.class)
               .await();
-      return new Body(data, then);
+      return Body.leaf(data, context, then);
     } else if (task.getCallTask() != null) {
       CallRequest req = new CallRequest(TaskNaming.toKebabCase(name), "run", data);
       JsonNode next =
@@ -211,7 +278,7 @@ public class InterpreterWorkflow implements Workflow {
                   WorkflowSupport.defaultTaskOptions(),
                   JsonNode.class)
               .await();
-      return new Body(next, FlowOutcome.of(thenOf(task.getCallTask().get())));
+      return Body.leaf(next, context, FlowOutcome.of(thenOf(task.getCallTask().get())));
     } else if (task.getRunTask() != null) {
       CallRequest req = new CallRequest(TaskNaming.toKebabCase(name), "run", data);
       JsonNode next =
@@ -221,9 +288,9 @@ public class InterpreterWorkflow implements Workflow {
                   WorkflowSupport.defaultTaskOptions(),
                   JsonNode.class)
               .await();
-      return new Body(next, FlowOutcome.of(task.getRunTask().getThen()));
+      return Body.leaf(next, context, FlowOutcome.of(task.getRunTask().getThen()));
     } else if (task.getSetTask() != null) {
-      EvaluateSetRequest req = new EvaluateSetRequest(name, data);
+      EvaluateSetRequest req = new EvaluateSetRequest(name, data, variables);
       JsonNode next =
           ctx.callActivity(
                   EvaluateSetActivity.class.getName(),
@@ -231,15 +298,17 @@ public class InterpreterWorkflow implements Workflow {
                   WorkflowSupport.defaultTaskOptions(),
                   JsonNode.class)
               .await();
-      return new Body(next, FlowOutcome.of(task.getSetTask().getThen()));
+      return Body.leaf(next, context, FlowOutcome.of(task.getSetTask().getThen()));
     } else if (task.getWaitTask() != null) {
       ctx.createTimer(durationOf(task.getWaitTask().getWait())).await();
-      return new Body(data, FlowOutcome.of(task.getWaitTask().getThen()));
+      return Body.leaf(data, context, FlowOutcome.of(task.getWaitTask().getThen()));
     } else if (task.getListenTask() != null) {
       JsonNode event =
           ctx.waitForExternalEvent(name, DEFAULT_LISTEN_TIMEOUT, JsonNode.class).await();
-      return new Body(
-          mergeObjects(data, event, mapper), FlowOutcome.of(task.getListenTask().getThen()));
+      return Body.leaf(
+          mergeObjects(data, event, mapper),
+          context,
+          FlowOutcome.of(task.getListenTask().getThen()));
     } else if (task.getEmitTask() != null) {
       EmitRequest req =
           new EmitRequest(WorkflowSupport.defaultPubsub(), TaskNaming.toKebabCase(name), data);
@@ -249,7 +318,7 @@ public class InterpreterWorkflow implements Workflow {
               WorkflowSupport.defaultTaskOptions(),
               Void.class)
           .await();
-      return new Body(data, FlowOutcome.of(task.getEmitTask().getThen()));
+      return Body.leaf(data, context, FlowOutcome.of(task.getEmitTask().getThen()));
     } else if (task.getForTask() != null || task.getTryTask() != null) {
       throw new UnsupportedOperationException(
           "task '" + name + "' uses for/try, which is recognised but not yet interpreted");
@@ -292,23 +361,27 @@ public class InterpreterWorkflow implements Workflow {
         .await();
   }
 
-  /** Resolves the next program counter from a flow outcome (null = sequential continue). */
+  /**
+   * Resolves the next program counter within one scope from a flow outcome (null = sequential
+   * continue). {@code end}/{@code exit} never reach here — the caller handles them, because they
+   * terminate a scope rather than move within it.
+   *
+   * <p>{@code indexByName} holds only the current scope's tasks, so a target declared at a
+   * different depth is rejected. That is the DSL's own rule, not a limitation.
+   */
   private int advance(FlowOutcome then, int pc, Map<String, Integer> indexByName) {
     if (then == null) {
       return pc + 1;
     }
-    FlowDirectiveEnum keyword = then.directive();
-    if (keyword != null) {
-      return switch (keyword) {
-        case CONTINUE -> pc + 1;
-        case END, EXIT -> COMPLETE;
-      };
+    if (then.directive() == FlowDirectiveEnum.CONTINUE) {
+      return pc + 1;
     }
     String target = then.target();
     if (target != null && !target.isBlank()) {
       Integer next = indexByName.get(target);
       if (next == null) {
-        throw new IllegalStateException("flow references undefined task '" + target + "'");
+        throw new IllegalStateException(
+            "flow references task '" + target + "', which is not declared in this task scope");
       }
       return next;
     }

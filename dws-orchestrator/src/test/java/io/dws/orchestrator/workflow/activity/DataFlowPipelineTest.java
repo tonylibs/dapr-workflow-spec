@@ -13,6 +13,7 @@ import io.dws.orchestrator.expr.JqEvaluator;
 import io.dws.orchestrator.workflow.WorkflowSupport;
 import io.serverlessworkflow.api.WorkflowReader;
 import io.serverlessworkflow.api.types.Workflow;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -52,7 +53,7 @@ class DataFlowPipelineTest {
     // Act
     JsonNode input =
         DataFlowPipeline.applyInput(
-            new DataFlowInputRequest("chargePayment", raw, mapper.createObjectNode()));
+            new DataFlowInputRequest("chargePayment", raw, mapper.createObjectNode(), Map.of()));
 
     // Assert: input.from projected exactly orderId + amount.
     assertThat(input.get("orderId").textValue()).isEqualTo("o-1");
@@ -68,7 +69,8 @@ class DataFlowPipelineTest {
     assertThatThrownBy(
             () ->
                 DataFlowPipeline.applyInput(
-                    new DataFlowInputRequest("chargePayment", raw, mapper.createObjectNode())))
+                    new DataFlowInputRequest(
+                        "chargePayment", raw, mapper.createObjectNode(), Map.of())))
         .isInstanceOfSatisfying(
             DataFlowException.class, fault -> assertThat(fault.phase()).isEqualTo(Phase.INPUT))
         .hasMessageContaining("chargePayment")
@@ -83,7 +85,7 @@ class DataFlowPipelineTest {
     // Act
     DataFlowResult result =
         DataFlowPipeline.applyOutput(
-            new DataFlowOutputRequest("chargePayment", body, mapper.createObjectNode()));
+            new DataFlowOutputRequest("chargePayment", body, mapper.createObjectNode(), Map.of()));
 
     // Assert
     assertThat(result.data().get("reference").textValue()).isEqualTo("r-77");
@@ -97,7 +99,7 @@ class DataFlowPipelineTest {
 
     DataFlowResult result =
         DataFlowPipeline.applyOutput(
-            new DataFlowOutputRequest("chargePayment", body, mapper.createObjectNode()));
+            new DataFlowOutputRequest("chargePayment", body, mapper.createObjectNode(), Map.of()));
 
     // export.as runs over the *transformed* output, so it sees `reference`, not `receipt`.
     assertThat(result.context().get("charged").textValue()).isEqualTo("r-77");
@@ -111,7 +113,8 @@ class DataFlowPipelineTest {
     assertThatThrownBy(
             () ->
                 DataFlowPipeline.applyOutput(
-                    new DataFlowOutputRequest("chargePayment", body, mapper.createObjectNode())))
+                    new DataFlowOutputRequest(
+                        "chargePayment", body, mapper.createObjectNode(), Map.of())))
         .isInstanceOfSatisfying(
             DataFlowException.class, fault -> assertThat(fault.phase()).isEqualTo(Phase.OUTPUT))
         .hasMessageContaining("reference");
@@ -123,7 +126,10 @@ class DataFlowPipelineTest {
     DataFlowResult result =
         DataFlowPipeline.applyOutput(
             new DataFlowOutputRequest(
-                "recordAudit", json("{\"auditEnabled\":true}"), json("{\"charged\":\"r-77\"}")));
+                "recordAudit",
+                json("{\"auditEnabled\":true}"),
+                json("{\"charged\":\"r-77\"}"),
+                Map.of()));
 
     assertThat(result.data().get("audited").textValue()).isEqualTo("r-77");
   }
@@ -133,7 +139,8 @@ class DataFlowPipelineTest {
     JsonNode context = json("{\"charged\":\"r-77\"}");
 
     DataFlowResult result =
-        DataFlowPipeline.applyOutput(new DataFlowOutputRequest("recordAudit", json("{}"), context));
+        DataFlowPipeline.applyOutput(
+            new DataFlowOutputRequest("recordAudit", json("{}"), context, Map.of()));
 
     assertThat(result.context()).isEqualTo(context);
   }
@@ -144,10 +151,10 @@ class DataFlowPipelineTest {
 
     JsonNode input =
         DataFlowPipeline.applyInput(
-            new DataFlowInputRequest("passThrough", raw, mapper.createObjectNode()));
+            new DataFlowInputRequest("passThrough", raw, mapper.createObjectNode(), Map.of()));
     DataFlowResult output =
         DataFlowPipeline.applyOutput(
-            new DataFlowOutputRequest("passThrough", raw, mapper.createObjectNode()));
+            new DataFlowOutputRequest("passThrough", raw, mapper.createObjectNode(), Map.of()));
 
     assertThat(input).isEqualTo(raw);
     assertThat(output.data()).isEqualTo(raw);
@@ -158,7 +165,8 @@ class DataFlowPipelineTest {
   void nullContextIsTreatedAsAnEmptyObject() throws Exception {
     // A null context must not blow up an expression that reads $context.
     DataFlowResult result =
-        DataFlowPipeline.applyOutput(new DataFlowOutputRequest("recordAudit", json("{}"), null));
+        DataFlowPipeline.applyOutput(
+            new DataFlowOutputRequest("recordAudit", json("{}"), null, Map.of()));
 
     assertThat(result.data().get("audited").isNull()).isTrue();
   }

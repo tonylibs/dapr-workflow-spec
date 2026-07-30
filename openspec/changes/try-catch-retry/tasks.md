@@ -7,11 +7,11 @@
 
 ## 2. Orchestrator: scope-aware task-list runner
 
-- [ ] 2.1 Extract the program-counter loop out of `InterpreterWorkflow.execute()` into a `runTaskList(ctx, items, data, context, scopeVariables, depth)` that builds its **own** `indexByName` from the list it is given, so a `then` target resolves only within its own scope (D1)
-- [ ] 2.2 Give the runner a result type carrying `{data, context, scopeEnd}` where `scopeEnd` distinguishes "ran off the end", "exit" (complete this scope only) and "end" (complete the instance), and make `execute()` map those to `ctx.complete(data)` or fall-through as it does today
-- [ ] 2.3 Add a maximum nesting-depth guard (mirroring `MAX_STEPS`) that fails with a message naming the limit rather than overflowing the stack; keep `MAX_STEPS` counting steps **within** a scope
-- [ ] 2.4 Thread an optional scope-variable map (empty at top level; later carrying the caught error) through `runTaskList` → `dispatch` → the data-flow activity requests, so nested expressions can bind extra jq variables alongside `$context`
-- [ ] 2.5 Confirm `./mvnw verify` is green with no behavior change yet — the top-level call is the old loop
+- [x] 2.1 Extract the program-counter loop out of `InterpreterWorkflow.execute()` into a `runTaskList(ctx, items, data, context, scopeVariables, depth)` that builds its **own** `indexByName` from the list it is given, so a `then` target resolves only within its own scope (D1)
+- [x] 2.2 Give the runner a result type carrying `{data, context, scopeEnd}` where `scopeEnd` distinguishes "ran off the end", "exit" (complete this scope only) and "end" (complete the instance), and make `execute()` map those to `ctx.complete(data)` or fall-through as it does today
+- [x] 2.3 Add a maximum nesting-depth guard (mirroring `MAX_STEPS`) that fails with a message naming the limit rather than overflowing the stack; keep `MAX_STEPS` counting steps **within** a scope
+- [x] 2.4 Thread an optional scope-variable map (empty at top level; later carrying the caught error) through `runTaskList` → `dispatch` → the data-flow activity requests, so nested expressions can bind extra jq variables alongside `$context`
+- [x] 2.5 Confirm `./mvnw verify` is green with no behavior change yet — the top-level call is the old loop
 
 ## 3. Orchestrator: task lookup & error object
 
