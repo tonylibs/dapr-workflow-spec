@@ -15,10 +15,10 @@
 
 ## 3. Orchestrator: task lookup & error object
 
-- [ ] 3.1 Make `DefinitionLookup.taskByName()` search recursively through `try` and `catch.do` lists (top-level first), keeping its existing "definition has no task named 'x'" failure for a genuine miss
-- [ ] 3.2 Add a runtime error-object builder producing `{type, status, instance, title, detail}` from a failure: `DataFlowException` → validation type / status 400; a service-invocation failure → communication type / upstream HTTP status when recoverable else 502; any other `RuntimeException` → runtime type / status 500 (D5)
-- [ ] 3.3 Set `instance` to a JSON-Pointer-shaped path identifying the **failing inner task**, not the enclosing `try` task, and `detail` to the exception message (which is the only thing that survives the activity boundary)
-- [ ] 3.4 Unit tests for the builder: one case per failure class, the recoverable-status case, and the pointer naming the inner task
+- [x] 3.1 Make `DefinitionLookup.taskByName()` search recursively through `try` and `catch.do` lists (top-level first), keeping its existing "definition has no task named 'x'" failure for a genuine miss
+- [x] 3.2 Add a runtime error-object builder producing `{type, status, instance, title, detail}` from a failure: `DataFlowException` → validation type / status 400; a service-invocation failure → communication type / upstream HTTP status when recoverable else 502; any other `RuntimeException` → runtime type / status 500 (D5)
+- [x] 3.3 Set `instance` to a JSON-Pointer-shaped path identifying the **failing inner task**, not the enclosing `try` task, and `detail` to the exception message (which is the only thing that survives the activity boundary)
+- [x] 3.4 Unit tests for the builder: one case per failure class, the recoverable-status case, and the pointer naming the inner task
 
 ## 4. Orchestrator: catch-decision activity
 
