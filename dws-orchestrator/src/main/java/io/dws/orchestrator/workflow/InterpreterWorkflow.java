@@ -10,6 +10,9 @@ import io.dws.orchestrator.workflow.activity.AdminEventActivity;
 import io.dws.orchestrator.workflow.activity.AdminEventRequest;
 import io.dws.orchestrator.workflow.activity.CallRequest;
 import io.dws.orchestrator.workflow.activity.CallServiceActivity;
+import io.dws.orchestrator.workflow.activity.CatchDecision;
+import io.dws.orchestrator.workflow.activity.CatchDecisionActivity;
+import io.dws.orchestrator.workflow.activity.CatchDecisionRequest;
 import io.dws.orchestrator.workflow.activity.DataFlowInputActivity;
 import io.dws.orchestrator.workflow.activity.DataFlowInputRequest;
 import io.dws.orchestrator.workflow.activity.DataFlowOutputActivity;
@@ -31,6 +34,8 @@ import io.serverlessworkflow.api.types.Task;
 import io.serverlessworkflow.api.types.TaskBase;
 import io.serverlessworkflow.api.types.TaskItem;
 import io.serverlessworkflow.api.types.TimeoutAfter;
+import io.serverlessworkflow.api.types.TryTask;
+import io.serverlessworkflow.api.types.TryTaskCatch;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -319,12 +324,114 @@ public class InterpreterWorkflow implements Workflow {
               Void.class)
           .await();
       return Body.leaf(data, context, FlowOutcome.of(task.getEmitTask().getThen()));
-    } else if (task.getForTask() != null || task.getTryTask() != null) {
+    } else if (task.getTryTask() != null) {
+      return dispatchTry(
+          ctx, task.getTryTask(), name, data, context, variables, depth, events, mapper);
+    } else if (task.getForTask() != null) {
       throw new UnsupportedOperationException(
-          "task '" + name + "' uses for/try, which is recognised but not yet interpreted");
+          "task '" + name + "' uses for, which is recognised but not yet interpreted");
     } else {
       throw new IllegalStateException("task '" + name + "' has an unsupported type");
     }
+  }
+
+  /**
+   * Runs a try task: attempt its body, and on failure ask the catch clause what to do.
+   *
+   * <p>Each attempt re-runs the <em>whole</em> try list against the try task's original input, not
+   * against whatever partial data the failed attempt produced. The retry policy belongs to the try
+   * task rather than to any inner task, so a retry is a fresh attempt at the block — which also
+   * means a side-effecting task early in the block re-executes. That is the author's lever: the
+   * block boundary is theirs to draw.
+   *
+   * <p>All impurity (the jitter draw, the elapsed-time arithmetic) lives in the decision activity;
+   * the clock values it needs come from the workflow context's replay-safe instant.
+   */
+  private Body dispatchTry(
+      WorkflowContext ctx,
+      TryTask tryTask,
+      String name,
+      JsonNode data,
+      JsonNode context,
+      Map<String, JsonNode> variables,
+      int depth,
+      AdminEventBuilder events,
+      ObjectMapper mapper) {
+    long firstFailureMillis = 0L;
+
+    for (int attempt = 1; ; attempt++) {
+      try {
+        ScopeResult body =
+            runTaskList(ctx, tryTask.getTry(), data, context, variables, depth + 1, events, mapper);
+        return new Body(body.data(), body.context(), FlowOutcome.of(tryTask.getThen()), body.end());
+      } catch (RuntimeException failure) {
+        long now = ctx.getCurrentInstant().toEpochMilli();
+        if (attempt == 1) {
+          firstFailureMillis = now;
+        }
+
+        CatchDecision decision =
+            ctx.callActivity(
+                    CatchDecisionActivity.class.getName(),
+                    new CatchDecisionRequest(
+                        name,
+                        name,
+                        String.valueOf(failure.getMessage()),
+                        attempt,
+                        firstFailureMillis,
+                        now,
+                        data,
+                        context),
+                    WorkflowSupport.defaultTaskOptions(),
+                    CatchDecision.class)
+                .await();
+
+        if (!decision.caught()) {
+          // Not handled here: propagate the original failure untouched, so it reaches the standard
+          // task-failure path carrying its own detail rather than a rewritten one.
+          throw failure;
+        }
+        if (decision.retry()) {
+          ctx.createTimer(Duration.ofMillis(decision.delayMillis())).await();
+          continue;
+        }
+        return recover(ctx, tryTask, data, context, decision, variables, depth, events, mapper);
+      }
+    }
+  }
+
+  /**
+   * Runs the catch clause's recovery block, with the caught error bound as a scope-local jq
+   * variable under the name {@code catch.as} declares.
+   *
+   * <p>The binding is threaded down the scope rather than merged into the data document or written
+   * to {@code $context}: the recovery block is there to repair the data, and {@code $context}
+   * outlives the try task, so either would leak the error past the scope that caught it.
+   *
+   * <p>A failure inside the recovery block propagates — nothing catches a catch.
+   */
+  private Body recover(
+      WorkflowContext ctx,
+      TryTask tryTask,
+      JsonNode data,
+      JsonNode context,
+      CatchDecision decision,
+      Map<String, JsonNode> variables,
+      int depth,
+      AdminEventBuilder events,
+      ObjectMapper mapper) {
+    TryTaskCatch clause = tryTask.getCatch();
+    FlowOutcome then = FlowOutcome.of(tryTask.getThen());
+    if (clause == null || clause.getDo() == null || clause.getDo().isEmpty()) {
+      // Handled with nothing to run: the try task completes with the data as of the failure.
+      return new Body(data, context, then, ScopeEnd.FELL_THROUGH);
+    }
+
+    Map<String, JsonNode> scoped = new HashMap<>(variables);
+    scoped.put(decision.errorVariable(), decision.error());
+    ScopeResult recovered =
+        runTaskList(ctx, clause.getDo(), data, context, scoped, depth + 1, events, mapper);
+    return new Body(recovered.data(), recovered.context(), then, recovered.end());
   }
 
   /** The DSL task-type name used in {@code io.dws.task.*} event payloads. */

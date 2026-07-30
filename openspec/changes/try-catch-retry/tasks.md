@@ -32,18 +32,18 @@
 
 ## 5. Orchestrator: `try` dispatch and retry loop
 
-- [ ] 5.1 Add a `try` branch to `dispatchBody` that runs the `try` list through `runTaskList`, and remove `getTryTask()` from the `UnsupportedOperationException` branch (leaving `for`)
-- [ ] 5.2 On failure, call `CatchDecisionActivity`; when not caught, rethrow the original exception unchanged so it reaches the existing `taskFailed`/`instanceFailed` path
-- [ ] 5.3 When the verdict is retry, `ctx.createTimer(delay).await()` and re-run the **whole** `try` list from the try task's original transformed input, incrementing the attempt counter (D2); take `firstFailureAt`/`now` from the workflow context's replay-safe instant, never `Instant.now()`
-- [ ] 5.4 When the verdict is handled, run `catch.do` (when present) through `runTaskList` with the error bound in the scope-variable map under `catch.as`; its resulting data becomes the `try` task's raw output, which then goes through the try task's own `output.as`/`export.as`
-- [ ] 5.5 A failure inside `catch.do` propagates and fails the `try` task; a `catch` with no `do` completes the `try` task with the data as of the failure
-- [ ] 5.6 Continue by the `try` task's own `then` on the handled path (`catch.then` is absent from the pinned SDK — D9); report `try` in `taskTypeOf` and publish `taskCompleted` (not `taskFailed`) for a handled error, while inner tasks publish their own events per attempt (D12)
+- [x] 5.1 Add a `try` branch to `dispatchBody` that runs the `try` list through `runTaskList`, and remove `getTryTask()` from the `UnsupportedOperationException` branch (leaving `for`)
+- [x] 5.2 On failure, call `CatchDecisionActivity`; when not caught, rethrow the original exception unchanged so it reaches the existing `taskFailed`/`instanceFailed` path
+- [x] 5.3 When the verdict is retry, `ctx.createTimer(delay).await()` and re-run the **whole** `try` list from the try task's original transformed input, incrementing the attempt counter (D2); take `firstFailureAt`/`now` from the workflow context's replay-safe instant, never `Instant.now()`
+- [x] 5.4 When the verdict is handled, run `catch.do` (when present) through `runTaskList` with the error bound in the scope-variable map under `catch.as`; its resulting data becomes the `try` task's raw output, which then goes through the try task's own `output.as`/`export.as`
+- [x] 5.5 A failure inside `catch.do` propagates and fails the `try` task; a `catch` with no `do` completes the `try` task with the data as of the failure
+- [x] 5.6 Continue by the `try` task's own `then` on the handled path (`catch.then` is absent from the pinned SDK — D9); report `try` in `taskTypeOf` and publish `taskCompleted` (not `taskFailed`) for a handled error, while inner tasks publish their own events per attempt (D12)
 
 ## 6. Integration tests & gate
 
-- [ ] 6.1 Extend `InterpreterWorkflowIntegrationTest` with a caught-and-recovered case: an inner task fails, `catch.do` runs with the error readable as `$error`, and the workflow continues after the `try` task with the recovery block's data
-- [ ] 6.2 Add a retry case that fails once then succeeds, asserting the whole `try` list re-ran and the attempt started from the try task's original input
-- [ ] 6.3 Add a retries-exhausted case (`limit.attempt.count`) that falls through to `catch.do`, and a filtered-out case (`errors.with.status` mismatch) that propagates the original failure and fails the instance
-- [ ] 6.4 Add a failure-inside-`catch.do` case asserting the `try` task fails, and a nested-scope case asserting `exit` inside `try` returns to the enclosing task while `end` completes the instance
-- [ ] 6.5 Assert the error never reaches the completion output or the workflow context, and that a task inside `try` declaring `input.from`/`output.as`/`export.as` has them applied identically to a top-level task
-- [ ] 6.6 Run `./mvnw verify` in `dws-orchestrator/` and `./mvnw test` in `dws-controller/`; confirm both green and record the results
+- [x] 6.1 Extend `InterpreterWorkflowIntegrationTest` with a caught-and-recovered case: an inner task fails, `catch.do` runs with the error readable as `$error`, and the workflow continues after the `try` task with the recovery block's data
+- [x] 6.2 Add a retry case that fails once then succeeds, asserting the whole `try` list re-ran and the attempt started from the try task's original input
+- [x] 6.3 Add a retries-exhausted case (`limit.attempt.count`) that falls through to `catch.do`, and a filtered-out case (`errors.with.status` mismatch) that propagates the original failure and fails the instance
+- [x] 6.4 Add a failure-inside-`catch.do` case asserting the `try` task fails, and a nested-scope case asserting `exit` inside `try` returns to the enclosing task while `end` completes the instance
+- [x] 6.5 Assert the error never reaches the completion output or the workflow context, and that a task inside `try` declaring `input.from`/`output.as`/`export.as` has them applied identically to a top-level task
+- [x] 6.6 Run `./mvnw verify` in `dws-orchestrator/` and `./mvnw test` in `dws-controller/`; confirm both green and record the results
