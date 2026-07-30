@@ -8,4 +8,4 @@ import com.fasterxml.jackson.databind.JsonNode;
  * pod's pinned definition) and the current workflow data its expressions are evaluated over.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record EvaluateSetRequest(String taskName, JsonNode data) {}
+public record EvaluateSetRequest(String taskName, JsonNode data) implements StepRequest {}

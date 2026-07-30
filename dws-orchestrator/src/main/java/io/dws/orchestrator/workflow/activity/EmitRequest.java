@@ -8,4 +8,4 @@ import com.fasterxml.jackson.databind.JsonNode;
  * workflow data to publish.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record EmitRequest(String pubsub, String topic, JsonNode data) {}
+public record EmitRequest(String pubsub, String topic, JsonNode data) implements StepRequest {}

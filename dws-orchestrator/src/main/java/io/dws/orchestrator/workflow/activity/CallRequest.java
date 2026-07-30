@@ -8,4 +8,4 @@ import com.fasterxml.jackson.databind.JsonNode;
  * current workflow data to POST.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record CallRequest(String appId, String path, JsonNode data) {}
+public record CallRequest(String appId, String path, JsonNode data) implements StepRequest {}

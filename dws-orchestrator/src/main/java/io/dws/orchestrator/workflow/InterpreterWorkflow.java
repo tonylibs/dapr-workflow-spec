@@ -6,35 +6,14 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.dapr.workflows.Workflow;
 import io.dapr.workflows.WorkflowContext;
 import io.dapr.workflows.WorkflowStub;
-import io.dws.orchestrator.workflow.activity.AdminEventActivity;
-import io.dws.orchestrator.workflow.activity.AdminEventRequest;
-import io.dws.orchestrator.workflow.activity.CallRequest;
-import io.dws.orchestrator.workflow.activity.CallServiceActivity;
-import io.dws.orchestrator.workflow.activity.DataFlowInputActivity;
-import io.dws.orchestrator.workflow.activity.DataFlowInputRequest;
-import io.dws.orchestrator.workflow.activity.DataFlowOutputActivity;
-import io.dws.orchestrator.workflow.activity.DataFlowOutputRequest;
-import io.dws.orchestrator.workflow.activity.DataFlowPipeline;
-import io.dws.orchestrator.workflow.activity.DataFlowResult;
-import io.dws.orchestrator.workflow.activity.EmitEventActivity;
-import io.dws.orchestrator.workflow.activity.EmitRequest;
-import io.dws.orchestrator.workflow.activity.EvaluateSetActivity;
-import io.dws.orchestrator.workflow.activity.EvaluateSetRequest;
-import io.dws.orchestrator.workflow.activity.EvaluateSwitchActivity;
-import io.dws.orchestrator.workflow.activity.EvaluateSwitchRequest;
-import io.dws.orchestrator.workflow.activity.FlowOutcome;
+import io.dws.orchestrator.workflow.activity.*;
 import io.dws.orchestrator.workflow.adapter.TaskNaming;
-import io.serverlessworkflow.api.types.DurationInline;
-import io.serverlessworkflow.api.types.FlowDirective;
-import io.serverlessworkflow.api.types.FlowDirectiveEnum;
-import io.serverlessworkflow.api.types.Task;
-import io.serverlessworkflow.api.types.TaskBase;
-import io.serverlessworkflow.api.types.TaskItem;
-import io.serverlessworkflow.api.types.TimeoutAfter;
+import io.serverlessworkflow.api.types.*;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import one.util.streamex.StreamEx;
 
 /**
  * The single, generic workflow. It interprets the pod's one immutable Open Workflow Specification
@@ -192,70 +171,89 @@ public class InterpreterWorkflow implements Workflow {
    */
   private Body dispatchBody(
       WorkflowContext ctx, Task task, String name, JsonNode data, ObjectMapper mapper) {
-    if (task.getSwitchTask() != null) {
-      EvaluateSwitchRequest req = new EvaluateSwitchRequest(name, data);
-      FlowOutcome then =
+    return StreamEx.of(
+            task.getSwitchTask(),
+            task.getCallTask(),
+            task.getRunTask(),
+            task.getSetTask(),
+            task.getWaitTask(),
+            task.getListenTask(),
+            task.getEmitTask(),
+            task.getForTask(),
+            task.getTryTask())
+        .nonNull()
+        .map(concreteTask -> dispatchConcreteTask(ctx, concreteTask, name, data, mapper))
+        .findFirst()
+        .orElseThrow(
+            () -> new IllegalStateException("task '" + name + "' has an unsupported type"));
+  }
+
+  /**
+   * Executes the selected task exactly once, returning its raw output and resolved flow outcome.
+   */
+  private Body dispatchConcreteTask(
+      WorkflowContext ctx, Object concreteTask, String name, JsonNode data, ObjectMapper mapper) {
+    return switch (concreteTask) {
+      case SwitchTask _ ->
           ctx.callActivity(
                   EvaluateSwitchActivity.class.getName(),
-                  req,
+                  new EvaluateSwitchRequest(name, data),
                   WorkflowSupport.defaultTaskOptions(),
                   FlowOutcome.class)
+              .thenApply(then -> new Body(data, then))
               .await();
-      return new Body(data, then);
-    } else if (task.getCallTask() != null) {
-      CallRequest req = new CallRequest(TaskNaming.toKebabCase(name), "run", data);
-      JsonNode next =
+      case CallTask callTask ->
           ctx.callActivity(
                   CallServiceActivity.class.getName(),
-                  req,
+                  new CallRequest(TaskNaming.toKebabCase(name), "run", data),
                   WorkflowSupport.defaultTaskOptions(),
                   JsonNode.class)
+              .thenApply(next -> new Body(next, FlowOutcome.of(thenOf(callTask.get()))))
               .await();
-      return new Body(next, FlowOutcome.of(thenOf(task.getCallTask().get())));
-    } else if (task.getRunTask() != null) {
-      CallRequest req = new CallRequest(TaskNaming.toKebabCase(name), "run", data);
-      JsonNode next =
+      case RunTask runTask ->
           ctx.callActivity(
                   CallServiceActivity.class.getName(),
-                  req,
+                  new CallRequest(TaskNaming.toKebabCase(name), "run", data),
                   WorkflowSupport.defaultTaskOptions(),
                   JsonNode.class)
+              .thenApply(next -> new Body(next, FlowOutcome.of(runTask.getThen())))
               .await();
-      return new Body(next, FlowOutcome.of(task.getRunTask().getThen()));
-    } else if (task.getSetTask() != null) {
-      EvaluateSetRequest req = new EvaluateSetRequest(name, data);
-      JsonNode next =
+      case SetTask setTask ->
           ctx.callActivity(
                   EvaluateSetActivity.class.getName(),
-                  req,
+                  new EvaluateSetRequest(name, data),
                   WorkflowSupport.defaultTaskOptions(),
                   JsonNode.class)
+              .thenApply(next -> new Body(next, FlowOutcome.of(setTask.getThen())))
               .await();
-      return new Body(next, FlowOutcome.of(task.getSetTask().getThen()));
-    } else if (task.getWaitTask() != null) {
-      ctx.createTimer(durationOf(task.getWaitTask().getWait())).await();
-      return new Body(data, FlowOutcome.of(task.getWaitTask().getThen()));
-    } else if (task.getListenTask() != null) {
-      JsonNode event =
-          ctx.waitForExternalEvent(name, DEFAULT_LISTEN_TIMEOUT, JsonNode.class).await();
-      return new Body(
-          mergeObjects(data, event, mapper), FlowOutcome.of(task.getListenTask().getThen()));
-    } else if (task.getEmitTask() != null) {
-      EmitRequest req =
-          new EmitRequest(WorkflowSupport.defaultPubsub(), TaskNaming.toKebabCase(name), data);
-      ctx.callActivity(
-              EmitEventActivity.class.getName(),
-              req,
-              WorkflowSupport.defaultTaskOptions(),
-              Void.class)
-          .await();
-      return new Body(data, FlowOutcome.of(task.getEmitTask().getThen()));
-    } else if (task.getForTask() != null || task.getTryTask() != null) {
-      throw new UnsupportedOperationException(
-          "task '" + name + "' uses for/try, which is recognised but not yet interpreted");
-    } else {
-      throw new IllegalStateException("task '" + name + "' has an unsupported type");
-    }
+      case WaitTask waitTask ->
+          ctx.createTimer(durationOf(waitTask.getWait()))
+              .thenApply(ignored -> new Body(data, FlowOutcome.of(waitTask.getThen())))
+              .await();
+      case ListenTask listenTask ->
+          ctx.waitForExternalEvent(name, DEFAULT_LISTEN_TIMEOUT, JsonNode.class)
+              .thenApply(
+                  event ->
+                      new Body(
+                          mergeObjects(data, event, mapper), FlowOutcome.of(listenTask.getThen())))
+              .await();
+      case EmitTask emitTask ->
+          ctx.callActivity(
+                  EmitEventActivity.class.getName(),
+                  new EmitRequest(
+                      WorkflowSupport.defaultPubsub(), TaskNaming.toKebabCase(name), data),
+                  WorkflowSupport.defaultTaskOptions(),
+                  Void.class)
+              .thenApply(ignored -> new Body(data, FlowOutcome.of(emitTask.getThen())))
+              .await();
+      case ForTask forTask ->
+          throw new UnsupportedOperationException(
+              "task '" + name + "' uses for/try, which is recognised but not yet interpreted");
+      case TryTask tryTask ->
+          throw new UnsupportedOperationException(
+              "task '" + name + "' uses for/try, which is recognised but not yet interpreted");
+      default -> throw new IllegalStateException("task '" + name + "' has an unsupported type");
+    };
   }
 
   /** The DSL task-type name used in {@code io.dws.task.*} event payloads. */

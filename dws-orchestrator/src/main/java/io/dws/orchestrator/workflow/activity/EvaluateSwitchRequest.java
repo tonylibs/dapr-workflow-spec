@@ -9,4 +9,4 @@ import com.fasterxml.jackson.databind.JsonNode;
  * are evaluated over.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record EvaluateSwitchRequest(String taskName, JsonNode data) {}
+public record EvaluateSwitchRequest(String taskName, JsonNode data) implements StepRequest {}
