@@ -10,9 +10,9 @@ import io.dws.orchestrator.workflow.activity.*;
 import io.dws.orchestrator.workflow.adapter.TaskNaming;
 import io.serverlessworkflow.api.types.*;
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import one.util.streamex.StreamEx;
 
 /**
@@ -55,64 +55,85 @@ public class InterpreterWorkflow implements Workflow {
     // so publishing stays replay-deterministic — no Instant.now()/UUID.randomUUID() in execute.
     AdminEventBuilder events = AdminEventBuilder.forContext(ctx);
 
-    JsonNode data = ctx.getInput(JsonNode.class);
-    if (data == null) {
-      data = mapper.createObjectNode();
-    }
-
+    JsonNode initialData =
+        Optional.ofNullable(ctx.getInput(JsonNode.class)).orElse(mapper.createObjectNode());
     // The workflow context is a second document, distinct from `data`: `export.as` writes it and it
     // persists for the instance's life. It is threaded through the loop (never stored externally)
     // so replay stays deterministic, and it is not part of the instance's completion output.
-    JsonNode context = mapper.createObjectNode();
+    JsonNode initialContext = mapper.createObjectNode();
 
     publish(ctx, events.instanceStarted());
 
-    Map<String, Integer> indexByName = new HashMap<>();
-    for (int i = 0; i < items.size(); i++) {
-      indexByName.put(items.get(i).getName(), i);
+    if (items.isEmpty()) {
+      publish(ctx, events.instanceCompleted());
+      ctx.complete(initialData);
+      return;
     }
 
+    Map<String, Integer> indexByName = StreamEx.of(items).toMap(TaskItem::getName, items::indexOf);
+
     try {
-      int pc = 0;
-      for (int steps = 0; pc >= 0 && pc < items.size(); steps++) {
-        if (steps > MAX_STEPS) {
-          throw new IllegalStateException(
-              "workflow exceeded " + MAX_STEPS + " steps; check for a definition loop");
-        }
-
-        TaskItem item = items.get(pc);
-        String name = item.getName();
-        Task task = item.getTask();
-        String taskType = taskTypeOf(task);
-
-        publish(ctx, events.taskStarted(name, taskType));
-        FlowOutcome then;
-        try {
-          Dispatch result = dispatch(ctx, task, name, data, context, mapper);
-          data = result.data();
-          context = result.context();
-          then = result.then();
-        } catch (RuntimeException e) {
-          publish(ctx, events.taskFailed(name, taskType, String.valueOf(e.getMessage())));
-          throw e;
-        }
-        publish(ctx, events.taskCompleted(name, taskType));
-
-        pc = advance(then, pc, indexByName);
-        if (pc == COMPLETE) {
-          publish(ctx, events.instanceCompleted());
-          ctx.complete(data);
-          return;
-        }
-      }
-
-      // Ran off the end of the task list: complete with the current data.
-      publish(ctx, events.instanceCompleted());
-      ctx.complete(data);
+      // The program counter can jump to any named task (via `then: target`), so the loop is
+      // driven as a chain of states rather than a simple in-order forEach: each state carries the
+      // pc plus the current data/context documents, and `step` both executes the task at that pc
+      // (side effects included) and resolves the following state. Iteration stops as soon as a
+      // state is produced with `complete = true`, at which point completion has already been
+      // published/committed inside `step`.
+      StreamEx.iterate(
+              new LoopState(0, initialData, initialContext, 0, false),
+              state -> !state.complete(),
+              state -> step(ctx, items, indexByName, events, mapper, state))
+          .forEach(_ -> {});
     } catch (RuntimeException e) {
       publish(ctx, events.instanceFailed(String.valueOf(e.getMessage())));
       throw e;
     }
+  }
+
+  /** Loop-carried state for the {@code StreamEx.iterate}-driven program-counter interpreter. */
+  private record LoopState(int pc, JsonNode data, JsonNode context, int steps, boolean complete) {}
+
+  /**
+   * Executes the task at {@code state.pc()} and resolves the next {@link LoopState}: either the
+   * state to run next, or a terminal state (with {@code complete = true}) once the instance has
+   * been published/completed.
+   */
+  private LoopState step(
+      WorkflowContext ctx,
+      List<TaskItem> items,
+      Map<String, Integer> indexByName,
+      AdminEventBuilder events,
+      ObjectMapper mapper,
+      LoopState state) {
+    if (state.steps() > MAX_STEPS) {
+      throw new IllegalStateException(
+          "workflow exceeded " + MAX_STEPS + " steps; check for a definition loop");
+    }
+
+    TaskItem item = items.get(state.pc());
+    String name = item.getName();
+    Task task = item.getTask();
+    String taskType = taskTypeOf(task);
+
+    publish(ctx, events.taskStarted(name, taskType));
+
+    Dispatch result;
+    try {
+      result = dispatch(ctx, task, name, state.data(), state.context(), mapper);
+    } catch (RuntimeException e) {
+      publish(ctx, events.taskFailed(name, taskType, String.valueOf(e.getMessage())));
+      throw e;
+    }
+    publish(ctx, events.taskCompleted(name, taskType));
+
+    int nextPc = advance(result.then(), state.pc(), indexByName);
+    if (nextPc == COMPLETE || nextPc < 0 || nextPc >= items.size()) {
+      // Explicit end/exit, or ran off the end of the task list: complete with the current data.
+      publish(ctx, events.instanceCompleted());
+      ctx.complete(result.data());
+      return new LoopState(COMPLETE, result.data(), result.context(), state.steps() + 1, true);
+    }
+    return new LoopState(nextPc, result.data(), result.context(), state.steps() + 1, false);
   }
 
   /** The post-dispatch data and context documents plus the task's resolved flow outcome. */

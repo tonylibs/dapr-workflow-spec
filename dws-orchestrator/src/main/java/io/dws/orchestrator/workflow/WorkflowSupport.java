@@ -7,6 +7,7 @@ import io.dapr.client.DaprClient;
 import io.dapr.workflows.WorkflowTaskOptions;
 import io.dws.orchestrator.expr.JqEvaluator;
 import io.serverlessworkflow.api.types.Workflow;
+import lombok.experimental.UtilityClass;
 
 /**
  * Static bridge between Spring-managed collaborators and the Dapr workflow runtime.
@@ -16,7 +17,8 @@ import io.serverlessworkflow.api.types.Workflow;
  * populated once during bootstrap. Each orchestrator pod serves exactly one, immutable workflow
  * definition for its whole lifetime, so the held {@link Workflow} never changes.
  */
-public final class WorkflowSupport {
+@UtilityClass
+public class WorkflowSupport {
 
   /**
    * Process-wide JSON Schema registry for {@code input.schema}/{@code output.schema} validation.
@@ -36,8 +38,6 @@ public final class WorkflowSupport {
   private static volatile DaprClient daprClient;
   private static volatile WorkflowTaskOptions defaultTaskOptions;
   private static volatile String defaultPubsub;
-
-  private WorkflowSupport() {}
 
   public static void init(
       Workflow definition,
