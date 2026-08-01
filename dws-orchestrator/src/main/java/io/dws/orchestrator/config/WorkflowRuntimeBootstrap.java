@@ -10,6 +10,7 @@ import io.dws.orchestrator.workflow.InterpreterWorkflow;
 import io.dws.orchestrator.workflow.WorkflowSupport;
 import io.dws.orchestrator.workflow.activity.AdminEventActivity;
 import io.dws.orchestrator.workflow.activity.CallServiceActivity;
+import io.dws.orchestrator.workflow.activity.CatchDecisionActivity;
 import io.dws.orchestrator.workflow.activity.DataFlowInputActivity;
 import io.dws.orchestrator.workflow.activity.DataFlowOutputActivity;
 import io.dws.orchestrator.workflow.activity.EmitEventActivity;
@@ -85,6 +86,7 @@ public class WorkflowRuntimeBootstrap implements DisposableBean {
     builder.registerActivity(EvaluateSetActivity.class);
     builder.registerActivity(DataFlowInputActivity.class);
     builder.registerActivity(DataFlowOutputActivity.class);
+    builder.registerActivity(CatchDecisionActivity.class);
 
     this.runtime = builder.build();
     this.runtimeThread =

@@ -40,7 +40,8 @@ public class EvaluateSwitchActivity implements WorkflowActivity {
       String when = branch.getWhen();
       if (when == null || when.isBlank()) {
         defaultThen = FlowOutcome.of(branch.getThen());
-      } else if (jq.evaluateBoolean(when, request.data())) {
+      } else if (jq.evaluateBoolean(
+          when, request.data(), EvaluateSetActivity.scope(request.variables()))) {
         return FlowOutcome.of(branch.getThen());
       }
     }

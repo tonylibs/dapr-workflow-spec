@@ -13,6 +13,7 @@ import io.serverlessworkflow.api.types.Input;
 import io.serverlessworkflow.api.types.Output;
 import io.serverlessworkflow.api.types.Task;
 import io.serverlessworkflow.api.types.TaskBase;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -54,6 +55,7 @@ public final class DataFlowPipeline {
                 input.getFrom().getObject(),
                 raw,
                 context,
+                request.variables(),
                 request.taskName(),
                 Phase.INPUT);
 
@@ -79,6 +81,7 @@ public final class DataFlowPipeline {
                 output.getAs().getObject(),
                 raw,
                 context,
+                request.variables(),
                 request.taskName(),
                 Phase.OUTPUT);
       }
@@ -97,6 +100,7 @@ public final class DataFlowPipeline {
                 export.getAs().getObject(),
                 data,
                 context,
+                request.variables(),
                 request.taskName(),
                 Phase.EXPORT);
       }
@@ -115,10 +119,11 @@ public final class DataFlowPipeline {
       Object literal,
       JsonNode input,
       JsonNode context,
+      Map<String, JsonNode> scopeVariables,
       String taskName,
       Phase phase) {
     JqEvaluator jq = WorkflowSupport.jq();
-    Map<String, JsonNode> variables = Map.of("context", context);
+    Map<String, JsonNode> variables = bindings(context, scopeVariables);
     try {
       if (expression != null) {
         return jq.evaluate(expression, input, variables);
@@ -130,6 +135,22 @@ public final class DataFlowPipeline {
     } catch (JqEvaluator.ExpressionException e) {
       throw new DataFlowException(taskName, phase, e.getMessage(), e);
     }
+  }
+
+  /**
+   * The jq variables a {@code from}/{@code as} expression sees: always {@code $context}, plus any
+   * scope-local bindings the enclosing scope supplies (today only the error caught by an enclosing
+   * {@code catch}, named by its {@code catch.as}). A scope binding never shadows {@code $context}
+   * silently — {@code context} is written last.
+   */
+  private static Map<String, JsonNode> bindings(
+      JsonNode context, Map<String, JsonNode> scopeVariables) {
+    if (scopeVariables == null || scopeVariables.isEmpty()) {
+      return Map.of("context", context);
+    }
+    Map<String, JsonNode> merged = new HashMap<>(scopeVariables);
+    merged.put("context", context);
+    return merged;
   }
 
   /**

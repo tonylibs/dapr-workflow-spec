@@ -30,10 +30,12 @@ import io.serverlessworkflow.api.types.ScriptUnion;
 import io.serverlessworkflow.api.types.Shell;
 import io.serverlessworkflow.api.types.Task;
 import io.serverlessworkflow.api.types.TaskItem;
+import io.serverlessworkflow.api.types.TryTask;
 import io.serverlessworkflow.api.types.UriTemplate;
 import io.serverlessworkflow.api.types.Workflow;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -151,12 +153,54 @@ public class WorkflowCompiler {
     if (workflow.getDo() == null || workflow.getDo().isEmpty()) {
       errors.add("Workflow has no 'do' tasks");
     }
+    for (String duplicate : duplicateTaskNames(workflow.getDo())) {
+      errors.add(
+          "Duplicate task name '"
+              + duplicate
+              + "': task names must be unique across the whole definition, including nested "
+              + "try/catch lists");
+    }
     return errors;
+  }
+
+  /**
+   * Task names must be unique across the whole definition, at every depth: a {@code call}/{@code
+   * run} task's Dapr app-id — and therefore its deployed Knative Service name — is derived from the
+   * task name alone, and the orchestrator resolves tasks by name at runtime. Two tasks sharing a
+   * name would collide on one deployed object, so this is rejected at POST time rather than
+   * discovered after deployment.
+   */
+  private static Set<String> duplicateTaskNames(List<TaskItem> tasks) {
+    Set<String> duplicates = new LinkedHashSet<>();
+    collectTaskNames(tasks, new LinkedHashSet<>(), duplicates);
+    return duplicates;
+  }
+
+  private static void collectTaskNames(
+      List<TaskItem> tasks, Set<String> seen, Set<String> duplicates) {
+    if (tasks == null) {
+      return;
+    }
+    for (TaskItem item : tasks) {
+      if (!seen.add(item.getName())) {
+        duplicates.add(item.getName());
+      }
+      TryTask tryTask = item.getTask() == null ? null : item.getTask().getTryTask();
+      if (tryTask != null) {
+        collectTaskNames(tryTask.getTry(), seen, duplicates);
+        if (tryTask.getCatch() != null) {
+          collectTaskNames(tryTask.getCatch().getDo(), seen, duplicates);
+        }
+      }
+    }
   }
 
   // ---- task walk -----------------------------------------------------------
 
   private void walk(List<TaskItem> tasks, List<StepService> steps, List<TopicBinding> bindings) {
+    if (tasks == null) {
+      return;
+    }
     for (TaskItem item : tasks) {
       String taskName = item.getName();
       Task task = item.getTask();
@@ -171,8 +215,17 @@ public class WorkflowCompiler {
         emitBinding(taskName, task.getEmitTask()).ifPresent(bindings::add);
       } else if (task.getListenTask() != null) {
         bindings.add(new TopicBinding(taskName, TopicBinding.Direction.LISTEN, taskName));
+      } else if (task.getTryTask() != null) {
+        // A try task deploys nothing itself, but the tasks nested in its try/catch.do lists are
+        // ordinary tasks and need their own step services — the orchestrator invokes them by the
+        // same kebab-cased app-id it uses for a top-level task.
+        TryTask tryTask = task.getTryTask();
+        walk(tryTask.getTry(), steps, bindings);
+        if (tryTask.getCatch() != null) {
+          walk(tryTask.getCatch().getDo(), steps, bindings);
+        }
       }
-      // switch/set/wait/for/try/raise (and do/fork) deploy nothing.
+      // switch/set/wait/for/raise (and the task lists nested under for/fork) deploy nothing.
     }
   }
 

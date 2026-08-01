@@ -106,7 +106,13 @@ public class JqEvaluator {
    * jq truthiness of the first result: everything except {@code null} and {@code false} is true.
    */
   public boolean evaluateBoolean(String expression, JsonNode input) {
-    JsonNode result = evaluate(expression, input);
+    return evaluateBoolean(expression, input, Map.of());
+  }
+
+  /** As {@link #evaluateBoolean(String, JsonNode)}, with named jq variables bound. */
+  public boolean evaluateBoolean(
+      String expression, JsonNode input, Map<String, JsonNode> variables) {
+    JsonNode result = evaluate(expression, input, variables);
     if (result == null || result.isNull()) {
       return false;
     }

@@ -122,11 +122,15 @@ codebase, so they're captured here rather than in a single component's docs.
   or one of `dws-run-shell` / `dws-run-script-js` / `dws-run-script-python` (chosen by the
   script's `language`); `run container` and `run workflow` are rejected at compile time (no
   deployable image exists for either). `emit` / `listen` become a topic binding only (nothing
-  deployed); `switch` / `set` / `wait` / `for` / `try` / `raise` deploy nothing — they're
-  interpreted in-process by the orchestrator.
+  deployed); `switch` / `set` / `wait` / `for` / `try` / `raise` deploy nothing themselves — they're
+  interpreted in-process by the orchestrator. A `try` task's nested `try` / `catch.do` lists **are**
+  walked at compile time, so tasks inside them map to resources exactly as at top level; lists
+  nested under `for` / `fork` are not walked.
 - **Task name → Dapr app-id (kebab-case adapter)**: `dws-orchestrator` resolves a `call` task's
   target purely from its task name — `checkInventory` → Dapr app-id `check-inventory`, invoked at
-  `POST /run`. The `with.endpoint` field in the DSL is schema-required but **ignored** for
+  `POST /run`. Task names are therefore **unique across the whole definition at every depth**, and
+  `dws-controller` rejects duplicates at compile time. The `with.endpoint` field in the DSL is
+  schema-required but **ignored** for
   routing. This convention is implicit and independently relied on by both `dws-controller`
   (which names the Knative Service/app-id) and `dws-orchestrator` (which derives the same name
   from the task) — keep the two in sync if this logic changes.
