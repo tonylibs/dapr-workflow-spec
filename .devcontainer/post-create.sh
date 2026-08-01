@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ClawTeam CLI (github.com/HKUDS/ClawTeam): multi-agent swarm orchestration on top of
+# Claude Code. pipx over `pip install` since Ubuntu's Python is PEP 668 externally-managed.
+if ! command -v pipx >/dev/null 2>&1; then
+  sudo apt-get update && sudo apt-get install -y --no-install-recommends pipx
+fi
+pipx ensurepath
+pipx install clawteam
+
 # dws-call-openapi (Node/TypeScript, pnpm)
 if [ -f dws-call-openapi/package.json ]; then
   (cd dws-call-openapi && pnpm install)
