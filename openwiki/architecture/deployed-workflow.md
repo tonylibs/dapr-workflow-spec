@@ -40,11 +40,11 @@ A compiled plan contains the workflow definition, step services, an orchestrator
 
 `StackApplier` creates the ConfigMap only if it is absent, applies the remaining resources, then drains superseded orchestrator versions and collects them only after their Deployment explicitly reports zero replicas (`dws-controller/src/main/java/io/dws/controller/k8s/StackApplier.java`). The cluster, selected through `dws.io/*` labels, is the source of truth; there is no controller database.
 
-Version identity is `<workflow>@v<sha256-8>` of the canonicalized definition. This makes repeat submission idempotent while preserving the submitted definition text in immutable storage. Knative Service names remain stable—not version-suffixed—because the orchestrator routes by their Dapr app ID; services no longer present in a new version retain their old labels and can be garbage-collected. These rules are defined in `dws-controller/CLAUDE.md` and are surfaced by controller deployment events in [lifecycle events](../integrations/lifecycle-events.md#controller-events).
+Version identity is `<workflow>@v<sha256-8>` of the canonicalized definition. This makes repeat submission idempotent while preserving the submitted definition text in immutable storage. Knative Service names remain stable—not version-suffixed—because the orchestrator routes by their Dapr app ID; services no longer present in a new version retain their old labels and can be garbage-collected. Task names must now be unique across the entire definition, including `try` and `catch.do` scopes: duplicate `call` or `run` names would collide on that app ID and Knative Service. These rules are defined in `dws-controller/CLAUDE.md` and are surfaced by controller deployment events in [lifecycle events](../integrations/lifecycle-events.md#controller-events).
 
 ## Interpreter conventions
 
-Each orchestrator pod loads one definition once at startup from the Dapr Configuration API, using a required immutable `DEFINITION_KEY`; it does not subscribe to definition updates. `InterpreterWorkflow` walks the definition task list with a program counter and supports `call`, `run`, `switch`, `set`, `wait`, `listen`, and `emit`. Every supported task dispatches through a durable mechanism: `call` and `run` invoke a step-service activity, `switch` and `set` invoke local replay-safe evaluation activities, `wait` and `listen` use workflow timer/event primitives, and `emit` invokes its pub/sub activity. `for` and `try` are recognized but currently rejected as unsupported. See `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/InterpreterWorkflow.java`.
+Each orchestrator pod loads one definition once at startup from the Dapr Configuration API, using a required immutable `DEFINITION_KEY`; it does not subscribe to definition updates. `InterpreterWorkflow` runs each task list as a scope with its own program counter, so flow targets resolve only within that scope. It supports `call`, `run`, `switch`, `set`, `wait`, `listen`, `emit`, and `try`. Every supported task dispatches through a durable mechanism: `call` and `run` invoke a step-service activity, `switch` and `set` invoke local replay-safe evaluation activities, `wait` and `listen` use workflow timer/event primitives, and `emit` invokes its pub/sub activity. `for` remains recognized but unsupported; `fork`, `raise`, and general nested `do` are not implemented. See `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/InterpreterWorkflow.java` and [OWS DSL feature roadmap](roadmap.md).
 
 Task names are the common deployment/runtime adapter:
 
@@ -52,7 +52,15 @@ Task names are the common deployment/runtime adapter:
 - `emit` task `orderPlaced` publishes current workflow data to topic `order-placed`.
 - `listen` task `approval` waits for external event `approval`.
 
-The schema-required `with.endpoint` on a call task is not used for routing. Changing task naming therefore affects both controller-created Knative service names and orchestrator invocation targets.
+The schema-required `with.endpoint` on a call task is not used for routing. Changing task naming therefore affects both controller-created Knative service names and orchestrator invocation targets. The controller recursively compiles deployable `call`/`run` tasks, and `emit`/`listen` bindings, in a `try` body and `catch.do`; nested tasks therefore receive the same resources as top-level tasks.
+
+### Try, catch, and retry
+
+A `try` task runs its `try` list as a nested scope. On an inner-task failure, a `catch` may filter the synthesized five-field error object (`type`, `status`, `instance`, `title`, `detail`) with static fields, `when`, and `exceptWhen`; the object is available to `catch.do` expressions under `catch.as` or the default `error` name. The binding is scope-local, rather than added to workflow data or `$context`.
+
+A matching `catch` may reference a named `use.retries` policy or declare one inline. The interpreter uses a durable timer for retry delay and re-runs the whole `try` list from the try task's original transformed input. Constant, linear, and exponential backoff, jitter, attempt-count limits, and total-duration limits are supported. `retry.limit.attempt.duration` is rejected because per-attempt cancellation/timeouts are not implemented. An unhandled error, or an error in `catch.do`, propagates normally; a handled recovery completes the enclosing `try` task and then applies that task's own data-flow/output and `then` behavior.
+
+`exit` ends only the current task scope, while `end` terminates the whole instance even from a nested scope. Lifecycle events continue to report the `try` task and each inner task; a handled failure reports the `try` task as completed. This implementation is the completed `try`/`catch`/`retry` slice described in the [OWS DSL feature roadmap](roadmap.md).
 
 ## Change and verification guide
 
