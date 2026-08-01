@@ -15,6 +15,7 @@ FROM ubuntu:24.04
 # compiler on PATH -- Go auto-disables cgo without one.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl ca-certificates jq make unzip gnupg gcc libc6-dev \
+    python3 python3-pip pipx tmux \
     && rm -rf /var/lib/apt/lists/*
 
 # --- gh CLI ---
@@ -63,6 +64,13 @@ RUN corepack enable pnpm \
     && corepack prepare pnpm@11.10.0 --activate \
     && pnpm config set store-dir /root/.local/share/pnpm/store --global
 
+# --- ClawTeam CLI (github.com/HKUDS/ClawTeam): multi-agent swarm orchestration on top of
+#     Claude Code inside this sandbox. pipx over `pip install` since Ubuntu 24.04's Python is
+#     PEP 668 externally-managed; pipx gives clawteam its own venv and links the binary onto
+#     PATH without --break-system-packages.
+ENV PATH="/root/.local/bin:${PATH}"
+RUN pipx install clawteam
+
 # --- optional: kubectl + dapr CLI, only if agent needs to validate against a live cluster ---
 # Deferred -- see agent-sandbox/README.md "Not scaffolded yet".
 
@@ -75,6 +83,8 @@ RUN set -eux; \
     jq --version | grep -q '^jq-1'; \
     gh --version | grep -q '^gh version'; \
     git --version; \
-    make --version | head -1
+    make --version | head -1; \
+    tmux -V; \
+    clawteam --help >/dev/null
 
 WORKDIR /workspace
