@@ -27,7 +27,7 @@ Two readiness axes matter here. Control-flow tasks run in-process in the orchest
 | `listen` | Done | single external event only, no correlation (`one`/`any`/`all`); no image needed |
 | `emit` | Done | pub/sub, no image needed |
 | `for` | Partial | recognized, throws `UnsupportedOperationException` |
-| `try` | Partial | recognized, throws `UnsupportedOperationException` — no catch/retry |
+| `try` | Done (Phase 2 slice) | scoped `try`/`catch.do`, static/dynamic catch filtering, recovery, and durable retry; general nested `do`, `fork`, and `raise` remain unsupported |
 | `fork` | Not started | not recognized |
 | `raise` | Not started | not recognized |
 | nested `do` | Not started | only the top-level task list is interpreted |
@@ -39,8 +39,9 @@ Source: `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/Interpreter
 | Feature | Status |
 |---|---|
 | Data flow (`input.from/schema`, `output.as/schema`, `export.as/schema`) | Not started — raw data passed through untransformed |
-| Errors as Problem Details (RFC 7807) + standard error types | Not started — plain Java exceptions |
-| Timeouts (workflow/task) | Not started |
+| Catch error object | Done (Phase 2 slice) — `try` filters and recovery expressions receive `{type, status, instance, title, detail}`; it is not yet an RFC 7807 response model or standard error catalogue |
+| Errors as Problem Details (RFC 7807) + standard error types | Not started — plain Java exceptions outside `try` handling |
+| Timeouts (workflow/task) | Not started — `retry.limit.attempt.duration` is explicitly rejected |
 | Authentication (basic/bearer/oauth2) | Not started |
 | Secrets | Not started |
 | Catalogs / custom functions | Not started |
@@ -54,7 +55,7 @@ Source: `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/Interpreter
 ```mermaid
 flowchart TD
   P0[Phase 0: Lifecycle events<br/>in flight] --> P8[Phase 8: dws-admin read model]
-  P1[Phase 1: Data flow pipeline] --> P2[Phase 2: Core flow completeness<br/>try/catch, raise, fork, nested do]
+  P1[Phase 1: Data flow pipeline] --> P2[Phase 2: Core flow completeness<br/>try/catch/retry done<br/>raise, fork, nested do remain]
   P1 --> P3[Phase 3: Fault tolerance<br/>Problem Details, timeouts]
   P2 --> P3
   P3 --> P4[Phase 4: Authentication + secrets]
@@ -71,7 +72,7 @@ Data flow (Phase 1) is the foundation: retry/catch, extensions, and error handli
 |---|---|---|
 | 0 (in flight) | Finish lifecycle CloudEvents publishing | controller, orchestrator |
 | 1 | `input.from/schema`, `output.as/schema`, `export.as/schema`, validation faults | orchestrator |
-| 2 | `try`/`catch`/`retry`, `raise`, `fork` (parallel), nested `do` | orchestrator |
+| 2 (in progress) | `try`/`catch`/`retry` complete; `raise`, `fork` (parallel), and general nested `do` remain | orchestrator |
 | 3 | RFC 7807 error model, standard error types, task/workflow timeouts | orchestrator |
 | 4 | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi |
 | 5 | gRPC, AsyncAPI, A2A call protocols | new `dws-call-grpc`/`dws-call-asyncapi`/`dws-call-a2a` images |
