@@ -15,6 +15,7 @@
       "pnpmVersion": "11.10.0"
     },
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {},
     "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
       "helm": "latest",
       "minikube": "none"
