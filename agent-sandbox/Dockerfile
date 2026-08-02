@@ -82,14 +82,15 @@ RUN npm install --global --no-audit --no-fund \
     "openwiki@${OPENWIKI_NPM_VERSION}"
 
 # --- Superpowers plugins ---
-# Each agent uses its native official marketplace. A fresh ~/.claude config has no marketplaces
-# registered, so the official one must be added before `plugin install` can resolve it. These
-# commands install into root's user-level agent configuration, the runtime home used by sandbox.yaml.
+# A fresh agent config has no Git marketplaces registered. Register Anthropic's official
+# marketplace independently for each CLI, then install the same Superpowers bundle into both
+# root-level agent configurations used by sandbox.yaml.
 RUN claude plugin marketplace add anthropics/claude-plugins-official \
     && claude plugin install superpowers@claude-plugins-official --scope user \
-    && codex plugin add superpowers@openai-curated --json >/dev/null \
+    && codex plugin marketplace add anthropics/claude-plugins-official --json >/dev/null \
+    && codex plugin add superpowers@claude-plugins-official --json >/dev/null \
     && claude plugin list --json | grep -q 'superpowers@claude-plugins-official' \
-    && codex plugin list --json | grep -q '"pluginId": "superpowers@openai-curated"'
+    && codex plugin list --json | grep -q '"pluginId": "superpowers@claude-plugins-official"'
 
 # --- ClawTeam CLI (github.com/HKUDS/ClawTeam): multi-agent swarm orchestration on top of
 #     Claude Code inside this sandbox. pipx over `pip install` since Ubuntu 24.04's Python is

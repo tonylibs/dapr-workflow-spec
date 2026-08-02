@@ -43,10 +43,13 @@ if ! grep -Fq 'superpowers@claude-plugins-official' <<<"$(claude plugin list --j
 fi
 grep -Fq 'superpowers@claude-plugins-official' <<<"$(claude plugin list --json)"
 
-if ! grep -Fq '"pluginId": "superpowers@openai-curated"' <<<"$(codex plugin list --json)"; then
-  codex plugin add superpowers@openai-curated --json >/dev/null
+if ! grep -Fq '"name": "claude-plugins-official"' <<<"$(codex plugin marketplace list --json)"; then
+  codex plugin marketplace add anthropics/claude-plugins-official --json >/dev/null
 fi
-grep -Fq '"pluginId": "superpowers@openai-curated"' <<<"$(codex plugin list --json)"
+if ! grep -Fq '"pluginId": "superpowers@claude-plugins-official"' <<<"$(codex plugin list --json)"; then
+  codex plugin add superpowers@claude-plugins-official --json >/dev/null
+fi
+grep -Fq '"pluginId": "superpowers@claude-plugins-official"' <<<"$(codex plugin list --json)"
 
 # ClawTeam CLI (github.com/HKUDS/ClawTeam): multi-agent swarm orchestration on top of
 # Claude Code. pipx over `pip install` since Ubuntu's Python is PEP 668 externally-managed.
