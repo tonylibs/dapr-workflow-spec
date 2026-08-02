@@ -7,7 +7,7 @@ tags: [dws, dapr, pubsub, events, observability]
 
 # DWS lifecycle events
 
-DWS publishes an advisory lifecycle stream so a consumer such as a future administrative read model can observe platform activity without coupling the controller or orchestrator to that consumer. The controller emits definition and deployment events; the orchestrator emits instance and task events while executing the [deployed workflow](../architecture/deployed-workflow.md).
+DWS publishes an advisory lifecycle stream so [DWS admin](admin-read-model.md) can observe platform activity without coupling the controller or orchestrator to the query service. The controller emits definition and deployment events; the orchestrator emits instance and task events while executing the [deployed workflow](../architecture/deployed-workflow.md).
 
 All event types, payload examples, and transport details have a canonical source in `docs/events.md`. The source code implements that contract in `dws-controller/.../events/EventPublisher.java` and `dws-orchestrator/.../workflow/AdminEventBuilder.java`.
 
