@@ -1,6 +1,6 @@
 # agent-sandbox
 
-Templates for running Claude/agent dev sessions against this monorepo inside a
+Templates for running Codex, Claude, or other agent dev sessions against this monorepo inside a
 [kubernetes-sigs/agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox) `Sandbox`,
 on top of the already-provisioned OpenSandbox control plane + CRDs.
 
@@ -12,7 +12,7 @@ sessions with persistent caches.
 
 | File | Purpose | Status |
 |---|---|---|
-| `Dockerfile` | Shared dev image: JDK 25, Go 1.26, Node 24/pnpm, git/gh/jq, [ClawTeam](https://github.com/HKUDS/ClawTeam) CLI | pinned, with a build-time smoke test — see `.github/workflows/agent-sandbox.yml` |
+| `Dockerfile` | Shared dev image: JDK 25, Go 1.26, Node 24/pnpm, git/gh/jq, Claude Code, [Codex](https://github.com/openai/codex), [OpenSpec](https://github.com/Fission-AI/OpenSpec), [OpenWiki](https://github.com/langchain-ai/openwiki), and [ClawTeam](https://github.com/HKUDS/ClawTeam) CLIs, with Superpowers installed for Claude and Codex | pinned, with a build-time smoke test — see `.github/workflows/agent-sandbox.yml` |
 | `sandbox.yaml` | `Sandbox` CRD manifest for one agent session | skeleton — confirm installed CRD apiVersion first |
 | `cache-pvcs.yaml` | PVCs for `~/.m2`, Go module cache, pnpm store | skeleton — confirm storageClass |
 

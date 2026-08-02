@@ -1,6 +1,7 @@
 # Shared dev/agent-sandbox image for the dws monorepo: JDK 25, Go 1.26, Node 24 + pnpm,
-# git/gh/jq. Every toolchain below is copied from the exact base image the corresponding
-# component already builds with, so `docker build agent-sandbox/` matches what CI ships:
+# git/gh/jq, Claude Code, Codex, OpenSpec, OpenWiki, Superpowers, and ClawTeam. Every toolchain below is
+# copied from the exact base image the corresponding component already builds with, so
+# `docker build agent-sandbox/` matches what CI ships:
 #   - JDK:  dws-orchestrator/Dockerfile      -> eclipse-temurin:25-jdk
 #   - Go:   dws-call-http/Dockerfile, dws-run/Dockerfile.* -> golang:1.26 (go.mod: go 1.26)
 #   - Node: dws-call-openapi/Dockerfile      -> node:24-slim
@@ -11,10 +12,17 @@ FROM node:24-slim AS node
 
 FROM ubuntu:24.04
 
+ARG CODEX_NPM_VERSION=0.146.0
+ARG CLAUDE_CODE_NPM_VERSION=2.1.220
+ARG OPENSPEC_NPM_VERSION=1.6.0
+ARG OPENWIKI_NPM_VERSION=0.2.3
+
 # gcc/libc6-dev: `go test -race` (dws-call-http, dws-run CI gate) needs cgo, which needs a C
 # compiler on PATH -- Go auto-disables cgo without one.
+# g++: OpenWiki's better-sqlite3 dependency can fall back to a native build when no prebuilt
+# binary is available for the target platform.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git curl ca-certificates jq make unzip gnupg gcc libc6-dev \
+    git curl ca-certificates jq make unzip gnupg gcc g++ libc6-dev \
     python3 python3-pip pipx tmux \
     && rm -rf /var/lib/apt/lists/*
 
@@ -64,6 +72,23 @@ RUN corepack enable pnpm \
     && corepack prepare pnpm@11.10.0 --activate \
     && pnpm config set store-dir /root/.local/share/pnpm/store --global
 
+# --- Agent CLIs ---
+# Pin the published Claude Code, Codex, OpenSpec, and OpenWiki packages so image rebuilds are reproducible.
+# Node is already present for the TypeScript components, so the CLIs add no additional runtime.
+RUN npm install --global --no-audit --no-fund \
+    "@anthropic-ai/claude-code@${CLAUDE_CODE_NPM_VERSION}" \
+    "@openai/codex@${CODEX_NPM_VERSION}" \
+    "@fission-ai/openspec@${OPENSPEC_NPM_VERSION}" \
+    "openwiki@${OPENWIKI_NPM_VERSION}"
+
+# --- Superpowers plugins ---
+# Each agent uses its native official marketplace. These commands install into root's user-level
+# agent configuration, which is the runtime home used by sandbox.yaml.
+RUN claude plugin install superpowers@claude-plugins-official --scope user \
+    && codex plugin add superpowers@openai-curated --json >/dev/null \
+    && claude plugin list --json | grep -q 'superpowers@claude-plugins-official' \
+    && codex plugin list --json | grep -q '"pluginId": "superpowers@openai-curated"'
+
 # --- ClawTeam CLI (github.com/HKUDS/ClawTeam): multi-agent swarm orchestration on top of
 #     Claude Code inside this sandbox. pipx over `pip install` since Ubuntu 24.04's Python is
 #     PEP 668 externally-managed; pipx gives clawteam its own venv and links the binary onto
@@ -85,6 +110,11 @@ RUN set -eux; \
     git --version; \
     make --version | head -1; \
     tmux -V; \
+    claude --version | grep -q "^${CLAUDE_CODE_NPM_VERSION} (Claude Code)$"; \
+    codex --version | grep -q "^codex-cli ${CODEX_NPM_VERSION}$"; \
+    openspec --version | grep -q "^${OPENSPEC_NPM_VERSION}$"; \
+    npm list --global --depth=0 openwiki | grep -q "openwiki@${OPENWIKI_NPM_VERSION}"; \
+    openwiki --help >/dev/null; \
     clawteam --help >/dev/null
 
 WORKDIR /workspace
