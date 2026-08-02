@@ -33,6 +33,11 @@ grep -Fq "openwiki@${OPENWIKI_NPM_VERSION}" <<<"$(npm list --global --depth=0 op
 openwiki --help >/dev/null
 
 # Superpowers plugins for both agent runtimes. Install only when the enabled plugin is absent.
+# A fresh ~/.claude config has no marketplaces registered, so the official one must be added
+# before `plugin install` can resolve it.
+if ! grep -Fq '"claude-plugins-official"' <<<"$(claude plugin marketplace list --json)"; then
+  claude plugin marketplace add anthropics/claude-plugins-official
+fi
 if ! grep -Fq 'superpowers@claude-plugins-official' <<<"$(claude plugin list --json)"; then
   claude plugin install superpowers@claude-plugins-official --scope user
 fi

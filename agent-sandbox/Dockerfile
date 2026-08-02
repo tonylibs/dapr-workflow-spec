@@ -82,9 +82,11 @@ RUN npm install --global --no-audit --no-fund \
     "openwiki@${OPENWIKI_NPM_VERSION}"
 
 # --- Superpowers plugins ---
-# Each agent uses its native official marketplace. These commands install into root's user-level
-# agent configuration, which is the runtime home used by sandbox.yaml.
-RUN claude plugin install superpowers@claude-plugins-official --scope user \
+# Each agent uses its native official marketplace. A fresh ~/.claude config has no marketplaces
+# registered, so the official one must be added before `plugin install` can resolve it. These
+# commands install into root's user-level agent configuration, the runtime home used by sandbox.yaml.
+RUN claude plugin marketplace add anthropics/claude-plugins-official \
+    && claude plugin install superpowers@claude-plugins-official --scope user \
     && codex plugin add superpowers@openai-curated --json >/dev/null \
     && claude plugin list --json | grep -q 'superpowers@claude-plugins-official' \
     && codex plugin list --json | grep -q '"pluginId": "superpowers@openai-curated"'
