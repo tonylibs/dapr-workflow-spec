@@ -1,0 +1,46 @@
+{
+  "name": "dapr-workflow-spec",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "25",
+      "installMaven": false,
+      "installGradle": false
+    },
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "1.26"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "24",
+      "pnpmVersion": "11.10.0"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {},
+    "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
+      "helm": "latest",
+      "minikube": "none"
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "remoteEnv": {
+    "PATH": "${containerEnv:HOME}/.local/bin:${containerEnv:PATH}"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "redhat.java",
+        "vscjava.vscode-java-pack",
+        "golang.go",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "redhat.vscode-yaml",
+        "ms-azuretools.vscode-docker",
+        "openai.chatgpt"
+      ],
+      "settings": {
+        "java.jdt.ls.java.home": "/usr/local/sdkman/candidates/java/current"
+      }
+    }
+  },
+  "remoteUser": "vscode"
+}

@@ -32,7 +32,8 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       # The Dockerfile's own smoke-test RUN step fails this build if any
-      # toolchain (java/go/node/pnpm/jq/gh) is missing or the wrong version.
+      # toolchain (java/go/node/pnpm/jq/gh/claude/codex/openspec/openwiki and Superpowers plugins)
+      # is missing or the wrong version.
       - name: Build image
         uses: docker/build-push-action@v6
         with:

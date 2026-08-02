@@ -16,6 +16,19 @@ resources on the cluster; a generic orchestrator then interprets the definition 
 | [`dws-call-openapi`](dws-call-openapi) | Generic, prebuilt step image for `call: openapi` tasks. Loads an OpenAPI document, resolves an operation, and executes it against upstream services. Node.js/TypeScript. |
 | [`dws-run`](dws-run) | Prebuilt step images for `run: shell` and `run: script` tasks. One codebase produces three images (`dws-run-shell`, `dws-run-script-js`, `dws-run-script-python`) differing only in base layer and interpreter. Go. |
 
+## Dev container on Windows
+
+When this repository is stored on a Windows drive and mounted into the Linux dev container,
+the `9p` filesystem can report every file as executable or with changed metadata. Configure Git
+once per clone to ignore those mount artifacts and keep the working tree in LF format:
+
+```sh
+git config --local core.filemode false
+git config --local core.autocrlf false
+git config --local core.trustctime false
+git config --local core.checkStat minimal
+```
+
 ## How it fits together
 
 1. A client `POST`s an Open Workflow Specification DSL 1.0 definition to `dws-controller`.
