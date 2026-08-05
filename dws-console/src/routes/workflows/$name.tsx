@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
 	createColumnHelper,
-	getCoreRowModel,
-	useReactTable,
+	tableFeatures,
+	useTable,
 } from "@tanstack/react-table";
 import { useState } from "react";
 import { AppLayout } from "#/components/app-layout";
@@ -19,8 +19,10 @@ export const Route = createFileRoute("/workflows/$name")({
 
 type Tab = "versions" | "deployments" | "definition";
 
-const vcol = createColumnHelper<WorkflowVersion>();
-const versionColumns = [
+// Core-only table: no optional row-model features needed.
+const features = tableFeatures({});
+const vcol = createColumnHelper<typeof features, WorkflowVersion>();
+const versionColumns = vcol.columns([
 	vcol.accessor("version", {
 		header: "Version",
 		meta: { width: "14%", cellClass: "mono" },
@@ -35,7 +37,7 @@ const versionColumns = [
 		meta: { width: "32%", cellClass: "muted" },
 	}),
 	vcol.accessor("note", { header: "Note", meta: { cellClass: "muted" } }),
-];
+]);
 
 function WorkflowDetail() {
 	const { name } = Route.useParams();
@@ -45,10 +47,10 @@ function WorkflowDetail() {
 	const detail = getWorkflowDetail(name);
 	const notFound = state === "error" || !detail;
 
-	const versionTable = useReactTable({
+	const versionTable = useTable({
+		features,
 		data: detail?.versions ?? [],
 		columns: versionColumns,
-		getCoreRowModel: getCoreRowModel(),
 	});
 
 	const crumbs = [

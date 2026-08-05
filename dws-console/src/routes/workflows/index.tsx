@@ -1,8 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
 	createColumnHelper,
-	getCoreRowModel,
-	useReactTable,
+	tableFeatures,
+	useTable,
 } from "@tanstack/react-table";
 import { Search } from "lucide-react";
 import { useState } from "react";
@@ -22,8 +22,10 @@ export const Route = createFileRoute("/workflows/")({
 	component: WorkflowList,
 });
 
-const col = createColumnHelper<WorkflowRow>();
-const columns = [
+// Core-only table: no optional row-model features needed.
+const features = tableFeatures({});
+const col = createColumnHelper<typeof features, WorkflowRow>();
+const columns = col.columns([
 	col.accessor("name", {
 		header: "Name",
 		meta: { width: "44%", cellClass: "mono" },
@@ -41,7 +43,7 @@ const columns = [
 		header: "Updated",
 		meta: { width: "14%", cellClass: "muted" },
 	}),
-];
+]);
 
 const COLS = [44, 20, 22, 14];
 
@@ -49,10 +51,10 @@ function WorkflowList() {
 	const navigate = useNavigate();
 	const [state, setState] = useState<ViewState>("data");
 
-	const table = useReactTable({
+	const table = useTable({
+		features,
 		data: workflows,
 		columns,
-		getCoreRowModel: getCoreRowModel(),
 	});
 
 	return (

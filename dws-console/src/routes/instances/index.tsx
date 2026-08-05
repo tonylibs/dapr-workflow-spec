@@ -1,10 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
 	type ColumnFiltersState,
+	columnFilteringFeature,
 	createColumnHelper,
-	getCoreRowModel,
-	getFilteredRowModel,
-	useReactTable,
+	createFilteredRowModel,
+	filterFn_equalsString,
+	tableFeatures,
+	useTable,
 } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 import { AppLayout } from "#/components/app-layout";
@@ -29,8 +31,15 @@ export const Route = createFileRoute("/instances/")({
 	component: InstanceList,
 });
 
-const col = createColumnHelper<InstanceRow>();
-const columns = [
+// Column filtering feature + the built-in `equalsString` filterFn the
+// workflow column references by name.
+const features = tableFeatures({
+	columnFilteringFeature,
+	filteredRowModel: createFilteredRowModel(),
+	filterFns: { equalsString: filterFn_equalsString },
+});
+const col = createColumnHelper<typeof features, InstanceRow>();
+const columns = col.columns([
 	col.accessor("id", {
 		header: "Instance ID",
 		meta: { width: "22%", cellClass: "mono" },
@@ -61,7 +70,7 @@ const columns = [
 		cell: (c) => c.getValue() ?? <em>in progress</em>,
 		meta: { width: "17%", cellClass: "muted" },
 	}),
-];
+]);
 
 const COLS = [22, 18, 10, 16, 17, 17];
 
@@ -101,12 +110,11 @@ function InstanceList() {
 		return f;
 	}, [workflow, statuses]);
 
-	const table = useReactTable({
+	const table = useTable({
+		features,
 		data: instances,
 		columns,
 		state: { columnFilters },
-		getCoreRowModel: getCoreRowModel(),
-		getFilteredRowModel: getFilteredRowModel(),
 	});
 
 	const rows = table.getRowModel().rows;

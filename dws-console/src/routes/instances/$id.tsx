@@ -1,11 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
 	createColumnHelper,
+	createExpandedRowModel,
 	type ExpandedState,
 	flexRender,
-	getCoreRowModel,
-	getExpandedRowModel,
-	useReactTable,
+	rowExpandingFeature,
+	tableFeatures,
+	useTable,
 } from "@tanstack/react-table";
 import { Check, X } from "lucide-react";
 import { Fragment, useState } from "react";
@@ -28,8 +29,13 @@ export const Route = createFileRoute("/instances/$id")({
 	component: InstanceDetail,
 });
 
-const tcol = createColumnHelper<TaskEvent>();
-const taskColumns = [
+// Row-expanding feature drives the inline attempt/backoff mini-timeline.
+const features = tableFeatures({
+	rowExpandingFeature,
+	expandedRowModel: createExpandedRowModel(),
+});
+const tcol = createColumnHelper<typeof features, TaskEvent>();
+const taskColumns = tcol.columns([
 	tcol.accessor("name", {
 		header: "Task",
 		meta: { width: "34%" },
@@ -81,7 +87,7 @@ const taskColumns = [
 		header: "Duration",
 		meta: { width: "14%", cellClass: "mono muted" },
 	}),
-];
+]);
 
 function InstanceDetail() {
 	const { id } = Route.useParams();
@@ -93,15 +99,14 @@ function InstanceDetail() {
 	const detail = getInstanceDetail(id);
 	const notFound = state === "error" || !detail;
 
-	const table = useReactTable({
+	const table = useTable({
+		features,
 		data: detail?.tasks ?? [],
 		columns: taskColumns,
 		state: { expanded },
 		onExpandedChange: setExpanded,
 		getRowId: (t) => t.name,
 		getRowCanExpand: (row) => !!row.original.attemptHistory,
-		getCoreRowModel: getCoreRowModel(),
-		getExpandedRowModel: getExpandedRowModel(),
 	});
 
 	const crumbs = [
@@ -281,7 +286,7 @@ function InstanceDetail() {
 															: undefined
 													}
 												>
-													{row.getVisibleCells().map((cell) => (
+													{row.getAllCells().map((cell) => (
 														<td
 															key={cell.id}
 															className={cell.column.columnDef.meta?.cellClass}
