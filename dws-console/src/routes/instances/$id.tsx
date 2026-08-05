@@ -1,7 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import {
+	createColumnHelper,
+	type ExpandedState,
+	flexRender,
+	getCoreRowModel,
+	getExpandedRowModel,
+	useReactTable,
+} from "@tanstack/react-table";
 import { Check, X } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { AppLayout } from "#/components/app-layout";
+import { DataTableHead } from "#/components/data-table";
 import { Skeleton, SkeletonRows } from "#/components/skeleton";
 import { EmptyState, StateSwitch, type ViewState } from "#/components/states";
 import {
@@ -19,15 +28,81 @@ export const Route = createFileRoute("/instances/$id")({
 	component: InstanceDetail,
 });
 
+const tcol = createColumnHelper<TaskEvent>();
+const taskColumns = [
+	tcol.accessor("name", {
+		header: "Task",
+		meta: { width: "34%" },
+		cell: ({ row }) => {
+			const t = row.original;
+			return (
+				<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+					{row.getCanExpand() && (
+						<span className="disclosure">
+							{row.getIsExpanded() ? "▾" : "▸"}
+						</span>
+					)}
+					<span
+						className="mono"
+						style={t.indent ? { paddingLeft: 16 } : undefined}
+					>
+						{t.indent ? "↳ " : ""}
+						{t.name}
+					</span>
+					{t.attempts != null && (
+						<span className="attempts-tag">
+							{t.attempts} attempt{t.attempts === 1 ? "" : "s"}
+						</span>
+					)}
+				</span>
+			);
+		},
+	}),
+	tcol.accessor("type", {
+		header: "Type",
+		meta: { width: "14%" },
+		cell: (c) => <TaskTypeBadge type={c.getValue()} />,
+	}),
+	tcol.accessor("status", {
+		header: "Status",
+		meta: { width: "20%" },
+		cell: ({ row }) => (
+			<TaskStatusBadge
+				status={row.original.status}
+				label={row.original.statusLabel}
+			/>
+		),
+	}),
+	tcol.accessor("when", {
+		header: "When",
+		meta: { width: "18%", cellClass: "mono muted" },
+	}),
+	tcol.accessor("duration", {
+		header: "Duration",
+		meta: { width: "14%", cellClass: "mono muted" },
+	}),
+];
+
 function InstanceDetail() {
 	const { id } = Route.useParams();
 	const [state, setState] = useState<ViewState>("data");
-	const [expanded, setExpanded] = useState<Set<string>>(
-		new Set(["dispatch-shipment"]),
-	);
+	const [expanded, setExpanded] = useState<ExpandedState>({
+		"dispatch-shipment": true,
+	});
 
 	const detail = getInstanceDetail(id);
 	const notFound = state === "error" || !detail;
+
+	const table = useReactTable({
+		data: detail?.tasks ?? [],
+		columns: taskColumns,
+		state: { expanded },
+		onExpandedChange: setExpanded,
+		getRowId: (t) => t.name,
+		getRowCanExpand: (row) => !!row.original.attemptHistory,
+		getCoreRowModel: getCoreRowModel(),
+		getExpandedRowModel: getExpandedRowModel(),
+	});
 
 	const crumbs = [
 		{ label: "Instances", to: "/instances" },
@@ -92,13 +167,6 @@ function InstanceDetail() {
 	const d = detail;
 	const started = d.started ?? "in progress";
 	const ended = d.ended ?? (d.status === "RUNNING" ? "in progress" : "pending");
-
-	const toggle = (name: string) =>
-		setExpanded((prev) => {
-			const next = new Set(prev);
-			next.has(name) ? next.delete(name) : next.add(name);
-			return next;
-		});
 
 	return (
 		<AppLayout active="instances" crumbs={crumbs} topRight={topRight}>
@@ -194,24 +262,43 @@ function InstanceDetail() {
 					) : (
 						<div className="tbl-wrap">
 							<table className="task-tbl">
-								<thead>
-									<tr>
-										<th style={{ width: "34%" }}>Task</th>
-										<th style={{ width: "14%" }}>Type</th>
-										<th style={{ width: "20%" }}>Status</th>
-										<th style={{ width: "18%" }}>When</th>
-										<th style={{ width: "14%" }}>Duration</th>
-									</tr>
-								</thead>
+								<DataTableHead table={table} />
 								<tbody>
-									{d.tasks.map((t) => (
-										<TaskRow
-											key={t.name}
-											task={t}
-											expanded={expanded.has(t.name)}
-											onToggle={() => toggle(t.name)}
-										/>
-									))}
+									{table.getRowModel().rows.map((row) => {
+										const expandable = row.getCanExpand();
+										const open = row.getIsExpanded();
+										return (
+											<Fragment key={row.id}>
+												<tr
+													className={
+														expandable
+															? `expandable${open ? " expanded" : ""}`
+															: undefined
+													}
+													onClick={
+														expandable
+															? row.getToggleExpandedHandler()
+															: undefined
+													}
+												>
+													{row.getVisibleCells().map((cell) => (
+														<td
+															key={cell.id}
+															className={cell.column.columnDef.meta?.cellClass}
+														>
+															{flexRender(
+																cell.column.columnDef.cell,
+																cell.getContext(),
+															)}
+														</td>
+													))}
+												</tr>
+												{expandable && open && (
+													<MiniTimeline task={row.original} />
+												)}
+											</Fragment>
+										);
+									})}
 								</tbody>
 							</table>
 						</div>
@@ -222,103 +309,52 @@ function InstanceDetail() {
 	);
 }
 
-function TaskRow({
-	task,
-	expanded,
-	onToggle,
-}: {
-	task: TaskEvent;
-	expanded: boolean;
-	onToggle: () => void;
-}) {
-	const isExpandable = !!task.attemptHistory;
+/** Inline attempt/backoff mini-timeline for an expanded `try` task. */
+function MiniTimeline({ task }: { task: TaskEvent }) {
 	return (
-		<>
-			<tr
-				className={
-					isExpandable ? `expandable${expanded ? " expanded" : ""}` : undefined
-				}
-				onClick={isExpandable ? onToggle : undefined}
-			>
-				<td>
-					<span
-						style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
-					>
-						{isExpandable && (
-							<span className="disclosure">{expanded ? "▾" : "▸"}</span>
-						)}
-						<span
-							className="mono"
-							style={task.indent ? { paddingLeft: 16 } : undefined}
-						>
-							{task.indent ? "↳ " : ""}
-							{task.name}
-						</span>
-						{task.attempts != null && (
-							<span className="attempts-tag">
-								{task.attempts} attempt{task.attempts === 1 ? "" : "s"}
-							</span>
-						)}
-					</span>
-				</td>
-				<td>
-					<TaskTypeBadge type={task.type} />
-				</td>
-				<td>
-					<TaskStatusBadge status={task.status} label={task.statusLabel} />
-				</td>
-				<td className="mono muted">{task.when}</td>
-				<td className="mono muted">{task.duration}</td>
-			</tr>
-
-			{isExpandable && expanded && (
-				<tr>
-					<td colSpan={5} className="mini-cell">
-						<div className="mini-wrap">
-							<p className="mini-title">Attempt history · {task.retryPolicy}</p>
-							<div className="mini">
-								{(task.attemptHistory ?? []).map((a) => (
-									<div
-										key={`${a.label}-${a.time}`}
-										className={`mini-node ${statusClass(a.status)}${a.kind === "attempt" && a.status === "failed" ? " err" : ""}`}
-									>
-										<span
-											className={`marker${a.kind === "attempt" ? " filled" : ""}`}
-										>
-											{a.kind === "attempt" &&
-												(a.status === "failed" ? <X /> : <Check />)}
-										</span>
-										<span
-											className={`lbl${a.kind === "backoff" ? " muted" : ""}`}
-											style={
-												a.kind === "backoff" ? { fontWeight: 500 } : undefined
-											}
-										>
-											{a.label}
-										</span>
-										<span
-											className={`detail${a.kind === "backoff" ? " muted" : ""}`}
-										>
-											{a.detail}
-										</span>
-										<span className="t">{a.time}</span>
-									</div>
-								))}
-								{task.caughtError && (
-									<div className="mini-err-panel">
-										<b>caught by:</b> catch →{" "}
-										<span style={{ color: "var(--color-accent)" }}>
-											{task.caughtBy}
-										</span>
-										<br />
-										{task.caughtError}
-									</div>
-								)}
+		<tr>
+			<td colSpan={5} className="mini-cell">
+				<div className="mini-wrap">
+					<p className="mini-title">Attempt history · {task.retryPolicy}</p>
+					<div className="mini">
+						{(task.attemptHistory ?? []).map((a) => (
+							<div
+								key={`${a.label}-${a.time}`}
+								className={`mini-node ${statusClass(a.status)}${a.kind === "attempt" && a.status === "failed" ? " err" : ""}`}
+							>
+								<span
+									className={`marker${a.kind === "attempt" ? " filled" : ""}`}
+								>
+									{a.kind === "attempt" &&
+										(a.status === "failed" ? <X /> : <Check />)}
+								</span>
+								<span
+									className={`lbl${a.kind === "backoff" ? " muted" : ""}`}
+									style={a.kind === "backoff" ? { fontWeight: 500 } : undefined}
+								>
+									{a.label}
+								</span>
+								<span
+									className={`detail${a.kind === "backoff" ? " muted" : ""}`}
+								>
+									{a.detail}
+								</span>
+								<span className="t">{a.time}</span>
 							</div>
-						</div>
-					</td>
-				</tr>
-			)}
-		</>
+						))}
+						{task.caughtError && (
+							<div className="mini-err-panel">
+								<b>caught by:</b> catch →{" "}
+								<span style={{ color: "var(--color-accent)" }}>
+									{task.caughtBy}
+								</span>
+								<br />
+								{task.caughtError}
+							</div>
+						)}
+					</div>
+				</div>
+			</td>
+		</tr>
 	);
 }

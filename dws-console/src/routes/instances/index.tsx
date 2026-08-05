@@ -1,6 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import {
+	type ColumnFiltersState,
+	createColumnHelper,
+	getCoreRowModel,
+	getFilteredRowModel,
+	useReactTable,
+} from "@tanstack/react-table";
+import { useMemo, useState } from "react";
 import { AppLayout } from "#/components/app-layout";
+import { DataTableHead, DataTableRows } from "#/components/data-table";
 import { Skeleton, SkeletonRows } from "#/components/skeleton";
 import {
 	Banner,
@@ -11,6 +19,7 @@ import {
 import { InstanceStatusBadge } from "#/components/status";
 import {
 	INSTANCE_STATUSES,
+	type InstanceRow,
 	type InstanceStatus,
 	instances,
 	workflows,
@@ -19,6 +28,40 @@ import {
 export const Route = createFileRoute("/instances/")({
 	component: InstanceList,
 });
+
+const col = createColumnHelper<InstanceRow>();
+const columns = [
+	col.accessor("id", {
+		header: "Instance ID",
+		meta: { width: "22%", cellClass: "mono" },
+	}),
+	col.accessor("workflow", {
+		header: "Workflow",
+		filterFn: "equalsString",
+		meta: { width: "18%", cellClass: "mono" },
+	}),
+	col.accessor("version", {
+		header: "Version",
+		meta: { width: "10%", cellClass: "mono" },
+	}),
+	col.accessor("status", {
+		header: "Status",
+		// multi-select: keep the row if its status is one of the picked chips
+		filterFn: (row, id, picked: InstanceStatus[]) =>
+			picked.length === 0 || picked.includes(row.getValue(id)),
+		cell: (c) => <InstanceStatusBadge status={c.getValue()} />,
+		meta: { width: "16%" },
+	}),
+	col.accessor("started", {
+		header: "Started",
+		meta: { width: "17%", cellClass: "muted" },
+	}),
+	col.accessor("ended", {
+		header: "Ended",
+		cell: (c) => c.getValue() ?? <em>in progress</em>,
+		meta: { width: "17%", cellClass: "muted" },
+	}),
+];
 
 const COLS = [22, 18, 10, 16, 17, 17];
 
@@ -49,12 +92,25 @@ function InstanceList() {
 		setWorkflow(i + 1 >= names.length ? null : names[i + 1]);
 	};
 
+	// Drive TanStack's column filters from the chip/select UI state.
+	const columnFilters = useMemo<ColumnFiltersState>(() => {
+		const f: ColumnFiltersState = [];
+		if (workflow) f.push({ id: "workflow", value: workflow });
+		if (statuses.size > 0)
+			f.push({ id: "status", value: Array.from(statuses) });
+		return f;
+	}, [workflow, statuses]);
+
+	const table = useReactTable({
+		data: instances,
+		columns,
+		state: { columnFilters },
+		getCoreRowModel: getCoreRowModel(),
+		getFilteredRowModel: getFilteredRowModel(),
+	});
+
+	const rows = table.getRowModel().rows;
 	const filterCount = (workflow ? 1 : 0) + statuses.size;
-	const rows = instances.filter(
-		(r) =>
-			(!workflow || r.workflow === workflow) &&
-			(statuses.size === 0 || statuses.has(r.status)),
-	);
 
 	return (
 		<AppLayout
@@ -148,44 +204,18 @@ function InstanceList() {
 					</div>
 				) : (
 					<div className="tbl-wrap">
-						{state === "loading" ? (
-							<>
-								<table className="tbl">
-									<thead>
-										<Head />
-									</thead>
-								</table>
-								<SkeletonRows rows={6} cols={COLS} />
-							</>
-						) : (
-							<table className="tbl">
-								<thead>
-									<Head />
-								</thead>
-								<tbody>
-									{rows.map((r) => (
-										<tr
-											key={r.id}
-											className="clickable"
-											onClick={() =>
-												navigate({ to: "/instances/$id", params: { id: r.id } })
-											}
-										>
-											<td className="mono">{r.id}</td>
-											<td className="mono">{r.workflow}</td>
-											<td className="mono">{r.version}</td>
-											<td>
-												<InstanceStatusBadge status={r.status} />
-											</td>
-											<td className="muted">{r.started}</td>
-											<td className="muted">
-												{r.ended ?? <em>in progress</em>}
-											</td>
-										</tr>
-									))}
-								</tbody>
-							</table>
-						)}
+						<table className="tbl">
+							<DataTableHead table={table} />
+							{state === "loading" ? null : (
+								<DataTableRows
+									table={table}
+									onRowClick={(r) =>
+										navigate({ to: "/instances/$id", params: { id: r.id } })
+									}
+								/>
+							)}
+						</table>
+						{state === "loading" && <SkeletonRows rows={6} cols={COLS} />}
 					</div>
 				)}
 
@@ -214,25 +244,5 @@ function InstanceList() {
 				)}
 			</div>
 		</AppLayout>
-	);
-}
-
-function Head() {
-	const labels = [
-		"Instance ID",
-		"Workflow",
-		"Version",
-		"Status",
-		"Started",
-		"Ended",
-	];
-	return (
-		<tr>
-			{labels.map((l, i) => (
-				<th key={l} style={{ width: `${COLS[i]}%` }}>
-					{l}
-				</th>
-			))}
-		</tr>
 	);
 }

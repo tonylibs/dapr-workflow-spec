@@ -1,7 +1,13 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import {
+	createColumnHelper,
+	getCoreRowModel,
+	useReactTable,
+} from "@tanstack/react-table";
 import { Search } from "lucide-react";
 import { useState } from "react";
 import { AppLayout } from "#/components/app-layout";
+import { DataTableHead, DataTableRows } from "#/components/data-table";
 import { Skeleton, SkeletonRows } from "#/components/skeleton";
 import {
 	Banner,
@@ -10,17 +16,44 @@ import {
 	type ViewState,
 } from "#/components/states";
 import { WorkflowTag } from "#/components/status";
-import { workflows } from "#/lib/mock-data";
+import { type WorkflowRow, workflows } from "#/lib/mock-data";
 
 export const Route = createFileRoute("/workflows/")({
 	component: WorkflowList,
 });
+
+const col = createColumnHelper<WorkflowRow>();
+const columns = [
+	col.accessor("name", {
+		header: "Name",
+		meta: { width: "44%", cellClass: "mono" },
+	}),
+	col.accessor("latestVersion", {
+		header: "Latest version",
+		meta: { width: "20%", cellClass: "mono" },
+	}),
+	col.accessor("status", {
+		header: "Status",
+		cell: (c) => <WorkflowTag status={c.getValue()} />,
+		meta: { width: "22%" },
+	}),
+	col.accessor("updated", {
+		header: "Updated",
+		meta: { width: "14%", cellClass: "muted" },
+	}),
+];
 
 const COLS = [44, 20, 22, 14];
 
 function WorkflowList() {
 	const navigate = useNavigate();
 	const [state, setState] = useState<ViewState>("data");
+
+	const table = useReactTable({
+		data: workflows,
+		columns,
+		getCoreRowModel: getCoreRowModel(),
+	});
 
 	return (
 		<AppLayout
@@ -76,43 +109,21 @@ function WorkflowList() {
 					</div>
 				) : (
 					<div className="tbl-wrap">
-						{state === "loading" ? (
-							<>
-								<table className="tbl">
-									<thead>
-										<Head />
-									</thead>
-								</table>
-								<SkeletonRows rows={5} cols={COLS} />
-							</>
-						) : (
-							<table className="tbl">
-								<thead>
-									<Head />
-								</thead>
-								<tbody>
-									{workflows.map((w) => (
-										<tr
-											key={w.name}
-											className="clickable"
-											onClick={() =>
-												navigate({
-													to: "/workflows/$name",
-													params: { name: w.name },
-												})
-											}
-										>
-											<td className="mono">{w.name}</td>
-											<td className="mono">{w.latestVersion}</td>
-											<td>
-												<WorkflowTag status={w.status} />
-											</td>
-											<td className="muted">{w.updated}</td>
-										</tr>
-									))}
-								</tbody>
-							</table>
-						)}
+						<table className="tbl">
+							<DataTableHead table={table} />
+							{state === "loading" ? null : (
+								<DataTableRows
+									table={table}
+									onRowClick={(w) =>
+										navigate({
+											to: "/workflows/$name",
+											params: { name: w.name },
+										})
+									}
+								/>
+							)}
+						</table>
+						{state === "loading" && <SkeletonRows rows={5} cols={COLS} />}
 					</div>
 				)}
 
@@ -138,16 +149,5 @@ function WorkflowList() {
 				)}
 			</div>
 		</AppLayout>
-	);
-}
-
-function Head() {
-	return (
-		<tr>
-			<th style={{ width: `${COLS[0]}%` }}>Name</th>
-			<th style={{ width: `${COLS[1]}%` }}>Latest version</th>
-			<th style={{ width: `${COLS[2]}%` }}>Status</th>
-			<th style={{ width: `${COLS[3]}%` }}>Updated</th>
-		</tr>
 	);
 }

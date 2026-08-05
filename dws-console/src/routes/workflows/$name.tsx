@@ -1,17 +1,41 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import {
+	createColumnHelper,
+	getCoreRowModel,
+	useReactTable,
+} from "@tanstack/react-table";
 import { useState } from "react";
 import { AppLayout } from "#/components/app-layout";
+import { DataTableHead, DataTableRows } from "#/components/data-table";
 import { DefinitionGraph } from "#/components/definition-graph";
 import { Skeleton, SkeletonRows } from "#/components/skeleton";
 import { EmptyState, StateSwitch, type ViewState } from "#/components/states";
 import { DeploymentTag, WorkflowTag } from "#/components/status";
-import { getWorkflowDetail } from "#/lib/mock-data";
+import { getWorkflowDetail, type WorkflowVersion } from "#/lib/mock-data";
 
 export const Route = createFileRoute("/workflows/$name")({
 	component: WorkflowDetail,
 });
 
 type Tab = "versions" | "deployments" | "definition";
+
+const vcol = createColumnHelper<WorkflowVersion>();
+const versionColumns = [
+	vcol.accessor("version", {
+		header: "Version",
+		meta: { width: "14%", cellClass: "mono" },
+	}),
+	vcol.accessor("status", {
+		header: "Status",
+		cell: (c) => <WorkflowTag status={c.getValue()} />,
+		meta: { width: "26%" },
+	}),
+	vcol.accessor("created", {
+		header: "Created",
+		meta: { width: "32%", cellClass: "muted" },
+	}),
+	vcol.accessor("note", { header: "Note", meta: { cellClass: "muted" } }),
+];
 
 function WorkflowDetail() {
 	const { name } = Route.useParams();
@@ -20,6 +44,12 @@ function WorkflowDetail() {
 
 	const detail = getWorkflowDetail(name);
 	const notFound = state === "error" || !detail;
+
+	const versionTable = useReactTable({
+		data: detail?.versions ?? [],
+		columns: versionColumns,
+		getCoreRowModel: getCoreRowModel(),
+	});
 
 	const crumbs = [
 		{ label: "Workflows", to: "/workflows" },
@@ -177,26 +207,8 @@ function WorkflowDetail() {
 				{tab === "versions" && (
 					<div className="tbl-wrap">
 						<table className="tbl">
-							<thead>
-								<tr>
-									<th style={{ width: "14%" }}>Version</th>
-									<th style={{ width: "26%" }}>Status</th>
-									<th style={{ width: "32%" }}>Created</th>
-									<th>Note</th>
-								</tr>
-							</thead>
-							<tbody>
-								{d.versions.map((v) => (
-									<tr key={v.version}>
-										<td className="mono">{v.version}</td>
-										<td>
-											<WorkflowTag status={v.status} />
-										</td>
-										<td className="muted">{v.created}</td>
-										<td className="muted">{v.note}</td>
-									</tr>
-								))}
-							</tbody>
+							<DataTableHead table={versionTable} />
+							<DataTableRows table={versionTable} />
 						</table>
 					</div>
 				)}
