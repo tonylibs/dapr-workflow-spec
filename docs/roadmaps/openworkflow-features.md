@@ -22,10 +22,10 @@ Two different readiness axes get conflated below — worth separating:
 | `listen` | ✅ | single external event only, no correlation (`one`/`any`/`all`); no image needed |
 | `emit` | ✅ | pub/sub, no image needed |
 | `for` | ⚠️ | recognized, throws `UnsupportedOperationException` |
-| `try` | ⚠️ | recognized, throws `UnsupportedOperationException` — no catch/retry |
+| `try` | ✅ | full `try`/`catch`/`retry`: static (`catch.errors.with`) + dynamic (`catch.when`/`exceptWhen`) filtering, error object bound under `catch.as`, retry with backoff/jitter/limits (inline or named via `use.retries`), `catch.do` recovery — shipped in `try-catch-retry`, merged to `main` |
 | `fork` | ❌ | not recognized |
 | `raise` | ❌ | not recognized |
-| nested `do` | ❌ | only the top-level task list is interpreted |
+| nested `do` | ⚠️ | scope-aware task-list runner now exists (own `indexByName`, `exit` vs `end`, depth guard) but is only wired to `try`/`catch.do` — not generalized to `for`/`fork` bodies yet |
 
 ## 2. Cross-cutting spec features — status
 
@@ -48,9 +48,12 @@ Two different readiness axes get conflated below — worth separating:
 flowchart TD
   P0[Phase 0: Lifecycle Events ✅] --> P8[Phase 8: dws-admin read model ✅]
   P05[Phase 0.5: dws-run image ✅]
-  P1[Phase 1: Data Flow Pipeline ✅] --> P2[Phase 2: Core Flow Completeness<br/>try/catch, raise, fork, nested do<br/>next up]
+  P1[Phase 1: Data Flow Pipeline ✅] --> P2a[Phase 2.1: try/catch/retry ✅]
+  P2a --> P2b[Phase 2.2: raise<br/>next up]
+  P2b --> P2c[Phase 2.3: for<br/>reuses scope-aware runner]
+  P2c --> P2d[Phase 2.4: fork parallel +<br/>generalize nested do]
   P1 --> P3[Phase 3: Fault Tolerance<br/>Problem Details, timeouts]
-  P2 --> P3
+  P2d --> P3
   P3 --> P4[Phase 4: Authentication + Secrets]
   P4 --> P5[Phase 5: Protocol Expansion<br/>gRPC, AsyncAPI, A2A]
   P1 --> P6[Phase 6: Scheduling<br/>cron/every/after/on]
@@ -66,13 +69,25 @@ Data flow is the foundation: retry/catch, extensions, and error handling all rea
 | **0** ✅ | Lifecycle CloudEvents publishing | controller, orchestrator | done — Epic 1, merged |
 | **0.5** ✅ | Build `dws-run` prebuilt images (shell/script); container/workflow rejected at compile time | `dws-run` component | done — `2026-07-26-dws-run`, merged |
 | **1** ✅ | `input.from/schema`, `output.as/schema`, `export.as/schema`, validation faults | orchestrator | done — `2026-07-27-data-flow-pipeline`, merged |
-| **2** ← next | `try`/`catch`/`retry`, `raise`, `fork` (parallel), nested `do` | orchestrator | opsx — new capability |
+| **2** ⚠️ in progress | `try`/`catch`/`retry`, `raise`, `fork` (parallel), nested `do` | orchestrator, controller | slice 1 (`try`/`catch`/`retry`) done — `try-catch-retry`, merged to `main`, not yet archived in `openspec/`; slices 2–4 (`raise`, `for`, `fork` + generalized nested `do`) ← next |
 | **3** | RFC 7807 error model, standard error types, task/workflow timeouts | orchestrator | opsx — new capability |
 | **4** | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi | opsx — new capability |
 | **5** | gRPC, AsyncAPI, A2A call protocols | new `dws-call-grpc`/`dws-call-asyncapi`/`dws-call-a2a` images | opsx — new components |
 | **6** | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) | opsx — new capability |
 | **7** | Catalogs, custom functions, extensions (`before`/`after`), external resources | controller, orchestrator | opsx — new capability |
 | **8** ✅ | `dws-admin` consumes lifecycle events into read model, exposes read API | dws-admin | done — Epics 2–3, merged |
+
+## 4a. Phase 2 slice detail
+
+Phase 2 shipped as separate opsx changes rather than one, because `try`/`catch` alone justified
+introducing the scope-aware task-list runner (`runTaskList`) that every later slice reuses:
+
+| Slice | Scope | Status |
+|---|---|---|
+| 2.1 | `try`/`catch`/`retry`, the scope-aware runner (`runTaskList`), scope-local flow directives (`exit` vs `end`), depth guard, recursive task lookup and compile-time nesting into `try`/`catch.do` | ✅ done — `openspec/changes/try-catch-retry` (all tasks checked, code merged to `main`; **not yet run through `/opsx:archive`**) |
+| 2.2 | `raise` — explicit error construction/throw from a task, matched by the same `catch.errors.with`/`when` machinery slice 2.1 built | ❌ not started — smallest remaining slice, no new scope semantics |
+| 2.3 | `for` — currently recognized, throws `UnsupportedOperationException`; reuses `runTaskList` for the loop body the same way `try` does | ❌ not started |
+| 2.4 | `fork` (parallel branches) + generalizing nested `do` to any task type that nests a list | ❌ not started — hardest slice: needs a concurrent execution model, not just another `runTaskList` caller |
 
 ## 5. Rationale for ordering
 

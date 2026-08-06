@@ -13,7 +13,7 @@ Only the long-running platform components are chart-managed:
 | `dws-controller` | Yes | Persistent control-plane Deployment |
 | `dws-admin` | Yes | Persistent read-model service, needs Postgres |
 | Postgres (for `dws-admin`) | Yes, optional built-in | Minimal in-chart StatefulSet by default; swappable for an external DB |
-| `dws-console` | Not yet | No Dockerfile/image exists upstream yet — placeholder toggle only, disabled by default |
+| `dws-console` | Not yet | No Dockerfile/image exists upstream yet — placeholder toggle only, disabled by default. See [`dws-console` roadmap](dws-console.md) |
 | `dws-orchestrator` | No | Deployed dynamically, per-workflow, by the controller at runtime — not a static install target |
 | `dws-call-http` / `dws-call-openapi` / `dws-run-*` | No | Same as above — controller stamps these out per workflow |
 | Dapr | Optional dependency | User-toggleable — see below |
@@ -66,6 +66,7 @@ charts/dws/
 
 ## Open items
 
-- `dws-console` has no Dockerfile yet — Phase 5 is blocked until that lands upstream.
+- `dws-console` has no Dockerfile yet — Phase 5 is blocked until that lands upstream
+  (see [`dws-console` roadmap](dws-console.md), Phase 6).
 - Built-in Postgres is dev/eval-grade (single replica, no backup) — production users should set `postgresql.enabled: false` and point `admin.database` at a managed instance.
 - Knative install-via-Job needs a pinned release version (`knative.version`) kept in sync with the `serving-crds.yaml` bundle already checked into `dws-controller/k8s/`.
