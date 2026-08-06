@@ -47,19 +47,19 @@
 
 ## 4. Integration tests
 
-- [ ] 4.1 Extend `InterpreterWorkflowIntegrationTest` with a `raise`-inside-`try` case: the raised
+- [x] 4.1 Extend `InterpreterWorkflowIntegrationTest` with a `raise`-inside-`try` case: the raised
       error is caught by `catch.errors.with`/`catch.when` exactly like a real failure, and its
       `type`/`status`/`title`/`detail` reach `catch.do` unchanged under the bound error variable
-- [ ] 4.2 Add a case asserting a `raise` inside `try` can trigger `catch`'s retry policy
+- [x] 4.2 Add a case asserting a `raise` inside `try` can trigger `catch`'s retry policy
       identically to a real failure
-- [ ] 4.3 Add a case asserting a `raise` task outside any `try` fails the task and the workflow
+- [x] 4.3 Add a case asserting a `raise` task outside any `try` fails the task and the workflow
       instance through the standard instance-failure path
 
 ## 5. Verification and controller confirmation
 
-- [ ] 5.1 Run `./mvnw verify` in `dws-orchestrator/`; confirm green
-- [ ] 5.2 Run `./mvnw test` in `dws-controller/`; confirm green and that the compiled resource set
+- [x] 5.1 Run `./mvnw verify` in `dws-orchestrator/`; confirm green
+- [x] 5.2 Run `./mvnw test` in `dws-controller/`; confirm green and that the compiled resource set
       for a definition containing a `raise` task is unchanged (no `StepService`/`TopicBinding`
       emitted for it), consistent with `WorkflowCompiler.walk()`'s existing no-op treatment
-- [ ] 5.3 Update `docs/roadmaps/openworkflow-features.md` §4a's Phase 2 slice table: mark the `raise`
+- [x] 5.3 Update `docs/roadmaps/openworkflow-features.md` §4a's Phase 2 slice table: mark the `raise`
       row (2.2) done, and update the task-type coverage table's `raise` row from ❌ to ✅

@@ -15,6 +15,7 @@ import io.dapr.durabletask.Task;
 import io.dapr.workflows.WorkflowContext;
 import io.dapr.workflows.WorkflowTaskOptions;
 import io.dws.orchestrator.dataflow.DataFlowException;
+import io.dws.orchestrator.error.RaisedErrorException;
 import io.dws.orchestrator.expr.JqEvaluator;
 import io.dws.orchestrator.workflow.activity.AdminEventActivity;
 import io.dws.orchestrator.workflow.activity.AdminEventRequest;
@@ -31,6 +32,9 @@ import io.dws.orchestrator.workflow.activity.EvaluateSetRequest;
 import io.dws.orchestrator.workflow.activity.EvaluateSwitchActivity;
 import io.dws.orchestrator.workflow.activity.EvaluateSwitchRequest;
 import io.dws.orchestrator.workflow.activity.FlowOutcome;
+import io.dws.orchestrator.workflow.activity.RaiseErrorActivity;
+import io.dws.orchestrator.workflow.activity.RaiseErrorRequest;
+import io.serverlessworkflow.api.WorkflowFormat;
 import io.serverlessworkflow.api.WorkflowReader;
 import io.serverlessworkflow.api.types.Workflow;
 import java.time.Instant;
@@ -555,5 +559,71 @@ class InterpreterWorkflowIntegrationTest {
             .map(d -> d.get("taskType").asText())
             .toList();
     assertThat(taskTypes).contains("run");
+  }
+
+  /**
+   * {@code taskTypeOf} must label a {@code raise} task {@code "raise"}, not {@code "unknown"}. The
+   * raise is top-level and therefore uncaught, so the instance fails — which is itself the
+   * assertion that a raised error reaches the ordinary task-failure path.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void raiseTaskTypeIsReportedAsRaiseInLifecycleEvents() throws Exception {
+    Workflow definition =
+        WorkflowReader.readWorkflowFromString(
+            """
+            document:
+              dsl: 1.0.0
+              namespace: examples
+              name: raise-workflow
+              version: '1.0.0'
+            do:
+              - explode:
+                  raise:
+                    error:
+                      type: https://example.com/errors/x
+                      status: 400
+                      title: Bad
+                      detail: bad
+            """,
+            WorkflowFormat.YAML);
+    WorkflowSupport.init(
+        definition,
+        definition.getDocument().getName(),
+        "raise-workflow",
+        "raise-workflow@v1",
+        new JqEvaluator(mapper),
+        mapper,
+        /* daprClient (unused; activities are mocked) */ null,
+        mock(WorkflowTaskOptions.class),
+        "pubsub");
+
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{}"));
+    when(ctx.callActivity(
+            eq(RaiseErrorActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenAnswer(
+            inv -> completed(RaiseErrorActivity.apply((RaiseErrorRequest) inv.getArgument(1))));
+
+    assertThatThrownBy(() -> workflow.execute(ctx)).isInstanceOf(RaisedErrorException.class);
+
+    ArgumentCaptor<Object> reqs = ArgumentCaptor.forClass(Object.class);
+    verify(ctx, org.mockito.Mockito.atLeastOnce())
+        .callActivity(
+            eq(AdminEventActivity.class.getName()),
+            reqs.capture(),
+            any(WorkflowTaskOptions.class),
+            eq(Void.class));
+    List<String> taskTypes =
+        reqs.getAllValues().stream()
+            .map(r -> ((AdminEventRequest) r).data().get("data"))
+            .filter(d -> d != null && d.has("taskType"))
+            .map(d -> d.get("taskType").asText())
+            .toList();
+    assertThat(taskTypes).contains("raise");
   }
 }
