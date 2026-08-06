@@ -1,12 +1,12 @@
 ## 1. Error classification: raised-error marker and short-circuit
 
-- [ ] 1.1 Add `RaisedErrorException` (parallel to `StepInvocationException`) that folds a resolved
+- [x] 1.1 Add `RaisedErrorException` (parallel to `StepInvocationException`) that folds a resolved
       five-field error object (`{type, status, instance, title, detail}`) into its message behind a
       new marker distinct from `STEP_MARKER`/`DATA_FLOW_MARKER`
-- [ ] 1.2 Add a short-circuit branch to `WorkflowErrors.classify()`/`of()`: when the new marker is
+- [x] 1.2 Add a short-circuit branch to `WorkflowErrors.classify()`/`of()`: when the new marker is
       present, parse the embedded object back out and return it unchanged — no `ErrorKind` is
       assigned, no status/type is re-derived from the message
-- [ ] 1.3 Unit tests in `WorkflowErrorsTest`: a raised error's `type`/`status`/`title`/`detail` round
+- [x] 1.3 Unit tests in `WorkflowErrorsTest`: a raised error's `type`/`status`/`title`/`detail` round
       -trip unchanged through `classify()`/`of()`; the two existing markers' classification is
       unaffected
 

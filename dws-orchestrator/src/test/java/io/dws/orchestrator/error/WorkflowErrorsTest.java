@@ -2,6 +2,7 @@ package io.dws.orchestrator.error;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.dws.orchestrator.dataflow.DataFlowException;
@@ -83,6 +84,52 @@ class WorkflowErrorsTest {
                 "step 'fetch-order' failed with status 503: down", "guarded"))
         .isEqualTo("guarded");
     assertThat(WorkflowErrors.failingTaskName(null, "guarded")).isEqualTo("guarded");
+  }
+
+  @Test
+  void raisedErrorSurvivesUnchangedThroughOf() {
+    // A raised error is author-authoritative: classification must not touch any of its five fields.
+    ObjectNode raised = mapper.createObjectNode();
+    raised.put("type", "https://example.com/errors/insufficient-funds");
+    raised.put("status", 402);
+    raised.put("instance", "/chargePayment");
+    raised.put("title", "Insufficient funds");
+    raised.put("detail", "balance 10.00 < amount 25.00");
+    RaisedErrorException exception = new RaisedErrorException(raised);
+
+    JsonNode result = WorkflowErrors.of(exception.getMessage(), "guarded", mapper);
+
+    assertThat(result).isEqualTo(raised);
+  }
+
+  @Test
+  void raisedErrorMessageCarriesTheMarkerAndTheJson() {
+    // Only the message survives the activity boundary, so the whole object must live in it.
+    ObjectNode raised = mapper.createObjectNode();
+    raised.put("type", "https://example.com/errors/x");
+    raised.put("status", 400);
+
+    RaisedErrorException exception = new RaisedErrorException(raised);
+
+    assertThat(exception.getMessage()).startsWith("raised error: ").contains("\"status\":400");
+  }
+
+  @Test
+  void raisedErrorDetailContainingAnotherMarkerIsStillNotReclassified() {
+    // The short-circuit is a prefix check, so a `detail` quoting a step failure stays a raised
+    // error rather than being re-read as a communication failure.
+    ObjectNode raised = mapper.createObjectNode();
+    raised.put("type", "https://example.com/errors/wrapped");
+    raised.put("status", 402);
+    raised.put("instance", "/explode");
+    raised.put("title", "Wrapped");
+    raised.put("detail", STEP_503);
+
+    JsonNode result = WorkflowErrors.of(new RaisedErrorException(raised).getMessage(), "x", mapper);
+
+    assertThat(result.get("type").textValue()).isEqualTo("https://example.com/errors/wrapped");
+    assertThat(result.get("status").intValue()).isEqualTo(402);
+    assertThat(result.get("title").textValue()).isEqualTo("Wrapped");
   }
 
   @Test

@@ -1,5 +1,7 @@
 package io.dws.orchestrator.error;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.regex.Matcher;
@@ -29,6 +31,13 @@ public final class WorkflowErrors {
 
   private static final String STEP_MARKER = "step '";
   private static final String DATA_FLOW_MARKER = "data flow failed:";
+
+  /**
+   * Prefix {@link RaisedErrorException} folds its resolved error object's JSON behind. Matched as a
+   * <em>prefix</em>, not a substring, so an error whose {@code detail} happens to quote another
+   * failure's text is still recognised as raised rather than reclassified from its own payload.
+   */
+  static final String RAISE_MARKER = "raised error: ";
 
   private WorkflowErrors() {}
 
@@ -88,8 +97,15 @@ public final class WorkflowErrors {
     return error;
   }
 
-  /** Convenience: classify a failure message and build the whole error object from it. */
+  /**
+   * Convenience: classify a failure message and build the whole error object from it — unless the
+   * failure is a {@link RaisedErrorException}, whose five fields the author already chose and which
+   * are therefore returned unchanged rather than re-derived.
+   */
   public static ObjectNode of(String failureMessage, String fallbackTaskName, ObjectMapper mapper) {
+    if (failureMessage != null && failureMessage.startsWith(RAISE_MARKER)) {
+      return raised(failureMessage, mapper);
+    }
     ErrorKind kind = classify(failureMessage);
     return build(
         kind,
@@ -97,5 +113,19 @@ public final class WorkflowErrors {
         failingTaskName(failureMessage, fallbackTaskName),
         failureMessage,
         mapper);
+  }
+
+  /** Reads a raised error's own object back out of {@link RaisedErrorException}'s message. */
+  private static ObjectNode raised(String failureMessage, ObjectMapper mapper) {
+    String json = failureMessage.substring(RAISE_MARKER.length());
+    try {
+      JsonNode parsed = mapper.readTree(json);
+      if (!parsed.isObject()) {
+        throw new IllegalStateException("raised error is not a JSON object: " + json);
+      }
+      return (ObjectNode) parsed;
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException("raised error could not be parsed: " + json, e);
+    }
   }
 }
