@@ -12,24 +12,24 @@
 
 ## 2. `RaiseErrorActivity`: pure evaluation of a raise task's configured error
 
-- [ ] 2.1 Add `RaiseErrorActivity` (in-process, no I/O — parallel to `EvaluateSetActivity`) that
+- [x] 2.1 Add `RaiseErrorActivity` (in-process, no I/O — parallel to `EvaluateSetActivity`) that
       resolves a `raise` task's `RaiseTaskConfiguration` via `DefinitionLookup.taskByName()` and
       returns the five-field error object; it does not throw `RaisedErrorException` itself
-- [ ] 2.2 Resolve `RaiseTaskError`: an inline `Error` definition is used directly; a named reference
+- [x] 2.2 Resolve `RaiseTaskError`: an inline `Error` definition is used directly; a named reference
       is looked up in `Workflow.getUse().getErrors().getAdditionalProperties()`, failing with a
       message naming the missing error definition when unresolved
-- [ ] 2.3 Evaluate `type`/`instance`/`title`/`detail`: a literal accessor value is used unchanged; an
+- [x] 2.3 Evaluate `type`/`instance`/`title`/`detail`: a literal accessor value is used unchanged; an
       expression accessor value is evaluated via `JqEvaluator.evaluate(expr, data, variables)`
       unconditionally (no `${...}`-wrapper sniffing, unlike `set`)
-- [ ] 2.4 Evaluate `status` as a literal `int`, used verbatim — no expression path exists for it in
+- [x] 2.4 Evaluate `status` as a literal `int`, used verbatim — no expression path exists for it in
       the pinned SDK
-- [ ] 2.5 Resolve `instance`: use the declared value (literal or expression, per 2.3) when present;
+- [x] 2.5 Resolve `instance`: use the declared value (literal or expression, per 2.3) when present;
       when absent, default to a JSON-Pointer-shaped reference to the raising task, matching
       `WorkflowErrors.build()`'s existing convention
-- [ ] 2.6 Add `RaiseErrorRequest`/response records (mirroring `EvaluateSetRequest`'s shape: task
+- [x] 2.6 Add `RaiseErrorRequest`/response records (mirroring `EvaluateSetRequest`'s shape: task
       name, data, scope variables)
-- [ ] 2.7 Register `RaiseErrorActivity` in `WorkflowRuntimeBootstrap`
-- [ ] 2.8 Unit tests in `RaiseErrorActivityTest`: inline literal fields, inline expression fields
+- [x] 2.7 Register `RaiseErrorActivity` in `WorkflowRuntimeBootstrap`
+- [x] 2.8 Unit tests in `RaiseErrorActivityTest`: inline literal fields, inline expression fields
       (reading task data), named `use.errors` reference applied identically to the same definition
       inline, unresolvable reference rejection, `instance` present vs. absent, and `status` used
       verbatim
