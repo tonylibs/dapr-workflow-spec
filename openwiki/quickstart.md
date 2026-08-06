@@ -14,6 +14,7 @@ DWS (`dapr-workflow-spec`) is a config-driven workflow platform for Kubernetes. 
 - [Deployed workflow architecture](architecture/deployed-workflow.md) explains how a definition becomes an immutable, versioned deployment and how the orchestrator executes its tasks.
 - [Lifecycle events](integrations/lifecycle-events.md) explains the shared Dapr pub/sub stream that observes controller deployment and orchestrator execution lifecycles.
 - [Administrative read model](integrations/admin-read-model.md) explains how `dws-admin` turns that stream into a durable Postgres query view and read-only APIs.
+- [Administrative console](integrations/administrative-console.md) describes the TanStack Start workflow and instance UI mockup, its static data boundary, and the path to the read API.
 - [OWS DSL feature roadmap](architecture/roadmap.md) tracks DSL 1.0 task-type and cross-cutting feature coverage against the current implementation, phased into build order.
 - [Cluster-hosted agent sandbox](architecture/agent-sandbox.md) explains the CI-validated development image and Kubernetes session templates for persistent agent work.
 
@@ -39,4 +40,3 @@ The GitHub Actions workflow at `.github/workflows/openwiki-update.yml` refreshes
 ## Backlog
 
 - **Step-runner internals** — `dws-call-http/`, `dws-call-openapi/`, and `dws-run/`: the platform-level task-to-step-service contract is documented, but individual runner request/response and configuration details remain deferred until a dedicated runtime page is needed.
-- **Administrative console** — `dws-console/`: the committed TanStack Start application is an unconnected starter scaffold; document it when it acquires DWS-facing routes or calls the `dws-admin` read API.
