@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dapr.durabletask.Task;
 import io.dapr.workflows.WorkflowContext;
 import io.dapr.workflows.WorkflowTaskOptions;
+import io.dws.orchestrator.error.RaisedErrorException;
 import io.dws.orchestrator.error.StepInvocationException;
 import io.dws.orchestrator.expr.JqEvaluator;
 import io.dws.orchestrator.workflow.activity.AdminEventActivity;
@@ -34,6 +35,8 @@ import io.dws.orchestrator.workflow.activity.EvaluateSetRequest;
 import io.dws.orchestrator.workflow.activity.EvaluateSwitchActivity;
 import io.dws.orchestrator.workflow.activity.EvaluateSwitchRequest;
 import io.dws.orchestrator.workflow.activity.FlowOutcome;
+import io.dws.orchestrator.workflow.activity.RaiseErrorActivity;
+import io.dws.orchestrator.workflow.activity.RaiseErrorRequest;
 import io.serverlessworkflow.api.WorkflowFormat;
 import io.serverlessworkflow.api.WorkflowReader;
 import io.serverlessworkflow.api.types.Workflow;
@@ -119,6 +122,13 @@ class TryCatchInterpreterTest {
             eq(io.dws.orchestrator.workflow.activity.CatchDecision.class)))
         .thenAnswer(
             inv -> completed(CatchPolicy.decide((CatchDecisionRequest) inv.getArgument(1))));
+    when(ctx.callActivity(
+            eq(RaiseErrorActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenAnswer(
+            inv -> completed(RaiseErrorActivity.apply((RaiseErrorRequest) inv.getArgument(1))));
     when(ctx.callActivity(
             eq(DataFlowInputActivity.class.getName()),
             any(),
@@ -457,7 +467,185 @@ class TryCatchInterpreterTest {
     assertThat(output.get("seen").textValue()).isEqualTo("value");
   }
 
+  // ---- raise ---------------------------------------------------------------
+
+  @Test
+  void raisedErrorInsideTryIsCaughtLikeARealFailure() throws Exception {
+    seedYaml(raiseYaml("", 402));
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+
+    workflow.execute(ctx);
+
+    JsonNode output = completionOutput(ctx);
+    // The author's own fields reached catch.do intact — not reclassified to runtime/500.
+    assertThat(output.get("reason").textValue()).isEqualTo("balance too low");
+    assertThat(output.get("caughtStatus").intValue()).isEqualTo(402);
+    assertThat(output.get("caughtType").textValue())
+        .isEqualTo("https://example.com/errors/insufficient-funds");
+    assertThat(output.get("done").textValue()).isEqualTo("yes");
+    assertThat(adminEventTypes(ctx)).doesNotContain("io.dws.instance.failed");
+  }
+
+  @Test
+  void raisedErrorIsFilteredByCatchErrorsWithLikeARealFailure() throws Exception {
+    // The catch filters on 404; the task raises 402, so nothing catches it.
+    seedYaml(raiseYaml("", 404));
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+
+    assertThatThrownBy(() -> workflow.execute(ctx))
+        .isInstanceOf(RaisedErrorException.class)
+        .hasMessageContaining("balance too low");
+
+    verify(ctx, never()).complete(any());
+    assertThat(adminEventTypes(ctx)).contains("io.dws.instance.failed");
+  }
+
+  @Test
+  void raisedErrorInsideTryCanTriggerARetry() throws Exception {
+    seedYaml(
+        raiseYaml(
+            """
+            retry:
+              delay:
+                seconds: 1
+              limit:
+                attempt:
+                  count: 2
+            """,
+            402));
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+
+    workflow.execute(ctx);
+
+    // Two body executions allowed, so exactly one wait between them.
+    verify(ctx, times(1)).createTimer(any(Duration.class));
+    assertThat(completionOutput(ctx).get("reason").textValue()).isEqualTo("balance too low");
+  }
+
+  @Test
+  void raisedErrorOutsideAnyTryFailsTheTaskAndTheInstance() throws Exception {
+    seedYaml(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: try-order-workflow
+          version: '1.0.0'
+        do:
+          - explode:
+              raise:
+                error:
+                  type: https://example.com/errors/insufficient-funds
+                  status: 402
+                  title: Insufficient funds
+                  detail: balance too low
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+
+    assertThatThrownBy(() -> workflow.execute(ctx))
+        .isInstanceOf(RaisedErrorException.class)
+        .hasMessageContaining("balance too low");
+
+    verify(ctx, never()).complete(any());
+    assertThat(adminEventTypes(ctx))
+        .containsExactly(
+            "io.dws.instance.started",
+            "io.dws.task.started",
+            "io.dws.task.failed",
+            "io.dws.instance.failed");
+  }
+
+  @Test
+  void raisedErrorReadsTheTaskDataThroughItsExpressionFields() throws Exception {
+    seedYaml(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: try-order-workflow
+          version: '1.0.0'
+        do:
+          - seed:
+              set:
+                who: '"alice"'
+          - guarded:
+              try:
+                - explode:
+                    raise:
+                      error:
+                        type: https://example.com/errors/insufficient-funds
+                        status: 402
+                        title: Insufficient funds
+                        detail: '${ "no funds for " + .who }'
+              catch:
+                errors:
+                  with:
+                    status: 402
+                do:
+                  - repair:
+                      set:
+                        reason: '${ $error.detail }'
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+
+    workflow.execute(ctx);
+
+    assertThat(completionOutput(ctx).get("reason").textValue()).isEqualTo("no funds for alice");
+  }
+
   // ---- fixture builders ----------------------------------------------------
+
+  /**
+   * A try task whose body is a single {@code raise} of a 402, caught by a filter on {@code
+   * catchStatus} and recovered by a block that copies the error's own fields into the data.
+   *
+   * @param catchExtras extra catch clauses (e.g. a retry policy), written unindented and
+   *     re-indented here to the clause's own level, alongside {@code errors:} and {@code do:}
+   */
+  private static String raiseYaml(String catchExtras, int catchStatus) {
+    String yaml =
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: try-order-workflow
+          version: '1.0.0'
+        do:
+          - guarded:
+              try:
+                - explode:
+                    raise:
+                      error:
+                        type: https://example.com/errors/insufficient-funds
+                        status: 402
+                        title: Insufficient funds
+                        detail: balance too low
+              catch:
+                errors:
+                  with:
+                    status: %d
+                #EXTRAS#
+                do:
+                  - repair:
+                      set:
+                        reason: '${ $error.detail }'
+                        caughtStatus: '${ $error.status }'
+                        caughtType: '${ $error.type }'
+          - finish:
+              set:
+                done: '"yes"'
+        """
+            .formatted(catchStatus);
+    // The marker occupies a whole line at the catch clause's own indentation, so the extras drop
+    // in already aligned with `errors:` and `do:` — no text-block indentation arithmetic.
+    return yaml.replace(
+        "        #EXTRAS#\n", catchExtras.isBlank() ? "" : catchExtras.stripTrailing().indent(8));
+  }
 
   /** A two-task try list whose first task carries the given directive. */
   private static String scopeYaml(String directive) {

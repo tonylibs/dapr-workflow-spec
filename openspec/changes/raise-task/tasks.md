@@ -36,13 +36,13 @@
 
 ## 3. Orchestrator: `raise` dispatch wiring
 
-- [ ] 3.1 Add `task.getRaiseTask()` to `InterpreterWorkflow.dispatchBody`'s `StreamEx.of(...)`
+- [x] 3.1 Add `task.getRaiseTask()` to `InterpreterWorkflow.dispatchBody`'s `StreamEx.of(...)`
       task-type list
-- [ ] 3.2 Add a `case RaiseTask raiseTask ->` branch to `dispatchConcreteTask` that calls
+- [x] 3.2 Add a `case RaiseTask raiseTask ->` branch to `dispatchConcreteTask` that calls
       `RaiseErrorActivity`, then throws `RaisedErrorException` with the resolved error folded into
       its message
-- [ ] 3.3 Add `else if (task.getRaiseTask() != null) return "raise";` to `taskTypeOf`
-- [ ] 3.4 Confirm no change is needed to `runTaskList`'s failure handling or `dispatchTry`'s catch
+- [x] 3.3 Add `else if (task.getRaiseTask() != null) return "raise";` to `taskTypeOf`
+- [x] 3.4 Confirm no change is needed to `runTaskList`'s failure handling or `dispatchTry`'s catch
       block — a raised error reaches both paths as an ordinary `RuntimeException`
 
 ## 4. Integration tests

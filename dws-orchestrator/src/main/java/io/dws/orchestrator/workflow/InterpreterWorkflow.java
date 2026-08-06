@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.dapr.workflows.Workflow;
 import io.dapr.workflows.WorkflowContext;
 import io.dapr.workflows.WorkflowStub;
+import io.dws.orchestrator.error.RaisedErrorException;
 import io.dws.orchestrator.workflow.activity.*;
 import io.dws.orchestrator.workflow.adapter.TaskNaming;
 import io.serverlessworkflow.api.types.*;
@@ -245,7 +246,8 @@ public class InterpreterWorkflow implements Workflow {
             task.getListenTask(),
             task.getEmitTask(),
             task.getForTask(),
-            task.getTryTask())
+            task.getTryTask(),
+            task.getRaiseTask())
         .nonNull()
         .map(
             concreteTask ->
@@ -330,11 +332,36 @@ public class InterpreterWorkflow implements Workflow {
               .await();
       case TryTask tryTask ->
           dispatchTry(ctx, tryTask, name, data, context, variables, depth, events, mapper);
+      case RaiseTask _ ->
+          ctx.callActivity(
+                  RaiseErrorActivity.class.getName(),
+                  new RaiseErrorRequest(name, data, variables),
+                  WorkflowSupport.defaultTaskOptions(),
+                  JsonNode.class)
+              .thenApply(InterpreterWorkflow::raiseError)
+              .await();
       case ForTask _ ->
           throw new UnsupportedOperationException(
               "task '" + name + "' uses for, which is recognised but not yet interpreted");
       default -> throw new IllegalStateException("task '" + name + "' has an unsupported type");
     };
+  }
+
+  /**
+   * Fails the task with the error the raise activity resolved.
+   *
+   * <p>The throw happens here rather than inside the activity so that it is driven by a value Dapr
+   * has already recorded, which keeps it deterministic on replay — and so that a genuine evaluation
+   * failure inside the activity stays an ordinary activity failure instead of masquerading as the
+   * raised error. From this point the error is an ordinary {@link RuntimeException}, so the
+   * existing task-failure path and {@link #dispatchTry}'s catch block handle it with no special
+   * casing.
+   *
+   * <p>Declared to return {@link Body} only to satisfy {@code thenApply}'s functional type; it
+   * never returns normally.
+   */
+  private static Body raiseError(JsonNode error) {
+    throw new RaisedErrorException(error);
   }
 
   /**
@@ -456,6 +483,8 @@ public class InterpreterWorkflow implements Workflow {
       return "for";
     } else if (task.getTryTask() != null) {
       return "try";
+    } else if (task.getRaiseTask() != null) {
+      return "raise";
     }
     return "unknown";
   }
