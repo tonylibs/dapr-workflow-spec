@@ -7,17 +7,10 @@ import io.dapr.workflows.WorkflowActivity;
 import io.dapr.workflows.WorkflowActivityContext;
 import io.dws.orchestrator.expr.JqEvaluator;
 import io.dws.orchestrator.workflow.WorkflowSupport;
+import io.serverlessworkflow.api.types.*;
 import io.serverlessworkflow.api.types.Error;
-import io.serverlessworkflow.api.types.ErrorDetails;
-import io.serverlessworkflow.api.types.ErrorInstance;
-import io.serverlessworkflow.api.types.ErrorTitle;
-import io.serverlessworkflow.api.types.ErrorType;
-import io.serverlessworkflow.api.types.RaiseTask;
-import io.serverlessworkflow.api.types.RaiseTaskError;
-import io.serverlessworkflow.api.types.Task;
-import io.serverlessworkflow.api.types.UriTemplate;
-import io.serverlessworkflow.api.types.UseErrors;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Resolves a RAISE task's configured error into the DSL's five-field runtime error object. Pure jq
@@ -74,24 +67,18 @@ public class RaiseErrorActivity implements WorkflowActivity {
    * takes for a named retry policy.
    */
   private static Error resolveError(RaiseTaskError raiseError) {
-    Error inline = raiseError.getRaiseErrorDefinition();
-    if (inline != null) {
-      return inline;
-    }
     String name = raiseError.getRaiseErrorReference();
-    UseErrors errors =
-        WorkflowSupport.definition().getUse() == null
-            ? null
-            : WorkflowSupport.definition().getUse().getErrors();
-    Error named =
-        (errors == null || errors.getAdditionalProperties() == null)
-            ? null
-            : errors.getAdditionalProperties().get(name);
-    if (named == null) {
-      throw new IllegalStateException(
-          "error '" + name + "' is not defined in the document's use.errors");
-    }
-    return named;
+    return Optional.ofNullable(raiseError.getRaiseErrorDefinition())
+        .or(
+            () ->
+                Optional.ofNullable(WorkflowSupport.definition().getUse())
+                    .map(Use::getErrors)
+                    .flatMap(errors -> Optional.ofNullable(errors.getAdditionalProperties()))
+                    .map(props -> props.get(name)))
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    "error '" + name + "' is not defined in the document's use.errors"));
   }
 
   private static String typeOf(
