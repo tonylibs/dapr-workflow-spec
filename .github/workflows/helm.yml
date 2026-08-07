@@ -105,8 +105,10 @@ jobs:
       - name: Install (real, no dry-run)
         # Scoped to admin+postgres: controller.image.tag has no published "1.0" image
         # (dws-controller.yml only pushes latest/sha/branch tags), so leave it disabled
-        # here rather than have its pod ImagePullBackOff and blow the --wait timeout.
-        # admin.image.tag is overridden to "latest" for the same reason.
+        # here rather than have its pod ImagePullBackOff and blow the wait timeout.
+        # admin.image.tag is overridden to "latest" for the same reason. No --wait here —
+        # the explicit rollout-status steps below do the waiting and, on failure, the
+        # debug step can still inspect pod state instead of only getting a bare timeout.
         run: |
           helm install dws ${{ env.CHART_DIR }} \
             --namespace dws-system --create-namespace \
@@ -114,13 +116,21 @@ jobs:
             --set postgresql.enabled=true \
             --set admin.image.tag=latest \
             --set imagePullSecrets[0].name=ghcr-pull \
-            --wait --timeout 5m
+            --timeout 5m
 
       - name: Wait for admin rollout
         run: kubectl rollout status deployment/dws-admin -n dws-system --timeout=5m
 
       - name: Wait for postgres rollout
         run: kubectl rollout status statefulset/dws-postgres -n dws-system --timeout=5m
+
+      - name: Debug pod state on failure
+        if: failure()
+        run: |
+          kubectl get pods -n dws-system -o wide
+          kubectl get events -n dws-system --sort-by=.lastTimestamp
+          kubectl describe pods -n dws-system -l app.kubernetes.io/component=admin
+          kubectl describe pods -n dws-system -l app.kubernetes.io/component=postgres
 
       - name: Run helm test
         run: helm test dws --namespace dws-system --logs
