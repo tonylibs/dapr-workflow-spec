@@ -88,10 +88,16 @@ jobs:
         uses: helm/kind-action@v1
 
       - name: Install (real, no dry-run)
+        # Scoped to admin+postgres: controller.image.tag has no published "1.0" image
+        # (dws-controller.yml only pushes latest/sha/branch tags), so leave it disabled
+        # here rather than have its pod ImagePullBackOff and blow the --wait timeout.
+        # admin.image.tag is overridden to "latest" for the same reason.
         run: |
           helm install dws ${{ env.CHART_DIR }} \
             --namespace dws-system --create-namespace \
+            --set controller.enabled=false \
             --set postgresql.enabled=true \
+            --set admin.image.tag=latest \
             --wait --timeout 5m
 
       - name: Wait for admin rollout
