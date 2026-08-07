@@ -75,6 +75,9 @@ jobs:
     name: real install & admin/postgres DB test
     runs-on: ubuntu-latest
     needs: verify
+    permissions:
+      contents: read
+      packages: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -87,6 +90,18 @@ jobs:
       - name: Create kind cluster
         uses: helm/kind-action@v1
 
+      - name: Create namespace and ghcr pull secret
+        # ghcr.io/tonylibs/dws-admin is a private package, so the kind node's
+        # anonymous pull fails even with a valid tag — wire GITHUB_TOKEN in as
+        # an imagePullSecret the same way a real cluster would use one.
+        run: |
+          kubectl create namespace dws-system --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret docker-registry ghcr-pull \
+            --namespace dws-system \
+            --docker-server=ghcr.io \
+            --docker-username=${{ github.actor }} \
+            --docker-password=${{ secrets.GITHUB_TOKEN }}
+
       - name: Install (real, no dry-run)
         # Scoped to admin+postgres: controller.image.tag has no published "1.0" image
         # (dws-controller.yml only pushes latest/sha/branch tags), so leave it disabled
@@ -98,6 +113,7 @@ jobs:
             --set controller.enabled=false \
             --set postgresql.enabled=true \
             --set admin.image.tag=latest \
+            --set imagePullSecrets[0].name=ghcr-pull \
             --wait --timeout 5m
 
       - name: Wait for admin rollout

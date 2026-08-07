@@ -18,6 +18,10 @@ spec:
         {{- include "dws.labels" . | nindent 8 }}
         app.kubernetes.io/component: admin
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: admin
           image: "{{ .Values.admin.image.repository }}:{{ .Values.admin.image.tag | default .Chart.AppVersion }}"
