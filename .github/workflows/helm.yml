@@ -131,6 +131,10 @@ jobs:
           kubectl get events -n dws-system --sort-by=.lastTimestamp
           kubectl describe pods -n dws-system -l app.kubernetes.io/component=admin
           kubectl describe pods -n dws-system -l app.kubernetes.io/component=postgres
+          echo "--- admin container logs (current) ---"
+          kubectl logs -n dws-system -l app.kubernetes.io/component=admin --all-containers --tail=200 || true
+          echo "--- admin container logs (previous, if crashlooping) ---"
+          kubectl logs -n dws-system -l app.kubernetes.io/component=admin --all-containers --previous --tail=200 || true
 
       - name: Run helm test
         run: helm test dws --namespace dws-system --logs
