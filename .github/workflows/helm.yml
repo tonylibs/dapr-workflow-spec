@@ -63,10 +63,45 @@ jobs:
       - name: Server-side dry-run install
         # Validates the rendered manifests against a real API server. The controller
         # stack is core/rbac/apps only, so no external CRDs are required.
+        # NOTE: --dry-run=server never starts a pod, so it cannot catch a broken
+        # admin/Postgres integration (a bad DATABASE_URL, a Postgres that never comes
+        # up, etc.) — see the `integration` job below for that.
         run: |
           helm install dws ${{ env.CHART_DIR }} \
             --namespace dws-system --create-namespace \
             --dry-run=server
+
+  integration:
+    name: real install & admin/postgres DB test
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+
+      - name: Install (real, no dry-run)
+        run: |
+          helm install dws ${{ env.CHART_DIR }} \
+            --namespace dws-system --create-namespace \
+            --set postgresql.enabled=true \
+            --wait --timeout 5m
+
+      - name: Wait for admin rollout
+        run: kubectl rollout status deployment/dws-admin -n dws-system --timeout=5m
+
+      - name: Wait for postgres rollout
+        run: kubectl rollout status statefulset/dws-postgres -n dws-system --timeout=5m
+
+      - name: Run helm test
+        run: helm test dws --namespace dws-system --logs
 
   release:
     name: package & push (OCI)
