@@ -23,6 +23,45 @@ controller:
     run: sw-run:1.0
     orchestrator: ghcr.io/tonylibs/dws-orchestrator:latest
 
+# dws-admin read model service. Toggle the whole stack with admin.enabled.
+admin:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/tonylibs/dws-admin
+    tag: "1.0"
+    pullPolicy: IfNotPresent
+  service:
+    port: 3000
+  # Database connection. When postgresql.enabled is true (default), DATABASE_URL is
+  # resolved automatically from the in-chart Postgres — leave these unset. Set one of
+  # the two below only when postgresql.enabled is false (external/managed database):
+  #   database.url: a literal connection string admin owns as its own Secret
+  #   database.existingSecret/existingSecretKey: an operator-provided Secret/key
+  database:
+    url: ""
+    existingSecret: ""
+    existingSecretKey: ""
+  pubsub:
+    name: pubsub
+    topic: dws.events
+
+# In-chart Postgres backing dws-admin's read model (dev/eval-grade). Set
+# postgresql.enabled to false to point admin at an external/managed database instead.
+postgresql:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16-alpine"
+  storage:
+    size: 1Gi
+  auth:
+    username: dws
+    password: dws
+    database: dws_admin
+    existingSecret: ""
+    existingSecretKey: ""
+
 # This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
 replicaCount: 1
 

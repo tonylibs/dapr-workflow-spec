@@ -63,10 +63,92 @@ jobs:
       - name: Server-side dry-run install
         # Validates the rendered manifests against a real API server. The controller
         # stack is core/rbac/apps only, so no external CRDs are required.
+        # NOTE: --dry-run=server never starts a pod, so it cannot catch a broken
+        # admin/Postgres integration (a bad DATABASE_URL, a Postgres that never comes
+        # up, etc.) — see the `integration` job below for that.
         run: |
           helm install dws ${{ env.CHART_DIR }} \
             --namespace dws-system --create-namespace \
             --dry-run=server
+
+  integration:
+    name: real install & admin/postgres DB test
+    runs-on: ubuntu-latest
+    needs: verify
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+
+      - name: Install Dapr control plane
+        # dws-admin's DaprServer hard-requires a reachable sidecar to even boot
+        # (it awaits the sidecar before Nest finishes bootstrapping), so the
+        # admin Deployment's dapr.io/enabled annotation needs an actual Dapr
+        # control plane + sidecar injector in the cluster to do anything.
+        run: |
+          wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash
+          dapr init -k --wait --timeout 300
+
+      - name: Create namespace and ghcr pull secret
+        # ghcr.io/tonylibs/dws-admin is a private package, so the kind node's
+        # anonymous pull fails even with a valid tag — wire GITHUB_TOKEN in as
+        # an imagePullSecret the same way a real cluster would use one.
+        run: |
+          kubectl create namespace dws-system --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret docker-registry ghcr-pull \
+            --namespace dws-system \
+            --docker-server=ghcr.io \
+            --docker-username=${{ github.actor }} \
+            --docker-password=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install (real, no dry-run)
+        # Scoped to admin+postgres: controller.image.tag has no published "1.0" image
+        # (dws-controller.yml only pushes latest/sha/branch tags), so leave it disabled
+        # here rather than have its pod ImagePullBackOff and blow the wait timeout.
+        # admin.image.tag is overridden to "latest" for the same reason. No --wait here —
+        # the explicit rollout-status steps below do the waiting and, on failure, the
+        # debug step can still inspect pod state instead of only getting a bare timeout.
+        run: |
+          helm install dws ${{ env.CHART_DIR }} \
+            --namespace dws-system --create-namespace \
+            --set controller.enabled=false \
+            --set postgresql.enabled=true \
+            --set admin.image.tag=latest \
+            --set imagePullSecrets[0].name=ghcr-pull \
+            --timeout 5m
+
+      - name: Wait for admin rollout
+        run: kubectl rollout status deployment/dws-admin -n dws-system --timeout=5m
+
+      - name: Wait for postgres rollout
+        run: kubectl rollout status statefulset/dws-postgres -n dws-system --timeout=5m
+
+      - name: Debug pod state on failure
+        if: failure()
+        run: |
+          kubectl get pods -n dws-system -o wide
+          kubectl get events -n dws-system --sort-by=.lastTimestamp
+          kubectl describe pods -n dws-system -l app.kubernetes.io/component=admin
+          kubectl describe pods -n dws-system -l app.kubernetes.io/component=postgres
+          echo "--- admin pod logs, all containers (current) ---"
+          kubectl logs -n dws-system -l app.kubernetes.io/component=admin --all-containers --prefix --tail=200 || true
+          echo "--- admin pod logs, all containers (previous, if crashlooping) ---"
+          kubectl logs -n dws-system -l app.kubernetes.io/component=admin --all-containers --prefix --previous --tail=200 || true
+          echo "--- dapr-system pods ---"
+          kubectl get pods -n dapr-system -o wide || true
+
+      - name: Run helm test
+        run: helm test dws --namespace dws-system --logs
 
   release:
     name: package & push (OCI)

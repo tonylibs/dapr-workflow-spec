@@ -1,1 +1,56 @@
-{{/* placeholder — chart reset to fresh `helm create` state, not yet built out */}}
+{{- if .Values.postgresql.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "dws.postgres.fullname" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  serviceName: {{ include "dws.postgres.fullname" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "dws.postgres.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dws.labels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgresql.auth.existingSecret | default (include "dws.postgres.fullname" .) }}
+                  key: {{ .Values.postgresql.auth.existingSecretKey | default "username" }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgresql.auth.existingSecret | default (include "dws.postgres.fullname" .) }}
+                  key: password
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgresql.auth.existingSecret | default (include "dws.postgres.fullname" .) }}
+                  key: database
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+              subPath: postgres
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.postgresql.storage.size }}
+{{- end }}

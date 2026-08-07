@@ -74,6 +74,38 @@ app.kubernetes.io/component: controller
 {{- end }}
 
 {{/*
+Admin fully qualified name.
+*/}}
+{{- define "dws.admin.fullname" -}}
+{{- printf "%s-admin" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Admin selector labels — the common selector labels plus a component marker so the
+admin Deployment/Service cannot match sibling components (controller, postgres).
+*/}}
+{{- define "dws.admin.selectorLabels" -}}
+{{ include "dws.selectorLabels" . }}
+app.kubernetes.io/component: admin
+{{- end }}
+
+{{/*
+Postgres fully qualified name.
+*/}}
+{{- define "dws.postgres.fullname" -}}
+{{- printf "%s-postgres" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Postgres selector labels — the common selector labels plus a component marker so the
+postgres StatefulSet/Service cannot match sibling components (controller, admin).
+*/}}
+{{- define "dws.postgres.selectorLabels" -}}
+{{ include "dws.selectorLabels" . }}
+app.kubernetes.io/component: postgres
+{{- end }}
+
+{{/*
 Create the name of the service account to use
 */}}
 {{- define "dws.serviceAccountName" -}}

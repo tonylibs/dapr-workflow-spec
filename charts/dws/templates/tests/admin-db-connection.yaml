@@ -1,0 +1,32 @@
+{{- if .Values.admin.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "dws.admin.fullname" . }}-db-connection-test"
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: admin
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: curl
+      image: curlimages/curl:8.11.1
+      command: ["sh", "-c"]
+      args:
+        - |
+          body=$(curl -sS -w '\n%{http_code}' "http://{{ include "dws.admin.fullname" . }}:{{ .Values.admin.service.port }}/health")
+          status=$(echo "$body" | tail -n1)
+          payload=$(echo "$body" | sed '$d')
+          echo "$payload"
+          if [ "$status" != "200" ]; then
+            echo "admin /health returned HTTP $status"
+            exit 1
+          fi
+          echo "$payload" | grep -q '"database":{"status":"up"' || {
+            echo "admin /health database indicator is not up"
+            exit 1
+          }
+  restartPolicy: Never
+{{- end }}

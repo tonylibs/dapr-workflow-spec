@@ -1,1 +1,18 @@
-{{/* placeholder — chart reset to fresh `helm create` state, not yet built out */}}
+{{- if .Values.postgresql.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "dws.postgres.fullname" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  clusterIP: None
+  selector:
+    {{- include "dws.postgres.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+{{- end }}
