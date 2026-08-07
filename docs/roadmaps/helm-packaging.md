@@ -44,10 +44,15 @@ charts/dws/
     ├── controller/           # serviceaccount, rbac (role+rolebinding), deployment, service
     ├── admin/                # deployment, service, secret (db conn resolution)
     ├── postgres/             # statefulset, headless service, secret — toggle: postgresql.enabled
+    ├── pubsub-component.yaml # Dapr Component "pubsub"/topic dws.events — toggle: dapr.enabled (Phase 5)
     ├── console/              # deployment, service, ingress — disabled by default
     ├── knative-install-job.yaml   # hook Job, toggle: knative.enabled
     └── _helpers.tpl
 ```
+
+Controller and admin Deployments also gain `dapr.io/enabled`/`dapr.io/app-id` pod annotations in
+Phase 5, once a Dapr control plane is actually present in the cluster (Phase 4) — they carry no
+sidecar annotations before that.
 
 ## Phased roadmap
 
@@ -58,15 +63,21 @@ charts/dws/
 | 2. Controller | Port `dws-controller/k8s/*.yaml` to templates | Templatize namespace, RBAC, image refs (`DWS_IMAGES_*`) |
 | 3. Admin + DB | Deployment/Service/Secret for dws-admin | Built-in Postgres StatefulSet toggle, or external DSN via `admin.database.url`/`existingSecret` |
 | 4. Prerequisites | Dapr as chart dependency; Knative via hook Job | `dapr.enabled`/`knative.enabled` toggles, preflight CRD check |
-| 5. Console | Add Deployment/Service/Ingress once an image exists | Currently blocked — no Dockerfile in `dws-console/` yet |
-| 6. Values design | Finalize `values.yaml` | Per-component image/tag/resources/replicas; global namespace; ingress host |
-| 7. Testing | `helm lint`, `helm template`, `ct install` on kind | `.github/workflows/helm.yml`, `ci/values-test.yaml` |
-| 8. Publish | OCI or GH Pages chart repo | `ghcr.io/tonylibs/charts/dws`, versioned with app releases |
-| 9. Docs | Update README + CLAUDE.md | Install/upgrade/uninstall commands, values reference table |
+| 5. Event wiring | Wire the controller→admin pub/sub path chart-side | `pubsub-component.yaml` (Dapr Component, topic `dws.events`); `dapr.io/enabled`/`dapr.io/app-id` annotations on controller + admin Deployments; end-to-end test (apply a definition → assert it lands in admin's read model). Depends on Phase 4 (needs a real Dapr control plane in-cluster) |
+| 6. Console | Add Deployment/Service/Ingress once an image exists | Currently blocked — no Dockerfile in `dws-console/` yet |
+| 7. Values design | Finalize `values.yaml` | Per-component image/tag/resources/replicas; global namespace; ingress host |
+| 8. Testing | `helm lint`, `helm template`, `ct install` on kind | `.github/workflows/helm.yml`, `ci/values-test.yaml` |
+| 9. Publish | OCI or GH Pages chart repo | `ghcr.io/tonylibs/charts/dws`, versioned with app releases |
+| 10. Docs | Update README + CLAUDE.md | Install/upgrade/uninstall commands, values reference table |
 
 ## Open items
 
-- `dws-console` has no Dockerfile yet — Phase 5 is blocked until that lands upstream
-  (see [`dws-console` roadmap](dws-console.md), Phase 6).
+- `dws-console` has no Dockerfile yet — Phase 6 is blocked until that lands upstream
+  (see [`dws-console` roadmap](dws-console.md), Phase 6 — unrelated numbering, that doc's own phases).
 - Built-in Postgres is dev/eval-grade (single replica, no backup) — production users should set `postgresql.enabled: false` and point `admin.database` at a managed instance.
 - Knative install-via-Job needs a pinned release version (`knative.version`) kept in sync with the `serving-crds.yaml` bundle already checked into `dws-controller/k8s/`.
+- Phase 5 (event wiring) can't be meaningfully tested until Phase 4 lands — no Dapr control plane
+  means no sidecar, no pub/sub Component, nothing to assert against. Event *publishing* itself
+  (`dws-controller`/`dws-orchestrator` → topic `dws.events`) already shipped outside this roadmap
+  (see `docs/events.md`); Phase 5 is purely the chart-side wiring + a deployed-integration test for
+  the already-existing capability.
