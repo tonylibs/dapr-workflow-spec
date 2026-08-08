@@ -74,12 +74,47 @@ app.kubernetes.io/component: controller
 {{- end }}
 
 {{/*
-Create the name of the service account to use
+Admin fully qualified name.
 */}}
-{{- define "dws.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default (include "dws.fullname" .) .Values.serviceAccount.name }}
+{{- define "dws.admin.fullname" -}}
+{{- printf "%s-admin" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Admin selector labels — the common selector labels plus a component marker so the
+admin Deployment/Service cannot match sibling components (controller, postgres).
+*/}}
+{{- define "dws.admin.selectorLabels" -}}
+{{ include "dws.selectorLabels" . }}
+app.kubernetes.io/component: admin
+{{- end }}
+
+{{/*
+Postgres fully qualified name — used for the chart-owned DATABASE_URL Secret consumed by admin.
+*/}}
+{{- define "dws.postgres.fullname" -}}
+{{- printf "%s-postgres" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Postgres primary Service host — the Bitnami postgresql subchart's default primary Service name
+(<release>-postgresql), overridable via postgresql.fullnameOverride. Kept in sync with the
+subchart so the composed DATABASE_URL resolves to the deployed Postgres.
+*/}}
+{{- define "dws.postgres.host" -}}
+{{- if .Values.postgresql.fullnameOverride }}
+{{- .Values.postgresql.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
-{{- default "default" .Values.serviceAccount.name }}
+{{- printf "%s-postgresql" .Release.Name | trunc 63 | trimSuffix "-" }}
 {{- end }}
 {{- end }}
+
+{{/*
+Postgres selector labels — the common selector labels plus a component marker so the
+postgres StatefulSet/Service cannot match sibling components (controller, admin).
+*/}}
+{{- define "dws.postgres.selectorLabels" -}}
+{{ include "dws.selectorLabels" . }}
+app.kubernetes.io/component: postgres
+{{- end }}
+
