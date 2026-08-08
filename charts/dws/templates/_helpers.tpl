@@ -118,13 +118,3 @@ postgres StatefulSet/Service cannot match sibling components (controller, admin)
 app.kubernetes.io/component: postgres
 {{- end }}
 
-{{/*
-Create the name of the service account to use
-*/}}
-{{- define "dws.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default (include "dws.fullname" .) .Values.serviceAccount.name }}
-{{- else }}
-{{- default "default" .Values.serviceAccount.name }}
-{{- end }}
-{{- end }}
