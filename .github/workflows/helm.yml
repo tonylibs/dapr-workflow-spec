@@ -131,7 +131,7 @@ jobs:
         run: kubectl rollout status deployment/dws-admin -n dws-system --timeout=5m
 
       - name: Wait for postgres rollout
-        run: kubectl rollout status statefulset/dws-postgres -n dws-system --timeout=5m
+        run: kubectl rollout status statefulset/dws-postgresql -n dws-system --timeout=5m
 
       - name: Debug pod state on failure
         if: failure()
@@ -139,7 +139,7 @@ jobs:
           kubectl get pods -n dws-system -o wide
           kubectl get events -n dws-system --sort-by=.lastTimestamp
           kubectl describe pods -n dws-system -l app.kubernetes.io/component=admin
-          kubectl describe pods -n dws-system -l app.kubernetes.io/component=postgres
+          kubectl describe pods -n dws-system -l app.kubernetes.io/name=postgresql
           echo "--- admin pod logs, all containers (current) ---"
           kubectl logs -n dws-system -l app.kubernetes.io/component=admin --all-containers --prefix --tail=200 || true
           echo "--- admin pod logs, all containers (previous, if crashlooping) ---"
