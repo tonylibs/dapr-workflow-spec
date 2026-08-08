@@ -5,6 +5,13 @@
 # Namespace to deploy into. Defaults to the release namespace when empty.
 namespaceOverride: ""
 
+# Chart-wide globals. security.allowInsecureImages lets the Bitnami postgresql subchart
+# run the relocated docker.io/bitnamilegacy image (see postgresql.image below); it has no
+# effect when postgresql.enabled is false.
+global:
+  security:
+    allowInsecureImages: true
+
 # dws-controller control plane (Phase 2). Toggle the whole stack with controller.enabled.
 controller:
   enabled: true
@@ -46,21 +53,29 @@ admin:
     name: pubsub
     topic: dws.events
 
-# In-chart Postgres backing dws-admin's read model (dev/eval-grade). Set
-# postgresql.enabled to false to point admin at an external/managed database instead.
+# In-chart Postgres backing dws-admin's read model (dev/eval-grade), provided by the
+# upstream Bitnami postgresql subchart. Set postgresql.enabled to false to point admin at
+# an external/managed database instead. Values here flow straight into the subchart —
+# see https://github.com/bitnami/charts/tree/main/bitnami/postgresql for the full schema.
 postgresql:
   enabled: true
+  # Single-node dev/eval deployment.
+  architecture: standalone
+  # Bitnami relocated its free container images out of docker.io/bitnami; the tags this
+  # chart version pins now live under docker.io/bitnamilegacy. Point the image there and
+  # allow the non-default repository (see global.security.allowInsecureImages below).
   image:
-    repository: postgres
-    tag: "16-alpine"
-  storage:
-    size: 1Gi
+    repository: bitnamilegacy/postgresql
   auth:
     username: dws
     password: dws
     database: dws_admin
-    existingSecret: ""
-    existingSecretKey: ""
+  primary:
+    persistence:
+      size: 1Gi
+  # kind/dev clusters: skip the default-on NetworkPolicy so admin can reach Postgres freely.
+  networkPolicy:
+    enabled: false
 
 # This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
 replicaCount: 1

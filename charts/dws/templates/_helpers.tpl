@@ -90,10 +90,23 @@ app.kubernetes.io/component: admin
 {{- end }}
 
 {{/*
-Postgres fully qualified name.
+Postgres fully qualified name — used for the chart-owned DATABASE_URL Secret consumed by admin.
 */}}
 {{- define "dws.postgres.fullname" -}}
 {{- printf "%s-postgres" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Postgres primary Service host — the Bitnami postgresql subchart's default primary Service name
+(<release>-postgresql), overridable via postgresql.fullnameOverride. Kept in sync with the
+subchart so the composed DATABASE_URL resolves to the deployed Postgres.
+*/}}
+{{- define "dws.postgres.host" -}}
+{{- if .Values.postgresql.fullnameOverride }}
+{{- .Values.postgresql.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-postgresql" .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- end }}
 {{- end }}
 
 {{/*
