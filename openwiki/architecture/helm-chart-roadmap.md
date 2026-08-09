@@ -1,54 +1,37 @@
 ---
-type: Roadmap
-title: Helm chart packaging roadmap
-description: Roadmap for packaging DWS as an installable Helm chart (charts/dws), with Dapr and Knative Serving offered as optional, user-toggleable dependencies.
-tags: [dws, dapr, knative, kubernetes, helm, roadmap]
+type: Deployment Guide
+title: Helm chart packaging
+description: How the charts/dws Helm application chart installs the DWS controller and administrative read model, how to configure its database, and how chart changes are verified and released.
+tags: [dws, helm, kubernetes, controller, admin, postgresql]
 ---
 
-# Helm chart packaging roadmap
+# Helm chart packaging
 
-The canonical source for this roadmap is `docs/helm-chart-roadmap.md`; this page summarizes it for OpenWiki navigation. Update `docs/helm-chart-roadmap.md` first, then this page.
+`charts/dws` is the DWS application chart. It packages the persistent control-plane services—the `dws-controller` API and the `dws-admin` [administrative read model](../integrations/admin-read-model.md)—rather than the per-workflow runtime. The controller continues to create the pinned orchestrator and step services for each submitted definition; that lifecycle is described in [deployed workflow lifecycle](deployed-workflow.md).
 
-Today only `dws-controller` is installed statically (`dws-controller/k8s/*.yaml`, applied by hand). This roadmap packages the platform's control plane — `dws-controller` and `dws-admin` (+ Postgres) — into one chart, `charts/dws`, that a cluster operator installs with `helm install`.
+The chart defaults to one controller replica, one admin replica, and an in-chart standalone PostgreSQL instance. It installs into the Helm release namespace unless `namespaceOverride` is set. The current chart metadata and values live in `charts/dws/Chart.yaml` and `charts/dws/values.yaml`.
 
-## Scope
+## Installed components
 
-`dws-orchestrator` and the `dws-call-*`/`dws-run-*` step images are **not** chart-managed — the controller deploys those dynamically, per workflow, at runtime (see [deployed workflow lifecycle](deployed-workflow.md)). The chart only covers the persistent platform services:
+| Values area | Default | What it controls |
+|---|---:|---|
+| `controller.enabled` | `true` | Controller Deployment, HTTP Service, ServiceAccount, Role, and RoleBinding. Its `DWS_IMAGES_*` environment variables select the images stamped into per-workflow resources. |
+| `admin.enabled` | `true` | Admin Deployment and HTTP Service. The pod is Dapr sidecar-enabled and runs migrations on boot. |
+| `postgresql.enabled` | `true` | Conditional Bitnami PostgreSQL chart dependency, configured as a single-node development/evaluation database for admin. |
+| `imagePullSecrets` | `[]` | Pull credentials attached to component pods that use private registries. |
 
-| Component | In chart? |
-|---|---|
-| `dws-controller` | Yes |
-| `dws-admin` + Postgres | Yes (Postgres built-in by default, swappable for external) |
-| `dws-console` | Not yet — no Dockerfile upstream; disabled placeholder toggle |
-| Dapr | Optional dependency, `dapr.enabled` |
-| Knative Serving | Optional dependency, `knative.enabled` |
+The controller Role permits only the resources it reconciles: definition ConfigMaps, orchestrator Deployments, Knative Services, and Dapr components. Knative Serving and Dapr CRDs/control planes are therefore cluster prerequisites for actual workflow deployment; they are **not** installed by this chart. A server-side Helm dry run can validate the controller's core/RBAC/app manifests without those CRDs, but a running controller requires them when it applies workflow stacks.
 
-## Prerequisite toggles
+## Database choices
 
-Both cluster-wide control planes are offered as part of the install, not assumed present:
+With `postgresql.enabled=true`, the admin Deployment receives its `DATABASE_URL` from the chart-managed Postgres secret. Set `postgresql.enabled=false` for an external or managed database, then provide either `admin.database.url` (which renders an admin-owned Secret) or `admin.database.existingSecret` and, optionally, `admin.database.existingSecretKey`. Do not place real connection strings in committed values files.
 
-| `dapr.enabled` | `knative.enabled` | Result |
-|---|---|---|
-| true | true | Chart installs both control planes + DWS platform |
-| false | false | Chart installs only the DWS platform |
-| true | false | Mixed — Knative already shared cluster-wide |
-| false | true | Mixed — Dapr already shared cluster-wide |
+The bundled database is explicitly configured for dev/eval use: a standalone instance with a 1 GiB persistent volume and no NetworkPolicy. Treat production sizing, credentials, backup, and network policy as operator-owned configuration.
 
-Dapr installs via the official `dapr/dapr` chart as a conditional `Chart.yaml` dependency. Knative has no comparable official chart, so it installs via a Helm hook Job that applies pinned CRD + core manifests. A preflight check fails the install fast if a toggle is off but the corresponding CRDs aren't actually in the cluster.
+## Verification and release
 
-## Phased roadmap
+`.github/workflows/helm.yml` runs on changes to `charts/**` or the workflow itself. Its verification job runs `helm lint`, renders default and overridden values, confirms controller resources disappear when `controller.enabled=false`, and performs `helm install --dry-run=server` against Kind. The dry run does not start pods, so it cannot prove admin-to-Postgres connectivity.
 
-| Phase | Scope |
-|---|---|
-| 0 | Confirm scope: bundling vs. docs-only prerequisites; confirm dws-admin/console are in-chart |
-| 1 | Scaffold chart (`helm create`), strip unused boilerplate |
-| 2 | Port `dws-controller/k8s/*.yaml` to templates |
-| 3 | Admin Deployment/Service/Secret + built-in Postgres StatefulSet |
-| 4 | Dapr as chart dependency; Knative via hook Job; preflight CRD check |
-| 5 | Console templates — blocked on an upstream Dockerfile |
-| 6 | Finalize `values.yaml` |
-| 7 | `helm lint`/`helm template`/`ct install` CI |
-| 8 | Publish chart (OCI/GH Pages) |
-| 9 | Docs update |
+A dependent integration job installs Dapr into Kind, installs admin plus Postgres with the controller disabled, waits for both workloads, and runs `helm test`. It supplies a registry pull secret because the admin image is private in the CI environment. On pushes to `main`, the release job packages the chart and pushes it to `oci://ghcr.io/<repository-owner>/charts`; pull requests verify but do not publish.
 
-Full detail, chart layout, and open items: `docs/helm-chart-roadmap.md`.
+For a local chart change, start with `helm lint charts/dws` and `helm template dws charts/dws`. When changing deployment templates, keep the controller image and `controller.images` values aligned with the runtime image contract in [deployed workflow lifecycle](deployed-workflow.md), then run the Helm workflow-equivalent checks where available.
