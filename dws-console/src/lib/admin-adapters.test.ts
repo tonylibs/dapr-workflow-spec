@@ -4,6 +4,7 @@ import {
 	formatDuration,
 	formatOffset,
 	formatRelative,
+	normDeploymentStatus,
 	normInstanceStatus,
 	normTaskStatus,
 	normTaskType,
@@ -23,6 +24,7 @@ import type {
 	WorkflowSummaryDto,
 	WorkflowVersionDto,
 } from "./admin-types";
+import { INSTANCE_STATUSES, statusClass } from "./mock-data";
 
 const NOW = Date.parse("2026-08-04T12:00:00Z");
 
@@ -71,17 +73,21 @@ describe("formatDuration / formatOffset", () => {
 });
 
 describe("status normalizers", () => {
-	it("accepts known values regardless of casing", () => {
-		expect(normWorkflowStatus("deployed")).toBe("DEPLOYED");
-		expect(normInstanceStatus("Running")).toBe("RUNNING");
+	// The vocabulary here is what dws-admin actually writes — `created`/`updated`
+	// for definitions, `applied`/`drained`/`collected` for deployments,
+	// `started`/`completed`/`failed` for instances and task events.
+	it("accepts the statuses dws-admin stores, regardless of casing", () => {
+		expect(normWorkflowStatus("created")).toBe("created");
+		expect(normWorkflowStatus("UPDATED")).toBe("updated");
+		expect(normInstanceStatus("Started")).toBe("started");
 	});
 
-	it("passes unknown statuses through uppercased rather than dropping them", () => {
-		expect(normWorkflowStatus("mystery")).toBe("MYSTERY");
+	it("passes unknown statuses through rather than dropping them", () => {
+		expect(normWorkflowStatus("mystery")).toBe("mystery");
 	});
 
-	it("collapses task lifecycle phases onto the UI's task statuses", () => {
-		expect(normTaskStatus("started")).toBe("running");
+	it("maps task lifecycle phases, defaulting the unknown to pending", () => {
+		expect(normTaskStatus("started")).toBe("started");
 		expect(normTaskStatus("completed")).toBe("completed");
 		expect(normTaskStatus("failed")).toBe("failed");
 		expect(normTaskStatus("something-else")).toBe("pending");
@@ -96,7 +102,7 @@ describe("workflow adapters", () => {
 	const summary: WorkflowSummaryDto = {
 		name: "order-flow",
 		latestVersion: "order-flow@v3a1b2c3d",
-		status: "DEPLOYED",
+		status: "created",
 		createdAt: "2026-08-04T10:00:00Z",
 	};
 
@@ -104,7 +110,7 @@ describe("workflow adapters", () => {
 		expect(toWorkflowRow(summary, NOW)).toEqual({
 			name: "order-flow",
 			latestVersion: "order-flow@v3a1b2c3d",
-			status: "DEPLOYED",
+			status: "created",
 			updated: "2h ago",
 		});
 	});
@@ -112,7 +118,7 @@ describe("workflow adapters", () => {
 	it("maps a deployment, renaming orchestratorAppId to orchestrator", () => {
 		const dto: DeploymentDto = {
 			version: "v3",
-			status: "DRAINED",
+			status: "drained",
 			stepServices: ["check-inventory", "charge-card"],
 			orchestratorAppId: "orch-order-flow-v3",
 			drainedAt: "2026-08-02T14:11:00Z",
@@ -120,7 +126,7 @@ describe("workflow adapters", () => {
 
 		expect(toWorkflowDeployment(dto)).toEqual({
 			version: "v3",
-			status: "DRAINED",
+			status: "drained",
 			orchestrator: "orch-order-flow-v3",
 			stepServices: ["check-inventory", "charge-card"],
 			drainedAt: "2026-08-02 14:11",
@@ -130,7 +136,7 @@ describe("workflow adapters", () => {
 	it("leaves drainedAt null for an active deployment", () => {
 		const dto: DeploymentDto = {
 			version: "v3",
-			status: "ACTIVE",
+			status: "applied",
 			stepServices: [],
 			orchestratorAppId: "orch-order-flow-v3",
 			drainedAt: null,
@@ -140,20 +146,20 @@ describe("workflow adapters", () => {
 	});
 
 	const versions: WorkflowVersionDto[] = [
-		{ version: "v3", status: "DEPLOYED", createdAt: "2026-08-02T14:11:00Z" },
-		{ version: "v2", status: "SUPERSEDED", createdAt: "2026-07-30T09:24:00Z" },
+		{ version: "v3", status: "updated", createdAt: "2026-08-02T14:11:00Z" },
+		{ version: "v2", status: "created", createdAt: "2026-07-30T09:24:00Z" },
 	];
 	const deployments: DeploymentDto[] = [
 		{
 			version: "v3",
-			status: "ACTIVE",
+			status: "applied",
 			stepServices: [],
 			orchestratorAppId: "orch-v3",
 			drainedAt: null,
 		},
 		{
 			version: "v2",
-			status: "DRAINED",
+			status: "drained",
 			stepServices: [],
 			orchestratorAppId: "orch-v2",
 			drainedAt: "2026-08-02T14:11:00Z",
@@ -165,7 +171,7 @@ describe("workflow adapters", () => {
 
 		expect(detail.name).toBe("order-flow");
 		expect(detail.latestVersion).toBe("v3");
-		expect(detail.status).toBe("DEPLOYED");
+		expect(detail.status).toBe("updated");
 		expect(detail.versions).toHaveLength(2);
 		expect(detail.deployments).toHaveLength(2);
 	});
@@ -191,7 +197,7 @@ describe("instance adapters", () => {
 		instanceId: "inst-01h9k7a2b",
 		workflow: "order-flow",
 		version: "v3",
-		status: "RUNNING",
+		status: "started",
 		startedAt: "2026-08-04T11:58:00Z",
 		endedAt: null,
 	};
@@ -201,7 +207,7 @@ describe("instance adapters", () => {
 			id: "inst-01h9k7a2b",
 			workflow: "order-flow",
 			version: "v3",
-			status: "RUNNING",
+			status: "started",
 			started: "2m ago",
 			ended: null,
 		});
@@ -213,7 +219,7 @@ describe("instance adapters", () => {
 
 	const detailDto: InstanceDetailDto = {
 		...summary,
-		status: "FAILED",
+		status: "failed",
 		startedAt: "2026-08-04T09:58:12Z",
 		endedAt: "2026-08-04T10:00:59Z",
 		appId: "orch-order-flow-v3",
@@ -307,7 +313,7 @@ describe("instance adapters", () => {
 
 		expect(detail.id).toBe("inst-01h9k7a2b");
 		expect(detail.orchestrator).toBe("orch-order-flow-v3");
-		expect(detail.status).toBe("FAILED");
+		expect(detail.status).toBe("failed");
 		expect(detail.started).toBe("2026-08-04 09:58:12");
 		expect(detail.ended).toBe("2026-08-04 10:00:59");
 	});
@@ -327,11 +333,53 @@ describe("instance adapters", () => {
 	it("reports an unfinished instance's duration as in progress", () => {
 		const running: InstanceDetailDto = {
 			...detailDto,
-			status: "RUNNING",
+			status: "started",
 			endedAt: null,
 		};
 
 		expect(toInstanceDetail(running, events).duration).toBe("—");
 		expect(toInstanceDetail(running, events).ended).toBeNull();
+	});
+});
+
+/**
+ * Guards the mistake this suite originally encoded: the adapters were written
+ * against the mockups' vocabulary (`DEPLOYED`, `ACTIVE`, `RUNNING`) rather than
+ * the values dws-admin writes. Everything else passed, because the fixtures
+ * carried the same wrong assumption as the code.
+ *
+ * The literals below are asserted against
+ * `dws-admin/src/events/controller-events.handler.ts` and
+ * `orchestrator-events.handler.ts`. If dws-admin's vocabulary changes, these
+ * fail rather than the console silently rendering neutral pills and filters
+ * that match nothing.
+ */
+describe("status vocabulary matches what dws-admin stores", () => {
+	const STORED = {
+		definition: ["created", "updated"],
+		deployment: ["applied", "failed", "drained", "collected"],
+		instance: ["started", "completed", "failed"],
+		task: ["started", "completed", "failed"],
+	};
+
+	it("gives every stored status a meaningful hue, never the neutral fallback", () => {
+		for (const status of STORED.definition) {
+			expect(statusClass(normWorkflowStatus(status))).not.toBe("st-pend");
+		}
+		for (const status of STORED.deployment) {
+			expect(statusClass(normDeploymentStatus(status))).not.toBe("st-pend");
+		}
+		for (const status of STORED.instance) {
+			expect(statusClass(normInstanceStatus(status))).not.toBe("st-pend");
+		}
+		for (const status of STORED.task) {
+			expect(statusClass(normTaskStatus(status))).not.toBe("st-pend");
+		}
+	});
+
+	it("offers instance filter chips that dws-admin can actually match", () => {
+		// The chips are sent verbatim as ?status=…; dws-admin compares them
+		// case-sensitively against the stored value.
+		expect([...INSTANCE_STATUSES]).toEqual(STORED.instance);
 	});
 });

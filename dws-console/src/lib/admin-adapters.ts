@@ -98,37 +98,32 @@ export function formatOffset(ms: number): string {
 // ── Status normalization ──────────────────────────────────────────────────
 
 /**
- * The DTOs type every status as a bare `string`, so a version skew between
- * dws-admin and the console could deliver a value outside the UI's union. The
- * normalizers fix casing and pass anything unrecognized through verbatim: the
- * badge then shows the true value with `statusClass`'s neutral fallback hue,
- * which beats silently relabeling it as a status it isn't.
+ * The DTOs type every status as a bare `string`. The normalizers lower-case it
+ * to match the vocabulary dws-admin stores (`created`/`updated`,
+ * `applied`/`failed`/`drained`/`collected`, `started`/`completed`/`failed`) and
+ * pass anything unrecognized through verbatim: the badge then shows the true
+ * value with `statusClass`'s neutral fallback hue, which beats silently
+ * relabeling it as a status it isn't.
  */
 export function normWorkflowStatus(status: string): WorkflowStatus {
-	return status.toUpperCase() as WorkflowStatus;
+	return status.toLowerCase() as WorkflowStatus;
 }
 
 export function normDeploymentStatus(
 	status: string,
 ): WorkflowDeployment["status"] {
-	return status.toUpperCase() as WorkflowDeployment["status"];
+	return status.toLowerCase() as WorkflowDeployment["status"];
 }
 
 export function normInstanceStatus(status: string): InstanceStatus {
-	return status.toUpperCase() as InstanceStatus;
+	return status.toLowerCase() as InstanceStatus;
 }
 
-/**
- * Collapses a task *lifecycle phase* (`started`/`completed`/`failed`) onto the
- * UI's task status. Unlike the other statuses this target set is closed — the
- * value drives a dot colour, not a label — so anything unknown becomes
- * `pending`.
- */
+/** A task event's lifecycle phase. Anything unrecognized renders neutral. */
 export function normTaskStatus(status: string): TaskStatus {
 	switch (status.toLowerCase()) {
 		case "started":
-		case "running":
-			return "running";
+			return "started";
 		case "completed":
 			return "completed";
 		case "failed":
@@ -206,7 +201,7 @@ export function toWorkflowDetail(
 
 	return {
 		name,
-		status: latest?.status ?? normWorkflowStatus("UNKNOWN"),
+		status: latest?.status ?? normWorkflowStatus("unknown"),
 		latestVersion: latest?.version ?? NONE,
 		versions,
 		deployments: deploymentDtos.map(toWorkflowDeployment),
@@ -289,7 +284,7 @@ export function toInstanceDetail(
 
 	const startsPerTask = new Map<string, number>();
 	for (const event of events) {
-		if (normTaskStatus(event.status) !== "running") continue;
+		if (normTaskStatus(event.status) !== "started") continue;
 		startsPerTask.set(
 			event.taskName,
 			(startsPerTask.get(event.taskName) ?? 0) + 1,

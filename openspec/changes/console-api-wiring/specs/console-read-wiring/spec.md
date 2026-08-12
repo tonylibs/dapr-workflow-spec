@@ -73,6 +73,34 @@ unset when the API provides no source for them.
 - **WHEN** `GET /instances/:id` responds `404`
 - **THEN** the route renders the existing not-found view
 
+### Requirement: Status vocabulary matches the read model
+The console SHALL render and filter on the status values `dws-admin` stores — `created`/`updated`
+for workflow definitions, `applied`/`failed`/`drained`/`collected` for deployments, and
+`started`/`completed`/`failed` for instances and task events. It SHALL NOT invent display statuses
+the read model does not record, and an unrecognized status SHALL render verbatim in a neutral style
+rather than being relabeled.
+
+#### Scenario: Stored statuses render meaningfully
+- **WHEN** a workflow, deployment, instance or task event carries a status dws-admin stores
+- **THEN** its badge shows that status with a distinct (non-neutral) style
+
+#### Scenario: Status filter matches server-side
+- **WHEN** the operator selects an instance status filter chip
+- **THEN** the value sent as the `status` query parameter is one dws-admin can match, and the returned instances all carry it
+
+#### Scenario: Unknown status
+- **WHEN** a status outside the known vocabulary is returned
+- **THEN** the console renders it verbatim in the neutral style instead of relabeling or dropping it
+
+### Requirement: Complete collections on detail screens
+The workflow detail and instance detail screens SHALL follow the cursor across every page of their
+sub-collections (versions, deployments, task events), so a collection larger than one page is not
+silently truncated and derived counts are not understated.
+
+#### Scenario: Task events span multiple pages
+- **WHEN** an instance has more task events than one page holds
+- **THEN** the timeline lists every event's task and the header's task, failure and retry counts reflect all of them
+
 ### Requirement: Cursor pagination on list endpoints
 The workflow list and instance list routes SHALL page through results using the admin cursor
 envelope (`{ items, nextCursor }`) via TanStack Query infinite queries, requesting a bounded

@@ -26,6 +26,7 @@ import {
 	fetchWorkflowVersions,
 	type InstanceFilters,
 } from "./admin-client";
+import type { Page } from "./admin-types";
 import type {
 	InstanceDetail,
 	InstanceRow,
@@ -35,6 +36,29 @@ import type {
 
 /** Cursor of the first page: `undefined` lets the service pick its own start. */
 const FIRST_PAGE: string | undefined = undefined;
+
+/**
+ * Drains every page of a cursor-paginated endpoint.
+ *
+ * The detail screens need whole collections, not a first page: a truncated task
+ * list silently understates the header's task/failure/retry counts, and a
+ * truncated version list would mislabel which version is current. Guarded so a
+ * server that keeps returning a cursor cannot spin forever.
+ */
+async function fetchAllPages<T>(
+	fetchPage: (cursor?: string) => Promise<Page<T>>,
+	maxPages = 20,
+): Promise<T[]> {
+	const items: T[] = [];
+	let cursor: string | undefined;
+	for (let i = 0; i < maxPages; i++) {
+		const page = await fetchPage(cursor);
+		items.push(...page.items);
+		if (!page.nextCursor) break;
+		cursor = page.nextCursor;
+	}
+	return items;
+}
 
 /**
  * Retry transport and server failures, but never a 4xx.
@@ -84,11 +108,30 @@ export function useWorkflowDetail(name: string) {
 		queryKey: ["workflow", name],
 		queryFn: async ({ signal }) => {
 			const [versions, deployments] = await Promise.all([
-				fetchWorkflowVersions(name, {}, signal),
-				fetchWorkflowDeployments(name, {}, signal),
+				fetchAllPages((cursor) =>
+					fetchWorkflowVersions(name, { cursor }, signal),
+				),
+				fetchAllPages((cursor) =>
+					fetchWorkflowDeployments(name, { cursor }, signal),
+				),
 			]);
-			return toWorkflowDetail(name, versions.items, deployments.items);
+			return toWorkflowDetail(name, versions, deployments);
 		},
+		retry: retryUnlessClientError,
+	});
+}
+
+/**
+ * Every workflow name, for the instance list's workflow filter. Drains the
+ * pages: a filter that only offers the first page silently hides workflows.
+ */
+export function useWorkflowNames() {
+	return useQuery<string[]>({
+		queryKey: ["workflow-names"],
+		queryFn: () =>
+			fetchAllPages((cursor) => fetchWorkflows({ cursor }, undefined)).then(
+				(items) => items.map((i) => i.name),
+			),
 		retry: retryUnlessClientError,
 	});
 }
@@ -128,9 +171,9 @@ export function useInstanceDetail(id: string) {
 		queryFn: async ({ signal }) => {
 			const [instance, tasks] = await Promise.all([
 				fetchInstance(id, signal),
-				fetchInstanceTasks(id, {}, signal),
+				fetchAllPages((cursor) => fetchInstanceTasks(id, { cursor }, signal)),
 			]);
-			return toInstanceDetail(instance, tasks.items);
+			return toInstanceDetail(instance, tasks);
 		},
 		retry: retryUnlessClientError,
 	});

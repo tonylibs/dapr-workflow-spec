@@ -16,8 +16,16 @@ import type {
 	WorkflowVersionDto,
 } from "./admin-types";
 
-/** Base URL default when `VITE_DWS_ADMIN_URL` is unset: same-origin (a dev proxy or an ingress in front of both). */
-const DEFAULT_BASE_URL = "";
+/**
+ * Base URL default when `VITE_DWS_ADMIN_URL` is unset.
+ *
+ * Deliberately a prefix rather than "": dws-admin's paths (`/workflows`,
+ * `/instances`) are byte-identical to the console's own routes, so calling the
+ * bare origin would fetch the console's own HTML and fail in `.json()`. The
+ * prefix is what `vite.config.ts` proxies in development, and what a deployment
+ * must route to dws-admin.
+ */
+const DEFAULT_BASE_URL = "/dws-admin";
 
 /** Mirrors `dws-admin`'s `MAX_LIMIT` — the service rejects anything larger with 400. */
 export const MAX_LIMIT = 100;

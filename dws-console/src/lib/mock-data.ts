@@ -8,15 +8,18 @@
  * instance, and a task.
  */
 
-export type WorkflowStatus =
-	| "DEPLOYED"
-	| "DEPLOYING"
-	| "FAILED"
-	| "DRAINED"
-	| "SUPERSEDED";
-export type DeploymentStatus = "ACTIVE" | "DRAINED";
-export type InstanceStatus = "RUNNING" | "COMPLETED" | "FAILED" | "PENDING";
-export type TaskStatus = "completed" | "running" | "failed" | "pending";
+/**
+ * The status vocabularies below are the ones `dws-admin` actually stores — see
+ * `dws-admin/src/events/controller-events.handler.ts` and
+ * `orchestrator-events.handler.ts`, which write these literals. They are not
+ * the labels the Phase 1–2 mockups used (`DEPLOYED`, `ACTIVE`, `RUNNING`);
+ * those never existed in the read model.
+ */
+export type WorkflowStatus = "created" | "updated";
+export type DeploymentStatus = "applied" | "failed" | "drained" | "collected";
+export type InstanceStatus = "started" | "completed" | "failed";
+/** `pending` covers a backoff gap in an attempt history; the API emits only the other three. */
+export type TaskStatus = "started" | "completed" | "failed" | "pending";
 export type TaskType =
 	| "call"
 	| "run"
@@ -37,20 +40,17 @@ export function statusClass(
 	status: WorkflowStatus | DeploymentStatus | InstanceStatus | TaskStatus,
 ): "st-ok" | "st-run" | "st-pend" | "st-fail" | "st-drain" {
 	switch (status) {
-		case "DEPLOYED":
-		case "ACTIVE":
-		case "COMPLETED":
 		case "completed":
+		case "applied":
 			return "st-ok";
-		case "DEPLOYING":
-		case "RUNNING":
-		case "running":
+		case "started":
+		case "created":
+		case "updated":
 			return "st-run";
-		case "FAILED":
 		case "failed":
 			return "st-fail";
-		case "DRAINED":
-		case "SUPERSEDED":
+		case "drained":
+		case "collected":
 			return "st-drain";
 		default:
 			return "st-pend";
@@ -166,8 +166,7 @@ export interface InstanceDetail {
 
 /** The status filter chips offered on the instance list. */
 export const INSTANCE_STATUSES: InstanceStatus[] = [
-	"RUNNING",
-	"COMPLETED",
-	"FAILED",
-	"PENDING",
+	"started",
+	"completed",
+	"failed",
 ];

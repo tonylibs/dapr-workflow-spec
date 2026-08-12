@@ -247,7 +247,7 @@ function WorkflowDetail() {
 							{d.deployments.map((dep) => (
 								<div
 									key={dep.version}
-									className={`dep-card${dep.status === "DRAINED" ? " drained" : ""}`}
+									className={`dep-card${dep.status === "drained" || dep.status === "collected" ? " drained" : ""}`}
 								>
 									<div className="dep-card-head">
 										<span className="dep-card-ver mono">{dep.version}</span>

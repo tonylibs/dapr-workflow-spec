@@ -115,6 +115,23 @@ Constraint: reuse the existing UI kit (`states.tsx`, `skeleton.tsx`, `status.tsx
   testing with `@testing-library/react` + a DOM environment — deferred, disproportionate for a first
   wiring.
 
+### D10: Speak the read model's status vocabulary, not the mockups'
+- **Choice:** The view-model status unions are the literals `dws-admin` actually writes —
+  definitions `created`/`updated`, deployments `applied`/`failed`/`drained`/`collected`,
+  instances and task events `started`/`completed`/`failed` (see
+  `dws-admin/src/events/controller-events.handler.ts` and `orchestrator-events.handler.ts`).
+  `statusClass` maps each to a hue and `INSTANCE_STATUSES` offers exactly the three the instance
+  filter can match.
+- **Rationale:** the unions inherited from the Phase 1–2 mockups (`DEPLOYED`, `ACTIVE`, `RUNNING`)
+  never existed in the read model. Against live data every status pill would have rendered
+  unrecognized in the neutral hue, and every filter chip would have returned zero rows, because
+  dws-admin compares `?status=` case-sensitively against the stored value.
+- **Alternatives:** translating stored values into the mockups' labels (`created` → `DEPLOYED`) —
+  rejected: `created`/`updated` describe a *definition* record, not a deployment state, so the
+  mapping would assert something the read model does not know.
+- **Guard:** `admin-adapters.test.ts` asserts every stored status maps to a non-neutral hue and that
+  the filter chips equal the stored instance vocabulary, so a future divergence fails the suite.
+
 ## Risks / Trade-offs
 
 - [Risk] `task_events` grouping assumes each task emits a coherent started→terminal sequence; a
@@ -149,6 +166,11 @@ coordination.
 
 ## Open Questions
 
+- The Workflows list "Status" column now shows a definition-record status (`created`/`updated`),
+  which tells an operator nothing about whether that version is deployed or drained — deployment
+  state lives in `GET /workflows/:name/deployments`. Should the list column instead derive from the
+  latest deployment (a second request per row, or a new dws-admin field)? This is a product
+  decision, not a wiring one, and is left open.
 - Should instance `duration`/counts eventually come from a server-side summary DTO rather than being
   client-derived? (Deferred; not blocking Phase 2.5.)
 - Will a separate in-cluster vs browser base URL be needed once the console is deployed? (Phase 5/deploy.)

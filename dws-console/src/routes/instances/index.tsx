@@ -10,7 +10,7 @@ import { DataTableHead, DataTableRows } from "#/components/data-table";
 import { SkeletonRows } from "#/components/skeleton";
 import { Banner, EmptyState } from "#/components/states";
 import { InstanceStatusBadge } from "#/components/status";
-import { useInstances, useWorkflows } from "#/lib/admin-hooks";
+import { useInstances, useWorkflowNames } from "#/lib/admin-hooks";
 import {
 	INSTANCE_STATUSES,
 	type InstanceRow,
@@ -78,8 +78,9 @@ function InstanceList() {
 		status: status ?? undefined,
 	});
 
-	// Reuses the workflow list's cache entry — the filter needs the same names.
-	const { rows: workflowRows } = useWorkflows();
+	// Every workflow name, not just the first page — otherwise the filter
+	// silently cannot reach workflows past page 1.
+	const { data: workflowNames = [] } = useWorkflowNames();
 
 	const clear = () => {
 		setWorkflow(null);
@@ -87,7 +88,7 @@ function InstanceList() {
 	};
 
 	const cycleWorkflow = () => {
-		const names = workflowRows.map((w) => w.name);
+		const names = workflowNames;
 		if (names.length === 0) return;
 		if (workflow === null) return setWorkflow(names[0]);
 		const i = names.indexOf(workflow);

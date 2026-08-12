@@ -183,7 +183,8 @@ function InstanceDetail() {
 
 	const d = detail;
 	const started = d.started ?? "in progress";
-	const ended = d.ended ?? (d.status === "RUNNING" ? "in progress" : "pending");
+	const ended =
+		d.ended ?? (d.status === "started" ? "in progress" : "not reported");
 
 	return (
 		<AppLayout
