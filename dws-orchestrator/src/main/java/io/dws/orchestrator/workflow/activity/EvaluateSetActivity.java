@@ -7,11 +7,12 @@ import io.dapr.workflows.WorkflowActivity;
 import io.dapr.workflows.WorkflowActivityContext;
 import io.dws.orchestrator.expr.JqEvaluator;
 import io.dws.orchestrator.workflow.WorkflowSupport;
-import io.serverlessworkflow.api.types.Set;
 import io.serverlessworkflow.api.types.SetTask;
 import io.serverlessworkflow.api.types.SetTaskConfiguration;
 import io.serverlessworkflow.api.types.Task;
 import java.util.Map;
+import java.util.Optional;
+import one.util.streamex.EntryStream;
 
 /**
  * Applies a SET task, producing a new data document. Pure jq evaluation with no I/O — it runs in
@@ -37,26 +38,41 @@ public class EvaluateSetActivity implements WorkflowActivity {
     JqEvaluator jq = WorkflowSupport.jq();
     ObjectMapper mapper = WorkflowSupport.mapper();
     JsonNode data = request.data();
+    ObjectNode base =
+        Optional.ofNullable(data)
+            .filter(JsonNode::isObject)
+            .map(node -> (ObjectNode) node.deepCopy())
+            .orElseGet(mapper::createObjectNode);
 
-    ObjectNode result =
-        (data != null && data.isObject()) ? data.deepCopy() : mapper.createObjectNode();
-    Set set = setTask.getSet();
-    if (set == null) {
-      return result;
-    }
-    SetTaskConfiguration cfg = set.getSetTaskConfiguration();
-    if (cfg != null && cfg.getAdditionalProperties() != null) {
-      for (Map.Entry<String, Object> entry : cfg.getAdditionalProperties().entrySet()) {
-        result.set(
-            entry.getKey(), evalSetValue(entry.getValue(), data, request.variables(), jq, mapper));
-      }
-      return result;
-    }
-    if (set.getString() != null) {
-      JsonNode whole = jq.evaluate(set.getString(), data, scope(request.variables()));
-      return (whole != null && whole.isObject()) ? whole : result;
-    }
-    return result;
+    // The structured entry form takes precedence — only a `set` written as a bare string runs as a
+    // single whole-document program, and that only counts when it actually yields an object.
+    return Optional.ofNullable(setTask.getSet())
+        .flatMap(
+            set ->
+                Optional.ofNullable(set.getSetTaskConfiguration())
+                    .map(SetTaskConfiguration::getAdditionalProperties)
+                    .<JsonNode>map(
+                        props -> withEntries(base, props, data, request.variables(), jq, mapper))
+                    .or(
+                        () ->
+                            Optional.ofNullable(set.getString())
+                                .map(expr -> jq.evaluate(expr, data, scope(request.variables())))
+                                .filter(JsonNode::isObject)))
+        .orElse(base);
+  }
+
+  /** Evaluates every {@code set} entry over the original data, returning the populated document. */
+  private static ObjectNode withEntries(
+      ObjectNode target,
+      Map<String, Object> properties,
+      JsonNode data,
+      Map<String, JsonNode> variables,
+      JqEvaluator jq,
+      ObjectMapper mapper) {
+    EntryStream.of(properties)
+        .mapValues(value -> evalSetValue(value, data, variables, jq, mapper))
+        .forKeyValue(target::set);
+    return target;
   }
 
   private static JsonNode evalSetValue(

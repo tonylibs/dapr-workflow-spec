@@ -8,6 +8,8 @@ import io.dapr.workflows.WorkflowActivity;
 import io.dapr.workflows.WorkflowActivityContext;
 import io.dws.orchestrator.error.StepInvocationException;
 import io.dws.orchestrator.workflow.WorkflowSupport;
+import java.util.Objects;
+import one.util.streamex.StreamEx;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,11 +54,16 @@ public class CallServiceActivity implements WorkflowActivity {
    * wrapped a few levels down (the reactive call sites rewrap), so the whole cause chain is walked.
    */
   private static int httpStatusOf(Throwable failure) {
-    for (Throwable t = failure; t != null && t != t.getCause(); t = t.getCause()) {
-      if (t instanceof DaprException dapr && dapr.getHttpStatusCode() > 0) {
-        return dapr.getHttpStatusCode();
-      }
-    }
-    return 0;
+    return StreamEx.iterate(failure, Objects::nonNull, CallServiceActivity::nextCause)
+        .select(DaprException.class)
+        .mapToInt(DaprException::getHttpStatusCode)
+        .findFirst(status -> status > 0)
+        .orElse(0);
+  }
+
+  /** Ends the walk at a self-referencing cause instead of looping on it forever. */
+  private static Throwable nextCause(Throwable failure) {
+    Throwable cause = failure.getCause();
+    return cause == failure ? null : cause;
   }
 }

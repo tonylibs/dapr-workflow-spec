@@ -82,40 +82,49 @@ public class RaiseErrorActivity implements WorkflowActivity {
   }
 
   private static String typeOf(
-      ErrorType type, JsonNode data, Map<String, JsonNode> variables, JqEvaluator jq) {
-    if (type == null) {
-      return null;
-    }
-    if (type.getExpressionErrorType() != null) {
-      return jq.evaluate(type.getExpressionErrorType(), data, variables).asText();
-    }
-    UriTemplate literal = type.getLiteralErrorType();
-    if (literal == null) {
-      return null;
-    }
-    return literal.getLiteralUri() != null
-        ? literal.getLiteralUri().toString()
-        : literal.getLiteralUriTemplate();
+      ErrorType errorType, JsonNode data, Map<String, JsonNode> variables, JqEvaluator jq) {
+
+    return Optional.ofNullable(errorType)
+        .flatMap(
+            type ->
+                Optional.ofNullable(type.getExpressionErrorType())
+                    .map(expr -> jq.evaluate(expr, data, variables).asText())
+                    .or(
+                        () ->
+                            Optional.ofNullable(type.getLiteralErrorType())
+                                .flatMap(
+                                    literal ->
+                                        Optional.ofNullable(literal.getLiteralUri())
+                                            .map(Object::toString)
+                                            .or(
+                                                () ->
+                                                    Optional.ofNullable(
+                                                        literal.getLiteralUriTemplate())))))
+        .orElse(null);
   }
 
   private static String titleOf(
       ErrorTitle title, JsonNode data, Map<String, JsonNode> variables, JqEvaluator jq) {
-    if (title == null) {
-      return null;
-    }
-    return title.getExpressionErrorTitle() != null
-        ? jq.evaluate(title.getExpressionErrorTitle(), data, variables).asText()
-        : title.getLiteralErrorTitle();
+
+    return Optional.ofNullable(title)
+        .map(
+            t ->
+                Optional.ofNullable(t.getExpressionErrorTitle())
+                    .map(expr -> jq.evaluate(expr, data, variables).asText())
+                    .orElse(t.getLiteralErrorTitle()))
+        .orElse(null);
   }
 
   private static String detailOf(
       ErrorDetails detail, JsonNode data, Map<String, JsonNode> variables, JqEvaluator jq) {
-    if (detail == null) {
-      return null;
-    }
-    return detail.getExpressionErrorDetails() != null
-        ? jq.evaluate(detail.getExpressionErrorDetails(), data, variables).asText()
-        : detail.getLiteralErrorDetails();
+
+    return Optional.ofNullable(detail)
+        .map(
+            d ->
+                Optional.ofNullable(d.getExpressionErrorDetails())
+                    .map(expr -> jq.evaluate(expr, data, variables).asText())
+                    .orElse(d.getLiteralErrorDetails()))
+        .orElse(null);
   }
 
   /**
@@ -129,19 +138,18 @@ public class RaiseErrorActivity implements WorkflowActivity {
       Map<String, JsonNode> variables,
       JqEvaluator jq,
       String taskName) {
-    if (instance == null) {
-      return "/" + taskName;
-    }
-    if (instance.getExpressionErrorInstance() != null) {
-      return jq.evaluate(instance.getExpressionErrorInstance(), data, variables).asText();
-    }
-    return instance.getLiteralErrorInstance() != null
-        ? instance.getLiteralErrorInstance()
-        : "/" + taskName;
+
+    return Optional.ofNullable(instance)
+        .flatMap(
+            i ->
+                Optional.ofNullable(i.getExpressionErrorInstance())
+                    .map(expr -> jq.evaluate(expr, data, variables).asText())
+                    .or(() -> Optional.ofNullable(i.getLiteralErrorInstance())))
+        .orElseGet(() -> "/" + taskName);
   }
 
   /** Scope-local jq bindings for this task, null-tolerant exactly as for a SET task. */
   private static Map<String, JsonNode> scope(Map<String, JsonNode> variables) {
-    return variables == null ? Map.of() : variables;
+    return Optional.ofNullable(variables).orElseGet(Map::of);
   }
 }

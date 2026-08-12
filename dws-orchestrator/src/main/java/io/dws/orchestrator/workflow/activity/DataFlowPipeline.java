@@ -1,5 +1,7 @@
 package io.dws.orchestrator.workflow.activity;
 
+import static java.util.function.Predicate.not;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dws.orchestrator.dataflow.DataFlowException;
@@ -8,13 +10,12 @@ import io.dws.orchestrator.dataflow.SchemaValidator;
 import io.dws.orchestrator.expr.JqEvaluator;
 import io.dws.orchestrator.workflow.WorkflowSupport;
 import io.serverlessworkflow.api.types.CallTask;
-import io.serverlessworkflow.api.types.Export;
-import io.serverlessworkflow.api.types.Input;
-import io.serverlessworkflow.api.types.Output;
+import io.serverlessworkflow.api.types.SchemaUnion;
 import io.serverlessworkflow.api.types.Task;
 import io.serverlessworkflow.api.types.TaskBase;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Applies a task's Open Workflow Specification data-flow pipeline around its body.
@@ -42,25 +43,28 @@ public final class DataFlowPipeline {
     JsonNode context = orEmptyObject(request.context());
     JsonNode raw = orNull(request.rawInput());
 
-    Input input = base.getInput();
-    if (input == null) {
-      return raw;
-    }
-
-    JsonNode transformed =
-        (input.getFrom() == null)
-            ? raw
-            : transform(
-                input.getFrom().getString(),
-                input.getFrom().getObject(),
-                raw,
-                context,
-                request.variables(),
-                request.taskName(),
-                Phase.INPUT);
-
-    validator().validate(input.getSchema(), transformed, request.taskName(), Phase.INPUT);
-    return transformed;
+    // The schema is validated whenever `input` is declared, with or without a `from` — so the
+    // validation wraps the transform rather than being a step chained after it.
+    return Optional.ofNullable(base.getInput())
+        .map(
+            input ->
+                validated(
+                    Optional.ofNullable(input.getFrom())
+                        .map(
+                            from ->
+                                transform(
+                                    from.getString(),
+                                    from.getObject(),
+                                    raw,
+                                    context,
+                                    request.variables(),
+                                    request.taskName(),
+                                    Phase.INPUT))
+                        .orElse(raw),
+                    input.getSchema(),
+                    request.taskName(),
+                    Phase.INPUT))
+        .orElse(raw);
   }
 
   /**
@@ -70,42 +74,51 @@ public final class DataFlowPipeline {
     TaskBase base = taskBase(request.taskName());
     JsonNode context = orEmptyObject(request.context());
     JsonNode raw = orNull(request.rawOutput());
-
-    JsonNode data = raw;
-    Output output = base.getOutput();
-    if (output != null) {
-      if (output.getAs() != null) {
-        data =
-            transform(
-                output.getAs().getString(),
-                output.getAs().getObject(),
-                raw,
-                context,
-                request.variables(),
-                request.taskName(),
-                Phase.OUTPUT);
-      }
-      validator().validate(output.getSchema(), data, request.taskName(), Phase.OUTPUT);
-    }
+    JsonNode data =
+        Optional.ofNullable(base.getOutput())
+            .map(
+                output ->
+                    validated(
+                        Optional.ofNullable(output.getAs())
+                            .map(
+                                as ->
+                                    transform(
+                                        as.getString(),
+                                        as.getObject(),
+                                        raw,
+                                        context,
+                                        request.variables(),
+                                        request.taskName(),
+                                        Phase.OUTPUT))
+                            .orElse(raw),
+                        output.getSchema(),
+                        request.taskName(),
+                        Phase.OUTPUT))
+            .orElse(raw);
 
     // export.as evaluates over the task's *transformed* output, with the pre-export context in
     // scope, and its result replaces the context for the rest of the instance.
-    JsonNode exported = context;
-    Export export = base.getExport();
-    if (export != null) {
-      if (export.getAs() != null) {
-        exported =
-            transform(
-                export.getAs().getString(),
-                export.getAs().getObject(),
-                data,
-                context,
-                request.variables(),
-                request.taskName(),
-                Phase.EXPORT);
-      }
-      validator().validate(export.getSchema(), exported, request.taskName(), Phase.EXPORT);
-    }
+    JsonNode exported =
+        Optional.ofNullable(base.getExport())
+            .map(
+                export ->
+                    validated(
+                        Optional.ofNullable(export.getAs())
+                            .map(
+                                as ->
+                                    transform(
+                                        as.getString(),
+                                        as.getObject(),
+                                        data,
+                                        context,
+                                        request.variables(),
+                                        request.taskName(),
+                                        Phase.EXPORT))
+                            .orElse(context),
+                        export.getSchema(),
+                        request.taskName(),
+                        Phase.EXPORT))
+            .orElse(context);
 
     return new DataFlowResult(data, exported);
   }
@@ -124,17 +137,30 @@ public final class DataFlowPipeline {
       Phase phase) {
     JqEvaluator jq = WorkflowSupport.jq();
     Map<String, JsonNode> variables = bindings(context, scopeVariables);
+
     try {
-      if (expression != null) {
-        return jq.evaluate(expression, input, variables);
-      }
-      if (literal != null) {
-        return jq.evaluateStructured(literal, input, variables);
-      }
-      return input;
+      // Safe as a chain because neither evaluator ever returns null (an empty result is NullNode),
+      // so `or` falls through to the literal form only when no expression was declared.
+      return Optional.ofNullable(expression)
+          .map(expr -> jq.evaluate(expr, input, variables))
+          .or(
+              () ->
+                  Optional.ofNullable(literal)
+                      .map(li -> jq.evaluateStructured(li, input, variables)))
+          .orElse(input);
     } catch (JqEvaluator.ExpressionException e) {
       throw new DataFlowException(taskName, phase, e.getMessage(), e);
     }
+  }
+
+  /**
+   * Validates a phase's document against its declared schema and hands it back, so validation
+   * composes as a step inside a transformation chain instead of sitting beside it as a side effect.
+   */
+  private static JsonNode validated(
+      JsonNode document, SchemaUnion schema, String taskName, Phase phase) {
+    validator().validate(schema, document, taskName, phase);
+    return document;
   }
 
   /**
@@ -163,20 +189,21 @@ public final class DataFlowPipeline {
    * duplicating this unwrap — it skips both phases entirely when none is declared.
    */
   public static TaskBase baseOf(Task task) {
-    Object concrete = task.get();
-    if (concrete instanceof CallTask call) {
-      concrete = call.get();
-    }
-    return (concrete instanceof TaskBase base) ? base : null;
+    // The call unwrap is conditional: every other task kind already *is* the TaskBase.
+    return Optional.ofNullable(task.get())
+        .map(concrete -> (concrete instanceof CallTask call) ? call.get() : concrete)
+        .filter(TaskBase.class::isInstance)
+        .map(TaskBase.class::cast)
+        .orElse(null);
   }
 
   private static TaskBase taskBase(String taskName) {
-    TaskBase base = baseOf(DefinitionLookup.taskByName(taskName));
-    if (base == null) {
-      throw new IllegalStateException(
-          "task '" + taskName + "' has no data-flow-capable definition");
-    }
-    return base;
+
+    return Optional.ofNullable(baseOf(DefinitionLookup.taskByName(taskName)))
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    "task '" + taskName + "' has no data-flow-capable definition"));
   }
 
   private static SchemaValidator validator() {
@@ -185,11 +212,13 @@ public final class DataFlowPipeline {
 
   /** The workflow context is never null — an instance starts with an empty object. */
   private static JsonNode orEmptyObject(JsonNode node) {
-    return (node == null || node.isNull()) ? WorkflowSupport.mapper().createObjectNode() : node;
+    return Optional.ofNullable(node)
+        .filter(not(JsonNode::isNull))
+        .orElseGet(() -> WorkflowSupport.mapper().createObjectNode());
   }
 
   private static JsonNode orNull(JsonNode node) {
     ObjectMapper mapper = WorkflowSupport.mapper();
-    return node == null ? mapper.nullNode() : node;
+    return Optional.ofNullable(node).orElseGet(mapper::nullNode);
   }
 }

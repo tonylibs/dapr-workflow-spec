@@ -1,5 +1,6 @@
 package io.dws.orchestrator.workflow.activity;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import io.dapr.workflows.WorkflowActivity;
 import io.dapr.workflows.WorkflowActivityContext;
 import io.dws.orchestrator.expr.JqEvaluator;
@@ -8,6 +9,9 @@ import io.serverlessworkflow.api.types.SwitchCase;
 import io.serverlessworkflow.api.types.SwitchItem;
 import io.serverlessworkflow.api.types.SwitchTask;
 import io.serverlessworkflow.api.types.Task;
+import java.util.List;
+import java.util.Map;
+import one.util.streamex.StreamEx;
 
 /**
  * Resolves a SWITCH task's branch. Pure jq evaluation with no I/O — it runs in the orchestrator's
@@ -34,17 +38,29 @@ public class EvaluateSwitchActivity implements WorkflowActivity {
     }
 
     JqEvaluator jq = WorkflowSupport.jq();
-    FlowOutcome defaultThen = FlowOutcome.CONTINUE;
-    for (SwitchItem item : switchTask.getSwitch()) {
-      SwitchCase branch = item.getSwitchCase();
-      String when = branch.getWhen();
-      if (when == null || when.isBlank()) {
-        defaultThen = FlowOutcome.of(branch.getThen());
-      } else if (jq.evaluateBoolean(
-          when, request.data(), EvaluateSetActivity.scope(request.variables()))) {
-        return FlowOutcome.of(branch.getThen());
-      }
-    }
-    return defaultThen;
+    Map<String, JsonNode> scope = EvaluateSetActivity.scope(request.variables());
+    List<SwitchCase> cases =
+        StreamEx.of(switchTask.getSwitch()).map(SwitchItem::getSwitchCase).toList();
+
+    // Two selections, not one: the first conditional case whose `when` is truthy wins outright, and
+    // only when none matches does the default case apply. `or` keeps that fallback lazy, so a match
+    // short-circuits before any later condition is evaluated. Where several cases declare no `when`
+    // the last one still wins, as it did when a loop kept overwriting the remembered default.
+    return StreamEx.of(cases)
+        .filter(EvaluateSwitchActivity::isConditional)
+        .findFirst(branch -> jq.evaluateBoolean(branch.getWhen(), request.data(), scope))
+        .or(
+            () ->
+                StreamEx.of(cases)
+                    .remove(EvaluateSwitchActivity::isConditional)
+                    .reduce((_, later) -> later))
+        .map(SwitchCase::getThen)
+        .map(FlowOutcome::of)
+        .orElse(FlowOutcome.CONTINUE);
+  }
+
+  /** A case with no {@code when} is the switch's default, not a condition to evaluate. */
+  private static boolean isConditional(SwitchCase branch) {
+    return branch.getWhen() != null && !branch.getWhen().isBlank();
   }
 }
