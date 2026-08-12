@@ -86,6 +86,24 @@ Once running, `GET http://localhost:3000/health` should return `200` when Postgr
 and events published by a locally-running `dws-controller`/`dws-orchestrator` should appear as
 rows in the read model.
 
+### 5. Calling the read API from a browser
+
+`dws-console` fetches this API from a page, and a browser drops a cross-origin response that does
+not carry `Access-Control-Allow-Origin`. The read endpoints therefore send CORS headers, controlled
+by `CORS_ORIGINS`:
+
+| `CORS_ORIGINS` | Behaviour |
+|---|---|
+| unset (default) | any origin — the read surface is unauthenticated and sends no credentials, so this grants a browser nothing a direct request would not |
+| `https://console.example,https://ops.example` | only those origins are echoed back |
+
+Only `GET`/`HEAD`/`OPTIONS` are allowed, and `credentials` is off — cookies are never sent
+cross-origin, which is what makes the permissive default safe. Narrow `CORS_ORIGINS` to the
+console's real origin once the API is authenticated.
+
+Deployments that put the console and this service behind a single ingress are same-origin and never
+exercise any of this.
+
 ---
 
 ## Build & test

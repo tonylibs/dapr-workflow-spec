@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import type { AppConfig } from './config/configuration';
+import { corsOptions } from './config/cors';
 import { runMigrations } from './store/run-migrations';
 
 async function bootstrap() {
@@ -14,6 +15,11 @@ async function bootstrap() {
   // Reject unknown query params, coerce typed ones (e.g. `limit` from its
   // query-string form), and 400 on out-of-range values.
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+
+  // dws-console runs as a separate origin unless both sit behind one ingress,
+  // and a browser will not deliver a cross-origin response without these
+  // headers. Configured through CORS_ORIGINS.
+  app.enableCors(corsOptions(config.get('corsOrigins', { infer: true })));
 
   // Publish the read API's OpenAPI document at /docs — dws-console generates a
   // typed client from this contract.

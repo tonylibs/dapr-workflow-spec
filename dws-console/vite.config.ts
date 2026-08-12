@@ -6,11 +6,10 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-// Where the dev server forwards dws-admin calls. dws-admin sends no CORS
-// headers, so a browser cannot call it cross-origin; proxying keeps every
-// request same-origin in development. Deployments put the console and
-// dws-admin behind one ingress for the same reason — see
-// openspec/changes/console-api-wiring/design.md.
+// Where the dev server forwards dws-admin calls. Proxying keeps every request
+// same-origin in development, which sidesteps CORS entirely; dws-admin also
+// serves CORS headers (see its CORS_ORIGINS), so pointing VITE_DWS_ADMIN_URL
+// straight at it works too.
 const ADMIN_TARGET =
 	process.env.DWS_ADMIN_PROXY_TARGET ?? "http://127.0.0.1:3001";
 
