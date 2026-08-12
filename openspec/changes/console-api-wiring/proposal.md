@@ -49,7 +49,9 @@ assume real data fetching exists.
 - **Code**: `src/lib/mock-data.ts` (data → hooks/adapters, types retained); new `src/lib/`
   client/adapter modules; the 4 routes (`workflows/index.tsx`, `workflows/$name.tsx`,
   `instances/index.tsx`, `instances/$id.tsx`); `.env.example`.
-- **Dependencies**: none added — `@tanstack/react-query` already present.
+- **Dependencies**: `@tanstack/react-query` already present. `vitest` added as a devDependency —
+  `dws-console` had no test runner, and the adapter layer (pure DTO→view-model functions) is the
+  part of this change that most needs regression coverage.
 - **Config**: new env var `VITE_DWS_ADMIN_URL`; requires a reachable `dws-admin` at runtime.
-- **Validation gate**: `pnpm lint && pnpm typecheck && pnpm build` (dws-console has no test runner
-  configured; verification is build + manual run against a live dws-admin).
+- **Validation gate**: `pnpm lint && pnpm typecheck && pnpm test && pnpm build`, plus a manual run
+  against a live dws-admin.

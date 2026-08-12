@@ -13,23 +13,23 @@ import { Fragment, useState } from "react";
 import { AppLayout } from "#/components/app-layout";
 import { DataTableHead } from "#/components/data-table";
 import { Skeleton, SkeletonRows } from "#/components/skeleton";
-import { EmptyState, StateSwitch, type ViewState } from "#/components/states";
+import { Banner, EmptyState } from "#/components/states";
 import {
 	InstanceStatusBadge,
 	TaskStatusBadge,
 	TaskTypeBadge,
 } from "#/components/status";
-import {
-	getInstanceDetail,
-	statusClass,
-	type TaskEvent,
-} from "#/lib/mock-data";
+import { ApiError } from "#/lib/admin-client";
+import { useInstanceDetail } from "#/lib/admin-hooks";
+import { statusClass, type TaskEvent } from "#/lib/mock-data";
 
 export const Route = createFileRoute("/instances/$id")({
 	component: InstanceDetail,
 });
 
-// Row-expanding feature drives the inline attempt/backoff mini-timeline.
+// Row-expanding feature drives the inline attempt/backoff mini-timeline. The
+// read API carries no attempt history today, so rows stay collapsed until it
+// does — see `getRowCanExpand` below.
 const features = tableFeatures({
 	rowExpandingFeature,
 	expandedRowModel: createExpandedRowModel(),
@@ -91,13 +91,13 @@ const taskColumns = tcol.columns([
 
 function InstanceDetail() {
 	const { id } = Route.useParams();
-	const [state, setState] = useState<ViewState>("data");
-	const [expanded, setExpanded] = useState<ExpandedState>({
-		"dispatch-shipment": true,
-	});
+	const [expanded, setExpanded] = useState<ExpandedState>({});
 
-	const detail = getInstanceDetail(id);
-	const notFound = state === "error" || !detail;
+	const { data: detail, isPending, error, refetch } = useInstanceDetail(id);
+
+	// A 404 means the read model has no record for this id — distinct from
+	// dws-admin being unreachable.
+	const notFound = error instanceof ApiError && error.status === 404;
 
 	const table = useTable({
 		features,
@@ -113,21 +113,10 @@ function InstanceDetail() {
 		{ label: "Instances", to: "/instances" },
 		{ label: id, mono: true },
 	];
-	const topRight = (
-		<>
-			<button type="button" className="btn-sm">
-				Copy id
-			</button>
-			<button type="button" className="btn-sm">
-				Open in logs ↗
-			</button>
-			<StateSwitch value={state} onChange={setState} />
-		</>
-	);
 
 	if (notFound) {
 		return (
-			<AppLayout active="instances" crumbs={crumbs} topRight={topRight}>
+			<AppLayout active="instances" crumbs={crumbs}>
 				<div className="pane">
 					<EmptyState title={`No instance with id “${id}”`}>
 						The read model has no record for that id. It may have been pruned,
@@ -143,9 +132,32 @@ function InstanceDetail() {
 		);
 	}
 
-	if (state === "loading") {
+	if (error) {
 		return (
-			<AppLayout active="instances" crumbs={crumbs} topRight={topRight}>
+			<AppLayout active="instances" crumbs={crumbs}>
+				<div className="pane">
+					<Banner
+						action={
+							<button
+								type="button"
+								className="btn-sm"
+								onClick={() => refetch()}
+							>
+								Retry
+							</button>
+						}
+					>
+						Could not load instance <code>{id}</code> from{" "}
+						<code>dws-admin</code>.
+					</Banner>
+				</div>
+			</AppLayout>
+		);
+	}
+
+	if (isPending || !detail) {
+		return (
+			<AppLayout active="instances" crumbs={crumbs}>
 				<div className="pane" style={{ gap: 20 }}>
 					<div className="id-header">
 						<div>
@@ -174,7 +186,15 @@ function InstanceDetail() {
 	const ended = d.ended ?? (d.status === "RUNNING" ? "in progress" : "pending");
 
 	return (
-		<AppLayout active="instances" crumbs={crumbs} topRight={topRight}>
+		<AppLayout
+			active="instances"
+			crumbs={crumbs}
+			topRight={
+				<button type="button" className="btn-sm" onClick={() => refetch()}>
+					Refresh
+				</button>
+			}
+		>
 			<div className="pane" style={{ gap: 20 }}>
 				{/* header card */}
 				<div className="id-header">
@@ -232,11 +252,6 @@ function InstanceDetail() {
 							</div>
 						</dl>
 					</div>
-					<div className="id-actions">
-						<button type="button" className="btn-sm">
-							Refresh
-						</button>
-					</div>
 				</div>
 
 				{/* task timeline */}
@@ -253,11 +268,11 @@ function InstanceDetail() {
 							Task timeline
 						</h3>
 						<span className="muted" style={{ fontSize: 12 }}>
-							chronological · click a task to expand
+							chronological · one row per task
 						</span>
 					</div>
 
-					{state === "empty" || d.tasks.length === 0 ? (
+					{d.tasks.length === 0 ? (
 						<div className="tbl-wrap">
 							<EmptyState title="Task events not yet reported">
 								The read model is eventually consistent — task events for a
@@ -314,7 +329,13 @@ function InstanceDetail() {
 	);
 }
 
-/** Inline attempt/backoff mini-timeline for an expanded `try` task. */
+/**
+ * Inline attempt/backoff mini-timeline for an expanded task.
+ *
+ * Only rendered when a task carries `attemptHistory`, which the read API does
+ * not populate today — kept so the view is ready the moment `dws-admin` starts
+ * recording attempt-level events.
+ */
 function MiniTimeline({ task }: { task: TaskEvent }) {
 	return (
 		<tr>

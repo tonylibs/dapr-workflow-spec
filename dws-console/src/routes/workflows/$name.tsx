@@ -9,9 +9,11 @@ import { AppLayout } from "#/components/app-layout";
 import { DataTableHead, DataTableRows } from "#/components/data-table";
 import { DefinitionGraph } from "#/components/definition-graph";
 import { Skeleton, SkeletonRows } from "#/components/skeleton";
-import { EmptyState, StateSwitch, type ViewState } from "#/components/states";
+import { Banner, EmptyState } from "#/components/states";
 import { DeploymentTag, WorkflowTag } from "#/components/status";
-import { getWorkflowDetail, type WorkflowVersion } from "#/lib/mock-data";
+import { ApiError } from "#/lib/admin-client";
+import { useWorkflowDetail } from "#/lib/admin-hooks";
+import type { WorkflowVersion } from "#/lib/mock-data";
 
 export const Route = createFileRoute("/workflows/$name")({
 	component: WorkflowDetail,
@@ -41,11 +43,14 @@ const versionColumns = vcol.columns([
 
 function WorkflowDetail() {
 	const { name } = Route.useParams();
-	const [state, setState] = useState<ViewState>("data");
 	const [tab, setTab] = useState<Tab>("versions");
 
-	const detail = getWorkflowDetail(name);
-	const notFound = state === "error" || !detail;
+	const { data: detail, isPending, error, refetch } = useWorkflowDetail(name);
+
+	// A 404 means the controller has no definition under this name — a distinct
+	// outcome from the API being unreachable, and the one operators hit by
+	// mistyping a name.
+	const notFound = error instanceof ApiError && error.status === 404;
 
 	const versionTable = useTable({
 		features,
@@ -57,11 +62,10 @@ function WorkflowDetail() {
 		{ label: "Workflows", to: "/workflows" },
 		{ label: name, mono: true },
 	];
-	const topRight = <StateSwitch value={state} onChange={setState} />;
 
 	if (notFound) {
 		return (
-			<AppLayout active="workflows" crumbs={crumbs} topRight={topRight}>
+			<AppLayout active="workflows" crumbs={crumbs}>
 				<div className="pane">
 					<EmptyState title={`No workflow named “${name}”`}>
 						The controller has no definition under that name. It may have been
@@ -77,9 +81,31 @@ function WorkflowDetail() {
 		);
 	}
 
-	if (state === "loading") {
+	if (error) {
 		return (
-			<AppLayout active="workflows" crumbs={crumbs} topRight={topRight}>
+			<AppLayout active="workflows" crumbs={crumbs}>
+				<div className="pane">
+					<Banner
+						action={
+							<button
+								type="button"
+								className="btn-sm"
+								onClick={() => refetch()}
+							>
+								Retry
+							</button>
+						}
+					>
+						Could not load <code>{name}</code> from <code>dws-admin</code>.
+					</Banner>
+				</div>
+			</AppLayout>
+		);
+	}
+
+	if (isPending || !detail) {
+		return (
+			<AppLayout active="workflows" crumbs={crumbs}>
 				<div className="pane" style={{ gap: 16 }}>
 					<Skeleton width={260} height={26} />
 					<div className="tabs">
@@ -117,29 +143,20 @@ function WorkflowDetail() {
 					: crumbs
 			}
 			topRight={
-				<>
-					{tab === "definition" ? (
-						<>
-							<span
-								className="muted"
-								style={{ fontSize: 11.5, paddingRight: 6 }}
-							>
-								6 tasks · 1 switch · 1 try/catch · depth 4
-							</span>
-							<button type="button" className="btn-sm">
-								Copy YAML
-							</button>
-							<button type="button" className="btn-sm">
-								Download DSL
-							</button>
-						</>
-					) : (
-						<Link to="/instances" className="btn-sm">
-							View instances →
-						</Link>
-					)}
-					{topRight}
-				</>
+				tab === "definition" ? (
+					<>
+						<button type="button" className="btn-sm">
+							Copy YAML
+						</button>
+						<button type="button" className="btn-sm">
+							Download DSL
+						</button>
+					</>
+				) : (
+					<Link to="/instances" className="btn-sm">
+						View instances →
+					</Link>
+				)
 			}
 		>
 			<div className="pane" style={{ gap: 16 }}>
@@ -206,14 +223,19 @@ function WorkflowDetail() {
 					</button>
 				</div>
 
-				{tab === "versions" && (
-					<div className="tbl-wrap">
-						<table className="tbl">
-							<DataTableHead table={versionTable} />
-							<DataTableRows table={versionTable} />
-						</table>
-					</div>
-				)}
+				{tab === "versions" &&
+					(d.versions.length === 0 ? (
+						<div className="tbl-wrap">
+							<EmptyState title="No versions stored for this workflow." />
+						</div>
+					) : (
+						<div className="tbl-wrap">
+							<table className="tbl">
+								<DataTableHead table={versionTable} />
+								<DataTableRows table={versionTable} />
+							</table>
+						</div>
+					))}
 
 				{tab === "deployments" &&
 					(d.deployments.length === 0 ? (
@@ -235,7 +257,11 @@ function WorkflowDetail() {
 										<dt>orchestrator</dt>
 										<dd className="mono">{dep.orchestrator}</dd>
 										<dt>step services</dt>
-										<dd className="mono">{dep.stepServices.join(", ")}</dd>
+										<dd className="mono">
+											{dep.stepServices.length > 0
+												? dep.stepServices.join(", ")
+												: "—"}
+										</dd>
 										<dt>drained-at</dt>
 										<dd className={dep.drainedAt ? "mono" : "muted"}>
 											{dep.drainedAt ?? "—"}

@@ -13,8 +13,10 @@ pure DTO→view-model adapters (`admin-adapters.ts`) + per-endpoint TanStack Que
 consume hooks and drive loading/empty/error states from query status through the existing UI kit.
 
 **Tech Stack:** TanStack Start, React 19, `@tanstack/react-query` (`useQuery`/`useInfiniteQuery`),
-Vite (`import.meta.env`), TypeScript, Biome. No test runner in dws-console — the verification loop is
-`pnpm typecheck` + `pnpm lint` + `pnpm build`, then a manual run against a live dws-admin.
+Vite (`import.meta.env`), TypeScript, Biome, `vitest` (added by this change — dws-console had no test
+runner). Verification loop: `pnpm typecheck` + `pnpm lint` + `pnpm test` + `pnpm build`, then a
+manual run against a live dws-admin. The adapter layer is written test-first (RED→GREEN); the client,
+hooks, and route components are covered by typecheck/build plus the live run.
 
 ---
 
@@ -26,13 +28,15 @@ Vite (`import.meta.env`), TypeScript, Biome. No test runner in dws-console — t
 - [ ] **Step 4:** Add `.env.example` with `VITE_DWS_ADMIN_URL=http://localhost:3001`.
 - [ ] **Step 5:** `pnpm typecheck` — new files compile.
 
-## Task 2: Adapters
+## Task 2: Adapters (test-first)
 
-- [ ] **Step 1:** Create `src/lib/admin-adapters.ts` — `formatRelative(iso)` and `formatAbsolute(iso)` helpers; `normStatus()` guarding the typed enums (unknown → fallback).
+- [ ] **Step 0a:** Add `vitest` devDependency and a `"test": "vitest run"` script; confirm `pnpm test` runs and reports no test files.
+- [ ] **Step 0b:** RED — write `src/lib/admin-adapters.test.ts` covering: `formatRelative`/`formatAbsolute`, `normStatus` fallback on an unknown value, each DTO→view-model map (incl. `orchestrator`←`orchestratorAppId` and `id`←`instanceId`), the instance-detail derivations (`duration`/`taskCount`/`failedCount`/`retries`), and `toTaskEvents` grouping (one row per task name, terminal-status collapse, rich fields left `undefined`). Run `pnpm test` — expect failures for every case.
+- [ ] **Step 1:** GREEN — create `src/lib/admin-adapters.ts` — `formatRelative(iso)` and `formatAbsolute(iso)` helpers; `normStatus()` guarding the typed enums (unknown → fallback).
 - [ ] **Step 2:** Add `toWorkflowRow`, `toWorkflowVersion`, `toWorkflowDeployment` (orchestrator ← `orchestratorAppId`), and `toWorkflowDetail(versionsPage, deploymentsPage)` assembling `WorkflowDetail` (name/status/latestVersion from newest version).
 - [ ] **Step 3:** Add `toInstanceRow` (id ← `instanceId`) and `toInstanceDetail(detailDto, taskEvents)` deriving `duration`, `taskCount`, `failedCount`, `retries`.
 - [ ] **Step 4:** Add `toTaskEvents(events)` — group by `taskName`, map lifecycle status (`started→running`/`completed`/`failed`), compute `when`/`duration`/`statusLabel`, leave rich fields unset.
-- [ ] **Step 5:** `pnpm typecheck` — adapters return the exact view-model types from `mock-data.ts`.
+- [ ] **Step 5:** `pnpm test` all green + `pnpm typecheck` — adapters return the exact view-model types from `mock-data.ts`.
 
 ## Task 3: Query hooks
 
@@ -58,7 +62,7 @@ Vite (`import.meta.env`), TypeScript, Biome. No test runner in dws-console — t
 
 ## Task 6: Verify
 
-- [ ] **Step 1:** `cd dws-console && pnpm lint && pnpm typecheck && pnpm build` — all green.
+- [ ] **Step 1:** `cd dws-console && pnpm lint && pnpm typecheck && pnpm test && pnpm build` — all green.
 - [ ] **Step 2:** Start a `dws-admin` instance; set `VITE_DWS_ADMIN_URL`; run `pnpm dev`.
 - [ ] **Step 3:** Visit each of the 4 routes — confirm real data renders; open TanStack Query devtools and confirm one cache entry per endpoint/query key.
 - [ ] **Step 4:** Stop dws-admin (or point at a bad URL) — confirm error banners / not-found / empty states render sensibly; confirm no hardcoded host remains (grep for the base URL).
