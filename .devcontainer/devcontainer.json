@@ -24,7 +24,7 @@
   "postCreateCommand": "bash .devcontainer/post-create.sh",
   "runArgs": ["--add-host=kubernetes.docker.internal:host-gateway"],
   "mounts": [
-    "source=${localEnv:HOME}/.kube,target=/home/vscode/.kube,type=bind,consistency=cached"
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.kube,target=/home/vscode/.kube,type=bind,consistency=cached"
   ],
   "containerEnv": {
     "KUBECONFIG": "/home/vscode/.kube/config"
