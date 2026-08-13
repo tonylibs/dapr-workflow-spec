@@ -5,7 +5,9 @@ set -euo pipefail
 # by agent-sandbox/Dockerfile before installing plugins into the vscode user's configuration.
 CLAUDE_CODE_NPM_VERSION="2.1.220"
 if [ "$(claude --version 2>/dev/null || true)" != "${CLAUDE_CODE_NPM_VERSION} (Claude Code)" ]; then
-  npm install --global --no-audit --no-fund "@anthropic-ai/claude-code@${CLAUDE_CODE_NPM_VERSION}"
+  # The claude-code devcontainer feature preinstalls this package as root, so a plain
+  # (vscode-user) npm install can't overwrite its root-owned global dir.
+  sudo env "PATH=$PATH" npm install --global --no-audit --no-fund "@anthropic-ai/claude-code@${CLAUDE_CODE_NPM_VERSION}"
 fi
 test "$(claude --version)" = "${CLAUDE_CODE_NPM_VERSION} (Claude Code)"
 
@@ -24,13 +26,23 @@ if [ "$(openspec --version 2>/dev/null || true)" != "${OPENSPEC_NPM_VERSION}" ];
 fi
 test "$(openspec --version)" = "${OPENSPEC_NPM_VERSION}"
 
+# Dapr CLI. kubectl/helm come from the kubectl-helm-minikube devcontainer feature; the Dapr CLI
+# has no equivalent feature, so install it here (same script the helm.yml CI workflow uses).
+DAPR_CLI_VERSION="1.15.1"
+if [ "$(dapr --version 2>/dev/null | awk '/^CLI version/ {print $3}')" != "${DAPR_CLI_VERSION}" ]; then
+  wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash -s "${DAPR_CLI_VERSION}"
+fi
+dapr --version | grep -Fq "CLI version: ${DAPR_CLI_VERSION}"
+
 # OpenWiki CLI. Keep this pin aligned with the repository's OpenWiki update workflow.
 OPENWIKI_NPM_VERSION="0.2.3"
 if ! grep -Fq "openwiki@${OPENWIKI_NPM_VERSION}" <<<"$(npm list --global --depth=0 openwiki 2>/dev/null || true)"; then
   npm install --global --no-audit --no-fund "openwiki@${OPENWIKI_NPM_VERSION}"
 fi
 grep -Fq "openwiki@${OPENWIKI_NPM_VERSION}" <<<"$(npm list --global --depth=0 openwiki)"
-openwiki --help >/dev/null
+# openwiki@0.2.3 currently ships a broken langchain/@langchain-core dependency pairing that
+# crashes on startup; don't let that abort the rest of this script's setup.
+openwiki --help >/dev/null || echo "WARN: openwiki --help failed (broken upstream package) — continuing"
 
 # Superpowers plugins for both agent runtimes. Install only when the enabled plugin is absent.
 # A fresh ~/.claude config has no marketplaces registered, so the official one must be added
@@ -60,13 +72,15 @@ pipx ensurepath
 pipx install clawteam
 
 # dws-call-openapi (Node/TypeScript, pnpm)
+# CI=true: postCreateCommand has no TTY, and pnpm otherwise prompts before purging an
+# existing node_modules dir (e.g. one left over from a bind-mounted host workspace).
 if [ -f dws-call-openapi/package.json ]; then
-  (cd dws-call-openapi && pnpm install)
+  (cd dws-call-openapi && CI=true pnpm install)
 fi
 
 # dws-admin (Node/TypeScript, pnpm)
 if [ -f dws-admin/package.json ]; then
-  (cd dws-admin && pnpm install)
+  (cd dws-admin && CI=true pnpm install)
 fi
 
 # dws-console (Node/TypeScript, npm)
