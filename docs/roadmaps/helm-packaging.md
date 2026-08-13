@@ -12,7 +12,7 @@ Only the long-running platform components are chart-managed:
 |---|---|---|
 | `dws-controller` | Yes | Persistent control-plane Deployment |
 | `dws-admin` | Yes | Persistent read-model service, needs Postgres |
-| Postgres (for `dws-admin`) | Yes, optional built-in | Minimal in-chart StatefulSet by default; swappable for an external DB |
+| Postgres (for `dws-admin`) | Yes, optional built-in | Bitnami PostgreSQL subchart by default; swappable for an external DB |
 | `dws-console` | Not yet | No Dockerfile/image exists upstream yet — placeholder toggle only, disabled by default. See [`dws-console` roadmap](dws-console.md) |
 | `dws-orchestrator` | No | Deployed dynamically, per-workflow, by the controller at runtime — not a static install target |
 | `dws-call-http` / `dws-call-openapi` / `dws-run-*` | No | Same as above — controller stamps these out per workflow |
@@ -43,7 +43,7 @@ charts/dws/
 └── templates/
     ├── controller/           # serviceaccount, rbac (role+rolebinding), deployment, service
     ├── admin/                # deployment, service, secret (db conn resolution)
-    ├── postgres/             # statefulset, headless service, secret — toggle: postgresql.enabled
+    ├── postgres/             # chart-owned admin DSN Secret — toggle: postgresql.enabled
     ├── pubsub-component.yaml # Dapr Component "pubsub"/topic dws.events — toggle: dapr.enabled (Phase 5)
     ├── console/              # deployment, service, ingress — disabled by default
     ├── knative-install-job.yaml   # hook Job, toggle: knative.enabled
@@ -61,7 +61,7 @@ sidecar annotations before that.
 | 0. Prep | Confirm scope | Decide bundling vs. docs-only for prerequisites; confirm dws-admin/console are in-chart |
 | 1. Scaffold | `helm create charts/dws`, strip unused boilerplate | Chart.yaml, values.yaml skeleton |
 | 2. Controller | Port `dws-controller/k8s/*.yaml` to templates | Templatize namespace, RBAC, image refs (`DWS_IMAGES_*`) |
-| 3. Admin + DB | Deployment/Service/Secret for dws-admin | Built-in Postgres StatefulSet toggle, or external DSN via `admin.database.url`/`existingSecret` |
+| 3. Admin + DB | Deployment/Service/Secret for dws-admin | Complete: Bitnami PostgreSQL subchart toggle, or external DSN via `admin.database.url`/`existingSecret` |
 | 4. Prerequisites | Dapr as chart dependency; Knative via hook Job | `dapr.enabled`/`knative.enabled` toggles, preflight CRD check |
 | 5. Event wiring | Wire the controller→admin pub/sub path chart-side | `pubsub-component.yaml` (Dapr Component, topic `dws.events`); `dapr.io/enabled`/`dapr.io/app-id` annotations on controller + admin Deployments; end-to-end test (apply a definition → assert it lands in admin's read model). Depends on Phase 4 (needs a real Dapr control plane in-cluster) |
 | 6. Console | Add Deployment/Service/Ingress once an image exists | Currently blocked — no Dockerfile in `dws-console/` yet |

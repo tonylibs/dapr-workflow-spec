@@ -14,8 +14,8 @@ Constraints from the container contracts (not decisions to make, just facts to b
   indicator (`DbHealthIndicator`) is the one that actually proves DB connectivity — a `200` alone
   doesn't, since Terminus returns `200` only when *all* indicators pass, but a future indicator
   added to the same check could still mask which one failed if we only assert on status code.
-- `docker-compose.yml`'s Postgres defaults (`dws`/`dws`/`dws_admin`, `postgres:16-alpine`) are the
-  chart's dev-parity defaults.
+- `docker-compose.yml`'s Postgres credentials (`dws`/`dws`/`dws_admin`) are the chart's dev-parity
+  defaults; the conditional Bitnami PostgreSQL subchart supplies the database runtime.
 
 ## Goals / Non-Goals
 
@@ -41,14 +41,12 @@ A Postgres DSN packs five pieces (user, password, host, port, dbname) into one s
 has no way to compose a Secret value from *other* Secret keys at pod-start time without an init
 container or controller. Since the in-chart Postgres credentials (`postgresql.auth.*`) are already
 known at `helm template` time, the DSN is composed directly in the template with `printf`, and
-stored as a `database-url` key inside the **postgres** Secret (`templates/postgres/secret.yaml`)
-— not a second Secret under `admin/`. The admin Deployment's `DATABASE_URL` env then does a
-`secretKeyRef` to `dws.postgres.fullname` / key `database-url` when `postgresql.enabled: true`.
-This is what satisfies "one credentials Secret backs both consumers" in the postgres spec: the
-postgres Secret is the single source, admin never renders its own Secret in that branch.
-Alternative considered: giving admin its own Secret that copies the same literal value — rejected,
-since two Secret objects holding the same credential drift out of sync on rotation and double the
-objects to audit.
+stored as a `database-url` key inside the chart-owned connection Secret
+(`templates/postgres/secret.yaml`). The Bitnami subchart independently owns its StatefulSet,
+Services, and credentials Secret. The admin Deployment's `DATABASE_URL` env then does a
+`secretKeyRef` to `dws.postgres.fullname` / key `database-url` when `postgresql.enabled: true`,
+while the DSN host is derived from the Bitnami primary Service. Admin never renders its own
+database Secret in that branch.
 
 **External DB branch: admin owns its Secret, only when needed.**
 When `postgresql.enabled: false`, `templates/admin/secret.yaml` renders (gated additionally on
@@ -72,11 +70,11 @@ Secret, or an operator's existing Secret — never two.
 `templates/admin/secret.yaml` mirrors the same `if/else if/else` so it only renders the third
 branch's Secret object.
 
-**Postgres Service is headless (`clusterIP: None`).**
-A StatefulSet's governing Service is conventionally headless so pod DNS
-(`<pod>.<service>.<ns>.svc.cluster.local`) is stable; with a single replica the admin DSN can
-target the Service name directly (`<fullname>.<ns>.svc.cluster.local`) without needing a specific
-pod's DNS, since there's only one pod to route to either way.
+**Bitnami subchart owns PostgreSQL Services.**
+The conditional upstream subchart renders the PostgreSQL StatefulSet and its Services. The chart's
+`dws.postgres.host` helper follows the subchart's primary Service naming convention
+(`&lt;release&gt;-postgresql`, or `postgresql.fullnameOverride`) so the composed admin DSN targets the
+deployed database without duplicating workload templates.
 
 **Helm test hook checks the parsed `database` indicator, not just HTTP status.**
 Terminus's health payload shape is `{"status":"ok","info":{...},"details":{"database":{"status":
@@ -102,8 +100,8 @@ static validation already failed.
   `postgresql.auth.password` default is handled (a values-driven dev credential); the roadmap doc
   already calls out that built-in Postgres is dev/eval-grade and production users should point at
   a managed instance instead (`postgresql.enabled: false`).
-- **[Risk]** The real-install CI job adds meaningful runtime (pulling `postgres:16-alpine` and
-  `ghcr.io/tonylibs/dws-admin`, waiting for two rollouts) to every chart-touching PR. → Mitigation:
+- **[Risk]** The real-install CI job adds meaningful runtime (pulling the Bitnami PostgreSQL image
+  and `ghcr.io/tonylibs/dws-admin`, waiting for two rollouts) to every chart-touching PR. → Mitigation:
   scoped to the same path filters as the rest of `helm.yml` (`charts/**`), so it only runs when
   chart changes are actually being validated.
 - **[Risk]** `grep`-based JSON matching in the test hook is brittle to Terminus payload formatting
@@ -116,6 +114,6 @@ static validation already failed.
 No migration — this only adds new templates and values keys with backward-compatible defaults
 (`admin.enabled` and `postgresql.enabled` both default `true`, matching the chart's existing
 all-on-by-default posture from Phase 2). No existing release is affected until someone runs
-`helm upgrade` with this chart version, at which point the new admin/postgres resources are
-created fresh (nothing pre-existing to migrate). Rollback is a plain `helm rollback` to the prior
-chart version, which simply removes the newly-created resources.
+`helm upgrade` with this chart version, at which point the new admin resources and the Bitnami
+PostgreSQL subchart resources are created fresh (nothing pre-existing to migrate). Rollback is a
+plain `helm rollback` to the prior chart version, which simply removes the newly-created resources.

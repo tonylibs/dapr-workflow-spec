@@ -3,32 +3,26 @@
 - [x] 1.1 Add `dws.admin.fullname` helper to `charts/dws/templates/_helpers.tpl` returning
   `<dws.fullname>-admin`, and `dws.admin.selectorLabels` extending `dws.selectorLabels` with
   `app.kubernetes.io/component: admin` — same pattern as `dws.controller.*`
-- [x] 1.2 Add `dws.postgres.fullname` helper returning `<dws.fullname>-postgres`, and
-  `dws.postgres.selectorLabels` extending `dws.selectorLabels` with
-  `app.kubernetes.io/component: postgres`
+- [x] 1.2 Add `dws.postgres.fullname` helper returning `<dws.fullname>-postgres` for the
+  chart-owned admin connection Secret, and a `dws.postgres.host` helper resolving the Bitnami
+  subchart primary Service (with `postgresql.fullnameOverride` support)
 - [x] 1.3 Add an `admin:` block to `charts/dws/values.yaml`: `enabled: true`, `replicaCount`,
   `image.{repository,tag,pullPolicy}`, `service.port` (3000), `database.{url,existingSecret,
   existingSecretKey}` (all empty/unset by default), `pubsub.{name,topic}` defaulting to
   `pubsub`/`dws.events`
-- [x] 1.4 Add a `postgresql:` block to `values.yaml`: `enabled: true`, `image.{repository,tag}`
-  (`postgres`/`16-alpine`), `storage.size` (e.g. `1Gi`), `auth.{username,password,database}`
-  defaulting to `dws`/`dws`/`dws_admin` (docker-compose parity), `auth.existingSecret` /
-  `auth.existingSecretKey` for pointing at operator-managed credentials
+- [x] 1.4 Add a `postgresql:` block to `values.yaml` for the conditional Bitnami subchart:
+  `enabled: true`, standalone architecture, Bitnami image override, `auth.{username,password,
+  database}` defaulting to `dws`/`dws`/`dws_admin`, and primary persistence settings
 
 ## 2. Postgres templates
 
-- [x] 2.1 Write `templates/postgres/secret.yaml` — gated by `postgresql.enabled`; keys
-  `username`, `password`, `database` from `postgresql.auth.*` (skip rendering if
-  `postgresql.auth.existingSecret` is set); also compute and store a `database-url` key holding
-  the full DSN (`postgres://<user>:<password>@<dws.postgres.fullname>.<namespace>.svc.cluster.local:5432/<database>`)
-  so admin can reference it directly
-- [x] 2.2 Write `templates/postgres/statefulset.yaml` — gated by `postgresql.enabled`; single
-  replica; container image from `postgresql.image.*`; env `POSTGRES_USER`/`POSTGRES_PASSWORD`/
-  `POSTGRES_DB` via `secretKeyRef` to the postgres Secret (existing-secret name when set);
-  `volumeClaimTemplates` sized from `postgresql.storage.size`; `serviceName` set to the postgres
-  headless Service name
-- [x] 2.3 Write `templates/postgres/service.yaml` — gated by `postgresql.enabled`; headless
-  (`clusterIP: None`); port 5432; selector from `dws.postgres.selectorLabels`
+- [x] 2.1 Write `templates/postgres/secret.yaml` — gated by `postgresql.enabled`; compute and
+  store a `database-url` key holding the full DSN from `postgresql.auth.*` and the Bitnami
+  subchart primary Service so admin can reference it directly
+- [x] 2.2 Declare the conditional Bitnami `postgresql` dependency in `Chart.yaml`; it owns the
+  single-replica StatefulSet, Services, credentials Secret, image, and persistence configuration
+- [x] 2.3 Configure the subchart for standalone dev/eval use, including `primary.persistence.size`
+  and network policy settings appropriate for kind/dev clusters
 
 ## 3. Admin templates
 
@@ -61,14 +55,15 @@
   `--dry-run=server`)
 - [x] 5.2 Add a new job (`integration`, `needs: verify`) to `.github/workflows/helm.yml`: spin up
   a kind cluster, `helm install` (no `--dry-run`) with `postgresql.enabled=true`, `kubectl rollout
-  status` for both the admin Deployment and the postgres StatefulSet, then `helm test`, failing
+  status` for both the admin Deployment and the Bitnami postgres StatefulSet, then `helm test`, failing
   the job (and therefore the workflow) if the test hook fails
 
 ## 6. Verify
 
 - [x] 6.1 Run `helm lint charts/dws` — expect no errors
-- [x] 6.2 Run `helm template charts/dws` — confirm exactly one admin Deployment/Service and one
-  postgres StatefulSet/Service/Secret render, and confirm admin's rendered `DATABASE_URL`
+- [x] 6.2 Run `helm template charts/dws` — confirm exactly one admin Deployment/Service, the
+  Bitnami postgres StatefulSet/Service/credentials Secret, and the chart-owned DSN Secret render,
+  and confirm admin's rendered `DATABASE_URL`
   `secretKeyRef` points at the postgres Secret's `database-url` key (no admin Secret rendered)
 - [x] 6.3 Run `helm template charts/dws --set admin.enabled=false` — confirm no admin resources
   (including the test hook) render
@@ -79,7 +74,7 @@
 - [x] 6.6 Run `helm template charts/dws --set postgresql.enabled=false --set admin.database.existingSecret=my-db-secret --set admin.database.existingSecretKey=dsn`
   — confirm admin's `DATABASE_URL` references `my-db-secret`/`dsn` and no admin-owned Secret
   renders
-- [ ] 6.7 On a real kind cluster: `helm install` with default values, wait for admin and postgres
-  rollouts, run `helm test`, and confirm it passes with the DB indicator reporting up
-- [x] 6.8 Show the rendered admin Deployment, postgres StatefulSet, and test hook to the user for
+- [x] 6.7 On a real cluster: `helm install` with default values, wait for admin and the Bitnami
+  postgres StatefulSet rollouts, run `helm test`, and confirm it passes with the DB indicator reporting up
+- [x] 6.8 Show the rendered admin Deployment, Bitnami postgres StatefulSet, and test hook to the user for
   Phase 3 sign-off
