@@ -1,19 +1,25 @@
 /**
- * Static mock data mirroring the dws-admin read API shapes, populated to match
- * the Claude Design mockups. Swap these functions for TanStack Query calls
- * against GET /workflows, /instances, etc. when the console goes live — the
- * return shapes intentionally track the documented endpoints.
+ * View models for the console's screens, mirroring the `dws-admin` read API.
+ *
+ * These were the mock fixtures the UI was prototyped against; the data now
+ * comes from the live API through `admin-hooks.ts`, which adapts `dws-admin`'s
+ * DTOs (`admin-types.ts`) into the types declared here. The types stayed put so
+ * every screen and shared component keeps one vocabulary for a workflow, an
+ * instance, and a task.
  */
 
-export type WorkflowStatus =
-	| "DEPLOYED"
-	| "DEPLOYING"
-	| "FAILED"
-	| "DRAINED"
-	| "SUPERSEDED";
-export type DeploymentStatus = "ACTIVE" | "DRAINED";
-export type InstanceStatus = "RUNNING" | "COMPLETED" | "FAILED" | "PENDING";
-export type TaskStatus = "completed" | "running" | "failed" | "pending";
+/**
+ * The status vocabularies below are the ones `dws-admin` actually stores — see
+ * `dws-admin/src/events/controller-events.handler.ts` and
+ * `orchestrator-events.handler.ts`, which write these literals. They are not
+ * the labels the Phase 1–2 mockups used (`DEPLOYED`, `ACTIVE`, `RUNNING`);
+ * those never existed in the read model.
+ */
+export type WorkflowStatus = "created" | "updated";
+export type DeploymentStatus = "applied" | "failed" | "drained" | "collected";
+export type InstanceStatus = "started" | "completed" | "failed";
+/** `pending` covers a backoff gap in an attempt history; the API emits only the other three. */
+export type TaskStatus = "started" | "completed" | "failed" | "pending";
 export type TaskType =
 	| "call"
 	| "run"
@@ -25,25 +31,26 @@ export type TaskType =
 	| "try"
 	| "catch";
 
-/** Maps any status enum to the shared Organic hue class. */
+/**
+ * Maps any status enum to the shared Organic hue class. The fallback matters
+ * beyond the listed members: statuses arrive from the API as bare strings, so
+ * an unrecognized one lands here and renders neutral rather than mis-coloured.
+ */
 export function statusClass(
 	status: WorkflowStatus | DeploymentStatus | InstanceStatus | TaskStatus,
 ): "st-ok" | "st-run" | "st-pend" | "st-fail" | "st-drain" {
 	switch (status) {
-		case "DEPLOYED":
-		case "ACTIVE":
-		case "COMPLETED":
 		case "completed":
+		case "applied":
 			return "st-ok";
-		case "DEPLOYING":
-		case "RUNNING":
-		case "running":
+		case "started":
+		case "created":
+		case "updated":
 			return "st-run";
-		case "FAILED":
 		case "failed":
 			return "st-fail";
-		case "DRAINED":
-		case "SUPERSEDED":
+		case "drained":
+		case "collected":
 			return "st-drain";
 		default:
 			return "st-pend";
@@ -52,6 +59,7 @@ export function statusClass(
 
 // ── Workflows ─────────────────────────────────────────────────────────────
 
+/** One row of the workflow list — a name with its latest version's state. */
 export interface WorkflowRow {
 	name: string;
 	latestVersion: string;
@@ -59,45 +67,7 @@ export interface WorkflowRow {
 	updated: string;
 }
 
-export const workflows: WorkflowRow[] = [
-	{
-		name: "workflow-a",
-		latestVersion: "v3",
-		status: "DEPLOYED",
-		updated: "2h ago",
-	},
-	{
-		name: "workflow-b",
-		latestVersion: "v1",
-		status: "DEPLOYED",
-		updated: "1d ago",
-	},
-	{
-		name: "workflow-c",
-		latestVersion: "v2",
-		status: "DEPLOYING",
-		updated: "3m ago",
-	},
-	{
-		name: "workflow-d",
-		latestVersion: "v5",
-		status: "FAILED",
-		updated: "18m ago",
-	},
-	{
-		name: "workflow-e",
-		latestVersion: "v1",
-		status: "DRAINED",
-		updated: "6d ago",
-	},
-	{
-		name: "workflow-f",
-		latestVersion: "v4",
-		status: "DEPLOYED",
-		updated: "2w ago",
-	},
-];
-
+/** One entry in a workflow's version history. */
 export interface WorkflowVersion {
 	version: string;
 	status: WorkflowStatus;
@@ -105,6 +75,7 @@ export interface WorkflowVersion {
 	note: string;
 }
 
+/** One deployment card: the resources a version is (or was) running on. */
 export interface WorkflowDeployment {
 	version: string;
 	status: DeploymentStatus;
@@ -113,6 +84,7 @@ export interface WorkflowDeployment {
 	drainedAt: string | null;
 }
 
+/** The workflow detail screen — version history and deployments for one name. */
 export interface WorkflowDetail {
 	name: string;
 	status: WorkflowStatus;
@@ -121,56 +93,9 @@ export interface WorkflowDetail {
 	deployments: WorkflowDeployment[];
 }
 
-const workflowDetails: Record<string, WorkflowDetail> = {
-	"workflow-a": {
-		name: "workflow-a",
-		status: "DEPLOYED",
-		latestVersion: "v3",
-		versions: [
-			{
-				version: "v3",
-				status: "DEPLOYED",
-				created: "2026-08-02 14:11 · 2h ago",
-				note: "current",
-			},
-			{
-				version: "v2",
-				status: "SUPERSEDED",
-				created: "2026-07-30 09:24 · 3d ago",
-				note: "drained at 14:11",
-			},
-			{
-				version: "v1",
-				status: "SUPERSEDED",
-				created: "2026-07-26 22:02 · 1w ago",
-				note: "drained at 09:24",
-			},
-		],
-		deployments: [
-			{
-				version: "v3",
-				status: "ACTIVE",
-				orchestrator: "orch-wf-a-v3",
-				stepServices: ["svc-1", "svc-2", "svc-3"],
-				drainedAt: null,
-			},
-			{
-				version: "v2",
-				status: "DRAINED",
-				orchestrator: "orch-wf-a-v2",
-				stepServices: ["svc-1", "svc-2"],
-				drainedAt: "2026-08-02 14:11",
-			},
-		],
-	},
-};
-
-export function getWorkflowDetail(name: string): WorkflowDetail | undefined {
-	return workflowDetails[name];
-}
-
 // ── Instances ─────────────────────────────────────────────────────────────
 
+/** One row of the instance list. */
 export interface InstanceRow {
 	id: string;
 	workflow: string;
@@ -180,57 +105,13 @@ export interface InstanceRow {
 	ended: string | null; // null => in progress / pending
 }
 
-export const instances: InstanceRow[] = [
-	{
-		id: "inst-01h9k…7a2b",
-		workflow: "workflow-a",
-		version: "v3",
-		status: "RUNNING",
-		started: "2m ago",
-		ended: null,
-	},
-	{
-		id: "inst-01h9k…5c81",
-		workflow: "workflow-a",
-		version: "v3",
-		status: "FAILED",
-		started: "1h ago",
-		ended: "57m ago",
-	},
-	{
-		id: "inst-01h9j…d3fe",
-		workflow: "workflow-b",
-		version: "v1",
-		status: "FAILED",
-		started: "3h ago",
-		ended: "3h ago",
-	},
-	{
-		id: "inst-01h9j…9040",
-		workflow: "workflow-a",
-		version: "v3",
-		status: "RUNNING",
-		started: "5h ago",
-		ended: null,
-	},
-	{
-		id: "inst-01h9j…b71c",
-		workflow: "workflow-a",
-		version: "v2",
-		status: "FAILED",
-		started: "8h ago",
-		ended: "8h ago",
-	},
-	{
-		id: "inst-01h9h…62a4",
-		workflow: "workflow-c",
-		version: "v2",
-		status: "FAILED",
-		started: "1d ago",
-		ended: "1d ago",
-	},
-];
-
+/**
+ * One attempt or backoff inside a task's retry history.
+ *
+ * Not populated from the read API: `task_events` records a lifecycle phase per
+ * event, with no attempt or backoff detail. The type is kept because the
+ * timeline renders it when the data exists — see `TaskEvent.attemptHistory`.
+ */
 export interface AttemptEvent {
 	kind: "attempt" | "backoff";
 	label: string;
@@ -239,6 +120,15 @@ export interface AttemptEvent {
 	status: TaskStatus;
 }
 
+/**
+ * One row of the task timeline: a task, not a raw event. The adapter folds a
+ * task's lifecycle events into one of these.
+ *
+ * The optional fields below describe retry and catch behavior that the read API
+ * has no source for, so they are left unset and the row degrades to a
+ * non-expandable one. They stay declared so the timeline needs no change once
+ * `dws-admin` emits richer task events.
+ */
 export interface TaskEvent {
 	name: string;
 	type: TaskType;
@@ -254,6 +144,11 @@ export interface TaskEvent {
 	retryPolicy?: string;
 }
 
+/**
+ * The instance detail screen. `duration`, `taskCount`, `failedCount` and
+ * `retries` have no endpoint of their own — the adapter derives them from the
+ * instance's timestamps and task events, so treat them as presentational.
+ */
 export interface InstanceDetail {
 	id: string;
 	workflow: string;
@@ -269,123 +164,9 @@ export interface InstanceDetail {
 	tasks: TaskEvent[];
 }
 
-const instanceDetails: Record<string, InstanceDetail> = {
-	"inst-01h9k…5c81": {
-		id: "inst-01h9k…5c81",
-		workflow: "workflow-a",
-		version: "v3",
-		orchestrator: "orch-wf-a-v3",
-		status: "FAILED",
-		started: "2026-08-04 09:58:12",
-		ended: "2026-08-04 10:00:59",
-		duration: "2m 47s",
-		taskCount: 5,
-		failedCount: 1,
-		retries: 3,
-		tasks: [
-			{
-				name: "validate-payload",
-				type: "call",
-				status: "completed",
-				statusLabel: "completed",
-				when: "+0.00s",
-				duration: "180ms",
-			},
-			{
-				name: "enrich-order",
-				type: "run",
-				status: "completed",
-				statusLabel: "completed",
-				when: "+0.18s",
-				duration: "2.10s",
-			},
-			{
-				name: "choose-carrier",
-				type: "switch",
-				status: "completed",
-				statusLabel: "completed",
-				when: "+2.28s",
-				duration: "30ms",
-			},
-			{
-				name: "dispatch-shipment",
-				type: "try",
-				status: "failed",
-				statusLabel: "failed — caught",
-				when: "+2.31s",
-				duration: "2m 42s",
-				attempts: 3,
-				retryPolicy: "retry policy: 3× exponential backoff",
-				attemptHistory: [
-					{
-						kind: "attempt",
-						label: "Attempt 1",
-						detail: "carrier-api call — HTTP 504 gateway timeout after 30s",
-						time: "+2.31s → +32.31s",
-						status: "failed",
-					},
-					{
-						kind: "backoff",
-						label: "backoff",
-						detail: "wait 5s",
-						time: "→ +37.31s",
-						status: "pending",
-					},
-					{
-						kind: "attempt",
-						label: "Attempt 2",
-						detail: "carrier-api call — HTTP 500 internal error",
-						time: "+37.31s → +48.02s",
-						status: "failed",
-					},
-					{
-						kind: "backoff",
-						label: "backoff",
-						detail: "wait 10s",
-						time: "→ +58.02s",
-						status: "pending",
-					},
-					{
-						kind: "attempt",
-						label: "Attempt 3",
-						detail:
-							"carrier-api call — HTTP 500 internal error · retries exhausted",
-						time: "+58.02s → +2m 44s",
-						status: "failed",
-					},
-				],
-				caughtBy: "log-and-notify",
-				caughtError:
-					"CarrierUnavailable: dispatch could not be completed after 3 attempts (upstream 5xx).",
-			},
-			{
-				name: "log-and-notify",
-				type: "catch",
-				status: "completed",
-				statusLabel: "completed",
-				when: "+2m 44s",
-				duration: "3.02s",
-				indent: true,
-			},
-			{
-				name: "emit-failure-event",
-				type: "emit",
-				status: "completed",
-				statusLabel: "completed",
-				when: "+2m 47s",
-				duration: "50ms",
-			},
-		],
-	},
-};
-
-export function getInstanceDetail(id: string): InstanceDetail | undefined {
-	return instanceDetails[id];
-}
-
+/** The status filter chips offered on the instance list. */
 export const INSTANCE_STATUSES: InstanceStatus[] = [
-	"RUNNING",
-	"COMPLETED",
-	"FAILED",
-	"PENDING",
+	"started",
+	"completed",
+	"failed",
 ];

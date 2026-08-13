@@ -1,7 +1,11 @@
+import { parseCorsOrigins } from './cors';
+
 export interface AppConfig {
   port: number;
   databaseUrl: string;
   runMigrationsOnBoot: boolean;
+  // Origins allowed to call the read API from a browser. See config/cors.ts.
+  corsOrigins: string[];
   dapr: {
     pubsubName: string;
     topic: string;
@@ -31,6 +35,7 @@ export default function configuration(): AppConfig {
     port: Number(env.PORT ?? 3000),
     databaseUrl: requireEnv(env, 'DATABASE_URL'),
     runMigrationsOnBoot: (env.RUN_MIGRATIONS_ON_BOOT ?? 'true') !== 'false',
+    corsOrigins: parseCorsOrigins(env.CORS_ORIGINS),
     dapr: {
       pubsubName: env.DAPR_PUBSUB_NAME ?? 'pubsub',
       topic: env.DAPR_PUBSUB_TOPIC ?? 'dws.events',

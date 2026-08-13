@@ -46,8 +46,14 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Test
+        run: npm test
+
       # routeTree.gen.ts is generated from src/routes and committed; fail if a
-      # route was added or renamed without regenerating it.
+      # route was added or renamed without regenerating it. Note the committed
+      # file must be `tsr generate`'s output: running the dev server or a build
+      # first lets the TanStack Start vite plugin append a `Register` block that
+      # the CLI does not emit, which shows up here as drift.
       - name: Check generated route tree is up to date
         run: |
           npm run generate-routes

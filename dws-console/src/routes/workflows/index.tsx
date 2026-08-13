@@ -5,18 +5,13 @@ import {
 	useTable,
 } from "@tanstack/react-table";
 import { Search } from "lucide-react";
-import { useState } from "react";
 import { AppLayout } from "#/components/app-layout";
 import { DataTableHead, DataTableRows } from "#/components/data-table";
-import { Skeleton, SkeletonRows } from "#/components/skeleton";
-import {
-	Banner,
-	EmptyState,
-	StateSwitch,
-	type ViewState,
-} from "#/components/states";
+import { SkeletonRows } from "#/components/skeleton";
+import { Banner, EmptyState } from "#/components/states";
 import { WorkflowTag } from "#/components/status";
-import { type WorkflowRow, workflows } from "#/lib/mock-data";
+import { useWorkflows } from "#/lib/admin-hooks";
+import type { WorkflowRow } from "#/lib/mock-data";
 
 export const Route = createFileRoute("/workflows/")({
 	component: WorkflowList,
@@ -49,11 +44,19 @@ const COLS = [44, 20, 22, 14];
 
 function WorkflowList() {
 	const navigate = useNavigate();
-	const [state, setState] = useState<ViewState>("data");
+	const {
+		rows,
+		isPending,
+		isError,
+		refetch,
+		hasNextPage,
+		fetchNextPage,
+		isFetchingNextPage,
+	} = useWorkflows();
 
 	const table = useTable({
 		features,
-		data: workflows,
+		data: rows,
 		columns,
 	});
 
@@ -62,12 +65,9 @@ function WorkflowList() {
 			active="workflows"
 			crumbs={[{ label: "Workflows", heading: true }]}
 			topRight={
-				<>
-					<StateSwitch value={state} onChange={setState} />
-					<span className="muted" style={{ fontSize: 12 }}>
-						cluster: <b style={{ color: "var(--color-text)" }}>prod-eu</b>
-					</span>
-				</>
+				<span className="muted" style={{ fontSize: 12 }}>
+					reading from <b style={{ color: "var(--color-text)" }}>dws-admin</b>
+				</span>
 			}
 		>
 			<div className="pane">
@@ -90,19 +90,23 @@ function WorkflowList() {
 					</label>
 				</div>
 
-				{state === "error" && (
+				{isError && (
 					<Banner
 						action={
-							<button type="button" className="btn-sm">
-								Reset filters
+							<button
+								type="button"
+								className="btn-sm"
+								onClick={() => refetch()}
+							>
+								Retry
 							</button>
 						}
 					>
-						Filter rejected — the request returned <b>400 Bad Request</b>.
+						Could not load workflows from <code>dws-admin</code>.
 					</Banner>
 				)}
 
-				{state === "empty" ? (
+				{!isPending && !isError && rows.length === 0 ? (
 					<div className="tbl-wrap">
 						<EmptyState title="No workflows deployed yet">
 							Deploy a definition with <code>POST /workflows</code> and it will
@@ -113,7 +117,7 @@ function WorkflowList() {
 					<div className="tbl-wrap">
 						<table className="tbl">
 							<DataTableHead table={table} />
-							{state === "loading" ? null : (
+							{isPending ? null : (
 								<DataTableRows
 									table={table}
 									onRowClick={(w) =>
@@ -125,28 +129,30 @@ function WorkflowList() {
 								/>
 							)}
 						</table>
-						{state === "loading" && <SkeletonRows rows={5} cols={COLS} />}
+						{isPending && <SkeletonRows rows={5} cols={COLS} />}
 					</div>
 				)}
 
-				{state === "data" && (
+				{!isPending && !isError && rows.length > 0 && (
 					<div className="pager">
 						<span>
-							Showing {workflows.length} of {workflows.length} ·{" "}
+							Showing {rows.length}{" "}
 							<span className="muted">
-								cursor pagination — API drives “Load more”
+								{hasNextPage
+									? "· more available — cursor pagination"
+									: "· all loaded"}
 							</span>
 						</span>
 						<div className="pager-actions">
-							<button type="button" className="btn-sm" disabled>
-								Load more
+							<button
+								type="button"
+								className="btn-sm"
+								disabled={!hasNextPage || isFetchingNextPage}
+								onClick={() => fetchNextPage()}
+							>
+								{isFetchingNextPage ? "Loading…" : "Load more"}
 							</button>
 						</div>
-					</div>
-				)}
-				{state === "loading" && (
-					<div className="pager">
-						<Skeleton width={180} />
 					</div>
 				)}
 			</div>
