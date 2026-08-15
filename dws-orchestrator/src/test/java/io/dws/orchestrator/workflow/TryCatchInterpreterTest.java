@@ -30,10 +30,14 @@ import io.dws.orchestrator.workflow.activity.DataFlowOutputActivity;
 import io.dws.orchestrator.workflow.activity.DataFlowOutputRequest;
 import io.dws.orchestrator.workflow.activity.DataFlowPipeline;
 import io.dws.orchestrator.workflow.activity.DataFlowResult;
+import io.dws.orchestrator.workflow.activity.EvaluateForActivity;
+import io.dws.orchestrator.workflow.activity.EvaluateForRequest;
 import io.dws.orchestrator.workflow.activity.EvaluateSetActivity;
 import io.dws.orchestrator.workflow.activity.EvaluateSetRequest;
 import io.dws.orchestrator.workflow.activity.EvaluateSwitchActivity;
 import io.dws.orchestrator.workflow.activity.EvaluateSwitchRequest;
+import io.dws.orchestrator.workflow.activity.EvaluateWhileActivity;
+import io.dws.orchestrator.workflow.activity.EvaluateWhileRequest;
 import io.dws.orchestrator.workflow.activity.FlowOutcome;
 import io.dws.orchestrator.workflow.activity.RaiseErrorActivity;
 import io.dws.orchestrator.workflow.activity.RaiseErrorRequest;
@@ -129,6 +133,21 @@ class TryCatchInterpreterTest {
             eq(JsonNode.class)))
         .thenAnswer(
             inv -> completed(RaiseErrorActivity.apply((RaiseErrorRequest) inv.getArgument(1))));
+    when(ctx.callActivity(
+            eq(EvaluateForActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenAnswer(
+            inv -> completed(EvaluateForActivity.apply((EvaluateForRequest) inv.getArgument(1))));
+    when(ctx.callActivity(
+            eq(EvaluateWhileActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(Boolean.class)))
+        .thenAnswer(
+            inv ->
+                completed(EvaluateWhileActivity.apply((EvaluateWhileRequest) inv.getArgument(1))));
     when(ctx.callActivity(
             eq(DataFlowInputActivity.class.getName()),
             any(),
@@ -671,6 +690,57 @@ class TryCatchInterpreterTest {
                 done: '"yes"'
         """
         .formatted(directive);
+  }
+
+  // ---- for -----------------------------------------------------------------
+
+  @Test
+  void raisedErrorInsideForInsideTryIsCaughtLikeAnyOtherFailure() throws Exception {
+    seedYaml(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: try-order-workflow
+          version: '1.0.0'
+        do:
+          - guarded:
+              try:
+                - loop:
+                    for:
+                      each: pet
+                      in: .pets
+                    do:
+                      - explode:
+                          raise:
+                            error:
+                              type: https://example.com/errors/x
+                              status: 402
+                              title: Bad
+                              detail: 'per-element failure'
+              catch:
+                errors:
+                  with:
+                    status: 402
+                do:
+                  - repair:
+                      set:
+                        reason: '$error.detail'
+          - finish:
+              set:
+                done: '"yes"'
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{\"pets\":[1,2,3]}"));
+
+    workflow.execute(ctx);
+
+    ArgumentCaptor<Object> output = ArgumentCaptor.forClass(Object.class);
+    verify(ctx).complete(output.capture());
+    JsonNode completed = (JsonNode) output.getValue();
+    assertThat(completed.get("reason").textValue()).isEqualTo("per-element failure");
+    assertThat(completed.get("done").textValue()).isEqualTo("yes");
   }
 
   /** {@code depth} nested try tasks, generated rather than hand-written. */

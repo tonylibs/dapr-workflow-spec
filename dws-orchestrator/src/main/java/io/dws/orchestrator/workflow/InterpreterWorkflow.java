@@ -340,9 +340,8 @@ public class InterpreterWorkflow implements Workflow {
                   JsonNode.class)
               .thenApply(InterpreterWorkflow::raiseError)
               .await();
-      case ForTask _ ->
-          throw new UnsupportedOperationException(
-              "task '" + name + "' uses for, which is recognised but not yet interpreted");
+      case ForTask forTask ->
+          dispatchFor(ctx, forTask, name, data, context, variables, depth, events, mapper);
       default -> throw new IllegalStateException("task '" + name + "' has an unsupported type");
     };
   }
@@ -427,6 +426,91 @@ public class InterpreterWorkflow implements Workflow {
         return recover(ctx, tryTask, data, context, decision, variables, depth, events, mapper);
       }
     }
+  }
+
+  /**
+   * Runs a for task: evaluate the collection once, then run the body once per element with the
+   * iteration variables bound as scope-local jq variables. When {@code while} is declared it is
+   * re-evaluated at the top of each iteration and stops the loop when false; when absent no
+   * activity crossing happens per iteration.
+   *
+   * <p>Iterations thread data forward — iteration N + 1's input data is iteration N's body output.
+   * Each iteration's body scope is at {@code depth + 1}; iterations themselves are siblings, so the
+   * loop does not consume {@link #MAX_DEPTH}.
+   */
+  private Body dispatchFor(
+      WorkflowContext ctx,
+      ForTask forTask,
+      String name,
+      JsonNode data,
+      JsonNode context,
+      Map<String, JsonNode> variables,
+      int depth,
+      AdminEventBuilder events,
+      ObjectMapper mapper) {
+    FlowOutcome then = FlowOutcome.of(forTask.getThen());
+
+    JsonNode collection =
+        ctx.callActivity(
+                EvaluateForActivity.class.getName(),
+                new EvaluateForRequest(name, data, variables),
+                WorkflowSupport.defaultTaskOptions(),
+                JsonNode.class)
+            .await();
+
+    if (collection == null || collection.isEmpty()) {
+      return new Body(data, context, then, ScopeEnd.FELL_THROUGH);
+    }
+
+    ForTaskConfiguration config = forTask.getFor();
+    String eachName = nameOr(config == null ? null : config.getEach(), "item");
+    String atName = nameOr(config == null ? null : config.getAt(), "index");
+    boolean hasWhile = forTask.getWhile() != null && !forTask.getWhile().isBlank();
+
+    JsonNode iterationData = data;
+    JsonNode iterationContext = context;
+    for (int index = 0; index < collection.size(); index++) {
+      Map<String, JsonNode> scoped = new HashMap<>(variables);
+      scoped.put(eachName, collection.get(index));
+      scoped.put(atName, mapper.getNodeFactory().numberNode(index));
+
+      if (hasWhile) {
+        boolean keepGoing =
+            ctx.callActivity(
+                    EvaluateWhileActivity.class.getName(),
+                    new EvaluateWhileRequest(name, iterationData, scoped),
+                    WorkflowSupport.defaultTaskOptions(),
+                    Boolean.class)
+                .await();
+        if (!keepGoing) {
+          return new Body(iterationData, iterationContext, then, ScopeEnd.FELL_THROUGH);
+        }
+      }
+
+      ScopeResult result =
+          runTaskList(
+              ctx,
+              forTask.getDo(),
+              iterationData,
+              iterationContext,
+              scoped,
+              depth + 1,
+              events,
+              mapper);
+      iterationData = result.data();
+      iterationContext = result.context();
+      if (result.end() == ScopeEnd.END) {
+        return new Body(iterationData, iterationContext, then, ScopeEnd.END);
+      }
+      // ScopeEnd.EXIT completes only this iteration's scope; the loop continues.
+    }
+
+    return new Body(iterationData, iterationContext, then, ScopeEnd.FELL_THROUGH);
+  }
+
+  /** Returns {@code name} when non-blank, otherwise the default. */
+  private static String nameOr(String name, String fallback) {
+    return (name == null || name.isBlank()) ? fallback : name;
   }
 
   /**

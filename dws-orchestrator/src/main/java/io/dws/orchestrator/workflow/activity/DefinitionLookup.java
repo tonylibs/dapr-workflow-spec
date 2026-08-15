@@ -1,6 +1,7 @@
 package io.dws.orchestrator.workflow.activity;
 
 import io.dws.orchestrator.workflow.WorkflowSupport;
+import io.serverlessworkflow.api.types.ForTask;
 import io.serverlessworkflow.api.types.Task;
 import io.serverlessworkflow.api.types.TaskItem;
 import io.serverlessworkflow.api.types.TryTask;
@@ -10,10 +11,11 @@ import java.util.List;
  * Resolves a task by name against the pod's one pinned definition. The in-process activities take a
  * task name rather than the task itself, so their inputs stay small and JSON-serializable.
  *
- * <p>The search descends into a try task's {@code try} and {@code catch.do} lists, so a nested task
- * is resolvable exactly like a top-level one. That is sound because task names are unique across
- * the whole definition — {@code dws-controller} rejects duplicates at compile time, since a {@code
- * call}/{@code run} task's Dapr app-id is derived from its name alone.
+ * <p>The search descends into a try task's {@code try} and {@code catch.do} lists and a for task's
+ * {@code do} list, so a nested task is resolvable exactly like a top-level one. That is sound
+ * because task names are unique across the whole definition — {@code dws-controller} rejects
+ * duplicates at compile time, since a {@code call}/{@code run} task's Dapr app-id is derived from
+ * its name alone.
  */
 final class DefinitionLookup {
 
@@ -36,16 +38,26 @@ final class DefinitionLookup {
       if (item.getName().equals(taskName)) {
         return item.getTask();
       }
-      TryTask tryTask = item.getTask() == null ? null : item.getTask().getTryTask();
-      if (tryTask == null) {
+      Task task = item.getTask();
+      if (task == null) {
         continue;
       }
-      Task nested = search(tryTask.getTry(), taskName);
-      if (nested == null && tryTask.getCatch() != null) {
-        nested = search(tryTask.getCatch().getDo(), taskName);
+      TryTask tryTask = task.getTryTask();
+      if (tryTask != null) {
+        Task nested = search(tryTask.getTry(), taskName);
+        if (nested == null && tryTask.getCatch() != null) {
+          nested = search(tryTask.getCatch().getDo(), taskName);
+        }
+        if (nested != null) {
+          return nested;
+        }
       }
-      if (nested != null) {
-        return nested;
+      ForTask forTask = task.getForTask();
+      if (forTask != null) {
+        Task nested = search(forTask.getDo(), taskName);
+        if (nested != null) {
+          return nested;
+        }
       }
     }
     return null;
