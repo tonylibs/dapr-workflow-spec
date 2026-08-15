@@ -14,8 +14,10 @@ import io.dws.orchestrator.workflow.activity.CatchDecisionActivity;
 import io.dws.orchestrator.workflow.activity.DataFlowInputActivity;
 import io.dws.orchestrator.workflow.activity.DataFlowOutputActivity;
 import io.dws.orchestrator.workflow.activity.EmitEventActivity;
+import io.dws.orchestrator.workflow.activity.EvaluateForActivity;
 import io.dws.orchestrator.workflow.activity.EvaluateSetActivity;
 import io.dws.orchestrator.workflow.activity.EvaluateSwitchActivity;
+import io.dws.orchestrator.workflow.activity.EvaluateWhileActivity;
 import io.dws.orchestrator.workflow.activity.RaiseErrorActivity;
 import io.serverlessworkflow.api.types.Workflow;
 import org.slf4j.Logger;
@@ -89,6 +91,8 @@ public class WorkflowRuntimeBootstrap implements DisposableBean {
     builder.registerActivity(DataFlowOutputActivity.class);
     builder.registerActivity(CatchDecisionActivity.class);
     builder.registerActivity(RaiseErrorActivity.class);
+    builder.registerActivity(EvaluateForActivity.class);
+    builder.registerActivity(EvaluateWhileActivity.class);
 
     this.runtime = builder.build();
     this.runtimeThread =

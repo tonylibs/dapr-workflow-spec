@@ -27,10 +27,14 @@ import io.dws.orchestrator.workflow.activity.DataFlowOutputActivity;
 import io.dws.orchestrator.workflow.activity.DataFlowOutputRequest;
 import io.dws.orchestrator.workflow.activity.DataFlowPipeline;
 import io.dws.orchestrator.workflow.activity.DataFlowResult;
+import io.dws.orchestrator.workflow.activity.EvaluateForActivity;
+import io.dws.orchestrator.workflow.activity.EvaluateForRequest;
 import io.dws.orchestrator.workflow.activity.EvaluateSetActivity;
 import io.dws.orchestrator.workflow.activity.EvaluateSetRequest;
 import io.dws.orchestrator.workflow.activity.EvaluateSwitchActivity;
 import io.dws.orchestrator.workflow.activity.EvaluateSwitchRequest;
+import io.dws.orchestrator.workflow.activity.EvaluateWhileActivity;
+import io.dws.orchestrator.workflow.activity.EvaluateWhileRequest;
 import io.dws.orchestrator.workflow.activity.FlowOutcome;
 import io.dws.orchestrator.workflow.activity.RaiseErrorActivity;
 import io.dws.orchestrator.workflow.activity.RaiseErrorRequest;
@@ -104,7 +108,43 @@ class InterpreterWorkflowIntegrationTest {
             eq(JsonNode.class)))
         .thenAnswer(
             inv -> completed(EvaluateSetActivity.apply((EvaluateSetRequest) inv.getArgument(1))));
+
+    when(ctx.callActivity(
+            eq(EvaluateForActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenAnswer(
+            inv -> completed(EvaluateForActivity.apply((EvaluateForRequest) inv.getArgument(1))));
+    when(ctx.callActivity(
+            eq(EvaluateWhileActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(Boolean.class)))
+        .thenAnswer(
+            inv ->
+                completed(EvaluateWhileActivity.apply((EvaluateWhileRequest) inv.getArgument(1))));
     return adminTask;
+  }
+
+  private void seedInline(String yaml) throws Exception {
+    Workflow definition = WorkflowReader.readWorkflowFromString(yaml, WorkflowFormat.YAML);
+    WorkflowSupport.init(
+        definition,
+        definition.getDocument().getName(),
+        "for-workflow",
+        "for-workflow@v1",
+        new JqEvaluator(mapper),
+        mapper,
+        null,
+        mock(WorkflowTaskOptions.class),
+        "pubsub");
+  }
+
+  private static JsonNode completionOutput(WorkflowContext ctx) {
+    ArgumentCaptor<Object> output = ArgumentCaptor.forClass(Object.class);
+    verify(ctx).complete(output.capture());
+    return (JsonNode) output.getValue();
   }
 
   /** A already-resolved durable task yielding {@code value}. */
@@ -625,5 +665,166 @@ class InterpreterWorkflowIntegrationTest {
             .map(d -> d.get("taskType").asText())
             .toList();
     assertThat(taskTypes).contains("raise");
+  }
+
+  // ---- for -----------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void forIteratesTheBodyOncePerElement() throws Exception {
+    seedInline(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: for-workflow
+          version: '1.0.0'
+        do:
+          - loop:
+              for:
+                each: n
+                in: .items
+              do:
+                - accumulate:
+                    set:
+                      seen: '(.seen // []) + [ $n ]'
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{\"items\":[10,20,30]}"));
+
+    workflow.execute(ctx);
+
+    JsonNode output = completionOutput(ctx);
+    assertThat(output.get("seen")).isEqualTo(mapper.readTree("[10,20,30]"));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void forBindsIndexVariableWithDefaultOrCustomName() throws Exception {
+    seedInline(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: for-workflow
+          version: '1.0.0'
+        do:
+          - loop:
+              for:
+                each: n
+                in: .items
+                at: i
+              do:
+                - accumulate:
+                    set:
+                      idx: '(.idx // []) + [ $i ]'
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class))
+        .thenReturn(mapper.readTree("{\"items\":[\"a\",\"b\",\"c\"]}"));
+
+    workflow.execute(ctx);
+
+    assertThat(completionOutput(ctx).get("idx")).isEqualTo(mapper.readTree("[0,1,2]"));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void forStopsWhenWhileBecomesFalse() throws Exception {
+    seedInline(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: for-workflow
+          version: '1.0.0'
+        do:
+          - loop:
+              for:
+                each: n
+                in: .items
+                at: i
+              while: '$i < 2'
+              do:
+                - accumulate:
+                    set:
+                      seen: '(.seen // []) + [ $n ]'
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{\"items\":[1,2,3,4,5]}"));
+
+    workflow.execute(ctx);
+
+    assertThat(completionOutput(ctx).get("seen")).isEqualTo(mapper.readTree("[1,2]"));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void forOverEmptyCollectionRunsBodyZeroTimesAndPassesDataThrough() throws Exception {
+    seedInline(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: for-workflow
+          version: '1.0.0'
+        do:
+          - loop:
+              for:
+                each: n
+                in: .items
+              do:
+                - accumulate:
+                    set:
+                      seen: '(.seen // []) + [ $n ]'
+          - marker:
+              set:
+                done: '"yes"'
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{\"items\":[]}"));
+
+    workflow.execute(ctx);
+
+    JsonNode output = completionOutput(ctx);
+    assertThat(output.has("seen")).isFalse();
+    assertThat(output.get("done").textValue()).isEqualTo("yes");
+    assertThat(adminEventTypes(ctx))
+        .contains("io.dws.task.started", "io.dws.task.completed", "io.dws.instance.completed");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void nonArrayForInFailsTheTaskAndInstance() throws Exception {
+    seedInline(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: for-workflow
+          version: '1.0.0'
+        do:
+          - loop:
+              for:
+                each: n
+                in: .count
+              do:
+                - noop:
+                    set:
+                      done: '"yes"'
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{\"count\":3}"));
+
+    assertThatThrownBy(() -> workflow.execute(ctx))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("loop");
+    verify(ctx, org.mockito.Mockito.never()).complete(any());
+    assertThat(adminEventTypes(ctx)).contains("io.dws.instance.failed");
   }
 }
