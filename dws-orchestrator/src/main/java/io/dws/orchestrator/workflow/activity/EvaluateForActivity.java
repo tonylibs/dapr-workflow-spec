@@ -6,7 +6,9 @@ import io.dapr.workflows.WorkflowActivityContext;
 import io.dws.orchestrator.expr.JqEvaluator;
 import io.dws.orchestrator.workflow.WorkflowSupport;
 import io.serverlessworkflow.api.types.ForTask;
+import io.serverlessworkflow.api.types.ForTaskConfiguration;
 import io.serverlessworkflow.api.types.Task;
+import java.util.Optional;
 
 /**
  * Evaluates a FOR task's {@code for.in} expression to the collection to iterate. Pure jq evaluation
@@ -29,21 +31,22 @@ public class EvaluateForActivity implements WorkflowActivity {
     if (forTask == null) {
       throw new IllegalStateException("task '" + request.taskName() + "' is not a for task");
     }
-    String expression = forTask.getFor() == null ? null : forTask.getFor().getIn();
-    if (expression == null || expression.isBlank()) {
-      throw new IllegalStateException(
-          "for task '" + request.taskName() + "' declares no in expression");
-    }
+
+    String expression =
+        Optional.ofNullable(forTask.getFor())
+            .map(ForTaskConfiguration::getIn)
+            .orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "task '" + request.taskName() + "' has no for.in expression"));
+
     JqEvaluator jq = WorkflowSupport.jq();
-    JsonNode result =
-        jq.evaluate(expression, request.data(), EvaluateSetActivity.scope(request.variables()));
-    if (result == null || !result.isArray()) {
-      throw new IllegalStateException(
-          "for task '"
-              + request.taskName()
-              + "' expected in to evaluate to an array, got: "
-              + (result == null ? "null" : result.getNodeType()));
-    }
-    return result;
+    return Optional.ofNullable(
+            jq.evaluate(expression, request.data(), EvaluateSetActivity.scope(request.variables())))
+        .filter(JsonNode::isArray)
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    "for task '" + request.taskName() + "' expected in to evaluate to an array"));
   }
 }
