@@ -44,7 +44,7 @@ Version identity is `<workflow>@v<sha256-8>` of the canonicalized definition. Th
 
 ## Interpreter conventions
 
-Each orchestrator pod loads one definition once at startup from the Dapr Configuration API, using a required immutable `DEFINITION_KEY`; it does not subscribe to definition updates. `InterpreterWorkflow` runs each task list as a scope with its own program counter, so flow targets resolve only within that scope. It supports `call`, `run`, `switch`, `set`, `wait`, `listen`, `emit`, and `try`. Every supported task dispatches through a durable mechanism: `call` and `run` invoke a step-service activity, `switch` and `set` invoke local replay-safe evaluation activities, `wait` and `listen` use workflow timer/event primitives, and `emit` invokes its pub/sub activity. `for` remains recognized but unsupported; `fork`, `raise`, and general nested `do` are not implemented. See `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/InterpreterWorkflow.java` and [OWS DSL feature roadmap](roadmap.md).
+Each orchestrator pod loads one definition once at startup from the Dapr Configuration API, using a required immutable `DEFINITION_KEY`; it does not subscribe to definition updates. `InterpreterWorkflow` runs each task list as a scope with its own program counter, so flow targets resolve only within that scope. It supports `call`, `run`, `switch`, `set`, `wait`, `listen`, `emit`, `for`, `try`, and `raise`. Every supported task dispatches through a durable mechanism: `call` and `run` invoke a step-service activity; `switch`, `set`, and `for.in`/`for.while` evaluation use local replay-safe activities; `wait` and `listen` use workflow timer/event primitives; and `emit` invokes its pub/sub activity. `fork` and general nested `do` are not implemented. See `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/InterpreterWorkflow.java` and [OWS DSL feature roadmap](roadmap.md).
 
 Task names are the common deployment/runtime adapter:
 
@@ -53,6 +53,10 @@ Task names are the common deployment/runtime adapter:
 - `listen` task `approval` waits for external event `approval`.
 
 The schema-required `with.endpoint` on a call task is not used for routing. Changing task naming therefore affects both controller-created Knative service names and orchestrator invocation targets. The controller recursively compiles deployable `call`/`run` tasks, and `emit`/`listen` bindings, in a `try` body and `catch.do`; nested tasks therefore receive the same resources as top-level tasks.
+
+### For iteration
+
+A `for` task evaluates `for.in` once through a replay-safe activity and requires its result to be a JSON array; a non-array result fails the named task. It runs `for.do` sequentially for each array element, passing each body's output data to the next iteration. `for.each` and `for.at` bind the current element and zero-based index as scope-local jq variables (defaulting to `item` and `index`), so they are visible in that iteration's body and optional `while` expression but do not escape the loop. `while` is re-evaluated before each body and stops iteration when jq evaluates it as falsy. An empty array leaves input data unchanged; `exit` finishes only the current body iteration, while `end` ends the instance. Tasks inside `for.do` are resolved from the pinned definition and report lifecycle events normally; a failure can therefore be handled by an enclosing `try` as described below. `for` itself creates no additional controller resource. This implemented control-flow capability is tracked in the [OWS DSL feature roadmap](roadmap.md).
 
 ### Try, catch, and retry
 
