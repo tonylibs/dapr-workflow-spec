@@ -33,6 +33,18 @@ public final class WorkflowErrors {
   private static final String DATA_FLOW_MARKER = "data flow failed:";
 
   /**
+   * Markers a migrated step's activity worker folds into its failure message (full form {@code step
+   * '<task>' upstream failure: <detail>} / {@code step '<task>' config failure: <detail>}). Only
+   * the message crosses the activity boundary, so this is the sole surviving signal of which kind
+   * of fault occurred. {@code upstream} is the retryable transport/upstream fault — the
+   * activity-path equivalent of the HTTP path's {@code 502}; {@code config} is a non-retryable
+   * configuration or shaping fault and classifies as a runtime error.
+   */
+  private static final String UPSTREAM_MARKER = "upstream failure:";
+
+  private static final String CONFIG_MARKER = "config failure:";
+
+  /**
    * Prefix {@link RaisedErrorException} folds its resolved error object's JSON behind. Matched as a
    * <em>prefix</em>, not a substring, so an error whose {@code detail} happens to quote another
    * failure's text is still recognised as raised rather than reclassified from its own payload.
@@ -47,7 +59,15 @@ public final class WorkflowErrors {
     if (message.contains(DATA_FLOW_MARKER)) {
       return ErrorKind.VALIDATION;
     }
-    if (message.startsWith(STEP_MARKER)) {
+    // A config-failure activity message also opens with `step '…'`, so it must be caught before the
+    // STEP_MARKER check below, which would otherwise classify it as a communication error.
+    if (message.contains(CONFIG_MARKER)) {
+      return ErrorKind.RUNTIME;
+    }
+    if (message.startsWith(STEP_MARKER) || message.contains(UPSTREAM_MARKER)) {
+      // Both the HTTP `step '<name>' failed with status NNN` shape and the activity-path
+      // `step '<name>' upstream failure: …` shape are communication faults; statusOf recovers the
+      // NNN for the former and falls back to the 502 default for the latter.
       return ErrorKind.COMMUNICATION;
     }
     return ErrorKind.RUNTIME;

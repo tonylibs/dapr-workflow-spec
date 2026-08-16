@@ -20,7 +20,6 @@ import io.dws.orchestrator.error.StepInvocationException;
 import io.dws.orchestrator.expr.JqEvaluator;
 import io.dws.orchestrator.workflow.activity.AdminEventActivity;
 import io.dws.orchestrator.workflow.activity.AdminEventRequest;
-import io.dws.orchestrator.workflow.activity.CallServiceActivity;
 import io.dws.orchestrator.workflow.activity.CatchDecisionActivity;
 import io.dws.orchestrator.workflow.activity.CatchDecisionRequest;
 import io.dws.orchestrator.workflow.activity.CatchPolicy;
@@ -41,6 +40,7 @@ import io.dws.orchestrator.workflow.activity.EvaluateWhileRequest;
 import io.dws.orchestrator.workflow.activity.FlowOutcome;
 import io.dws.orchestrator.workflow.activity.RaiseErrorActivity;
 import io.dws.orchestrator.workflow.activity.RaiseErrorRequest;
+import io.dws.orchestrator.workflow.activity.StepActivity;
 import io.serverlessworkflow.api.WorkflowFormat;
 import io.serverlessworkflow.api.WorkflowReader;
 import io.serverlessworkflow.api.types.Workflow;
@@ -167,13 +167,10 @@ class TryCatchInterpreterTest {
                     DataFlowPipeline.applyOutput((DataFlowOutputRequest) inv.getArgument(1))));
   }
 
-  /** The step service always fails with {@code status}. */
+  /** The step activity always fails with {@code status}. */
   private void stubCallAlwaysFailing(WorkflowContext ctx, String appId, int status) {
     when(ctx.callActivity(
-            eq(CallServiceActivity.class.getName()),
-            any(),
-            any(WorkflowTaskOptions.class),
-            eq(JsonNode.class)))
+            eq(StepActivity.NAME), any(), any(WorkflowTaskOptions.class), eq(JsonNode.class)))
         .thenThrow(new StepInvocationException(appId, status, "upstream down", null));
   }
 
@@ -230,10 +227,7 @@ class TryCatchInterpreterTest {
     verify(ctx, times(2)).createTimer(any(Duration.class));
     verify(ctx, times(3))
         .callActivity(
-            eq(CallServiceActivity.class.getName()),
-            any(),
-            any(WorkflowTaskOptions.class),
-            eq(JsonNode.class));
+            eq(StepActivity.NAME), any(), any(WorkflowTaskOptions.class), eq(JsonNode.class));
 
     JsonNode output = completionOutput(ctx);
     assertThat(output.get("recovered").textValue()).isEqualTo("yes");
@@ -294,10 +288,7 @@ class TryCatchInterpreterTest {
     stubContext(ctx);
     Task<JsonNode> success = completed(mapper.readTree("{\"order\":1}"));
     when(ctx.callActivity(
-            eq(CallServiceActivity.class.getName()),
-            any(),
-            any(WorkflowTaskOptions.class),
-            eq(JsonNode.class)))
+            eq(StepActivity.NAME), any(), any(WorkflowTaskOptions.class), eq(JsonNode.class)))
         .thenReturn(success);
 
     workflow.execute(ctx);

@@ -1,0 +1,13 @@
+document:
+  dsl: 1.0.0
+  namespace: examples
+  name: openapi-workflow
+  version: '1.0.0'
+do:
+  - lookupPrice:
+      call: openapi
+      with:
+        document:
+          endpoint: http://catalog-service/openapi.json
+        operationId: getPrice
+      then: end

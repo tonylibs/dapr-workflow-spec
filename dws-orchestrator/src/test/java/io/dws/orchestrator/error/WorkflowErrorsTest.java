@@ -37,6 +37,35 @@ class WorkflowErrorsTest {
   }
 
   @Test
+  void activityUpstreamFailureIsACommunicationErrorLikeThe502HttpPath() {
+    // The activity worker's upstream marker and the HTTP path's 502 are the same fault, so a catch
+    // clause must see identical type/status/title regardless of which path produced the failure.
+    String activity = "step 'fetch-order' upstream failure: connection reset";
+    String http = "step 'fetch-order' failed with status 502: bad gateway";
+
+    assertThat(WorkflowErrors.classify(activity)).isEqualTo(ErrorKind.COMMUNICATION);
+    assertThat(WorkflowErrors.statusOf(activity, ErrorKind.COMMUNICATION)).isEqualTo(502);
+
+    JsonNode fromActivity = WorkflowErrors.of(activity, "fetchOrder", mapper);
+    JsonNode fromHttp = WorkflowErrors.of(http, "fetchOrder", mapper);
+    assertThat(fromActivity.get("type")).isEqualTo(fromHttp.get("type"));
+    assertThat(fromActivity.get("status")).isEqualTo(fromHttp.get("status"));
+    assertThat(fromActivity.get("title")).isEqualTo(fromHttp.get("title"));
+  }
+
+  @Test
+  void activityConfigFailureIsARuntimeError() {
+    // A config/shaping fault is non-retryable and classifies distinctly from a communication error,
+    // even though its message opens with the same `step '<name>'` prefix.
+    String message = "step 'fetch-order' config failure: missing COMMAND";
+
+    assertThat(WorkflowErrors.classify(message)).isEqualTo(ErrorKind.RUNTIME);
+    assertThat(WorkflowErrors.statusOf(message, ErrorKind.RUNTIME)).isEqualTo(500);
+    assertThat(WorkflowErrors.of(message, "fetchOrder", mapper).get("title").textValue())
+        .isEqualTo("Runtime error");
+  }
+
+  @Test
   void stepFailureWithoutARecoverableStatusDefaultsTo502() {
     String message =
         new StepInvocationException("fetch-order", 0, "connection reset", null).getMessage();

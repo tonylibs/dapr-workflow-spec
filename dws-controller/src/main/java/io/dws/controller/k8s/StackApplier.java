@@ -74,6 +74,9 @@ public class StackApplier {
       for (GenericKubernetesResource service : synthesizer.knativeServices(plan, namespace)) {
         applyDynamic(ResourceContexts.KNATIVE_SERVICE, service);
       }
+      for (GenericKubernetesResource policy : synthesizer.workflowAccessPolicies(plan, namespace)) {
+        applyDynamic(ResourceContexts.WORKFLOW_ACCESS_POLICY, policy);
+      }
       client
           .resource(synthesizer.orchestratorDeployment(plan, namespace))
           .inNamespace(namespace)
@@ -186,6 +189,7 @@ public class StackApplier {
     client.configMaps().inNamespace(namespace).withLabels(selector).delete();
     client.apps().deployments().inNamespace(namespace).withLabels(selector).delete();
     deleteDynamic(ResourceContexts.KNATIVE_SERVICE, selector);
+    deleteDynamic(ResourceContexts.WORKFLOW_ACCESS_POLICY, selector);
     deleteDynamic(ResourceContexts.DAPR_COMPONENT, selector);
   }
 
