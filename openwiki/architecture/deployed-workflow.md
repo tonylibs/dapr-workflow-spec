@@ -23,7 +23,7 @@ sequenceDiagram
   Controller->>Cluster: publish controller lifecycle events
   Orchestrator->>Cluster: load definition at startup
   Client->>Orchestrator: start workflow instance
-  Orchestrator->>Step: call task via Dapr service invocation
+  Orchestrator->>Step: invoke task through Dapr activity or service invocation
   Orchestrator->>Cluster: publish instance and task events
 ```
 
@@ -44,15 +44,16 @@ Version identity is `<workflow>@v<sha256-8>` of the canonicalized definition. Th
 
 ## Interpreter conventions
 
-Each orchestrator pod loads one definition once at startup from the Dapr Configuration API, using a required immutable `DEFINITION_KEY`; it does not subscribe to definition updates. `InterpreterWorkflow` runs each task list as a scope with its own program counter, so flow targets resolve only within that scope. It supports `call`, `run`, `switch`, `set`, `wait`, `listen`, `emit`, `for`, `try`, and `raise`. Every supported task dispatches through a durable mechanism: `call` and `run` invoke a step-service activity; `switch`, `set`, and `for.in`/`for.while` evaluation use local replay-safe activities; `wait` and `listen` use workflow timer/event primitives; and `emit` invokes its pub/sub activity. `fork` and general nested `do` are not implemented. See `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/InterpreterWorkflow.java` and [OWS DSL feature roadmap](roadmap.md).
+Each orchestrator pod loads one definition once at startup from the Dapr Configuration API, using a required immutable `DEFINITION_KEY`; it does not subscribe to definition updates. `InterpreterWorkflow` runs each task list as a scope with its own program counter, so flow targets resolve only within that scope. It supports `call`, `run`, `switch`, `set`, `wait`, `listen`, `emit`, `for`, `try`, and `raise`. Every supported task dispatches through a durable mechanism: `call: http`, `run: shell`, and `run: script` schedule the remote Dapr Workflow activity named `Run` against the task's step-runner app ID; `call: openapi` retains the local activity that uses Dapr service invocation; `switch`, `set`, and `for.in`/`for.while` evaluation use local replay-safe activities; `wait` and `listen` use workflow timer/event primitives; and `emit` invokes its pub/sub activity. `fork` and general nested `do` are not implemented. See `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/InterpreterWorkflow.java` and [OWS DSL feature roadmap](roadmap.md).
 
 Task names are the common deployment/runtime adapter:
 
-- `call` task `checkInventory` invokes Dapr app ID `check-inventory` at `POST /run`.
+- `call: http` task `checkInventory` schedules activity `Run` against Dapr app ID `check-inventory`, passing the current workflow JSON unchanged; an empty activity result preserves that document.
+- `call: openapi` task `getCatalog` invokes Dapr app ID `get-catalog` at `POST /run`; that is the remaining service-invocation path because its Node step image is not a multi-app activity worker.
 - `emit` task `orderPlaced` publishes current workflow data to topic `order-placed`.
 - `listen` task `approval` waits for external event `approval`.
 
-The schema-required `with.endpoint` on a call task is not used for routing. Changing task naming therefore affects both controller-created Knative service names and orchestrator invocation targets. The controller recursively compiles deployable `call`/`run` tasks, and `emit`/`listen` bindings, in a `try` body and `catch.do`; nested tasks therefore receive the same resources as top-level tasks.
+The schema-required `with.endpoint` on a call task is not used for routing. Changing task naming therefore affects both controller-created Knative service names and orchestrator invocation targets: remote activity dispatch and the retained OpenAPI HTTP path both derive the Dapr app ID from the kebab-cased task name. The controller recursively compiles deployable `call`/`run` tasks, and `emit`/`listen` bindings, in a `try` body and `catch.do`; nested tasks therefore receive the same resources as top-level tasks.
 
 ### For iteration
 
