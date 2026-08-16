@@ -9,9 +9,12 @@
 import type {
 	DeploymentDto,
 	InstanceDetailDto,
+	InstanceStatusDeltaDto,
+	InstanceStatusEventDto,
 	InstanceSummaryDto,
 	Page,
 	TaskEventDto,
+	TaskEventStreamDto,
 	WorkflowSummaryDto,
 	WorkflowVersionDto,
 } from "./admin-types";
@@ -158,4 +161,85 @@ export function fetchInstanceTasks(
 		{ limit, cursor },
 		signal,
 	);
+}
+
+// ── Live streams (SSE) ────────────────────────────────────────────────────
+
+/**
+ * A live subscription's handle. `close()` is idempotent and must be called on
+ * unmount — an `EventSource` left open keeps reconnecting forever.
+ */
+export interface LiveSubscription {
+	close(): void;
+}
+
+/** Callbacks shared by both streams. `onOpen` fires on first connect *and* on every reconnect. */
+interface LiveHandlers {
+	onOpen?: () => void;
+	/** A transport error. `EventSource` retries on its own, so this is a notice, not a failure. */
+	onError?: () => void;
+}
+
+/**
+ * `EventSource` exists only in the browser. The console server-renders, so a
+ * subscription helper called outside an effect would throw during SSR; this
+ * returns an inert handle instead of blowing up the render.
+ */
+const NO_SUBSCRIPTION: LiveSubscription = { close: () => {} };
+
+function openStream(
+	path: string,
+	handlers: LiveHandlers,
+	listeners: Record<string, (payload: unknown) => void>,
+): LiveSubscription {
+	if (typeof EventSource === "undefined") return NO_SUBSCRIPTION;
+
+	const source = new EventSource(adminUrl(path));
+	if (handlers.onOpen) source.addEventListener("open", handlers.onOpen);
+	if (handlers.onError) source.addEventListener("error", handlers.onError);
+
+	for (const [name, handle] of Object.entries(listeners)) {
+		source.addEventListener(name, (event) => {
+			// A malformed frame must not take the whole subscription down; the
+			// next well-formed one still arrives.
+			try {
+				handle(JSON.parse((event as MessageEvent<string>).data));
+			} catch {
+				handlers.onError?.();
+			}
+		});
+	}
+
+	return { close: () => source.close() };
+}
+
+/**
+ * `GET /instances/:id/events` — status changes and task events for one
+ * instance. dws-admin ends this stream once the instance reaches a terminal
+ * status; the caller must `close()` on seeing that status, because a browser
+ * treats a server-ended stream as a disconnect and would otherwise reconnect
+ * to it indefinitely.
+ */
+export function subscribeToInstance(
+	id: string,
+	handlers: LiveHandlers & {
+		onInstance: (event: InstanceStatusEventDto) => void;
+		onTask: (event: TaskEventStreamDto) => void;
+	},
+): LiveSubscription {
+	return openStream(`/instances/${encodeURIComponent(id)}/events`, handlers, {
+		instance: (payload) => handlers.onInstance(payload as InstanceStatusEventDto),
+		task: (payload) => handlers.onTask(payload as TaskEventStreamDto),
+	});
+}
+
+/** `GET /instances/events` — status deltas across every instance. Never ends on its own. */
+export function subscribeToInstanceStatuses(
+	handlers: LiveHandlers & {
+		onStatus: (delta: InstanceStatusDeltaDto) => void;
+	},
+): LiveSubscription {
+	return openStream("/instances/events", handlers, {
+		instance: (payload) => handlers.onStatus(payload as InstanceStatusDeltaDto),
+	});
 }

@@ -65,3 +65,31 @@ export interface TaskEventDto {
 	timestamp: string;
 	error: string | null;
 }
+
+/**
+ * An `instance` message on `GET /instances/:id/events`. Carries only what a
+ * status change can move — an instance's workflow, version and appId are fixed
+ * for its lifetime, so the stream does not repeat them.
+ */
+export interface InstanceStatusEventDto {
+	instanceId: string;
+	status: string;
+	startedAt: string | null;
+	endedAt: string | null;
+}
+
+/** A `task` message on `GET /instances/:id/events` — one task event, plus the instance it belongs to. */
+export interface TaskEventStreamDto extends TaskEventDto {
+	instanceId: string;
+}
+
+/**
+ * A message on the fleet-wide `GET /instances/events`. Deliberately narrower
+ * than `InstanceStatusEventDto`: the list only patches a loaded row's status
+ * and end time.
+ */
+export interface InstanceStatusDeltaDto {
+	instanceId: string;
+	status: string;
+	endedAt: string | null;
+}

@@ -10,7 +10,11 @@ import { DataTableHead, DataTableRows } from "#/components/data-table";
 import { SkeletonRows } from "#/components/skeleton";
 import { Banner, EmptyState } from "#/components/states";
 import { InstanceStatusBadge } from "#/components/status";
-import { useInstances, useWorkflowNames } from "#/lib/admin-hooks";
+import {
+	useInstanceListLiveUpdates,
+	useInstances,
+	useWorkflowNames,
+} from "#/lib/admin-hooks";
 import {
 	INSTANCE_STATUSES,
 	type InstanceRow,
@@ -64,6 +68,11 @@ function InstanceList() {
 
 	// `GET /instances` takes one status, so the chips are a single choice
 	// rather than the multi-select the mock allowed.
+	const filters = {
+		workflow: workflow ?? undefined,
+		status: status ?? undefined,
+	};
+
 	const {
 		rows,
 		isPending,
@@ -73,10 +82,11 @@ function InstanceList() {
 		hasNextPage,
 		fetchNextPage,
 		isFetchingNextPage,
-	} = useInstances({
-		workflow: workflow ?? undefined,
-		status: status ?? undefined,
-	});
+	} = useInstances(filters);
+
+	// Patches the status of rows already loaded as instances finish. Rows the
+	// operator has not paged to are left alone — see `applyStatusDelta`.
+	useInstanceListLiveUpdates(filters);
 
 	// Every workflow name, not just the first page — otherwise the filter
 	// silently cannot reach workflows past page 1.

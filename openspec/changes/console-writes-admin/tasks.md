@@ -16,21 +16,21 @@
 
 ## 3. dws-console: client and hooks
 
-- [ ] 3.1 Add an `EventSource`-based subscription helper to `lib/admin-client.ts` (base-URL-aware, matching the existing `adminUrl(path)` builder), exposing per-instance and fleet-wide subscribe functions with cleanup (`close()`).
-- [ ] 3.2 Add a hook in `lib/admin-hooks.ts` that layers the per-instance SSE subscription on top of `useInstanceDetail`, patching `queryClient.setQueryData(["instance", id], ...)` on each pushed event, only subscribing while cached status is `started`, and unsubscribing on unmount or on reaching a terminal status.
-- [ ] 3.3 Add a hook that layers the fleet-wide SSE subscription on top of the instance list's infinite query, patching matching loaded rows' `status`/`endedAt` via `setQueryData` on the list's query key, ignoring deltas for instances not present in any loaded page.
-- [ ] 3.4 On each hook's subscribe (initial connect and on `EventSource` `open` after a reconnect), trigger a `GET`-based refetch of the corresponding query to resync before/alongside live deltas.
-- [ ] 3.5 On subscription error, leave the last-fetched query data rendered and do not surface a route-level error — the existing "Refresh" control must remain usable.
-- [ ] 3.6 Update `lib/admin-adapters.ts`/`lib/admin-types.ts` only if the pushed payload shapes need a distinct type from the existing `InstanceDetailDto`/`TaskEventDto` (reuse those types if the shapes already match).
+- [x] 3.1 Add an `EventSource`-based subscription helper to `lib/admin-client.ts` (base-URL-aware, matching the existing `adminUrl(path)` builder), exposing per-instance and fleet-wide subscribe functions with cleanup (`close()`).
+- [x] 3.2 Add a hook in `lib/admin-hooks.ts` that layers the per-instance SSE subscription on top of `useInstanceDetail`, patching `queryClient.setQueryData(["instance", id], ...)` on each pushed event, only subscribing while cached status is `started`, and unsubscribing on unmount or on reaching a terminal status.
+- [x] 3.3 Add a hook that layers the fleet-wide SSE subscription on top of the instance list's infinite query, patching matching loaded rows' `status`/`endedAt` via `setQueryData` on the list's query key, ignoring deltas for instances not present in any loaded page.
+- [x] 3.4 On each hook's subscribe (initial connect and on `EventSource` `open` after a reconnect), trigger a `GET`-based refetch of the corresponding query to resync before/alongside live deltas.
+- [x] 3.5 On subscription error, leave the last-fetched query data rendered and do not surface a route-level error — the existing "Refresh" control must remain usable.
+- [x] 3.6 Update `lib/admin-adapters.ts`/`lib/admin-types.ts` only if the pushed payload shapes need a distinct type from the existing `InstanceDetailDto`/`TaskEventDto` (reuse those types if the shapes already match).
 
 ## 4. dws-console: route wiring
 
-- [ ] 4.1 Wire `routes/instances/$id.tsx` to the per-instance live hook, gated on the instance's current status being `started`; verify the task timeline and header update without the manual "Refresh" click once a task event or terminal status is pushed.
-- [ ] 4.2 Wire `routes/instances/index.tsx` to the fleet-wide live hook; verify a loaded row's status badge and ended column update in place, without disturbing "Load more"/scroll state.
-- [ ] 4.3 Unit/component test coverage for both hooks' cache-patch logic (e.g. via `admin-hooks`-level tests, following existing `admin-adapters.test.ts` conventions) covering: matching-id patch, non-matching-id no-op, terminal-status unsubscribe, reconnect-triggers-refetch.
-- [ ] 4.4 Manually verify in the running app (`pnpm dev` against a local `dws-admin` + Dapr sidecar setup): open an instance detail page for a running instance, trigger a task event, observe the live update; let it reach a terminal status and observe the stream stop; open the list page and observe a running row update in place.
-- [ ] 4.5 Run `pnpm lint && pnpm test && pnpm build` in `dws-console/`.
+- [x] 4.1 Wire `routes/instances/$id.tsx` to the per-instance live hook, gated on the instance's current status being `started`; verify the task timeline and header update without the manual "Refresh" click once a task event or terminal status is pushed.
+- [x] 4.2 Wire `routes/instances/index.tsx` to the fleet-wide live hook; verify a loaded row's status badge and ended column update in place, without disturbing "Load more"/scroll state.
+- [x] 4.3 Unit/component test coverage for both hooks' cache-patch logic (e.g. via `admin-hooks`-level tests, following existing `admin-adapters.test.ts` conventions) covering: matching-id patch, non-matching-id no-op, terminal-status unsubscribe, reconnect-triggers-refetch.
+- [~] 4.4 Manually verify in the running app — **partially done; blocked on environment**. No Docker daemon and no `dapr` CLI are available here, and `dws-admin` cannot finish booting without a sidecar (`DaprLoader` awaits it before `app.listen`), so the browser walkthrough could not be run. Verified instead over real HTTP, against a locally-built `dws-admin` booted with its read-side modules only: route precedence (`/instances/events` maps *before* `/instances/:id` — confirmed in the Nest route table), `text/event-stream` + CORS headers, a `task` frame then an `instance` frame with the documented payload shapes, the server closing the per-instance stream after the terminal status (curl exit 0), the fleet stream's narrower delta shape, and `404` for an unknown id with no stream opened. Still needs a browser+sidecar pass before release.
+- [x] 4.5 Run `pnpm lint && pnpm test && pnpm build` in `dws-console/`.
 
 ## 5. Docs
 
-- [ ] 5.1 Update `docs/roadmaps/dws-console.md`: mark Phase 3 done in the phase table and mermaid graph, and update §1's endpoint table and §6's progress snapshot to reflect the new push endpoints and live-wired routes.
+- [x] 5.1 Update `docs/roadmaps/dws-console.md`: mark Phase 3 done in the phase table and mermaid graph, and update §1's endpoint table and §6's progress snapshot to reflect the new push endpoints and live-wired routes.
