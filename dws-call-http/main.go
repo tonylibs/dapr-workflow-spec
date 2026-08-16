@@ -1,19 +1,28 @@
 // Command dws-call-http is the generic, prebuilt step image for `call: http`
 // tasks in the DWS platform. A single image serves every HTTP call step;
 // behavior is defined entirely by environment configuration. It runs as a
-// Knative service with a Dapr sidecar and is invoked by dws-orchestrator via
-// Dapr service invocation.
+// Knative service with a Dapr sidecar and is dispatched by dws-orchestrator as
+// a multi-app Dapr Workflow activity named "Run" targeting this app-id. A
+// minimal GET /healthz endpoint is served alongside the worker for Knative
+// readiness.
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
+	"github.com/dapr/durabletask-go/workflow"
+	daprc "github.com/dapr/go-sdk/client"
+
+	"github.com/dws/dws-call-http/internal/activity"
 	"github.com/dws/dws-call-http/internal/config"
 	"github.com/dws/dws-call-http/internal/runner"
-	"github.com/dws/dws-call-http/internal/server"
 )
 
 const (
@@ -29,11 +38,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	srv := server.New(cfg, runner.New(cfg), log)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	addr := ":" + cfg.Port
-	log.Info("starting dws-call-http",
-		"addr", addr,
+	// Register the canonical "Run" activity wrapping the step runner and start
+	// the Dapr Workflow worker. StartWorker connects the work-item stream, then
+	// processes dispatched activities on a background goroutine.
+	wfClient, err := daprc.NewWorkflowClient()
+	if err != nil {
+		log.Error("create workflow client", "err", err)
+		os.Exit(1)
+	}
+
+	registry := workflow.NewRegistry()
+	if err := registry.AddActivityN(activity.Name, activity.Handler(runner.New(cfg), cfg.Task)); err != nil {
+		log.Error("register activity", "activity", activity.Name, "err", err)
+		os.Exit(1)
+	}
+
+	log.Info("starting dws-call-http activity worker",
+		"activity", activity.Name,
 		"task", cfg.Task,
 		"method", cfg.Method,
 		"endpoint", cfg.Endpoint,
@@ -42,14 +66,41 @@ func main() {
 		"timeout", cfg.Timeout.String(),
 	)
 
-	httpServer := &http.Server{
-		Addr:              addr,
-		Handler:           srv.Handler(),
-		ReadHeaderTimeout: readHeaderTimeout,
-	}
-
-	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Error("server terminated", "err", err)
+	if err := wfClient.StartWorker(ctx, registry); err != nil {
+		log.Error("start workflow worker", "err", err)
 		os.Exit(1)
 	}
+
+	// Serve GET /healthz for Knative readiness alongside the worker.
+	healthSrv := &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           healthHandler(cfg.Task),
+		ReadHeaderTimeout: readHeaderTimeout,
+	}
+	go func() {
+		if err := healthSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error("health server terminated", "err", err)
+			stop()
+		}
+	}()
+
+	<-ctx.Done()
+	log.Info("shutting down dws-call-http")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), readHeaderTimeout)
+	defer cancel()
+	if err := healthSrv.Shutdown(shutdownCtx); err != nil {
+		log.Warn("health server shutdown", "err", err)
+	}
+}
+
+// healthHandler serves the minimal readiness endpoint the Knative Service polls.
+func healthHandler(task string) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "task": task})
+	})
+	return mux
 }
