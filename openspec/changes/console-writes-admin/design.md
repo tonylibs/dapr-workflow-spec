@@ -81,16 +81,31 @@ therefore ordinary `@Controller('instances')` routes on the existing app, deploy
 exactly like `GET /instances/:id` today (same CORS config, same ingress path, no new k8s Service
 or port to open).
 
-**D3 — In-process fan-out via `EventEmitter2`, triggered from the existing upsert functions.**
+**D3 — In-process fan-out via a plain RxJS `Subject`, fed from the existing upsert functions.**
 `upsertWorkflowInstance` and `insertTaskEvent` (`upserts.ts`) are the single choke point every
-status change already passes through, regardless of which CloudEvent type produced it. Emitting a
-domain event (`instance.updated`, `task.recorded`) right after each successful write:
+status change already passes through, regardless of which CloudEvent type produced it. Publishing
+a domain event from each successful write:
 - Needs no polling of Postgres for changes.
-- Keeps the SSE controller thin: it holds no state, just filters the event bus by `instanceId` for
-  the per-instance stream and passes everything through for the fleet-wide stream.
-- Naturally respects the terminal-status ratchet already enforced in the upsert SQL (a late/
-  duplicate `started` after a terminal write never fires a regression event, because the upsert
-  itself is a no-op in that case).
+- Keeps the SSE controller thin: it holds no state, just filters the bus by `instanceId` for the
+  per-instance stream and maps to the delta shape for the fleet-wide stream.
+- Respects the terminal-status ratchet already enforced in the upsert SQL. The upsert uses
+  `RETURNING` and publishes only when the row actually landed on the attempted status, so a late
+  or duplicate `started` after a terminal write publishes nothing rather than a false regression;
+  likewise `insertTaskEvent`'s `onConflictDoNothing` returns no row for a replay, so nothing is
+  pushed.
+
+`Subject` rather than `EventEmitter2`/`@nestjs/event-emitter`: that package is not a dws-admin
+dependency, while `rxjs` already is, and `@Sse()` consumes an `Observable` directly — an
+event-emitter would only have to be bridged back into one. `takeWhile(..., inclusive)` also
+expresses "deliver the terminal event, then complete the stream" (D-spec: stream closes on
+terminal status) directly, with no manual unsubscribe bookkeeping.
+
+**D3a — Publish after commit, not inside the transaction.** Ingestion runs the upserts inside
+`runIdempotent`'s transaction. Publishing there would push a status change that a rolled-back
+transaction never persisted, which a client's next `GET` would then contradict. Instead the
+handler *returns* what it wrote and `DwsEventsSubscriber` publishes once `runIdempotent` resolves.
+`runIdempotent`'s `work` callback is widened to `Promise<unknown>` so handlers may return a value;
+its own boolean contract and behavior are unchanged.
 
 **D4 — Two endpoints, not one, to keep detail and list payload sizes matched to what each screen
 needs.** `GET /instances/:id/events` carries full instance + task-event detail (what the detail

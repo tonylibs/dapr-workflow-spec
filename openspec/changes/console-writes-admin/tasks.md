@@ -1,18 +1,18 @@
 ## 1. dws-admin: event bridge
 
-- [ ] 1.1 Add an `EventEmitter2`-based bridge (e.g. new `InstanceEventsModule`/`InstanceEventsService` in `dws-admin/src/events/`) that emits a domain event after each successful write in `upserts.ts`'s `upsertWorkflowInstance` (event carrying the updated instance's `instanceId`, `status`, `endedAt`) and `insertTaskEvent` (event carrying the inserted `TaskEventDto` plus its `instanceId`).
-- [ ] 1.2 Wire `OrchestratorEventsHandler`'s call sites (or the upsert functions themselves) to publish through this bridge without changing `upserts.ts`'s existing SQL/ratchet behavior.
-- [ ] 1.3 Unit test: an `upsertWorkflowInstance`/`insertTaskEvent` call emits the expected domain event with the expected payload; a terminal-status ratchet no-op emits nothing.
+- [x] 1.1 Add an RxJS-`Subject`-based bridge (new `InstanceEventsModule`/`InstanceEventsService` in `dws-admin/src/events/`) that emits a domain event after each successful write in `upserts.ts`'s `upsertWorkflowInstance` (event carrying the updated instance's `instanceId`, `status`, `endedAt`) and `insertTaskEvent` (event carrying the inserted `TaskEventDto` plus its `instanceId`).
+- [x] 1.2 Wire `OrchestratorEventsHandler`'s call sites (or the upsert functions themselves) to publish through this bridge without changing `upserts.ts`'s existing SQL/ratchet behavior.
+- [x] 1.3 Unit test: an `upsertWorkflowInstance`/`insertTaskEvent` call emits the expected domain event with the expected payload; a terminal-status ratchet no-op emits nothing.
 
 ## 2. dws-admin: SSE endpoints
 
-- [ ] 2.1 Add `GET /instances/:id/events` to `InstancesController` (or a new controller in the same module) using Nest's `@Sse()`, subscribing to the bridge filtered by `instanceId`, returning 404 up front via the existing `instances.exists(id)` check before opening the stream.
-- [ ] 2.2 Close the `:id/events` stream server-side once a `completed`/`failed` event for that instance is observed, after emitting it.
-- [ ] 2.3 Add `GET /instances/events` emitting the lightweight `{instanceId, status, endedAt}` delta for every instance-status change, no per-instance filter.
-- [ ] 2.4 Confirm both routes are served on the existing Nest app port (no change to `main.ts` bootstrap, no new `app.listen`) and inherit the existing `enableCors(corsOptions(...))` config.
-- [ ] 2.5 Document both endpoints in the `@nestjs/swagger` `DocumentBuilder` setup so they appear at `/docs` alongside the existing read endpoints.
-- [ ] 2.6 Integration test (against the real Postgres test setup per `dws-admin/README.md`'s test conventions): connecting to `:id/events`, then triggering an ingested lifecycle event for that instance, observes the pushed event; connecting for an unknown id gets `404`; connecting to `/events` observes deltas for any instance.
-- [ ] 2.7 Run `pnpm lint && pnpm test && pnpm build` in `dws-admin/`.
+- [x] 2.1 Add `GET /instances/:id/events` to `InstancesController` (or a new controller in the same module) using Nest's `@Sse()`, subscribing to the bridge filtered by `instanceId`, returning 404 up front via the existing `instances.exists(id)` check before opening the stream.
+- [x] 2.2 Close the `:id/events` stream server-side once a `completed`/`failed` event for that instance is observed, after emitting it.
+- [x] 2.3 Add `GET /instances/events` emitting the lightweight `{instanceId, status, endedAt}` delta for every instance-status change, no per-instance filter.
+- [x] 2.4 Confirm both routes are served on the existing Nest app port (no change to `main.ts` bootstrap, no new `app.listen`) and inherit the existing `enableCors(corsOptions(...))` config.
+- [x] 2.5 Document both endpoints in the `@nestjs/swagger` `DocumentBuilder` setup so they appear at `/docs` alongside the existing read endpoints.
+- [x] 2.6 Integration test (against the real Postgres test setup per `dws-admin/README.md`'s test conventions): connecting to `:id/events`, then triggering an ingested lifecycle event for that instance, observes the pushed event; connecting for an unknown id gets `404`; connecting to `/events` observes deltas for any instance.
+- [x] 2.7 Run `pnpm lint && pnpm test && pnpm build` in `dws-admin/`.
 
 ## 3. dws-console: client and hooks
 
