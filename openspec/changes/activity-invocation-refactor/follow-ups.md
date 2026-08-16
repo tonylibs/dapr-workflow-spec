@@ -74,13 +74,16 @@ the low-priority follow-up it was first recorded as.
 Durable/deduplicated activity results (a separate concern) still want `1.17+`; that remains
 a non-goal here beyond the dispatch-enabling version bump.
 
-## 4. WorkflowAccessPolicy for cross-app steps (production security, follow-up)
+## 4. WorkflowAccessPolicy for cross-app steps (IMPLEMENTED)
 
 Dapr's multi-app workflows use a `WorkflowAccessPolicy` resource to allow-list which caller
 app-ids may schedule which activities on a target app (self-calls are always permitted; the
-policy only restricts). This change deploys none. It is **not** the cause of the metadata
-failure above (that fails before any access check), and a pure allow-list is not required for
-the dispatch to *function*, but for production each step app should carry a policy allowing
-its workflow's orchestrator app-id to schedule the `Run` activity. Synthesizing a
-`WorkflowAccessPolicy` per workflow in `dws-controller` is a follow-up, deferred until the
-version/dispatch prerequisite (item 3) is validated.
+policy only restricts).
+
+**Now implemented in this change.** `dws-controller` synthesizes one `WorkflowAccessPolicy` per
+activity-invoked step (`CALL_HTTP`/`RUN_SHELL`/`RUN_SCRIPT_*`), scoped to the step's app-id, whose
+rule allows the workflow's orchestrator app-id to schedule the canonical `Run` activity;
+`CALL_OPENAPI` steps get none (`StackSynthesizer.workflowAccessPolicies`, applied and label-GC'd via
+`StackApplier`). This is **not** what unblocks item 3 — the metadata failure occurs before any
+access check — but it is the correct production security posture for cross-app dispatch, so it is no
+longer deferred. Once item 3's version prerequisite is resolved, this policy is already in place.

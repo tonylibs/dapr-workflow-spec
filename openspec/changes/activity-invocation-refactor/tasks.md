@@ -39,3 +39,9 @@
 ## 7. Full verification
 
 - [x] 7.1 Run each touched component's gate: orchestrator `./mvnw verify`; controller `./mvnw test`; `dws-call-http` and `dws-run` `go vet ./... && go test ./...`. Confirm `dws-call-openapi` is untouched.
+
+## 8. dws-controller — WorkflowAccessPolicy synthesis
+
+- [x] 8.1 In `StackSynthesizer`, add `workflowAccessPolicies(plan, namespace)` synthesizing one Dapr `WorkflowAccessPolicy` per activity-invoked step (scope = step app-id; rule caller = `plan.orchestrator().appId()`; activity = canonical `Run`); exclude `CALL_OPENAPI`. Share an `isActivityInvoked(TaskKind)` predicate with `minScale`.
+- [x] 8.2 Add `ResourceContexts.WORKFLOW_ACCESS_POLICY` (`dapr.io/v1alpha1`, plural `workflowaccesspolicies`); apply the policies in `StackApplier.apply` and delete them in `deleteByLabels` so both version-GC and undeploy collect them.
+- [x] 8.3 Unit-test synthesis: each activity kind → one policy scoped to the step app-id, caller = orchestrator app-id, activity `Run`; `CALL_OPENAPI` → none. Run `./mvnw test`.

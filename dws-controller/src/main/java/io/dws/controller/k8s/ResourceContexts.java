@@ -23,5 +23,14 @@ public final class ResourceContexts {
           .withNamespaced(true)
           .build();
 
+  public static final ResourceDefinitionContext WORKFLOW_ACCESS_POLICY =
+      new ResourceDefinitionContext.Builder()
+          .withGroup("dapr.io")
+          .withVersion("v1alpha1")
+          .withKind("WorkflowAccessPolicy")
+          .withPlural("workflowaccesspolicies")
+          .withNamespaced(true)
+          .build();
+
   private ResourceContexts() {}
 }

@@ -56,6 +56,38 @@ class StackSynthesizerTest {
         .containsEntry("dapr.io/app-port", "8080");
   }
 
+  @ParameterizedTest
+  @EnumSource(
+      value = TaskKind.class,
+      names = {"CALL_HTTP", "RUN_SHELL", "RUN_SCRIPT_JS", "RUN_SCRIPT_PYTHON"})
+  @DisplayName("an activity-invoked step gets a WorkflowAccessPolicy allowing the orchestrator")
+  void activityStepGetsAccessPolicy(TaskKind kind) {
+    StepService step =
+        new StepService("sync-inventory", kind, "ghcr.io/tonylibs/step:latest", Map.of());
+
+    List<GenericKubernetesResource> policies =
+        synthesizer.workflowAccessPolicies(planWith(step), NAMESPACE);
+
+    assertThat(policies).hasSize(1);
+    GenericKubernetesResource policy = policies.get(0);
+    assertThat(policy.getKind()).isEqualTo("WorkflowAccessPolicy");
+    assertThat(scopesOf(policy)).containsExactly("sync-inventory");
+
+    Map<String, Object> rule = firstRuleOf(policy);
+    assertThat(callerAppIds(rule)).containsExactly("order");
+    assertThat(activityNames(rule)).containsExactly("Run");
+  }
+
+  @Test
+  @DisplayName("a call:openapi step gets no WorkflowAccessPolicy")
+  void openApiStepGetsNoAccessPolicy() {
+    StepService step =
+        new StepService(
+            "lookup-price", TaskKind.CALL_OPENAPI, "ghcr.io/tonylibs/step:latest", Map.of());
+
+    assertThat(synthesizer.workflowAccessPolicies(planWith(step), NAMESPACE)).isEmpty();
+  }
+
   private Map<String, String> synthesizeStepAnnotations(TaskKind kind) {
     StepService step =
         new StepService("sync-inventory", kind, "ghcr.io/tonylibs/step:latest", Map.of());
@@ -90,5 +122,30 @@ class StackSynthesizerTest {
     Map<String, Object> template = (Map<String, Object>) spec.get("template");
     Map<String, Object> metadata = (Map<String, Object>) template.get("metadata");
     return (Map<String, String>) metadata.get("annotations");
+  }
+
+  @SuppressWarnings("unchecked")
+  private static List<String> scopesOf(GenericKubernetesResource policy) {
+    return (List<String>) policy.getAdditionalProperties().get("scopes");
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> firstRuleOf(GenericKubernetesResource policy) {
+    Map<String, Object> spec = (Map<String, Object>) policy.getAdditionalProperties().get("spec");
+    return ((List<Map<String, Object>>) spec.get("rules")).get(0);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static List<String> callerAppIds(Map<String, Object> rule) {
+    // Serialized CRD key is appID; read whichever single value each caller entry carries so the
+    // assertion is robust to the exact key casing the generated model emits.
+    return ((List<Map<String, Object>>) rule.get("callers"))
+        .stream().map(caller -> String.valueOf(caller.values().iterator().next())).toList();
+  }
+
+  @SuppressWarnings("unchecked")
+  private static List<String> activityNames(Map<String, Object> rule) {
+    return ((List<Map<String, Object>>) rule.get("activities"))
+        .stream().map(activity -> String.valueOf(activity.get("name"))).toList();
   }
 }

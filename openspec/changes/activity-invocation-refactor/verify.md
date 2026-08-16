@@ -77,9 +77,11 @@ PR #41 CI: all 10 checks green, `mergeable_state: clean`. `dws-call-openapi` unt
   Recommendation: do not archive/merge for real-cluster use until a validated (daprd runtime, dapr
   SDK/durabletask-go) combination is identified and pinned, and the e2e passes on it (follow-ups.md item 3).
 
-**WARNING:**
-- No `WorkflowAccessPolicy` is deployed for cross-app steps. Not the cause of the metadata failure,
-  and not required for dispatch to function, but needed for production security (follow-ups.md item 4).
+**WARNING:** none outstanding.
+- (Resolved) `WorkflowAccessPolicy` for cross-app steps is now synthesized by `dws-controller`
+  (`StackSynthesizer.workflowAccessPolicies`, applied + label-GC'd via `StackApplier`; tests in
+  `StackSynthesizerTest`). Not the cause of the metadata failure, but the correct production
+  security posture (follow-ups.md item 4).
 
 **SUGGESTION:**
 - The two Go activity-worker packages are named differently (`dws-call-http/internal/activity` vs

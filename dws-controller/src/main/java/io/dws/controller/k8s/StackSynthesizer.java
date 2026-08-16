@@ -13,6 +13,12 @@ import imports.io.dapr.Component;
 import imports.io.dapr.ComponentProps;
 import imports.io.dapr.ComponentSpec;
 import imports.io.dapr.ComponentSpecMetadata;
+import imports.io.dapr.WorkflowAccessPolicy;
+import imports.io.dapr.WorkflowAccessPolicyProps;
+import imports.io.dapr.WorkflowAccessPolicySpec;
+import imports.io.dapr.WorkflowAccessPolicySpecRules;
+import imports.io.dapr.WorkflowAccessPolicySpecRulesActivities;
+import imports.io.dapr.WorkflowAccessPolicySpecRulesCallers;
 import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.OrchestratorSpec;
 import io.dws.controller.model.StepService;
@@ -44,6 +50,13 @@ public class StackSynthesizer {
   static final String DEFINITION_KEY = "definition";
   private static final String CONTAINER_PORT_VALUE = "8080";
   private static final int CONTAINER_PORT = 8080;
+
+  /**
+   * Canonical activity name every migrated Go step image registers and the orchestrator schedules
+   * (mirrors {@code io.dws.orchestrator.workflow.activity.StepActivity#NAME}); the access policy
+   * allow-lists exactly this activity.
+   */
+  private static final String RUN_ACTIVITY = "Run";
 
   /** Immutable ConfigMap holding the definition text verbatim. */
   public ConfigMap definitionConfigMap(DeploymentPlan plan, String namespace) {
@@ -97,6 +110,61 @@ public class StackSynthesizer {
       services.add(knativeService(plan, step, namespace));
     }
     return services;
+  }
+
+  /**
+   * One {@code WorkflowAccessPolicy} per activity-invoked step, scoped to the step's Dapr app-id
+   * and allowing this workflow's orchestrator app-id to schedule the canonical {@code Run} activity
+   * on it. This is the allow-list Dapr's multi-app workflow feature enforces on cross-app activity
+   * scheduling. {@code call: openapi} steps are HTTP-invoked (not activity workers), so they get no
+   * policy. Self-calls are always permitted, so only the cross-app caller — the orchestrator — is
+   * listed.
+   */
+  public List<GenericKubernetesResource> workflowAccessPolicies(
+      DeploymentPlan plan, String namespace) {
+    List<GenericKubernetesResource> policies = new ArrayList<>();
+    for (StepService step : plan.steps()) {
+      if (isActivityInvoked(step.kind())) {
+        policies.add(workflowAccessPolicy(plan, step, namespace));
+      }
+    }
+    return policies;
+  }
+
+  private GenericKubernetesResource workflowAccessPolicy(
+      DeploymentPlan plan, StepService step, String namespace) {
+    Chart chart = Testing.chart();
+    String name = step.name() + "-wap";
+    new WorkflowAccessPolicy(
+        chart,
+        name,
+        WorkflowAccessPolicyProps.builder()
+            .metadata(
+                ApiObjectMetadata.builder()
+                    .name(name)
+                    .namespace(namespace)
+                    .labels(Labels.forPlan(plan))
+                    .build())
+            .scopes(List.of(step.name()))
+            .spec(
+                WorkflowAccessPolicySpec.builder()
+                    .rules(
+                        List.of(
+                            WorkflowAccessPolicySpecRules.builder()
+                                .callers(
+                                    List.of(
+                                        WorkflowAccessPolicySpecRulesCallers.builder()
+                                            .appId(plan.orchestrator().appId())
+                                            .build()))
+                                .activities(
+                                    List.of(
+                                        WorkflowAccessPolicySpecRulesActivities.builder()
+                                            .name(RUN_ACTIVITY)
+                                            .build()))
+                                .build()))
+                    .build())
+            .build());
+    return toDynamicResource(chart);
   }
 
   private GenericKubernetesResource knativeService(
@@ -158,10 +226,16 @@ public class StackSynthesizer {
    * work; {@code CALL_OPENAPI} remains HTTP-triggered and may scale to zero.
    */
   private static String minScale(TaskKind kind) {
-    return switch (kind) {
-      case CALL_HTTP, RUN_SHELL, RUN_SCRIPT_JS, RUN_SCRIPT_PYTHON -> "1";
-      case CALL_OPENAPI -> "0";
-    };
+    return isActivityInvoked(kind) ? "1" : "0";
+  }
+
+  /**
+   * True for steps the orchestrator invokes as a multi-app Dapr Workflow activity — every kind but
+   * {@code CALL_OPENAPI}, whose Node image stays on HTTP service invocation. The single source of
+   * truth for the activity-vs-HTTP split, shared by {@link #minScale} and the access-policy synth.
+   */
+  private static boolean isActivityInvoked(TaskKind kind) {
+    return kind != TaskKind.CALL_OPENAPI;
   }
 
   private static List<ServiceSpecTemplateSpecContainersEnv> knativeEnv(Map<String, String> env) {
