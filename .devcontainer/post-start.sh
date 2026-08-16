@@ -35,9 +35,11 @@ if [ -z "${HOST_GATEWAY_IPV4}" ]; then
 fi
 
 # Replace any previous entry for this alias (its IP can change across restarts) then add the
-# current one.
-sudo sed -i "/[[:space:]]${KUBE_HOST_ALIAS}\$/d" /etc/hosts
-echo "${HOST_GATEWAY_IPV4} ${KUBE_HOST_ALIAS}" | sudo tee -a /etc/hosts >/dev/null
+# current one. NOTE: must NOT use an in-place editor here -- /etc/hosts is bind-mounted into
+# the container as its own mount point, and tools that write-temp-then-rename (like `sed -i`)
+# fail across a bind-mount boundary ("Device or resource busy"). `tee` truncates-and-writes
+# the existing file in place instead, which bind mounts do support.
+{ grep -v "[[:space:]]${KUBE_HOST_ALIAS}\$" /etc/hosts || true; echo "${HOST_GATEWAY_IPV4} ${KUBE_HOST_ALIAS}"; } | sudo tee /etc/hosts >/dev/null
 
 if [ -f "${HOME}/.kube/config" ]; then
   mkdir -p "${HOME}/.kube-local"
