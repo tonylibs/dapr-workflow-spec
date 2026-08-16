@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dapr.durabletask.Task;
 import io.dapr.workflows.WorkflowContext;
 import io.dapr.workflows.WorkflowTaskOptions;
+import io.dapr.workflows.WorkflowTaskRetryPolicy;
 import io.dws.orchestrator.dataflow.DataFlowException;
 import io.dws.orchestrator.error.RaisedErrorException;
 import io.dws.orchestrator.expr.JqEvaluator;
@@ -38,6 +39,7 @@ import io.dws.orchestrator.workflow.activity.EvaluateWhileRequest;
 import io.dws.orchestrator.workflow.activity.FlowOutcome;
 import io.dws.orchestrator.workflow.activity.RaiseErrorActivity;
 import io.dws.orchestrator.workflow.activity.RaiseErrorRequest;
+import io.dws.orchestrator.workflow.activity.StepActivity;
 import io.serverlessworkflow.api.WorkflowFormat;
 import io.serverlessworkflow.api.WorkflowReader;
 import io.serverlessworkflow.api.types.Workflow;
@@ -183,6 +185,40 @@ class InterpreterWorkflowIntegrationTest {
         .toList();
   }
 
+  /**
+   * Stubs the canonical multi-app step activity ({@link StepActivity#NAME}) — the path {@code call:
+   * http} and {@code run:*} take — to yield {@code task}. The activity input is the raw
+   * workflow-data JSON and the target app-id rides in the {@link WorkflowTaskOptions}, so tests
+   * read those from the captured call rather than from a request wrapper.
+   */
+  @SuppressWarnings("unchecked")
+  private static void stubStepActivity(WorkflowContext ctx, Task<JsonNode> task) {
+    when(ctx.callActivity(
+            eq(StepActivity.NAME), any(), any(WorkflowTaskOptions.class), eq(JsonNode.class)))
+        .thenReturn(task);
+  }
+
+  /** The target app-ids of the step activities scheduled so far, in order. */
+  private static List<String> stepActivityAppIds(WorkflowContext ctx, int count) {
+    ArgumentCaptor<WorkflowTaskOptions> options =
+        ArgumentCaptor.forClass(WorkflowTaskOptions.class);
+    verify(ctx, times(count))
+        .callActivity(eq(StepActivity.NAME), any(), options.capture(), eq(JsonNode.class));
+    return options.getAllValues().stream().map(WorkflowTaskOptions::getAppId).toList();
+  }
+
+  /** The activity-input documents the step activities were scheduled with, in order. */
+  private static List<JsonNode> stepActivityInputs(WorkflowContext ctx, int count) {
+    ArgumentCaptor<Object> inputs = ArgumentCaptor.forClass(Object.class);
+    verify(ctx, times(count))
+        .callActivity(
+            eq(StepActivity.NAME),
+            inputs.capture(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class));
+    return inputs.getAllValues().stream().map(JsonNode.class::cast).toList();
+  }
+
   @Test
   @SuppressWarnings("unchecked")
   void inStockOrderExecutesCheckInventoryThenChargePayment() throws Exception {
@@ -197,27 +233,13 @@ class InterpreterWorkflowIntegrationTest {
 
     Task<JsonNode> callTask = taskWithThenApply();
     when(callTask.await()).thenReturn(afterInventory, afterCharge);
-    when(ctx.callActivity(
-            eq(CallServiceActivity.class.getName()),
-            any(),
-            any(WorkflowTaskOptions.class),
-            eq(JsonNode.class)))
-        .thenReturn(callTask);
+    stubStepActivity(ctx, callTask);
 
     // Act
     workflow.execute(ctx);
 
-    // Assert: exactly two service invocations, in order inventory -> payment.
-    ArgumentCaptor<Object> requests = ArgumentCaptor.forClass(Object.class);
-    verify(ctx, times(2))
-        .callActivity(
-            eq(CallServiceActivity.class.getName()),
-            requests.capture(),
-            any(WorkflowTaskOptions.class),
-            eq(JsonNode.class));
-    List<String> appIds =
-        requests.getAllValues().stream().map(r -> ((CallRequest) r).appId()).toList();
-    assertThat(appIds).containsExactly("check-inventory", "charge-payment");
+    // Assert: exactly two step activities, in order inventory -> payment (both call: http).
+    assertThat(stepActivityAppIds(ctx, 2)).containsExactly("check-inventory", "charge-payment");
 
     ArgumentCaptor<Object> output = ArgumentCaptor.forClass(Object.class);
     verify(ctx).complete(output.capture());
@@ -251,27 +273,14 @@ class InterpreterWorkflowIntegrationTest {
 
     Task<JsonNode> callTask = taskWithThenApply();
     when(callTask.await()).thenReturn(afterInventory, afterNotify);
-    when(ctx.callActivity(
-            eq(CallServiceActivity.class.getName()),
-            any(),
-            any(WorkflowTaskOptions.class),
-            eq(JsonNode.class)))
-        .thenReturn(callTask);
+    stubStepActivity(ctx, callTask);
 
     // Act
     workflow.execute(ctx);
 
     // Assert: routed through the default branch, inventory -> notification.
-    ArgumentCaptor<Object> requests = ArgumentCaptor.forClass(Object.class);
-    verify(ctx, times(2))
-        .callActivity(
-            eq(CallServiceActivity.class.getName()),
-            requests.capture(),
-            any(WorkflowTaskOptions.class),
-            eq(JsonNode.class));
-    List<String> appIds =
-        requests.getAllValues().stream().map(r -> ((CallRequest) r).appId()).toList();
-    assertThat(appIds).containsExactly("check-inventory", "notify-out-of-stock");
+    assertThat(stepActivityAppIds(ctx, 2))
+        .containsExactly("check-inventory", "notify-out-of-stock");
 
     ArgumentCaptor<Object> output = ArgumentCaptor.forClass(Object.class);
     verify(ctx).complete(output.capture());
@@ -290,12 +299,7 @@ class InterpreterWorkflowIntegrationTest {
 
     Task<JsonNode> callTask = taskWithThenApply();
     when(callTask.await()).thenThrow(new RuntimeException("inventory down"));
-    when(ctx.callActivity(
-            eq(CallServiceActivity.class.getName()),
-            any(),
-            any(WorkflowTaskOptions.class),
-            eq(JsonNode.class)))
-        .thenReturn(callTask);
+    stubStepActivity(ctx, callTask);
 
     // Act + Assert: the original error still propagates.
     assertThatThrownBy(() -> workflow.execute(ctx))
@@ -326,12 +330,7 @@ class InterpreterWorkflowIntegrationTest {
         .thenReturn(
             mapper.readTree("{\"item\":\"widget\",\"inStock\":true}"),
             mapper.readTree("{\"charged\":true}"));
-    when(ctx.callActivity(
-            eq(CallServiceActivity.class.getName()),
-            any(),
-            any(WorkflowTaskOptions.class),
-            eq(JsonNode.class)))
-        .thenReturn(callTask);
+    stubStepActivity(ctx, callTask);
 
     // Act
     workflow.execute(ctx);
@@ -358,13 +357,13 @@ class InterpreterWorkflowIntegrationTest {
   }
 
   /**
-   * Regression guard for the {@code run} task fall-through: before the fix, {@code dispatch()} had
-   * no branch for {@code Task.getRunTask()} and threw {@code IllegalStateException("task '...' has
-   * an unsupported type")} instead of invoking the step service the controller deployed for it.
+   * A {@code run: shell} task must be dispatched as a multi-app step activity (not rejected as an
+   * unsupported type), targeting the kebab-cased task name as its app-id and carrying the current
+   * workflow data as the activity input.
    */
   @Test
   @SuppressWarnings("unchecked")
-  void runTaskIsDispatchedAsServiceInvocationAndCompletes() throws Exception {
+  void runTaskIsDispatchedAsAStepActivityAndCompletes() throws Exception {
     // Arrange: a separate fixture holding a single `run: shell` task.
     Workflow definition = WorkflowReader.readWorkflowFromClasspath("run.yaml");
     WorkflowSupport.init(
@@ -380,33 +379,20 @@ class InterpreterWorkflowIntegrationTest {
 
     WorkflowContext ctx = mock(WorkflowContext.class);
     stubContext(ctx);
-    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{}"));
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{\"seed\":1}"));
 
     JsonNode afterRun = mapper.readTree("{\"synced\":true}");
     Task<JsonNode> callTask = taskWithThenApply();
     when(callTask.await()).thenReturn(afterRun);
-    when(ctx.callActivity(
-            eq(CallServiceActivity.class.getName()),
-            any(),
-            any(WorkflowTaskOptions.class),
-            eq(JsonNode.class)))
-        .thenReturn(callTask);
+    stubStepActivity(ctx, callTask);
 
     // Act
     workflow.execute(ctx);
 
-    // Assert: the run task is dispatched through the same activity/contract as call, routed by
-    // the kebab-cased task name.
-    ArgumentCaptor<Object> requests = ArgumentCaptor.forClass(Object.class);
-    verify(ctx, times(1))
-        .callActivity(
-            eq(CallServiceActivity.class.getName()),
-            requests.capture(),
-            any(WorkflowTaskOptions.class),
-            eq(JsonNode.class));
-    CallRequest req = (CallRequest) requests.getValue();
-    assertThat(req.appId()).isEqualTo("sync-inventory");
-    assertThat(req.path()).isEqualTo("run");
+    // Assert: dispatched through the canonical `Run` activity, routed by the kebab-cased task name,
+    // with the raw workflow data as the activity input.
+    assertThat(stepActivityAppIds(ctx, 1)).containsExactly("sync-inventory");
+    assertThat(stepActivityInputs(ctx, 1).get(0)).isEqualTo(mapper.readTree("{\"seed\":1}"));
 
     ArgumentCaptor<Object> output = ArgumentCaptor.forClass(Object.class);
     verify(ctx).complete(output.capture());
@@ -418,6 +404,130 @@ class InterpreterWorkflowIntegrationTest {
             "io.dws.task.started",
             "io.dws.task.completed",
             "io.dws.instance.completed");
+  }
+
+  /**
+   * A migrated step activity must carry the default retry policy (the one the HTTP path uses) in
+   * its {@link WorkflowTaskOptions}, so retry behaviour is unchanged by the move to multi-app
+   * dispatch.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void stepActivityCarriesTheDefaultRetryPolicy() throws Exception {
+    WorkflowTaskRetryPolicy policy =
+        new WorkflowTaskRetryPolicy(
+            3, java.time.Duration.ofSeconds(1), 2.0, java.time.Duration.ofSeconds(10), null);
+    Workflow definition = WorkflowReader.readWorkflowFromClasspath("run.yaml");
+    WorkflowSupport.init(
+        definition,
+        definition.getDocument().getName(),
+        "run-workflow",
+        "run-workflow@v1",
+        new JqEvaluator(mapper),
+        mapper,
+        null,
+        new WorkflowTaskOptions(policy),
+        "pubsub");
+
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{}"));
+
+    Task<JsonNode> callTask = taskWithThenApply();
+    when(callTask.await()).thenReturn(mapper.readTree("{\"synced\":true}"));
+    stubStepActivity(ctx, callTask);
+
+    workflow.execute(ctx);
+
+    ArgumentCaptor<WorkflowTaskOptions> options =
+        ArgumentCaptor.forClass(WorkflowTaskOptions.class);
+    verify(ctx).callActivity(eq(StepActivity.NAME), any(), options.capture(), eq(JsonNode.class));
+    assertThat(options.getValue().getRetryPolicy()).isSameAs(policy);
+    assertThat(options.getValue().getAppId()).isEqualTo("sync-inventory");
+  }
+
+  /**
+   * A {@code null} step-activity result must leave the data document unchanged (matching the HTTP
+   * path, where a 204/empty response returns the request data).
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void nullStepActivityResultLeavesDataUnchanged() throws Exception {
+    Workflow definition = WorkflowReader.readWorkflowFromClasspath("run.yaml");
+    WorkflowSupport.init(
+        definition,
+        definition.getDocument().getName(),
+        "run-workflow",
+        "run-workflow@v1",
+        new JqEvaluator(mapper),
+        mapper,
+        null,
+        mock(WorkflowTaskOptions.class),
+        "pubsub");
+
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{\"seed\":42}"));
+
+    Task<JsonNode> callTask = taskWithThenApply();
+    when(callTask.await()).thenReturn(null);
+    stubStepActivity(ctx, callTask);
+
+    workflow.execute(ctx);
+
+    ArgumentCaptor<Object> output = ArgumentCaptor.forClass(Object.class);
+    verify(ctx).complete(output.capture());
+    assertThat((JsonNode) output.getValue()).isEqualTo(mapper.readTree("{\"seed\":42}"));
+  }
+
+  /**
+   * {@code call: openapi} is deliberately left on the HTTP service-invocation path ({@link
+   * CallServiceActivity}) — its Node image is not an activity worker — so it must schedule no
+   * multi-app step activity.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void openApiCallStaysOnTheHttpServiceInvocationPath() throws Exception {
+    Workflow definition = WorkflowReader.readWorkflowFromClasspath("openapi.yaml");
+    WorkflowSupport.init(
+        definition,
+        definition.getDocument().getName(),
+        "openapi-workflow",
+        "openapi-workflow@v1",
+        new JqEvaluator(mapper),
+        mapper,
+        null,
+        mock(WorkflowTaskOptions.class),
+        "pubsub");
+
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{\"sku\":\"abc\"}"));
+
+    Task<JsonNode> callTask = taskWithThenApply();
+    when(callTask.await()).thenReturn(mapper.readTree("{\"price\":9.99}"));
+    when(ctx.callActivity(
+            eq(CallServiceActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenReturn(callTask);
+
+    workflow.execute(ctx);
+
+    // Routed via CallServiceActivity (app-id lookup-price, POST /run), and no `Run` activity fired.
+    ArgumentCaptor<Object> requests = ArgumentCaptor.forClass(Object.class);
+    verify(ctx)
+        .callActivity(
+            eq(CallServiceActivity.class.getName()),
+            requests.capture(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class));
+    CallRequest req = (CallRequest) requests.getValue();
+    assertThat(req.appId()).isEqualTo("lookup-price");
+    assertThat(req.path()).isEqualTo("run");
+    verify(ctx, org.mockito.Mockito.never())
+        .callActivity(eq(StepActivity.NAME), any(), any(WorkflowTaskOptions.class), any());
   }
 
   /**
@@ -479,32 +589,22 @@ class InterpreterWorkflowIntegrationTest {
         .thenReturn(
             mapper.readTree("{\"receipt\":\"r-77\",\"noise\":1}"),
             mapper.readTree("{\"archived\":true}"));
-    when(ctx.callActivity(
-            eq(CallServiceActivity.class.getName()),
-            any(),
-            any(WorkflowTaskOptions.class),
-            eq(JsonNode.class)))
-        .thenReturn(callTask);
+    stubStepActivity(ctx, callTask);
 
     // Act
     workflow.execute(ctx);
 
-    // Assert: input.from narrowed the document the first step service was invoked with.
-    ArgumentCaptor<Object> requests = ArgumentCaptor.forClass(Object.class);
-    verify(ctx, times(2))
-        .callActivity(
-            eq(CallServiceActivity.class.getName()),
-            requests.capture(),
-            any(WorkflowTaskOptions.class),
-            eq(JsonNode.class));
-    JsonNode sentToCharge = ((CallRequest) requests.getAllValues().get(0)).data();
+    // Assert: input.from narrowed the document the first step activity was invoked with (both
+    // chargePayment and passThrough are call: http, so they take the activity path).
+    List<JsonNode> inputs = stepActivityInputs(ctx, 2);
+    JsonNode sentToCharge = inputs.get(0);
     assertThat(sentToCharge.get("orderId").textValue()).isEqualTo("o-1");
     assertThat(sentToCharge.get("amount").doubleValue()).isEqualTo(9.5);
     assertThat(sentToCharge.has("unrelated")).isFalse();
 
     // recordAudit read the context chargePayment exported, and output.as reshaped it;
     // passThrough declares no data flow, so it received that document unchanged.
-    JsonNode sentToPassThrough = ((CallRequest) requests.getAllValues().get(1)).data();
+    JsonNode sentToPassThrough = inputs.get(1);
     assertThat(sentToPassThrough.get("audited").textValue()).isEqualTo("r-77");
 
     // The instance completes with the last step's own output — the context is not part of it.
@@ -531,12 +631,7 @@ class InterpreterWorkflowIntegrationTest {
 
     Task<JsonNode> callTask = taskWithThenApply();
     when(callTask.await()).thenReturn(mapper.readTree("{\"receipt\":404}"));
-    when(ctx.callActivity(
-            eq(CallServiceActivity.class.getName()),
-            any(),
-            any(WorkflowTaskOptions.class),
-            eq(JsonNode.class)))
-        .thenReturn(callTask);
+    stubStepActivity(ctx, callTask);
 
     // Act + Assert
     assertThatThrownBy(() -> workflow.execute(ctx))
@@ -576,12 +671,7 @@ class InterpreterWorkflowIntegrationTest {
 
     Task<JsonNode> callTask = taskWithThenApply();
     when(callTask.await()).thenReturn(mapper.readTree("{}"));
-    when(ctx.callActivity(
-            eq(CallServiceActivity.class.getName()),
-            any(),
-            any(WorkflowTaskOptions.class),
-            eq(JsonNode.class)))
-        .thenReturn(callTask);
+    stubStepActivity(ctx, callTask);
 
     workflow.execute(ctx);
 

@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.dapr.workflows.Workflow;
 import io.dapr.workflows.WorkflowContext;
 import io.dapr.workflows.WorkflowStub;
+import io.dapr.workflows.WorkflowTaskOptions;
+import io.dapr.workflows.WorkflowTaskRetryPolicy;
 import io.dws.orchestrator.error.RaisedErrorException;
 import io.dws.orchestrator.workflow.activity.*;
 import io.dws.orchestrator.workflow.adapter.TaskNaming;
@@ -284,22 +286,19 @@ public class InterpreterWorkflow implements Workflow {
                   FlowOutcome.class)
               .thenApply(then -> Body.leaf(data, context, then))
               .await();
-      case CallTask callTask ->
-          ctx.callActivity(
-                  CallServiceActivity.class.getName(),
-                  new CallRequest(TaskNaming.toKebabCase(name), "run", data),
-                  WorkflowSupport.defaultTaskOptions(),
-                  JsonNode.class)
-              .thenApply(next -> Body.leaf(next, context, FlowOutcome.of(thenOf(callTask.get()))))
-              .await();
+      case CallTask callTask -> {
+        // Split by call sub-kind, the same distinction the controller's compiler makes:
+        // call: http is hosted by a Go activity worker (multi-app dispatch), while call: openapi
+        // stays on the HTTP service-invocation path its Node image serves.
+        FlowOutcome then = FlowOutcome.of(thenOf(callTask.get()));
+        yield callTask.getCallHTTP() != null
+            ? dispatchStepActivity(ctx, name, data, context, then)
+            : invokeStepService(ctx, name, data, context, then);
+      }
       case RunTask runTask ->
-          ctx.callActivity(
-                  CallServiceActivity.class.getName(),
-                  new CallRequest(TaskNaming.toKebabCase(name), "run", data),
-                  WorkflowSupport.defaultTaskOptions(),
-                  JsonNode.class)
-              .thenApply(next -> Body.leaf(next, context, FlowOutcome.of(runTask.getThen())))
-              .await();
+          // Both run: shell and run: script are Go activity workers; run: container / run: workflow
+          // are rejected at compile time and never reach the orchestrator.
+          dispatchStepActivity(ctx, name, data, context, FlowOutcome.of(runTask.getThen()));
       case SetTask setTask ->
           ctx.callActivity(
                   EvaluateSetActivity.class.getName(),
@@ -344,6 +343,39 @@ public class InterpreterWorkflow implements Workflow {
           dispatchFor(ctx, forTask, name, data, context, variables, depth, events, mapper);
       default -> throw new IllegalStateException("task '" + name + "' has an unsupported type");
     };
+  }
+
+  /**
+   * Dispatches a migrated I/O step ({@code call: http}, {@code run: shell}, {@code run: script}) as
+   * a Dapr multi-app activity: it schedules the canonical {@link StepActivity#NAME} activity
+   * against the task's app-id ({@link TaskNaming#toKebabCase}), passing the current data as the
+   * activity input and carrying the default retry policy in the options so retry behaviour matches
+   * the HTTP path. A {@code null}/empty result leaves the data document unchanged.
+   */
+  private Body dispatchStepActivity(
+      WorkflowContext ctx, String name, JsonNode data, JsonNode context, FlowOutcome then) {
+    WorkflowTaskRetryPolicy retryPolicy = WorkflowSupport.defaultTaskOptions().getRetryPolicy();
+    WorkflowTaskOptions options =
+        new WorkflowTaskOptions(retryPolicy, TaskNaming.toKebabCase(name));
+    return ctx.callActivity(StepActivity.NAME, data, options, JsonNode.class)
+        .thenApply(next -> Body.leaf(next == null ? data : next, context, then))
+        .await();
+  }
+
+  /**
+   * Invokes a step over Dapr service invocation via {@link CallServiceActivity} ({@code POST
+   * /run}). This is the unmigrated path {@code call: openapi} still takes — its Node image is not
+   * an activity worker (the JS Workflow SDK lacks multi-app activities).
+   */
+  private Body invokeStepService(
+      WorkflowContext ctx, String name, JsonNode data, JsonNode context, FlowOutcome then) {
+    return ctx.callActivity(
+            CallServiceActivity.class.getName(),
+            new CallRequest(TaskNaming.toKebabCase(name), "run", data),
+            WorkflowSupport.defaultTaskOptions(),
+            JsonNode.class)
+        .thenApply(next -> Body.leaf(next, context, then))
+        .await();
   }
 
   /**
