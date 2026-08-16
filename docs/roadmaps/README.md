@@ -6,7 +6,7 @@ Three independent roadmaps, one per surface. Each moves on its own timeline and 
 | Roadmap | Surface | Current phase |
 |---|---|---|
 | [Open Workflow Spec feature coverage](openworkflow-features.md) | `dws-controller` + `dws-orchestrator` — DSL 1.0 task types and cross-cutting features | Phase 2, slice 2.1 done (`try`/`catch`/`retry`, merged) — slice 2.2 (`raise`) next |
-| [`dws-console` web UI](dws-console.md) | Operator-facing web app (TanStack Start) | Phase 2.5 (workflow browser + instance monitor UI built, wiring to live `dws-admin` API next) |
+| [`dws-console` web UI](dws-console.md) | Operator-facing web app (TanStack Start) + `dws-admin` push API | Phase 2.5 done — workflow browser + instance monitor wired to the live `dws-admin` read API. Phase 3 (live updates) next — scope now spans both repos: build the `dws-admin` push API and wire the console to it. Phases 4 (definition submission) and 5 (auth) unblocked and available in parallel |
 | [Helm chart packaging](helm-packaging.md) | `charts/dws` — cluster install of the control plane | Phase 0–1 (scope confirmed, scaffold not started) |
 
 ## How they relate
