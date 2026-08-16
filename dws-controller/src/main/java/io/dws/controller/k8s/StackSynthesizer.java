@@ -16,6 +16,7 @@ import imports.io.dapr.ComponentSpecMetadata;
 import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.OrchestratorSpec;
 import io.dws.controller.model.StepService;
+import io.dws.controller.model.TaskKind;
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
 import io.fabric8.kubernetes.api.model.EnvVar;
@@ -145,11 +146,22 @@ public class StackSynthesizer {
 
   private static Map<String, String> stepAnnotations(StepService step) {
     Map<String, String> annotations = new LinkedHashMap<>();
-    annotations.put("autoscaling.knative.dev/min-scale", "0");
+    annotations.put("autoscaling.knative.dev/min-scale", minScale(step.kind()));
     annotations.put("dapr.io/enabled", "true");
     annotations.put("dapr.io/app-id", step.name());
     annotations.put("dapr.io/app-port", CONTAINER_PORT_VALUE);
     return annotations;
+  }
+
+  /**
+   * Activity-invoked steps ({@code CALL_HTTP}/{@code RUN_*}) must stay live to receive dispatched
+   * work; {@code CALL_OPENAPI} remains HTTP-triggered and may scale to zero.
+   */
+  private static String minScale(TaskKind kind) {
+    return switch (kind) {
+      case CALL_HTTP, RUN_SHELL, RUN_SCRIPT_JS, RUN_SCRIPT_PYTHON -> "1";
+      case CALL_OPENAPI -> "0";
+    };
   }
 
   private static List<ServiceSpecTemplateSpecContainersEnv> knativeEnv(Map<String, String> env) {
