@@ -119,9 +119,16 @@ Constraints carried from the platform:
   standing pod per migrated step; that is inherent to the model (D6).
 - [Risk] JS SDK still lacks multi-app support → Mitigation: `CALL_OPENAPI` deliberately left on
   HTTP; no dependency on JS multi-app.
-- [Risk] Dapr `1.16.0` lacks durable/deduplicated activity results → Mitigation: flagged as a
-  follow-up; this change does not rely on dedup for correctness (steps are re-invokable, matching
-  today's retry semantics). Call out the `1.17+` bump before enabling dedup guarantees.
+- [Risk] Cross-app dispatch is version-coupled → **Realized (2026-08-16), now BLOCKING.** Local e2e
+  showed the callee-app-id metadata is not propagated on Dapr 1.15.5 (unsupported; needs ≥1.16.0) or
+  1.16.0 (`dapr-callee-app-id or dapr-app-id not found`) — a runtime/SDK compatibility issue, not a
+  branch logic bug (see follow-ups.md item 3 and [dapr/dapr#10039](https://github.com/dapr/dapr/issues/10039)).
+  Mitigation: a validated (daprd, SDK/durabletask-go) version pairing MUST be identified, pinned in
+  the chart + Go modules + orchestrator pom, and the e2e re-run before enabling this on a cluster.
+  The earlier "1.16.0 is sufficient" assessment is retracted.
+- [Risk] Dapr `1.16.0` lacks durable/deduplicated activity results → Mitigation: separate from the
+  dispatch blocker above; `1.17+` enables dedup guarantees, a non-goal here beyond whatever version
+  the dispatch fix requires.
 - [Risk] Error-shape drift between HTTP and activity paths → Mitigation: single classification
   in `WorkflowErrors`, covered by tests asserting identical `{type,status,...}` for equivalent
   upstream/config failures on both paths.

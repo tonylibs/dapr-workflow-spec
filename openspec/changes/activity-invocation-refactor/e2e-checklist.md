@@ -4,6 +4,19 @@ Goal: prove a migrated step (`call: http` / `run: shell` / `run: script`) is inv
 Dapr Workflow activity** named `Run`, with the upstream-vs-config failure markers surfacing the same
 error shape as the old HTTP path.
 
+> **KNOWN ISSUE (2026-08-16): cross-app dispatch is blocked by a Dapr runtime/SDK version mismatch.**
+> On the versions tested, the activity never routes to the callee app:
+> - Dapr **1.15.5** → `required metadata dapr-app-id not found` (multi-app needs runtime **≥1.16.0**).
+> - Dapr **1.16.0** → `required metadata dapr-callee-app-id or dapr-app-id not found`.
+>
+> The `dapr-callee-app-id` gRPC metadata is not propagated during workflow activity proxying — a
+> runtime/SDK version-compatibility problem (see [dapr/dapr#10039](https://github.com/dapr/dapr/issues/10039)),
+> **not** a logic defect in the branch. The app-side durabletask-go/kit version (ours: v0.12.4 via
+> dapr go-sdk v1.15.0) and the daprd runtime must be a *compatible pair*. **Do not treat a failing
+> run as an implementation bug** until a validated (daprd, SDK/durabletask-go) combination is found;
+> see `follow-ups.md` item 3. The steps below are the harness; expect steps 3+ to fail until the
+> version prerequisite is resolved.
+
 Two tracks:
 - **Track A (smoke, light):** a throwaway Go workflow host schedules the `Run` activity cross-app
   against the real step worker. Isolates the dispatch mechanism — no config store, no Java.
@@ -20,8 +33,10 @@ so start them yourself. Redis is the state store.
 
 ```bash
 # 0.1 CLI + slim runtime (daprd + placement + scheduler binaries)
-dapr --version                       # CLI 1.15.x
-dapr init --slim --runtime-version 1.15.5
+# Multi-app needs runtime >= 1.16.0. 1.15.5 does NOT support it (see KNOWN ISSUE).
+# Use a version from the validated combination once identified (follow-ups.md item 3).
+dapr --version                       # CLI 1.16.x+
+dapr init --slim --runtime-version 1.16.0    # placeholder — pin the validated version
 
 # 0.2 State store: redis
 redis-server --port 6379 &           # or your local redis
@@ -179,4 +194,6 @@ worker. Its Knative `min-scale` stays `0`; the migrated steps get `min-scale=1`.
 - **app-id mismatch** ⇒ dispatch silently never arrives. app-id MUST equal `TaskNaming.toKebabCase(name)`.
 - **Different `--resources-path` per app** ⇒ apps resolve different stores; cross-app dispatch fails.
   Use one shared `./components` for every app.
-- Dapr `1.16.0` runs this fine; `1.17+` only needed for durable/deduplicated results (out of scope).
+- **Version compatibility is the current blocker** (see KNOWN ISSUE): cross-app dispatch needs a
+  matched (daprd, dapr SDK/durabletask-go) pair. 1.15.5 is unsupported; 1.16.0 did not propagate
+  `dapr-callee-app-id` in testing. `1.17+` additionally enables durable/deduplicated results.
