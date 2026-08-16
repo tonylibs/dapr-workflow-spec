@@ -4,18 +4,19 @@ Goal: prove a migrated step (`call: http` / `run: shell` / `run: script`) is inv
 Dapr Workflow activity** named `Run`, with the upstream-vs-config failure markers surfacing the same
 error shape as the old HTTP path.
 
-> **KNOWN ISSUE (2026-08-16): cross-app dispatch is blocked by a Dapr runtime/SDK version mismatch.**
-> On the versions tested, the activity never routes to the callee app:
-> - Dapr **1.15.5** → `required metadata dapr-app-id not found` (multi-app needs runtime **≥1.16.0**).
-> - Dapr **1.16.0** → `required metadata dapr-callee-app-id or dapr-app-id not found`.
+> **VALIDATED on Dapr 1.18.0 (2026-08-16).** Cross-app dispatch works end-to-end with the real
+> `dws-call-http` worker: the `Run` activity dispatched to app-id `check-inventory`, executed, and
+> the workflow completed → `output={"hello":"world","stock":42}`, 0 dispatch failures.
 >
-> The `dapr-callee-app-id` gRPC metadata is not propagated during workflow activity proxying — a
-> runtime/SDK version-compatibility problem (see [dapr/dapr#10039](https://github.com/dapr/dapr/issues/10039)),
-> **not** a logic defect in the branch. The app-side durabletask-go/kit version (ours: v0.12.4 via
-> dapr go-sdk v1.15.0) and the daprd runtime must be a *compatible pair*. **Do not treat a failing
-> run as an implementation bug** until a validated (daprd, SDK/durabletask-go) combination is found;
-> see `follow-ups.md` item 3. The steps below are the harness; expect steps 3+ to fail until the
-> version prerequisite is resolved.
+> **Use Dapr ≥ 1.18.0** (the chart pins `1.18.0`). Earlier runtimes fail: 1.15.5 →
+> `required metadata dapr-app-id not found` (multi-app needs ≥1.16.0); 1.16.0 →
+> `required metadata dapr-callee-app-id or dapr-app-id not found` (runtime older than the 1.18-era
+> client libs the images link — durabletask-go v0.12.4 / kit v0.18.1 / dapr v1.18.0). This was a
+> version mismatch, **not** a branch logic defect (cf. [dapr/dapr#10039](https://github.com/dapr/dapr/issues/10039)).
+>
+> Self-hosted slim also needs, purely as local harness plumbing (not cluster concerns): the
+> scheduler started with `--override-broadcast-host-port localhost:50006`, and `DAPR_HOST_IP=127.0.0.1`
+> exported so mdns advertises a routable address instead of a placeholder.
 
 Two tracks:
 - **Track A (smoke, light):** a throwaway Go workflow host schedules the `Run` activity cross-app
@@ -35,8 +36,8 @@ so start them yourself. Redis is the state store.
 # 0.1 CLI + slim runtime (daprd + placement + scheduler binaries)
 # Multi-app needs runtime >= 1.16.0. 1.15.5 does NOT support it (see KNOWN ISSUE).
 # Use a version from the validated combination once identified (follow-ups.md item 3).
-dapr --version                       # CLI 1.16.x+
-dapr init --slim --runtime-version 1.16.0    # placeholder — pin the validated version
+dapr --version                       # CLI 1.18.x
+dapr init --slim --runtime-version 1.18.0    # validated; matches the chart's appVersion
 
 # 0.2 State store: redis
 redis-server --port 6379 &           # or your local redis

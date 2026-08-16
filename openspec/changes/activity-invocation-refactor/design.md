@@ -119,13 +119,14 @@ Constraints carried from the platform:
   standing pod per migrated step; that is inherent to the model (D6).
 - [Risk] JS SDK still lacks multi-app support → Mitigation: `CALL_OPENAPI` deliberately left on
   HTTP; no dependency on JS multi-app.
-- [Risk] Cross-app dispatch is version-coupled → **Realized (2026-08-16), now BLOCKING.** Local e2e
-  showed the callee-app-id metadata is not propagated on Dapr 1.15.5 (unsupported; needs ≥1.16.0) or
-  1.16.0 (`dapr-callee-app-id or dapr-app-id not found`) — a runtime/SDK compatibility issue, not a
-  branch logic bug (see follow-ups.md item 3 and [dapr/dapr#10039](https://github.com/dapr/dapr/issues/10039)).
-  Mitigation: a validated (daprd, SDK/durabletask-go) version pairing MUST be identified, pinned in
-  the chart + Go modules + orchestrator pom, and the e2e re-run before enabling this on a cluster.
-  The earlier "1.16.0 is sufficient" assessment is retracted.
+- [Risk] Cross-app dispatch is version-coupled → **Realized then RESOLVED (2026-08-16).** Dispatch
+  failed on Dapr 1.15.5/1.16.0 (`dapr-callee-app-id ... not found`) because the runtime was older
+  than the 1.18-era client libs the images link — a version mismatch, not a branch logic bug (see
+  follow-ups.md item 3, [dapr/dapr#10039](https://github.com/dapr/dapr/issues/10039)). Mitigation
+  applied and validated: `charts/dws/Chart.yaml` `appVersion` bumped 1.16.0 → 1.18.0; a local e2e on
+  1.18.0 with the real worker completed the cross-app `Run` dispatch
+  (`output={"hello":"world","stock":42}`, 0 failures). The earlier "1.16.0 is sufficient" assessment
+  is retracted; 1.18.0 is the validated minimum.
 - [Risk] Dapr `1.16.0` lacks durable/deduplicated activity results → Mitigation: separate from the
   dispatch blocker above; `1.17+` enables dedup guarantees, a non-goal here beyond whatever version
   the dispatch fix requires.

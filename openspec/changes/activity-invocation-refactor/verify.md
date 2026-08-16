@@ -65,17 +65,13 @@ PR #41 CI: all 10 checks green, `mergeable_state: clean`. `dws-call-openapi` unt
 
 ## Issues
 
-**CRITICAL:**
-- **Cross-app dispatch is unvalidated at runtime and blocked on the tested versions.** Local e2e
-  (2026-08-16) showed the migrated activity never routes to the callee app: Dapr 1.15.5 →
-  `required metadata dapr-app-id not found`; Dapr 1.16.0 → `required metadata dapr-callee-app-id
-  or dapr-app-id not found`. Root cause is Dapr runtime cross-app proxying not propagating the
-  `dapr-callee-app-id` metadata — a runtime/SDK version-compatibility problem
-  ([dapr/dapr#10039](https://github.com/dapr/dapr/issues/10039)), not a logic defect in this
-  branch (the scheduling/registration code follows the documented API and its unit tests pass).
-  The earlier claim "Dapr 1.16.0 is sufficient to run the migrated dispatch" is **retracted**.
-  Recommendation: do not archive/merge for real-cluster use until a validated (daprd runtime, dapr
-  SDK/durabletask-go) combination is identified and pinned, and the e2e passes on it (follow-ups.md item 3).
+**CRITICAL:** none outstanding.
+- (Resolved) Cross-app dispatch was initially blocked on Dapr 1.15.5/1.16.0 with
+  `required metadata dapr-callee-app-id ... not found` — a runtime-version mismatch (1.16.0
+  runtime vs 1.18-era client libs), not a branch logic defect. **Validated fixed on Dapr 1.18.0**
+  via local e2e with the real worker: `RESULT status=ORCHESTRATION_STATUS_COMPLETED
+  output={"hello":"world","stock":42}`, 0 dispatch failures. `charts/dws/Chart.yaml` `appVersion`
+  bumped 1.16.0 → 1.18.0 (follow-ups.md item 3). The earlier "1.16.0 is sufficient" claim is retracted.
 
 **WARNING:** none outstanding.
 - (Resolved) `WorkflowAccessPolicy` for cross-app steps is now synthesized by `dws-controller`
@@ -92,9 +88,9 @@ PR #41 CI: all 10 checks green, `mergeable_state: clean`. `dws-call-openapi` unt
 **Code/unit level: complete.** 21/21 tasks, every requirement mapped to code + tests, all component
 gates and PR CI green, design decisions followed.
 
-**Runtime level: NOT validated — blocked.** Cross-app activity dispatch does not route on the Dapr
-versions tested (1.15.5, 1.16.0) due to missing `dapr-callee-app-id` metadata during workflow
-proxying — a version-compatibility problem, not a branch logic bug. **Not ready for archive/merge
-for cluster enablement** until the version prerequisite (follow-ups.md item 3) is resolved and the
-e2e passes. The branch remains a correct, mergeable-in-principle implementation of the *logic*, but
-the feature it enables cannot run until a validated runtime+SDK pairing is pinned.
+**Runtime level: validated on Dapr 1.18.0.** Cross-app activity dispatch routes end-to-end with the
+real `dws-call-http` worker — the `Run` activity dispatched to app-id `check-inventory`, executed
+the runner, applied `OUTPUT=merge`, and the workflow completed (`{"hello":"world","stock":42}`, 0
+dispatch failures). The chart's Dapr `appVersion` is bumped 1.16.0 → 1.18.0 to match the 1.18-era
+client libraries the images/orchestrator already link. **Ready for archive/merge**, with the
+`WorkflowAccessPolicy` and version prerequisites now both addressed.
