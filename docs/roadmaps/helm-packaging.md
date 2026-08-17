@@ -56,14 +56,13 @@ charts/dws/
     └── _helpers.tpl
 ```
 
-The admin Deployment already carries `dapr.io/enabled`/`dapr.io/app-id` pod annotations
-(hardcoded, ahead of schedule — added to get the sidecar up for CI's real integration test
-before Phase 4's toggle exists). The controller Deployment does not have them yet, and there's
-still no `pubsub-component.yaml` Dapr Component template.
+The admin Deployment carries `dapr.io/enabled`/`dapr.io/app-id` pod annotations, now gated
+behind `dapr.enabled` (Phase 4, done). The controller Deployment does not have them yet, and
+there's still no `pubsub-component.yaml` Dapr Component template — both are Phase 5 scope.
 
 ## Phased roadmap
 
-Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 2026-08-16.
+Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 2026-08-17.
 
 | Phase | Status | Goal | Key tasks |
 |---|---|---|---|
@@ -71,8 +70,8 @@ Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 20
 | 1. Scaffold | ✅ | `helm create charts/dws`, strip unused boilerplate | Chart.yaml, values.yaml skeleton; leftover `helm create` boilerplate removed |
 | 2. Controller | ✅ | Port `dws-controller/k8s/*.yaml` to templates | serviceaccount, rbac, deployment, service — namespace/RBAC/`DWS_IMAGES_*` templatized |
 | 3. Admin + DB | ✅ | Deployment/Service/Secret for dws-admin | Bitnami PostgreSQL subchart toggle (`postgresql.enabled`) done; external DSN via `admin.database.url`/`existingSecret` done |
-| 4. Dapr prerequisite | ❌ | Dapr as chart dependency | Not started — `Chart.yaml` has no `dapr` dependency, no `dapr.enabled` value, no preflight CRD check for Dapr. CI installs Dapr ad hoc via `dapr init -k` purely to exercise the integration test, not through the chart. **Knative was split out of this phase — see Phase 11** |
-| 5. Event wiring | ⚠️ | Wire Dapr Components chart-side: pub/sub (controller→admin) **and Redis-backed Components** | Admin Deployment already carries `dapr.io/enabled`/`dapr.io/app-id` annotations + `DAPR_PUBSUB_NAME`/`DAPR_PUBSUB_TOPIC` env vars (hardcoded, not gated behind a toggle since Phase 4 doesn't exist yet). Still missing: controller-side dapr annotations, `pubsub-component.yaml`, an end-to-end pub/sub test (today's `helm test` only checks DB connectivity), a `redis.enabled` conditional Bitnami Redis subchart dependency (mirrors `postgresql.enabled`), `definitions-component.yaml` (`configuration.redis`, replacing the hardcoded `dws-orchestrator/k8s/configuration-component.yaml` which today points at an unmanaged `redis-master.default.svc.cluster.local`), and an `actor-statestore-component.yaml` (`state.redis`, `actorStateStore: "true"`) for when `dws-orchestrator` starts calling the Dapr Workflow runtime. Depends only on Phase 4 (Dapr) — not on Phase 11 (Knative) |
+| 4. Dapr prerequisite | ✅ | Dapr as chart dependency | `Chart.yaml` declares `dapr/dapr` as a conditional dependency (`condition: dapr.enabled`); `values.yaml` exposes `dapr.enabled` (default `true`). The admin Deployment's `dapr.io/enabled`/`dapr.io/app-id` annotations and `DAPR_PUBSUB_NAME`/`DAPR_PUBSUB_TOPIC`/`DAPR_APP_PORT` env vars are now gated behind `.Values.dapr.enabled`. A preflight check (`templates/_preflight.tpl`, `Capabilities.APIVersions.Has "dapr.io/v1alpha1"`) fails `helm install`/`upgrade` fast when `dapr.enabled=false` but Dapr CRDs aren't present. CI's `integration` job now installs Dapr via the chart on the default `dapr.enabled=true` leg, and runs a second matrix leg with `dapr.enabled=false` against a pre-installed Dapr to prove both toggle states. **Knative stays split out — see Phase 11** |
+| 5. Event wiring | ⚠️ | Wire Dapr Components chart-side: pub/sub (controller→admin) **and Redis-backed Components** | Admin Deployment's `dapr.io/enabled`/`dapr.io/app-id` annotations + `DAPR_PUBSUB_NAME`/`DAPR_PUBSUB_TOPIC` env vars are now gated behind `dapr.enabled` (Phase 4, done). Still missing: controller-side dapr annotations, `pubsub-component.yaml`, an end-to-end pub/sub test (today's `helm test` only checks DB connectivity), a `redis.enabled` conditional Bitnami Redis subchart dependency (mirrors `postgresql.enabled`), `definitions-component.yaml` (`configuration.redis`, replacing the hardcoded `dws-orchestrator/k8s/configuration-component.yaml` which today points at an unmanaged `redis-master.default.svc.cluster.local`), and an `actor-statestore-component.yaml` (`state.redis`, `actorStateStore: "true"`) for when `dws-orchestrator` starts calling the Dapr Workflow runtime. Depends only on Phase 4 (Dapr, done) — not on Phase 11 (Knative) |
 | 6. Console | ❌ | Add Deployment/Service/Ingress once an image exists | Still blocked — `templates/console/` is empty, no Dockerfile in `dws-console/` yet |
 | 7. Values design | ⚠️ | Finalize `values.yaml` | Controller/admin/postgresql image/tag/resources/replicas + global namespace done; no ingress or console values yet (blocked on Phase 6) |
 | 8. Testing | ✅ | `helm lint`, `helm template`, install test on kind | `.github/workflows/helm.yml`: lint + template (default/disabled/overridden) + kind server-dry-run in `verify`; a real kind install of admin+postgres+Dapr with `helm test` in `integration` (a hand-rolled kind pipeline instead of the `ct` tool, but covers the same ground) |
@@ -88,13 +87,11 @@ Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 20
 - Built-in Postgres is dev/eval-grade (single replica, no backup) — production users should set `postgresql.enabled: false` and point `admin.database` at a managed instance. Same caveat will apply to the built-in Redis once it exists (`redis.enabled: false` for production, point at a managed instance).
 - **Redis is a real dependency today, not just a future one**: `dws-orchestrator/k8s/configuration-component.yaml` already wires `dws-definitions` (a `configuration.redis` Component) to a hardcoded `redis-master.default.svc.cluster.local`, applied manually, outside the chart. That's the concrete thing Phase 5's Redis work replaces — it isn't only about the not-yet-built actor state store.
 - Knative install-via-Job (Phase 11) needs a pinned release version (`knative.version`) kept in sync with the `serving-crds.yaml` bundle already checked into `dws-controller/k8s/`. Not started; deliberately deprioritized behind Dapr since nothing else in the roadmap currently depends on it.
-- Phase 5's remaining piece (the `pubsub-component.yaml` Component + a real end-to-end assertion)
-  is still gated on Phase 4 landing a real in-chart Dapr control plane — the sidecar annotations
-  and env vars are already in place on the admin side, but CI only proves them via a hand-installed
-  Dapr, not the chart's own toggle. Event *publishing* itself (`dws-controller`/`dws-orchestrator` →
-  topic `dws.events`) already shipped outside this roadmap (see `docs/events.md`).
-- **Next up:** Phase 4 (Dapr chart dependency + `dapr.enabled` toggle + preflight check), scoped to
-  Dapr only now that Knative has moved to Phase 11 — it's the critical path because it unblocks
-  finishing Phase 5 cleanly and is the biggest remaining gap versus what's already shipped
-  (controller, admin+DB, and the full test/publish CI pipeline). Phase 11 (Knative) has no
+- Phase 4 landed a real in-chart Dapr control plane (`dapr.enabled` toggle + preflight check), so
+  Phase 5's remaining piece (the `pubsub-component.yaml` Component + a real end-to-end assertion)
+  is now unblocked — no outstanding dependency. Event *publishing* itself
+  (`dws-controller`/`dws-orchestrator` → topic `dws.events`) already shipped outside this roadmap
+  (see `docs/events.md`).
+- **Next up:** Phase 5 (controller-side dapr annotations, `pubsub-component.yaml` Dapr Component
+  template, end-to-end pub/sub assertion) — now unblocked by Phase 4. Phase 11 (Knative) has no
   dependents and can be picked up independently, on its own timeline.

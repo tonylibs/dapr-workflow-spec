@@ -34,6 +34,12 @@ jobs:
         with:
           version: v3.19.0
 
+      - name: Fetch chart dependencies
+        # `update` (not `build`) so this doesn't depend on the committed Chart.lock
+        # already matching Chart.yaml — it re-resolves and re-fetches from Chart.yaml
+        # directly, which is what's needed right after a dependency is added/changed.
+        run: helm dependency update ${{ env.CHART_DIR }}
+
       - name: Lint
         run: helm lint ${{ env.CHART_DIR }}
 
@@ -60,9 +66,16 @@ jobs:
       - name: Create kind cluster
         uses: helm/kind-action@v1
 
+      - name: Install Dapr CRDs
+        # --dry-run=server validates every rendered resource against the real API
+        # server, and the chart now installs Dapr by default (Phase 4), which
+        # renders a Configuration CR ("daprsystem"). Helm's own crds/ pre-install
+        # step doesn't run under --dry-run=server, so apply the same pinned CRD
+        # bundle dws-controller already vendors, up front, to unblock validation.
+        run: kubectl apply -f dws-controller/k8s/dapr-crds.yaml
+
       - name: Server-side dry-run install
-        # Validates the rendered manifests against a real API server. The controller
-        # stack is core/rbac/apps only, so no external CRDs are required.
+        # Validates the rendered manifests against a real API server.
         # NOTE: --dry-run=server never starts a pod, so it cannot catch a broken
         # admin/Postgres integration (a bad DATABASE_URL, a Postgres that never comes
         # up, etc.) — see the `integration` job below for that.
@@ -87,22 +100,20 @@ jobs:
         with:
           version: v3.19.0
 
+      - name: Fetch chart dependencies
+        # `update` (not `build`) so this doesn't depend on the committed Chart.lock
+        # already matching Chart.yaml — it re-resolves and re-fetches from Chart.yaml
+        # directly, which is what's needed right after a dependency is added/changed.
+        run: helm dependency update ${{ env.CHART_DIR }}
+
       - name: Create kind cluster
         uses: helm/kind-action@v1
-
-      - name: Install Dapr control plane
-        # dws-admin's DaprServer hard-requires a reachable sidecar to even boot
-        # (it awaits the sidecar before Nest finishes bootstrapping), so the
-        # admin Deployment's dapr.io/enabled annotation needs an actual Dapr
-        # control plane + sidecar injector in the cluster to do anything.
-        run: |
-          wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash
-          dapr init -k --wait --timeout 300
 
       - name: Create namespace and ghcr pull secret
         # ghcr.io/tonylibs/dws-admin is a private package, so the kind node's
         # anonymous pull fails even with a valid tag — wire GITHUB_TOKEN in as
-        # an imagePullSecret the same way a real cluster would use one.
+        # an imagePullSecret the same way a real cluster would use one. Created
+        # up front so it exists before the admin Pod references it below.
         run: |
           kubectl create namespace dws-system --dry-run=client -o yaml | kubectl apply -f -
           kubectl create secret docker-registry ghcr-pull \
@@ -112,17 +123,26 @@ jobs:
             --docker-password=${{ secrets.GITHUB_TOKEN }}
 
       - name: Install (real, no dry-run)
-        # Scoped to admin+postgres: controller.image.tag has no published "1.0" image
+        # A single, real `helm install` — Dapr, admin, and postgres all come up in
+        # the same release, exactly like a real operator's default install. The
+        # chart's own dapr-ready-hook post-install Job (templates/dapr-ready-hook.yaml)
+        # is what makes this safe: it waits for the dapr-sidecar-injector rollout and
+        # self-heals the admin Pod if its sidecar injection was missed, so this test
+        # exercises the actual fix rather than a CI-only workaround.
+        # Scoped off controller: controller.image.tag has no published "1.0" image
         # (dws-controller.yml only pushes latest/sha/branch tags), so leave it disabled
         # here rather than have its pod ImagePullBackOff and blow the wait timeout.
         # admin.image.tag is overridden to "latest" for the same reason. No --wait here —
-        # the explicit rollout-status steps below do the waiting and, on failure, the
-        # debug step can still inspect pod state instead of only getting a bare timeout.
+        # the explicit rollout-status steps below do the waiting (post-install hooks
+        # block the `helm install` call itself until they complete, so the hook has
+        # already run by the time this command returns) and, on failure, the debug
+        # step can still inspect pod state instead of only getting a bare timeout.
         run: |
           helm install dws ${{ env.CHART_DIR }} \
             --namespace dws-system --create-namespace \
             --set controller.enabled=false \
             --set postgresql.enabled=true \
+            --set dapr.enabled=true \
             --set admin.image.tag=latest \
             --set imagePullSecrets[0].name=ghcr-pull \
             --timeout 5m
@@ -144,11 +164,64 @@ jobs:
           kubectl logs -n dws-system -l app.kubernetes.io/component=admin --all-containers --prefix --tail=200 || true
           echo "--- admin pod logs, all containers (previous, if crashlooping) ---"
           kubectl logs -n dws-system -l app.kubernetes.io/component=admin --all-containers --prefix --previous --tail=200 || true
-          echo "--- dapr-system pods ---"
-          kubectl get pods -n dapr-system -o wide || true
+          echo "--- dapr pods (dws-system) ---"
+          kubectl get pods -n dws-system -l app.kubernetes.io/name=dapr -o wide || true
+          echo "--- dapr-ready-hook job logs ---"
+          kubectl logs -n dws-system -l app.kubernetes.io/component=dapr-ready-hook --all-containers --prefix --tail=200 || true
 
       - name: Run helm test
         run: helm test dws --namespace dws-system --logs
+
+  integration-dapr-preinstalled:
+    name: install with dapr.enabled=false against a pre-installed Dapr
+    runs-on: ubuntu-latest
+    needs: verify
+    # dapr.enabled=false means "Dapr is already installed in this cluster" (an
+    # operator running a shared, externally-managed Dapr control plane), not "don't
+    # use Dapr" — dws-admin still needs dapr.enabled=true at install time to get its
+    # sidecar annotations (see the `integration` job above). What this leg actually
+    # proves: with that toggle off, the chart does not try to install its own Dapr
+    # dependency, and the preflight check passes when Dapr is genuinely present —
+    # not a full admin rollout.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: Fetch chart dependencies
+        run: helm dependency update ${{ env.CHART_DIR }}
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+
+      - name: Install Dapr control plane out-of-band
+        run: |
+          wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash
+          dapr init -k --wait --timeout 300
+
+      - name: Install chart with dapr.enabled=false
+        # Everything else disabled too: this leg only exercises the preflight
+        # check's "Dapr present" pass-through and confirms no Dapr subchart
+        # resources get installed by the chart itself.
+        run: |
+          helm install dws ${{ env.CHART_DIR }} \
+            --namespace dws-system --create-namespace \
+            --set controller.enabled=false \
+            --set admin.enabled=false \
+            --set postgresql.enabled=false \
+            --set dapr.enabled=false \
+            --timeout 2m
+
+      - name: Verify no chart-installed Dapr resources
+        run: |
+          if kubectl get pods -n dws-system -l app.kubernetes.io/name=dapr 2>/dev/null | grep -q .; then
+            echo "::error::dapr.enabled=false but the chart installed Dapr resources anyway"
+            exit 1
+          fi
 
   release:
     name: package & push (OCI)

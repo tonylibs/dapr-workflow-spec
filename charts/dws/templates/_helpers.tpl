@@ -118,3 +118,11 @@ postgres StatefulSet/Service cannot match sibling components (controller, admin)
 app.kubernetes.io/component: postgres
 {{- end }}
 
+{{/*
+Dapr-ready hook fully qualified name — the post-install/post-upgrade Job (and its
+ServiceAccount/Role/RoleBinding) that self-heals a missed Dapr sidecar injection.
+*/}}
+{{- define "dws.daprReadyHook.fullname" -}}
+{{- printf "%s-dapr-ready" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+

@@ -1,0 +1,114 @@
+{{- if .Values.dapr.enabled }}
+{{- /*
+Self-heals a missed Dapr sidecar injection on the admin Pod — see the comment on
+dapr.readyHook in values.yaml for why this is needed. Namespace-scoped RBAC, mirroring the
+controller's Role/RoleBinding pattern in templates/controller/rbac.yaml.
+*/ -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "dws.daprReadyHook.fullname" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dapr-ready-hook
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "dws.daprReadyHook.fullname" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dapr-ready-hook
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+rules:
+  # To wait on the dapr-sidecar-injector Deployment's rollout.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+  # To find the admin Pod and delete it if its sidecar injection was missed.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "dws.daprReadyHook.fullname" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dapr-ready-hook
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "dws.daprReadyHook.fullname" . }}
+    namespace: {{ include "dws.namespace" . }}
+roleRef:
+  kind: Role
+  name: {{ include "dws.daprReadyHook.fullname" . }}
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "dws.daprReadyHook.fullname" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dapr-ready-hook
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        {{- include "dws.labels" . | nindent 8 }}
+        app.kubernetes.io/component: dapr-ready-hook
+    spec:
+      serviceAccountName: {{ include "dws.daprReadyHook.fullname" . }}
+      restartPolicy: Never
+      containers:
+        - name: dapr-ready
+          image: "{{ .Values.dapr.readyHook.image.repository }}:{{ .Values.dapr.readyHook.image.tag }}"
+          imagePullPolicy: {{ .Values.dapr.readyHook.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              ns="{{ include "dws.namespace" . }}"
+              echo "waiting for dapr-sidecar-injector rollout in namespace $ns..."
+              kubectl rollout status deployment/dapr-sidecar-injector -n "$ns" --timeout=180s
+              # Deployment readiness doesn't guarantee the admission webhook is reachable
+              # from the API server yet — give its cert/registration a beat to catch up.
+              sleep 15
+
+              pods=$(kubectl get pods -n "$ns" -l app.kubernetes.io/component=admin -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)
+              if [ -z "$pods" ]; then
+                echo "no admin pod found, nothing to check"
+                exit 0
+              fi
+              for pod in $pods; do
+                containers=$(kubectl get pod "$pod" -n "$ns" -o jsonpath='{.spec.containers[*].name}' 2>/dev/null || true)
+                echo "admin pod $pod containers: $containers"
+                if ! echo "$containers" | grep -q daprd; then
+                  echo "admin pod $pod is missing its daprd sidecar (injection missed), deleting to force re-injection"
+                  kubectl delete pod "$pod" -n "$ns"
+                fi
+              done
+{{- end }}

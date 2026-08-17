@@ -17,10 +17,12 @@ spec:
       labels:
         {{- include "dws.labels" . | nindent 8 }}
         app.kubernetes.io/component: admin
+      {{- if .Values.dapr.enabled }}
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: {{ include "dws.admin.fullname" . | quote }}
         dapr.io/app-port: "3001"
+      {{- end }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -51,12 +53,14 @@ spec:
                   {{- end }}
             - name: RUN_MIGRATIONS_ON_BOOT
               value: "true"
+            {{- if .Values.dapr.enabled }}
             - name: DAPR_PUBSUB_NAME
               value: {{ .Values.admin.pubsub.name | quote }}
             - name: DAPR_PUBSUB_TOPIC
               value: {{ .Values.admin.pubsub.topic | quote }}
             - name: DAPR_APP_PORT
               value: "3001"
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /health
