@@ -7,7 +7,7 @@ tags: [dws, admin, postgres, dapr, events, observability]
 
 # DWS administrative read model
 
-`dws-admin` is the read-model and query service for platform activity. It consumes the advisory stream described in [DWS lifecycle events](lifecycle-events.md), projects deployment and execution facts into Postgres, and exposes read-only workflow and instance APIs. It does not control the workflow lifecycle: the controller and orchestrator remain the sources of deployment and runtime truth described in [deployed workflow architecture](../architecture/deployed-workflow.md).
+`dws-admin` is the read-model, query, and live-instance-update service for platform activity. It consumes the advisory stream described in [DWS lifecycle events](lifecycle-events.md), projects deployment and execution facts into Postgres, serves workflow and instance queries, and pushes newly ingested instance changes to connected browsers. It does not control the workflow lifecycle: the controller and orchestrator remain the sources of deployment and runtime truth described in [deployed workflow architecture](../architecture/deployed-workflow.md).
 
 ## Ingestion and projections
 
@@ -29,9 +29,10 @@ sequenceDiagram
   Admin->>Store: read projection
   Store-->>Admin: query result
   Admin-->>Client: paginated response
+  Admin-->>Client: push newly committed instance change
 ```
 
-This flow shows lifecycle publishers feeding a durable query projection; the read API does not invoke the controller or orchestrator.
+This flow shows lifecycle publishers feeding a durable query projection and, for instance changes, an in-process push stream; neither surface invokes the controller or orchestrator.
 
 `processed_events` provides the event-ID idempotency guard around each handler transaction. Unknown but valid event types are ignored. The projections are deliberately monotonic where delivery order can vary:
 
@@ -50,6 +51,10 @@ The service exposes `GET /health` as a Postgres connectivity check and serves th
 |---|---|
 | Workflows | `GET /workflows`, `GET /workflows/:name`, `GET /workflows/:name/deployments` |
 | Instances | `GET /instances` (optional workflow/status filters), `GET /instances/:id`, `GET /instances/:id/tasks` |
+
+It also exposes two server-sent-event streams on the Nest read-API listener: `GET /instances/:id/events` pushes `instance` status and `task` events for one existing instance, while `GET /instances/events` pushes lightweight `instanceId`, status, and end-time deltas for all instances. Both streams contain only changes committed after a client connects; clients must read the corresponding `GET` resource for initial or recovery state. A per-instance stream sends its terminal `completed` or `failed` status, then closes. Unknown instance IDs return 404 rather than opening a stream.
+
+The streams are fed only after the ingestion transaction commits and suppress events for duplicate task inserts or status changes rejected by the terminal-state ratchet. Fan-out uses one in-process RxJS subject, so live delivery is correct only for a single `dws-admin` replica; horizontally scaling this component requires a cross-replica delivery mechanism. The committed console uses `EventSource` to patch its TanStack Query caches for a running detail view and already loaded instance-list rows, refetching on reconnect because the streams have no replay.
 
 Workflow and instance lookups return 404 when the corresponding projection is absent. The service does not write definitions, apply deployments, start instances, or deliver task commands. Because its input is the best-effort lifecycle stream, the database is an operational view rather than a replacement for the controller's Kubernetes state or Dapr's workflow state.
 

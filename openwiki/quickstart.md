@@ -40,4 +40,4 @@ The GitHub Actions workflow at `.github/workflows/openwiki-update.yml` refreshes
 ## Backlog
 
 - **Step-runner internals** — `dws-call-http/`, `dws-call-openapi/`, and `dws-run/`: the platform-level task-to-step-service contract is documented, but individual runner request/response and configuration details remain deferred until a dedicated runtime page is needed.
-- **Administrative console** — `dws-console/`: the committed TanStack Start application is an unconnected starter scaffold; document it when it acquires DWS-facing routes or calls the `dws-admin` read API.
+- **Administrative console detail** — `dws-console/`: the committed TanStack Start application now reads the `dws-admin` API and applies live instance SSE updates; its browser-side route, cache, and deployment details remain deferred. The server-side contract and its single-replica constraint are documented in the [administrative read model](integrations/admin-read-model.md).
