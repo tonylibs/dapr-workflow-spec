@@ -582,11 +582,15 @@ public class InterpreterWorkflow implements Workflow {
 
     List<io.dapr.durabletask.Task<JsonNode>> handles = new java.util.ArrayList<>();
     for (TaskItem branch : branches) {
-      String branchInstanceId = ctx.getInstanceId() + "/" + name + "/" + branch.getName();
       ForkBranchInput input =
           new ForkBranchInput(branch.getName(), data, context, variables, depth + 1);
-      handles.add(
-          ctx.callChildWorkflow(ForkBranchWorkflow.NAME, input, branchInstanceId, JsonNode.class));
+      // No explicit child instance id: the same fork task can execute more than once within one
+      // instance (nested in a `for.do`, or re-attempted by a retrying `try`), and a static id would
+      // collide across those distinct child creations. The 3-arg overload lets DurableTask derive a
+      // per-call child id that is deterministic on replay (name-based UUIDv5 of the parent id, the
+      // replay-safe workflow instant, and a per-parent sub-orchestration counter) yet unique per
+      // call (the counter increments), so each branch creation is distinct and replay-stable.
+      handles.add(ctx.callChildWorkflow(ForkBranchWorkflow.NAME, input, JsonNode.class));
     }
 
     if (forkTask.getFork().isCompete()) {

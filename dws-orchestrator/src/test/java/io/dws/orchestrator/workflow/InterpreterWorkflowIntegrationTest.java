@@ -932,7 +932,6 @@ class InterpreterWorkflowIntegrationTest {
     when(ctx.callChildWorkflow(
             org.mockito.ArgumentMatchers.eq(io.dws.orchestrator.workflow.ForkBranchWorkflow.NAME),
             any(),
-            any(String.class),
             eq(JsonNode.class)))
         .thenAnswer(
             inv -> {
@@ -1146,6 +1145,154 @@ class InterpreterWorkflowIntegrationTest {
             eq(JsonNode.class)))
         .thenAnswer(
             inv -> completed(EvaluateSetActivity.apply((EvaluateSetRequest) inv.getArgument(1))));
+
+    workflow.execute(ctx);
+
+    JsonNode output = completionOutput(ctx);
+    assertThat(output.get("paged").textValue()).isEqualTo("fallback");
+  }
+
+  /**
+   * Workflow-parallelism spec: a branch's {@code export.as} does not thread out of the fork. A task
+   * before the fork exports {@code $context}, the fork's branch also declares an {@code export.as},
+   * and the task after the fork reads {@code $context} back through {@code output.as}: it must see
+   * the pre-fork context, unchanged — the branch's export stays inside its own child instance and
+   * never rewrites the parent's context.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void forkBranchExportDoesNotLeakIntoContextSeenAfterTheFork() throws Exception {
+    seedInline(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: fork-context-workflow
+          version: '1.0.0'
+        do:
+          - seedContext:
+              set:
+                marker: '"present"'
+              export:
+                as: '${ { origin: "before-fork" } }'
+              then: raiseAlarm
+          - raiseAlarm:
+              fork:
+                compete: false
+                branches:
+                  - callNurse:
+                      set:
+                        paged: '"nurse"'
+                      export:
+                        as: '${ { origin: "inside-branch" } }'
+                  - callSecurity:
+                      set:
+                        paged: '"security"'
+              then: afterFork
+          - afterFork:
+              set:
+                done: true
+              output:
+                as: '${ { seenOrigin: $context.origin } }'
+              then: end
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{}"));
+
+    // The data-flow phases run for real, exactly as stubDataFlow does for the dataflow fixture, so
+    // export.as writes $context and the later output.as reads it back.
+    when(ctx.callActivity(
+            eq(DataFlowInputActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenAnswer(
+            inv ->
+                completed(DataFlowPipeline.applyInput((DataFlowInputRequest) inv.getArgument(1))));
+    when(ctx.callActivity(
+            eq(DataFlowOutputActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(DataFlowResult.class)))
+        .thenAnswer(
+            inv ->
+                completed(
+                    DataFlowPipeline.applyOutput((DataFlowOutputRequest) inv.getArgument(1))));
+
+    Task<JsonNode> nurse = taskWithThenApply();
+    when(nurse.await()).thenReturn(mapper.readTree("{\"paged\":\"nurse\"}"));
+    Task<JsonNode> security = taskWithThenApply();
+    when(security.await()).thenReturn(mapper.readTree("{\"paged\":\"security\"}"));
+    stubForkBranches(ctx, Map.of("callNurse", nurse, "callSecurity", security));
+    stubAllOf(ctx);
+
+    workflow.execute(ctx);
+
+    // The context after the fork is the one that entered it: the branch's `inside-branch` export
+    // did not thread out.
+    JsonNode output = completionOutput(ctx);
+    assertThat(output.get("seenOrigin").textValue()).isEqualTo("before-fork");
+  }
+
+  /**
+   * compete:true winning-branch failure is caught by the enclosing try. The winning (first-settled)
+   * branch fails, so {@code dispatchFork}'s {@code winner.await()} re-throws that branch's
+   * exception; the enclosing try catches it and its {@code catch.do} recovers, so the recovered
+   * value is observable — mirrors {@code forkJoinFailurePropagatesAndIsCaughtByEnclosingTry} but
+   * for the anyOf/compete path (a single failing winner is enough; no composite needed).
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void forkCompeteWinningBranchFailurePropagatesAndIsCaughtByEnclosingTry() throws Exception {
+    seedInline(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: fork-compete-workflow
+          version: '1.0.0'
+        do:
+          - guarded:
+              try:
+                - raiseAlarm:
+                    fork:
+                      compete: true
+                      branches:
+                        - callNurse:
+                            set:
+                              paged: '"nurse"'
+                        - callSecurity:
+                            set:
+                              paged: '"security"'
+              catch:
+                do:
+                  - recovered:
+                      set:
+                        paged: '"fallback"'
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{}"));
+
+    // The winning branch (callNurse, declared first) fails: its own await re-throws.
+    Task<JsonNode> nurse = taskWithThenApply();
+    when(nurse.await()).thenThrow(new RuntimeException("paging system down"));
+    Task<JsonNode> security = taskWithThenApply();
+    when(security.await()).thenReturn(mapper.readTree("{\"paged\":\"security\"}"));
+    stubForkBranches(ctx, Map.of("callNurse", nurse, "callSecurity", security));
+    stubAnyOf(ctx, 0); // callNurse's handle is index 0 (declared first) — it wins and fails.
+
+    when(ctx.callActivity(
+            eq(io.dws.orchestrator.workflow.activity.CatchDecisionActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(io.dws.orchestrator.workflow.activity.CatchDecision.class)))
+        .thenAnswer(
+            inv ->
+                completed(
+                    new io.dws.orchestrator.workflow.activity.CatchDecision(
+                        true, false, 0L, mapper.readTree("{\"status\":500}"), "error")));
 
     workflow.execute(ctx);
 

@@ -12,11 +12,11 @@ import java.util.List;
  * Resolves a task by name against the pod's one pinned definition. The in-process activities take a
  * task name rather than the task itself, so their inputs stay small and JSON-serializable.
  *
- * <p>The search descends into a try task's {@code try} and {@code catch.do} lists and a for task's
- * {@code do} list, so a nested task is resolvable exactly like a top-level one. That is sound
- * because task names are unique across the whole definition — {@code dws-controller} rejects
- * duplicates at compile time, since a {@code call}/{@code run} task's Dapr app-id is derived from
- * its name alone.
+ * <p>The search descends into a try task's {@code try} and {@code catch.do} lists, a for task's
+ * {@code do} list, and a fork task's {@code fork.branches} list, so a nested task is resolvable
+ * exactly like a top-level one. That is sound because task names are unique across the whole
+ * definition — {@code dws-controller} rejects duplicates at compile time, since a {@code
+ * call}/{@code run} task's Dapr app-id is derived from its name alone.
  */
 public final class DefinitionLookup {
 
