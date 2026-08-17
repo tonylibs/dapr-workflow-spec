@@ -35,7 +35,10 @@ jobs:
           version: v3.19.0
 
       - name: Fetch chart dependencies
-        run: helm dependency build ${{ env.CHART_DIR }}
+        # `update` (not `build`) so this doesn't depend on the committed Chart.lock
+        # already matching Chart.yaml — it re-resolves and re-fetches from Chart.yaml
+        # directly, which is what's needed right after a dependency is added/changed.
+        run: helm dependency update ${{ env.CHART_DIR }}
 
       - name: Lint
         run: helm lint ${{ env.CHART_DIR }}
@@ -103,7 +106,10 @@ jobs:
           version: v3.19.0
 
       - name: Fetch chart dependencies
-        run: helm dependency build ${{ env.CHART_DIR }}
+        # `update` (not `build`) so this doesn't depend on the committed Chart.lock
+        # already matching Chart.yaml — it re-resolves and re-fetches from Chart.yaml
+        # directly, which is what's needed right after a dependency is added/changed.
+        run: helm dependency update ${{ env.CHART_DIR }}
 
       - name: Create kind cluster
         uses: helm/kind-action@v1
