@@ -87,6 +87,58 @@ class DefinitionLookupTest {
   }
 
   @Test
+  void taskInsideForkBranchResolvesByName() throws Exception {
+    seed(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: lookup-workflow
+          version: '1.0.0'
+        do:
+          - raiseAlarm:
+              fork:
+                compete: false
+                branches:
+                  - callNurse:
+                      set:
+                        paged: '"nurse"'
+                  - callSecurity:
+                      set:
+                        paged: '"security"'
+        """);
+    Task callNurse = DefinitionLookup.taskByName("callNurse");
+    assertThat(callNurse.getSetTask()).isNotNull();
+    Task callSecurity = DefinitionLookup.taskByName("callSecurity");
+    assertThat(callSecurity.getSetTask()).isNotNull();
+  }
+
+  @Test
+  void taskInsideForkBranchInsideTryResolvesByName() throws Exception {
+    seed(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: lookup-workflow
+          version: '1.0.0'
+        do:
+          - guarded:
+              try:
+                - raiseAlarm:
+                    fork:
+                      branches:
+                        - deeplyNested:
+                            set:
+                              done: '"yes"'
+              catch:
+                do: []
+        """);
+    Task task = DefinitionLookup.taskByName("deeplyNested");
+    assertThat(task.getSetTask()).isNotNull();
+  }
+
+  @Test
   void unknownNameStillFailsLoudly() throws Exception {
     seed(
         """
