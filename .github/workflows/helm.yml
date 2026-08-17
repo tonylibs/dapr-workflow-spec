@@ -34,6 +34,9 @@ jobs:
         with:
           version: v3.19.0
 
+      - name: Fetch chart dependencies
+        run: helm dependency build ${{ env.CHART_DIR }}
+
       - name: Lint
         run: helm lint ${{ env.CHART_DIR }}
 
@@ -72,12 +75,24 @@ jobs:
             --dry-run=server
 
   integration:
-    name: real install & admin/postgres DB test
+    name: real install & admin/postgres DB test (dapr.enabled=${{ matrix.dapr_enabled }})
     runs-on: ubuntu-latest
     needs: verify
     permissions:
       contents: read
       packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Default path: dapr.enabled=true lets the chart's own dapr/dapr dependency
+          # install the control plane as part of `helm install` — no manual step needed.
+          - dapr_enabled: true
+          # dapr.enabled=false path: Dapr is pre-installed out-of-band (mirrors how an
+          # operator running a shared, cluster-external Dapr control plane would set up
+          # before installing this chart), proving the toggle-off case still works and
+          # exercising the preflight check's "Dapr present" branch.
+          - dapr_enabled: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -87,14 +102,19 @@ jobs:
         with:
           version: v3.19.0
 
+      - name: Fetch chart dependencies
+        run: helm dependency build ${{ env.CHART_DIR }}
+
       - name: Create kind cluster
         uses: helm/kind-action@v1
 
-      - name: Install Dapr control plane
+      - name: Install Dapr control plane out-of-band
+        if: matrix.dapr_enabled == false
         # dws-admin's DaprServer hard-requires a reachable sidecar to even boot
-        # (it awaits the sidecar before Nest finishes bootstrapping), so the
-        # admin Deployment's dapr.io/enabled annotation needs an actual Dapr
-        # control plane + sidecar injector in the cluster to do anything.
+        # (it awaits the sidecar before Nest finishes bootstrapping). With
+        # dapr.enabled=false the chart does not install Dapr itself, so this
+        # matrix leg pre-installs it manually to prove that path against an
+        # externally-managed Dapr control plane.
         run: |
           wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash
           dapr init -k --wait --timeout 300
@@ -118,11 +138,15 @@ jobs:
         # admin.image.tag is overridden to "latest" for the same reason. No --wait here —
         # the explicit rollout-status steps below do the waiting and, on failure, the
         # debug step can still inspect pod state instead of only getting a bare timeout.
+        # dapr.enabled is driven by the matrix: true installs Dapr via the chart's own
+        # dependency; false relies on the out-of-band Dapr installed above and exercises
+        # the preflight check's "Dapr present" pass-through.
         run: |
           helm install dws ${{ env.CHART_DIR }} \
             --namespace dws-system --create-namespace \
             --set controller.enabled=false \
             --set postgresql.enabled=true \
+            --set dapr.enabled=${{ matrix.dapr_enabled }} \
             --set admin.image.tag=latest \
             --set imagePullSecrets[0].name=ghcr-pull \
             --timeout 5m

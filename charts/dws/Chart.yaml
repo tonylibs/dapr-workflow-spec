@@ -27,8 +27,17 @@ appVersion: "1.18.0"
 # PostgreSQL chart, pulled in as a conditional dependency. It renders only when
 # postgresql.enabled is true (the default); set it to false to point admin at an
 # external/managed database instead.
+#
+# The Dapr control plane is provided by the upstream dapr/dapr chart, pulled in as a
+# conditional dependency the same way. It installs only when dapr.enabled is true (the
+# default); set it to false to use a cluster-external Dapr install instead (a preflight
+# check then fails install/upgrade if Dapr CRDs aren't actually present).
 dependencies:
   - name: postgresql
     version: 16.7.27
     repository: oci://registry-1.docker.io/bitnamicharts
     condition: postgresql.enabled
+  - name: dapr
+    version: 1.15.4
+    repository: https://dapr.github.io/helm-charts/
+    condition: dapr.enabled

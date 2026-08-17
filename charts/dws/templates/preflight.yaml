@@ -1,0 +1,5 @@
+{{- /*
+Renders on every helm template/install/upgrade regardless of which components are toggled on,
+so the Dapr preflight check (see _preflight.tpl) always runs. Emits no resource itself.
+*/ -}}
+{{- include "dws.preflight.dapr" . -}}
