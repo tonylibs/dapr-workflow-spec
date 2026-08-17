@@ -32,3 +32,11 @@
 
 - [x] 5.1 Update the Phase 4 row status to ✅ with a summary of what shipped.
 - [x] 5.2 Update the Phase 5 row / "Open items" note to record that the `pubsub-component.yaml` / controller-annotation work is now unblocked by Phase 4 landing.
+
+## 6. Self-heal the Dapr sidecar-injection race for real (non-CI) installs
+
+- [x] 6.1 Add `charts/dws/templates/dapr-ready-hook.yaml`: a `post-install,post-upgrade` hook Job (namespace-scoped `ServiceAccount`/`Role`/`RoleBinding`) that waits for the `dapr-sidecar-injector` rollout, then deletes the admin Pod if it's missing its `daprd` container. Only renders when `dapr.enabled=true`.
+- [x] 6.2 Add `dapr.readyHook.image` to `values.yaml`, documented alongside the rest of the `dapr` block.
+- [x] 6.3 Add `dws.daprReadyHook.fullname` to `_helpers.tpl`, following the existing per-component naming pattern.
+- [x] 6.4 Simplify CI's `integration` job back to a single real `helm install` (no more manual two-phase install/self-heal steps) now that the chart's own hook handles the race — this exercises the actual production fix instead of a CI-only workaround.
+- [x] 6.5 Verified via CI's `integration` job on PR #43.

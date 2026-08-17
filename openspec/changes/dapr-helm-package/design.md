@@ -83,6 +83,27 @@ still comes up correctly against externally-managed Dapr. This keeps the existin
 assertions (`kubectl rollout status`, `helm test`) exercised in both toggle states instead of
 losing coverage when the manual step is dropped.
 
+**Self-healing post-install hook for the sidecar-injection race.** A plain `helm install`
+with `dapr.enabled=true` creates the `dapr` subchart and the admin Deployment in the same
+atomic apply — Helm gives no ordering guarantee that the `dapr-sidecar-injector` webhook is
+actually serving before the admin Pod is admitted, and a missed injection never recovers on
+its own (admission only runs once, at Pod creation; a container restart doesn't re-trigger
+it). This surfaced empirically in CI: even after the injector Deployment reported `Ready`
+and its rollout completed, the admin Pod still came up without its `daprd` sidecar.
+`templates/dapr-ready-hook.yaml` adds a `post-install,post-upgrade` hook Job (namespace-
+scoped `ServiceAccount`/`Role`/`RoleBinding`, only rendered when `dapr.enabled=true`) that
+waits for the injector rollout and then deletes the admin Pod if it's missing the sidecar,
+letting the Deployment recreate it correctly. Alternatives considered:
+- *Document a required two-phase install* (`helm install --set admin.enabled=false`, wait,
+  then `helm upgrade`) — rejected as the default UX; still documented as always safe, but
+  the chart shouldn't require operators to know this internal detail for a plain install to
+  work.
+- *`initContainer` on the admin Pod that waits for the injector* — doesn't help; injection
+  is decided once, at admission time, before any container (including init containers) runs,
+  so a Pod that missed injection stays sidecar-less regardless of what its containers do.
+- *Give `dws-admin`'s application code sidecar-retry logic* — out of scope for a chart-only
+  change; `dws-admin` is a separate component/repo.
+
 ## Risks / Trade-offs
 
 - **Dapr subchart install time inside `helm install --timeout`** → the `integration` job's

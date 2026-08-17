@@ -52,3 +52,31 @@ Owning component: `charts/dws` (templates evaluated via `.Capabilities`).
 
 - **WHEN** `helm install`/`upgrade` runs with `dapr.enabled=true` (default)
 - **THEN** the preflight check does not run, since the chart installs Dapr itself
+
+### Requirement: A missed Dapr sidecar injection on the admin Pod self-heals
+
+When `dapr.enabled` is `true`, the chart SHALL run a post-install/post-upgrade hook Job
+that waits for the `dapr-sidecar-injector` Deployment's rollout and then deletes the admin
+Pod if it does not have a `daprd` container, so the Deployment recreates it. This addresses
+sidecar injection being a one-shot admission-webhook decision made at Pod creation: a plain
+`helm install` creates the Dapr control plane and the admin Deployment in the same atomic
+apply, so the injector's webhook reporting Ready does not guarantee it is reachable from the
+API server by the time the admin Pod is admitted, and a missed injection never recovers via
+container restart alone.
+
+Owning component: `charts/dws` (`templates/dapr-ready-hook.yaml`).
+
+#### Scenario: Sidecar injected successfully
+
+- **WHEN** the admin Pod already has a `daprd` container by the time the hook Job runs
+- **THEN** the hook Job takes no action
+
+#### Scenario: Sidecar injection was missed
+
+- **WHEN** the admin Pod exists but has no `daprd` container by the time the hook Job runs
+- **THEN** the hook Job deletes that Pod so the admin Deployment recreates it
+
+#### Scenario: Dapr disabled skips the hook
+
+- **WHEN** `dapr.enabled` is `false`
+- **THEN** the hook Job does not render
