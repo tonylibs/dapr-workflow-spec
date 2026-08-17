@@ -162,8 +162,12 @@ public class InterpreterWorkflow implements Workflow {
   /**
    * The post-dispatch data and context documents, the task's resolved flow outcome, and — for a
    * task whose body is itself a task scope ({@code try}) — how that inner scope ended.
+   *
+   * <p>Package-private (not {@code private}) so {@link ForkBranchWorkflow} can call {@link
+   * #dispatch} and read its result — a fork branch dispatches its one task through the exact same
+   * pipeline a top-level task uses.
    */
-  private record Dispatch(JsonNode data, JsonNode context, FlowOutcome then, ScopeEnd end) {}
+  record Dispatch(JsonNode data, JsonNode context, FlowOutcome then, ScopeEnd end) {}
 
   /**
    * The task body's own result: its raw output document, the context as the body left it, its flow
@@ -184,8 +188,11 @@ public class InterpreterWorkflow implements Workflow {
    * {@code export.as}/{@code export.schema} after. Both phases are skipped entirely — no activity
    * scheduled, data passed straight through — for a task that declares no {@code input}/{@code
    * output}/{@code export}, which is every definition that predates this pipeline.
+   *
+   * <p>Package-private (not {@code private}) so {@link ForkBranchWorkflow} can dispatch a fork
+   * branch's one task through this exact pipeline, with no duplicated dispatch logic.
    */
-  private Dispatch dispatch(
+  Dispatch dispatch(
       WorkflowContext ctx,
       Task task,
       String name,
