@@ -66,9 +66,16 @@ jobs:
       - name: Create kind cluster
         uses: helm/kind-action@v1
 
+      - name: Install Dapr CRDs
+        # --dry-run=server validates every rendered resource against the real API
+        # server, and the chart now installs Dapr by default (Phase 4), which
+        # renders a Configuration CR ("daprsystem"). Helm's own crds/ pre-install
+        # step doesn't run under --dry-run=server, so apply the same pinned CRD
+        # bundle dws-controller already vendors, up front, to unblock validation.
+        run: kubectl apply -f dws-controller/k8s/dapr-crds.yaml
+
       - name: Server-side dry-run install
-        # Validates the rendered manifests against a real API server. The controller
-        # stack is core/rbac/apps only, so no external CRDs are required.
+        # Validates the rendered manifests against a real API server.
         # NOTE: --dry-run=server never starts a pod, so it cannot catch a broken
         # admin/Postgres integration (a bad DATABASE_URL, a Postgres that never comes
         # up, etc.) — see the `integration` job below for that.
