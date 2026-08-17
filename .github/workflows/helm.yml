@@ -109,32 +109,13 @@ jobs:
       - name: Create kind cluster
         uses: helm/kind-action@v1
 
-      - name: Install Dapr control plane via chart
-        # Two-phase install so the admin Pod (dapr.io/enabled annotated, needs
-        # dapr.enabled=true — see the dapr-enabled-false job below for what that
-        # toggle is actually for) is only created after the chart-managed
-        # dapr-sidecar-injector webhook is actually ready. Sidecar injection is a
-        # one-shot admission-webhook decision made at Pod creation: the injector
-        # Deployment reporting Ready doesn't guarantee its webhook is reachable from
-        # the API server yet, and a missed injection never self-heals via container
-        # restart. --wait blocks until the injector Deployment is Available; the
-        # extra rollout-status + sleep give its webhook cert a beat to catch up.
-        run: |
-          helm install dws ${{ env.CHART_DIR }} \
-            --namespace dws-system --create-namespace \
-            --set controller.enabled=false \
-            --set admin.enabled=false \
-            --set postgresql.enabled=false \
-            --set dapr.enabled=true \
-            --wait --timeout 5m
-          kubectl rollout status deployment/dapr-sidecar-injector -n dws-system --timeout=120s
-          sleep 15
-
       - name: Create namespace and ghcr pull secret
         # ghcr.io/tonylibs/dws-admin is a private package, so the kind node's
         # anonymous pull fails even with a valid tag — wire GITHUB_TOKEN in as
-        # an imagePullSecret the same way a real cluster would use one.
+        # an imagePullSecret the same way a real cluster would use one. Created
+        # up front so it exists before the admin Pod references it below.
         run: |
+          kubectl create namespace dws-system --dry-run=client -o yaml | kubectl apply -f -
           kubectl create secret docker-registry ghcr-pull \
             --namespace dws-system \
             --docker-server=ghcr.io \
@@ -142,45 +123,29 @@ jobs:
             --docker-password=${{ secrets.GITHUB_TOKEN }}
 
       - name: Install (real, no dry-run)
-        # Scoped to admin+postgres: controller.image.tag has no published "1.0" image
+        # A single, real `helm install` — Dapr, admin, and postgres all come up in
+        # the same release, exactly like a real operator's default install. The
+        # chart's own dapr-ready-hook post-install Job (templates/dapr-ready-hook.yaml)
+        # is what makes this safe: it waits for the dapr-sidecar-injector rollout and
+        # self-heals the admin Pod if its sidecar injection was missed, so this test
+        # exercises the actual fix rather than a CI-only workaround.
+        # Scoped off controller: controller.image.tag has no published "1.0" image
         # (dws-controller.yml only pushes latest/sha/branch tags), so leave it disabled
         # here rather than have its pod ImagePullBackOff and blow the wait timeout.
         # admin.image.tag is overridden to "latest" for the same reason. No --wait here —
-        # the explicit rollout-status steps below do the waiting and, on failure, the
-        # debug step can still inspect pod state instead of only getting a bare timeout.
-        # dapr.enabled=true: this upgrades the release the step above already created
-        # (Dapr-only) to turn on admin + postgres, keeping the sidecar annotations that
-        # admin hard-requires to boot at all.
+        # the explicit rollout-status steps below do the waiting (post-install hooks
+        # block the `helm install` call itself until they complete, so the hook has
+        # already run by the time this command returns) and, on failure, the debug
+        # step can still inspect pod state instead of only getting a bare timeout.
         run: |
-          helm upgrade dws ${{ env.CHART_DIR }} \
-            --namespace dws-system \
+          helm install dws ${{ env.CHART_DIR }} \
+            --namespace dws-system --create-namespace \
             --set controller.enabled=false \
             --set postgresql.enabled=true \
             --set dapr.enabled=true \
             --set admin.image.tag=latest \
             --set imagePullSecrets[0].name=ghcr-pull \
             --timeout 5m
-
-      - name: Ensure Dapr sidecar was injected
-        # Belt-and-suspenders on top of the injector-webhook wait above: detect a
-        # missed injection (admin Pod with no daprd container) and delete the Pod so
-        # the ReplicaSet recreates it — by now the webhook is reliably up.
-        run: |
-          for i in 1 2 3 4 5 6; do
-            pod=$(kubectl get pod -n dws-system -l app.kubernetes.io/component=admin -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-            [ -n "$pod" ] && break
-            sleep 5
-          done
-          if [ -n "$pod" ]; then
-            containers=$(kubectl get pod "$pod" -n dws-system -o jsonpath='{.spec.containers[*].name}')
-            echo "admin pod $pod containers: $containers"
-            if ! echo "$containers" | grep -q daprd; then
-              echo "::warning::admin pod $pod has no daprd sidecar (injection missed), deleting to force re-injection"
-              kubectl delete pod "$pod" -n dws-system
-            fi
-          else
-            echo "::warning::no admin pod found yet, skipping sidecar check"
-          fi
 
       - name: Wait for admin rollout
         run: kubectl rollout status deployment/dws-admin -n dws-system --timeout=5m
@@ -201,6 +166,8 @@ jobs:
           kubectl logs -n dws-system -l app.kubernetes.io/component=admin --all-containers --prefix --previous --tail=200 || true
           echo "--- dapr pods (dws-system) ---"
           kubectl get pods -n dws-system -l app.kubernetes.io/name=dapr -o wide || true
+          echo "--- dapr-ready-hook job logs ---"
+          kubectl logs -n dws-system -l app.kubernetes.io/component=dapr-ready-hook --all-containers --prefix --tail=200 || true
 
       - name: Run helm test
         run: helm test dws --namespace dws-system --logs

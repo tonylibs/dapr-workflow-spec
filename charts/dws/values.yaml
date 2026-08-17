@@ -20,6 +20,19 @@ global:
 # externally).
 dapr:
   enabled: true
+  # Sidecar injection is a one-shot decision the dapr-sidecar-injector's mutating webhook
+  # makes at Pod creation time. In a plain `helm install` with dapr.enabled=true, Dapr's own
+  # control plane and the admin Deployment are created in the same atomic apply, so there is
+  # no guarantee the injector's webhook is actually serving yet when the admin Pod is
+  # admitted — a missed injection never recovers on its own (a container restart doesn't
+  # re-run admission). This post-install/post-upgrade hook Job waits for the injector
+  # rollout, then deletes the admin Pod if it ended up without its daprd sidecar so it gets
+  # recreated correctly. Only runs when dapr.enabled is true.
+  readyHook:
+    image:
+      repository: docker.io/rancher/kubectl
+      tag: "v1.31.1"
+      pullPolicy: IfNotPresent
 
 # dws-controller control plane (Phase 2). Toggle the whole stack with controller.enabled.
 controller:
