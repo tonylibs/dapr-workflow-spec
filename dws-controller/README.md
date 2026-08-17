@@ -53,6 +53,18 @@ Be aware that it’s not an _über-jar_ as the dependencies are copied into the 
 
 The application is now runnable using `java -jar target/quarkus-app/quarkus-run.jar`.
 
+### Windows-mounted workspaces
+
+When this checkout is mounted from Windows (for example through Docker Desktop), Maven and Quarkus can
+observe stale or missing files under `target` during a build. Keep build output on the container's native
+filesystem instead:
+
+```shell script
+./mvnw clean package -Dmaven.build.directory=/tmp/dws-controller-target
+```
+
+The default remains `target`; use the same property with `quarkus:dev` or native-package commands when needed.
+
 If you want to build an _über-jar_, execute the following command:
 
 ```shell script
