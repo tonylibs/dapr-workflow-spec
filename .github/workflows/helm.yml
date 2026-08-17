@@ -197,6 +197,31 @@ jobs:
             --set imagePullSecrets[0].name=ghcr-pull \
             --timeout 5m
 
+      - name: Ensure Dapr sidecar was injected
+        # Belt-and-suspenders on top of the injector-webhook wait above: sidecar
+        # injection is a one-shot admission-webhook decision made at Pod creation, so
+        # even a brief gap between the injector reporting Ready and the API server's
+        # admission call actually reaching it can leave the very first admin Pod
+        # without a daprd sidecar — and it never recovers on its own, since a container
+        # restart doesn't re-run admission. Detect that and force one fresh Pod (the
+        # ReplicaSet recreates it, and by now the webhook is reliably up).
+        run: |
+          for i in 1 2 3 4 5 6; do
+            pod=$(kubectl get pod -n dws-system -l app.kubernetes.io/component=admin -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+            [ -n "$pod" ] && break
+            sleep 5
+          done
+          if [ -n "$pod" ]; then
+            containers=$(kubectl get pod "$pod" -n dws-system -o jsonpath='{.spec.containers[*].name}')
+            echo "admin pod $pod containers: $containers"
+            if ! echo "$containers" | grep -q daprd; then
+              echo "::warning::admin pod $pod has no daprd sidecar (injection missed), deleting to force re-injection"
+              kubectl delete pod "$pod" -n dws-system
+            fi
+          else
+            echo "::warning::no admin pod found yet, skipping sidecar check"
+          fi
+
       - name: Wait for admin rollout
         run: kubectl rollout status deployment/dws-admin -n dws-system --timeout=5m
 
