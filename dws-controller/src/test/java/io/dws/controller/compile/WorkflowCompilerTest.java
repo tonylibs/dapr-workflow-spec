@@ -413,6 +413,162 @@ class WorkflowCompilerTest {
   }
 
   @Test
+  @DisplayName("call/run tasks nested in fork branches compile to step services")
+  void nestedForkBranchesCompileToStepServices() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: forkcompile
+          version: '1.0.0'
+        do:
+          - raiseAlarm:
+              fork:
+                compete: true
+                branches:
+                  - callNurse:
+                      call: http
+                      with:
+                        method: post
+                        endpoint: http://paging.local/api/nurse
+                  - callSecurity:
+                      run:
+                        shell:
+                          command: "page-security"
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(plan.steps())
+        .extracting(StepService::name)
+        .containsExactlyInAnyOrder("call-nurse", "call-security");
+    assertThat(step(plan, "call-nurse").kind()).isEqualTo(TaskKind.CALL_HTTP);
+    assertThat(step(plan, "call-security").kind()).isEqualTo(TaskKind.RUN_SHELL);
+  }
+
+  @Test
+  @DisplayName("call/run tasks nested in for.do compile to step services")
+  void nestedForDoCompilesToStepServices() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: forcompile
+          version: '1.0.0'
+        do:
+          - loop:
+              for:
+                each: item
+                in: .items
+              do:
+                - fetchItem:
+                    call: http
+                    with:
+                      method: get
+                      endpoint: http://catalog.local/api/item
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(plan.steps()).extracting(StepService::name).containsExactly("fetch-item");
+    assertThat(step(plan, "fetch-item").kind()).isEqualTo(TaskKind.CALL_HTTP);
+  }
+
+  @Test
+  @DisplayName(
+      "a fork task whose branches are all in-process compiles to an unchanged resource set")
+  void forkWithInProcessBranchesCompilesUnchanged() {
+    DeploymentPlan withoutFork = compiler.compile(fixture("order.yaml"));
+
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: forkinprocess
+          version: '1.0.0'
+        do:
+          - raiseAlarm:
+              fork:
+                branches:
+                  - callNurse:
+                      set:
+                        paged: '"nurse"'
+                  - callSecurity:
+                      set:
+                        paged: '"security"'
+        """;
+    DeploymentPlan withFork = compiler.compile(yaml);
+
+    assertThat(withFork.steps()).isEmpty();
+    assertThat(withFork.bindings()).isEmpty();
+    // Sanity: the unrelated order.yaml plan is untouched by compiling a second definition.
+    assertThat(withoutFork.steps()).hasSize(3);
+  }
+
+  @Test
+  @DisplayName("a duplicate task name across two fork branches is rejected")
+  void duplicateTaskNameAcrossForkBranchesRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: dupfork
+          version: '1.0.0'
+        do:
+          - raiseAlarm:
+              fork:
+                branches:
+                  - callNurse:
+                      set:
+                        paged: '"nurse"'
+                  - callNurse:
+                      set:
+                        paged: '"again"'
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("callNurse");
+  }
+
+  @Test
+  @DisplayName("a duplicate task name inside for.do is rejected")
+  void duplicateTaskNameInsideForDoRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: dupfor
+          version: '1.0.0'
+        do:
+          - fetchOrder:
+              call: http
+              with:
+                method: get
+                endpoint: http://orders.local/api/a
+          - loop:
+              for:
+                each: item
+                in: .items
+              do:
+                - fetchOrder:
+                    call: http
+                    with:
+                      method: get
+                      endpoint: http://orders.local/api/b
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("fetchOrder");
+  }
+
+  @Test
   @DisplayName("a task name duplicated across depths is rejected")
   void duplicateTaskNameAcrossDepthsRejected() {
     String yaml =
