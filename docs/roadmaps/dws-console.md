@@ -38,7 +38,7 @@ flowchart TD
   P25 --> P4["Phase 4: Definition submission<br/>direct POST to dws-controller<br/>unblocked, not yet started"]
   P25 --> P5["Phase 5: Auth<br/>ties to OWS Phase 4<br/>unblocked, not yet started"]
   P4 --> P5
-  P3 --> P6["Phase 6: Containerize<br/>Dockerfile + CI"]
+  P3 --> P6["Phase 6: Containerize ✅<br/>Dockerfile + CI"]
   P5 --> P6
 ```
 
@@ -53,7 +53,7 @@ flowchart TD
 | **3** | Live status updates on running instances, backend included: the `dws-admin` push API plus the console's consumption of it | Phase 2.5 (done) | ✅ done — SSE, on `dws-admin`'s existing read listener; both instance screens live-wired |
 | **4** | Submit new/updated definitions from the console (`POST` to `dws-controller`) | `dws-controller`'s existing compile endpoint + CORS story | ❌ not started — unblocked, available in parallel with Phase 3 |
 | **5** | Console-level auth (login, session, RBAC on write actions) | [OWS Phase 4 — auth/secrets](openworkflow-features.md) for backend parity | ❌ not started — unblocked, available in parallel with Phase 3 |
-| **6** | Dockerfile + CI workflow, publish `ghcr.io/tonylibs/dws-console` | Phases 3–5 substantially done | ❌ not started — blocks [Helm Phase 5](helm-packaging.md) |
+| **6** | Dockerfile + CI workflow, publish `ghcr.io/tonylibs/dws-console` | Phases 3–5 substantially done | ✅ done — image + CI build/smoke-test/push; unblocks [Helm Phase 5](helm-packaging.md) |
 
 ## 4. Rationale for ordering
 
@@ -69,7 +69,11 @@ flowchart TD
 - **4 is independent of 2/3**: definition submission only needs the workflow browser's API-client
   scaffolding, not the instance monitor or Phase 3's push work. Fully unblocked now that Phase 2.5
   is merged, and can run in parallel with Phase 3.
-- **5 before 6**: shipping a container image with write access and no auth is a bad default.
+- **5 before 6**: shipping a container image with write access and no auth is a bad default. Phase 6
+  shipped ahead of Phase 5 anyway, which is safe *only because* Phase 4 has not landed: the console
+  is read-only today, so the image exposes no write path to leave unauthenticated. That stops being
+  true the moment definition submission merges — **Phase 5 must land with (or before) Phase 4**, not
+  merely before the image.
 - **6 last**: no Dockerfile exists today, which is why [Helm packaging Phase 5](helm-packaging.md#phased-roadmap)
   currently ships the console toggle disabled by default.
 
@@ -107,10 +111,10 @@ What exists in `dws-console/src/` today, checked directly against the repo (not 
 | Mock data | `lib/mock-data.ts` | No longer a data source — only its type/constant exports (`TaskType`, `statusClass`, `INSTANCE_STATUSES`, etc.) are still imported. |
 | Definition submission (Phase 4) | — | No form/mutation code found; the only `POST` reference is copy text in an empty state. Definition graph view also still unwired (see §5). |
 | Auth (Phase 5) | — | Nothing found. |
-| Containerization (Phase 6) | — | No `Dockerfile` in `dws-console/`. |
+| Containerization (Phase 6) | `Dockerfile`, `.dockerignore`, `server.js` | ✅ done. Multi-stage npm build; runtime stage runs `server.js` as non-root on `PORT` (3000). `server.js` exists because TanStack Start emits a `fetch` handler and static assets but no listening server — it serves `dist/client/` and falls through to SSR, and adds `/healthz`. `VITE_DWS_ADMIN_URL` is a build arg (Vite inlines it at build time). CI builds the image on every PR, smoke-tests the running container, and pushes only on merge to `main`. |
 
-**Bottom line**: Phases 0–3 are done — the console reads live cluster state end to end for
-workflows and instances, and a running instance now updates itself as `dws-admin` ingests its
-events, with no polling and no manual refresh. **Phases 4 (definition submission) and 5 (auth) are
-next**; both are unblocked and can proceed in parallel. Phase 6 (containerize) is now gated only on
-those two.
+**Bottom line**: Phases 0–3 and 6 are done — the console reads live cluster state end to end for
+workflows and instances, a running instance updates itself as `dws-admin` ingests its events (no
+polling, no manual refresh), and the app ships as a container image built and smoke-tested by CI.
+**Phases 4 (definition submission) and 5 (auth) are what remain**; both are unblocked, but see §4 —
+now that an image exists, auth needs to land with submission rather than after it.
