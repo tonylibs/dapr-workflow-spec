@@ -30,8 +30,8 @@ dapr:
   # recreated correctly. Only runs when dapr.enabled is true.
   readyHook:
     image:
-      repository: docker.io/rancher/kubectl
-      tag: "v1.31.1"
+      repository: docker.io/alpine/k8s
+      tag: "1.31.1"
       pullPolicy: IfNotPresent
 
 # dws-controller control plane (Phase 2). Toggle the whole stack with controller.enabled.
