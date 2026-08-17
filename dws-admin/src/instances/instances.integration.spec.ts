@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import { InstanceEventsService } from '../events/instance-events.service';
 import { taskEvents, workflowInstances } from '../store/schema';
 import { createTestDb, truncateAll } from '../test-support/test-db';
 import { InstancesController } from './instances.controller';
@@ -8,7 +9,7 @@ import { InstancesService } from './instances.service';
 describe('Instances read API (integration)', () => {
   const { db, close } = createTestDb();
   const service = new InstancesService(db);
-  const controller = new InstancesController(service);
+  const controller = new InstancesController(service, new InstanceEventsService());
 
   afterEach(() => truncateAll(db));
   afterAll(() => close());

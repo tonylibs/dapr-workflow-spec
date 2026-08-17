@@ -11,8 +11,14 @@ succeeded or failed, and which workflow instances/tasks are running.
 - **CloudEvents JS SDK** (`cloudevents`) to decode and validate each consumed message
 - Package manager: **pnpm**
 
-This epic (skeleton + read model) ships no read/write REST API beyond a health check —
-`WorkflowsModule`/`InstancesModule` are empty scaffolding for a later epic to fill in.
+Alongside the paginated read endpoints, it pushes instance and task status changes to connected
+clients over **server-sent events**, so `dws-console` can show a running instance live instead of
+polling. Both SSE endpoints are ordinary `GET` routes on the Nest app (`PORT`) and inherit the same
+CORS policy as the rest of the read API.
+
+> **Single replica.** The push fan-out is in-process, so an event ingested by one replica reaches
+> only the clients connected to *that* replica. Running more than one `dws-admin` needs a
+> cross-replica bus (Postgres `LISTEN`/`NOTIFY`, or a dedicated pub/sub topic) first.
 
 ---
 
@@ -23,7 +29,8 @@ This epic (skeleton + read model) ships no read/write REST API beyond a health c
 | `ConfigModule` | `@nestjs/config`-wrapped env vars (DB URL, Dapr pub/sub name/topic, port). |
 | `StoreModule` | `DrizzlePostgresModule.registerAsync` (tag `'DB'`); re-exports the typed Drizzle client. |
 | `DaprEventsModule` | `@DaprPubSub` subscription handlers that upsert events into the read model. The consumed message is decoded as a `CloudEvent` (`cloudevents` SDK) — spec conformance (`specversion`, `source`, `type`, RFC 3339 `time`) is validated by the SDK, and a payload that fails validation is logged and dropped rather than retried. |
-| `WorkflowsModule` / `InstancesModule` | Empty controller scaffolding — real read endpoints land later. |
+| `WorkflowsModule` / `InstancesModule` | The read API. `InstancesModule` also serves the two SSE push endpoints (`GET /instances/:id/events`, `GET /instances/events`), which stream status changes as they are ingested. |
+| `InstanceEventsModule` | In-process live-event bus (an RxJS `Subject`) between event ingestion and the SSE endpoints. Ingestion publishes to it *after* its transaction commits, so a rolled-back write is never pushed. Single-replica only — see the note below. |
 | `HealthModule` | `GET /health` (`@nestjs/terminus`), checking DB connectivity. |
 
 ## Read model schema

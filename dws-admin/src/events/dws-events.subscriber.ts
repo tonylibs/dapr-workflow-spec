@@ -7,6 +7,7 @@ import { decodeEventEnvelope, InvalidEventEnvelopeError } from './event-envelope
 import { runIdempotent } from './idempotent-handler';
 import { ControllerEventsHandler } from './controller-events.handler';
 import { OrchestratorEventsHandler } from './orchestrator-events.handler';
+import { InstanceEventsService, type LiveEvent } from './instance-events.service';
 
 // pubsubName/topic must be statically resolvable at class-definition time
 // (the decorator's arguments), so this reads process.env directly rather
@@ -29,6 +30,7 @@ export class DwsEventsSubscriber {
     @Inject(DB) private readonly db: Db,
     private readonly controllerEvents: ControllerEventsHandler,
     private readonly orchestratorEvents: OrchestratorEventsHandler,
+    private readonly instanceEvents: InstanceEventsService,
   ) {}
 
   /**
@@ -54,14 +56,22 @@ export class DwsEventsSubscriber {
     }
 
     const { type } = envelope;
+    // Held aside rather than published inline: a live push must describe a
+    // committed write, and `work` still runs inside the transaction.
+    const pending: { event: LiveEvent | null } = { event: null };
+
     await runIdempotent(this.db, envelope.id, async (tx) => {
       if (this.controllerEvents.canHandle(type)) {
         await this.controllerEvents.process(tx, envelope);
       } else if (this.orchestratorEvents.canHandle(type)) {
-        await this.orchestratorEvents.process(tx, envelope);
+        pending.event = await this.orchestratorEvents.process(tx, envelope);
       } else {
         this.logger.debug(`Ignoring unhandled event type: ${type}`);
       }
     });
+
+    if (pending.event) {
+      this.instanceEvents.publish(pending.event);
+    }
   }
 }

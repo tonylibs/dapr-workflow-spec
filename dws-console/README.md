@@ -17,6 +17,36 @@ To build this application for production:
 npm run build
 ```
 
+That emits two halves and nothing that runs them: `dist/client/` (static assets) and
+`dist/server/server.js` (a web `fetch` handler that binds no port). [`server.js`](server.js) is the
+Node host that joins them — assets first, everything else server-rendered — plus a `/healthz`
+endpoint for container probes. It listens on `PORT` (default `3000`):
+
+```bash
+node server.js
+```
+
+## Container image
+
+```bash
+docker build -t ghcr.io/tonylibs/dws-console:latest dws-console
+docker run --rm -p 3000:3000 ghcr.io/tonylibs/dws-console:latest
+```
+
+Vite inlines `VITE_*` variables into the client bundle **at build time**, so the `dws-admin` URL is
+baked into the image rather than read at boot. The default is the same-origin path `/dws-admin`,
+which is what a deployment behind one ingress wants. For a split origin, build with:
+
+```bash
+docker build --build-arg VITE_DWS_ADMIN_URL=https://admin.example -t dws-console dws-console
+```
+
+and set `CORS_ORIGINS` on `dws-admin` to the console's origin (see [`dws-admin/README.md`](../dws-admin/README.md)).
+
+CI (`.github/workflows/dws-console.yml`) builds the image on every PR, runs it and requires
+`/healthz` and an SSR route to answer, and pushes `ghcr.io/tonylibs/dws-console` only on merge to
+`main`.
+
 ## Styling
 
 This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.

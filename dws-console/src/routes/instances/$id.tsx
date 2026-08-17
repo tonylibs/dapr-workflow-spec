@@ -20,7 +20,8 @@ import {
 	TaskTypeBadge,
 } from "#/components/status";
 import { ApiError } from "#/lib/admin-client";
-import { useInstanceDetail } from "#/lib/admin-hooks";
+import { useInstanceDetail, useInstanceLiveUpdates } from "#/lib/admin-hooks";
+import { isRunningInstanceStatus } from "#/lib/admin-live";
 import { statusClass, type TaskEvent } from "#/lib/mock-data";
 
 export const Route = createFileRoute("/instances/$id")({
@@ -94,6 +95,10 @@ function InstanceDetail() {
 	const [expanded, setExpanded] = useState<ExpandedState>({});
 
 	const { data: detail, isPending, error, refetch } = useInstanceDetail(id);
+
+	// Live status and task events, but only while the instance is still running
+	// — a completed or failed one can produce nothing further to subscribe for.
+	useInstanceLiveUpdates(id, isRunningInstanceStatus(detail?.status));
 
 	// A 404 means the read model has no record for this id — distinct from
 	// dws-admin being unreachable.
