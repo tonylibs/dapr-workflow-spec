@@ -2,6 +2,7 @@ package io.dws.orchestrator.workflow;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.dapr.workflows.Workflow;
 import io.dapr.workflows.WorkflowContext;
@@ -255,6 +256,7 @@ public class InterpreterWorkflow implements Workflow {
             task.getListenTask(),
             task.getEmitTask(),
             task.getForTask(),
+            task.getForkTask(),
             task.getTryTask(),
             task.getRaiseTask())
         .nonNull()
@@ -348,6 +350,8 @@ public class InterpreterWorkflow implements Workflow {
               .await();
       case ForTask forTask ->
           dispatchFor(ctx, forTask, name, data, context, variables, depth, events, mapper);
+      case ForkTask forkTask ->
+          dispatchFork(ctx, forkTask, name, data, context, variables, depth, events, mapper);
       default -> throw new IllegalStateException("task '" + name + "' has an unsupported type");
     };
   }
@@ -547,6 +551,57 @@ public class InterpreterWorkflow implements Workflow {
     return new Body(iterationData, iterationContext, then, ScopeEnd.FELL_THROUGH);
   }
 
+  /**
+   * Runs a fork task: starts each branch as its own child workflow instance concurrently, then
+   * either waits for all of them ({@code compete: false}, returning their outputs as a JSON array
+   * in declared branch order) or races them ({@code compete: true}, returning whichever settles
+   * first and never awaiting the rest).
+   *
+   * <p>Each branch runs as an independent {@link ForkBranchWorkflow} instance so its own body can
+   * be an arbitrary multi-step task (including a nested {@code try}/{@code for}/{@code fork})
+   * without needing the interpreter's "await eagerly" dispatch style to become non-blocking — the
+   * concurrency comes from running N deterministic instances side by side, combined here with the
+   * context's own {@code allOf}/{@code anyOf}. {@code $context} does not thread between branches or
+   * back out: the context leaving {@code fork} is the same context that entered it.
+   */
+  private Body dispatchFork(
+      WorkflowContext ctx,
+      ForkTask forkTask,
+      String name,
+      JsonNode data,
+      JsonNode context,
+      Map<String, JsonNode> variables,
+      int depth,
+      AdminEventBuilder events,
+      ObjectMapper mapper) {
+    FlowOutcome then = FlowOutcome.of(forkTask.getThen());
+    List<TaskItem> branches = forkTask.getFork() == null ? null : forkTask.getFork().getBranches();
+    if (branches == null || branches.isEmpty()) {
+      throw new IllegalStateException("task '" + name + "': fork has no branches");
+    }
+
+    List<io.dapr.durabletask.Task<JsonNode>> handles = new java.util.ArrayList<>();
+    for (TaskItem branch : branches) {
+      String branchInstanceId = ctx.getInstanceId() + "/" + name + "/" + branch.getName();
+      ForkBranchInput input =
+          new ForkBranchInput(branch.getName(), data, context, variables, depth + 1);
+      handles.add(
+          ctx.callChildWorkflow(ForkBranchWorkflow.NAME, input, branchInstanceId, JsonNode.class));
+    }
+
+    if (forkTask.getFork().isCompete()) {
+      List<io.dapr.durabletask.Task<?>> raceHandles = new java.util.ArrayList<>(handles);
+      io.dapr.durabletask.Task<?> winner = ctx.anyOf(raceHandles).await();
+      JsonNode result = (JsonNode) winner.await();
+      return new Body(result, context, then, ScopeEnd.FELL_THROUGH);
+    }
+
+    List<JsonNode> results = ctx.allOf(handles).await();
+    ArrayNode array = mapper.createArrayNode();
+    results.forEach(array::add);
+    return new Body(array, context, then, ScopeEnd.FELL_THROUGH);
+  }
+
   /** Returns {@code name} when non-blank, otherwise the default. */
   private static String nameOr(String name, String fallback) {
     return (name == null || name.isBlank()) ? fallback : name;
@@ -604,6 +659,8 @@ public class InterpreterWorkflow implements Workflow {
       return "emit";
     } else if (task.getForTask() != null) {
       return "for";
+    } else if (task.getForkTask() != null) {
+      return "fork";
     } else if (task.getTryTask() != null) {
       return "try";
     } else if (task.getRaiseTask() != null) {
