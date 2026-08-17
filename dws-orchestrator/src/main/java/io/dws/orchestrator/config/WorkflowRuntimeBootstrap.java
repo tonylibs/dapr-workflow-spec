@@ -6,6 +6,7 @@ import io.dapr.workflows.WorkflowTaskOptions;
 import io.dapr.workflows.runtime.WorkflowRuntime;
 import io.dapr.workflows.runtime.WorkflowRuntimeBuilder;
 import io.dws.orchestrator.expr.JqEvaluator;
+import io.dws.orchestrator.workflow.ForkBranchWorkflow;
 import io.dws.orchestrator.workflow.InterpreterWorkflow;
 import io.dws.orchestrator.workflow.WorkflowSupport;
 import io.dws.orchestrator.workflow.activity.AdminEventActivity;
@@ -82,6 +83,7 @@ public class WorkflowRuntimeBootstrap implements DisposableBean {
 
     WorkflowRuntimeBuilder builder =
         new WorkflowRuntimeBuilder().registerWorkflow(workflowName, InterpreterWorkflow.class);
+    builder.registerWorkflow(ForkBranchWorkflow.NAME, ForkBranchWorkflow.class);
     builder.registerActivity(CallServiceActivity.class);
     builder.registerActivity(EmitEventActivity.class);
     builder.registerActivity(AdminEventActivity.class);
