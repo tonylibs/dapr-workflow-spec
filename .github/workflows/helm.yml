@@ -132,6 +132,19 @@ jobs:
           wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash
           dapr init -k --wait --timeout 300
 
+      - name: Wait for Dapr sidecar injector webhook
+        if: matrix.dapr_enabled == false
+        # Sidecar injection happens once, at Pod creation, via the dapr-sidecar-injector
+        # mutating webhook. `dapr init -k --wait` only waits for the injector Deployment's
+        # own readiness probe, not for its webhook's TLS cert/caBundle to have fully
+        # propagated — creating the admin Pod too soon means it starts with no sidecar and
+        # never gets a second chance (a container restart doesn't re-run admission). Give
+        # the webhook a beat after the Deployment is Available before anything gets
+        # dapr.io/enabled annotations.
+        run: |
+          kubectl rollout status deployment/dapr-sidecar-injector -n dapr-system --timeout=120s
+          sleep 15
+
       - name: Create namespace and ghcr pull secret
         # ghcr.io/tonylibs/dws-admin is a private package, so the kind node's
         # anonymous pull fails even with a valid tag — wire GITHUB_TOKEN in as
@@ -144,6 +157,24 @@ jobs:
             --docker-username=${{ github.actor }} \
             --docker-password=${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install Dapr control plane via chart
+        if: matrix.dapr_enabled == true
+        # Two-phase install so the admin Pod (dapr.io/enabled annotated) is only created
+        # after the chart-managed dapr-sidecar-injector webhook is actually ready — same
+        # race as the out-of-band leg above, see the comment on "Wait for Dapr sidecar
+        # injector webhook". --wait blocks until the injector Deployment is Available;
+        # the extra rollout-status + sleep give its webhook cert a beat to catch up.
+        run: |
+          helm install dws ${{ env.CHART_DIR }} \
+            --namespace dws-system --create-namespace \
+            --set controller.enabled=false \
+            --set admin.enabled=false \
+            --set postgresql.enabled=false \
+            --set dapr.enabled=true \
+            --wait --timeout 5m
+          kubectl rollout status deployment/dapr-sidecar-injector -n dws-system --timeout=120s
+          sleep 15
+
       - name: Install (real, no dry-run)
         # Scoped to admin+postgres: controller.image.tag has no published "1.0" image
         # (dws-controller.yml only pushes latest/sha/branch tags), so leave it disabled
@@ -151,11 +182,13 @@ jobs:
         # admin.image.tag is overridden to "latest" for the same reason. No --wait here —
         # the explicit rollout-status steps below do the waiting and, on failure, the
         # debug step can still inspect pod state instead of only getting a bare timeout.
-        # dapr.enabled is driven by the matrix: true installs Dapr via the chart's own
-        # dependency; false relies on the out-of-band Dapr installed above and exercises
-        # the preflight check's "Dapr present" pass-through.
+        # dapr.enabled is driven by the matrix: true here is an upgrade of the release
+        # the step above already created (Dapr-only) that turns on admin + postgres;
+        # false relies on the out-of-band Dapr installed above and is this leg's first
+        # and only install, exercising the preflight check's "Dapr present" pass-through.
+        # `upgrade --install` covers both cases with one command.
         run: |
-          helm install dws ${{ env.CHART_DIR }} \
+          helm upgrade --install dws ${{ env.CHART_DIR }} \
             --namespace dws-system --create-namespace \
             --set controller.enabled=false \
             --set postgresql.enabled=true \
