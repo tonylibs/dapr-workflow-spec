@@ -17,15 +17,18 @@ packaging roadmap Phase 5.
   Deployment. No `dapr.io/app-port`/second container port — `dws-controller` only publishes
   outbound via `EventPublisher`/`DaprClientProducer`, it never receives Dapr-routed inbound
   traffic (service invocation target or pubsub subscription), so no app-port is needed.
-- Add `redis` as a conditional Bitnami subchart dependency (`condition: redis.enabled`), mirroring
-  the existing `postgresql.enabled` pattern: `Chart.yaml` dependency entry, a `redis:` values
+- Add `redis` as a conditional Bitnami subchart dependency, gated by `condition: dapr.enabled` —
+  not an independent `redis.enabled` toggle. Redis exists solely to back the three Dapr Components
+  below, so its lifecycle simply follows Dapr's: `Chart.yaml` dependency entry, a `redis:` values
   block (standalone architecture, auth password, persistence size, `networkPolicy.enabled: false`
   for kind/dev), and the same `bitnamilegacy` image-repository workaround if the Bitnami Redis
-  chart needs it. Support `redis.enabled=false` (external Redis) via
-  `redis.external.{host,existingSecret,existingSecretKey}`-style values, mirroring
-  `admin.database.url`/`existingSecret`.
-- Add three Dapr `Component` templates, gated by `.Values.dapr.enabled` and the resolved Redis
-  connection (in-chart or external), shaped like `dws-orchestrator/k8s/configuration-component.yaml`:
+  chart needs it. Support an external Redis via `redis.external.{host,existingSecret,existingSecretKey}`
+  values: when `redis.external.host` is set, the Dapr Components resolve their connection to that
+  external Redis instead of the in-chart Bitnami one (mirroring `admin.database.url`/
+  `existingSecret`), independent of whether the built-in Redis subchart also installed.
+- Add three Dapr `Component` templates, gated by `.Values.dapr.enabled` alone (Redis is always
+  resolvable when Dapr is enabled — built-in or external), shaped like
+  `dws-orchestrator/k8s/configuration-component.yaml`:
   - `templates/pubsub-component.yaml` — `pubsub.redis`, component name `pubsub` (the name
     `dws-orchestrator` already uses for `emit` and both components use for event publishing —
     not a new name).
@@ -50,11 +53,11 @@ Out of scope: Phase 6 (console) and Phase 11 (Knative).
 
 ### New Capabilities
 
-- `helm-redis-dependency`: conditional in-chart Bitnami Redis subchart (`redis.enabled`) backing
-  the Dapr Redis Components, with an external-Redis escape hatch — mirrors
+- `helm-redis-dependency`: in-chart Bitnami Redis subchart backing the Dapr Redis Components,
+  installed whenever `dapr.enabled` is true, with an external-Redis escape hatch — mirrors
   `helm-postgres-deployment`.
 - `helm-pubsub-component`: the `pubsub` (`pubsub.redis`) Dapr Component template, gated by
-  `dapr.enabled` and Redis availability.
+  `dapr.enabled`.
 - `helm-definitions-component`: the `dws-definitions` (`configuration.redis`) Dapr Component
   template, chart-managed replacement for the hand-applied
   `dws-orchestrator/k8s/configuration-component.yaml`.

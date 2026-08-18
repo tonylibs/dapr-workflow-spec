@@ -6,31 +6,26 @@ prerequisite documented in `docs/events.md` instead of requiring a hand-applied 
 
 ## ADDED Requirements
 
-### Requirement: The pubsub Component renders when Dapr and Redis are available
+### Requirement: The pubsub Component renders when Dapr is enabled
 
 `charts/dws` SHALL render `templates/pubsub-component.yaml`, a Dapr `Component` of type
-`pubsub.redis` named `pubsub`, when `.Values.dapr.enabled` is `true` and a Redis connection is
-resolvable (in-chart Redis enabled, or an external Redis configured). The component name SHALL
-be exactly `pubsub` — the same name `admin.pubsub.name`, `dws-orchestrator`'s `emit` tasks, and
-`dws-controller`'s event publisher already assume; it SHALL NOT be configurable to a different
-name.
+`pubsub.redis` named `pubsub`, whenever `.Values.dapr.enabled` is `true`. A Redis connection is
+always resolvable in that case — built-in (per `helm-redis-dependency`, which installs Redis
+whenever Dapr is enabled) or external — so no separate Redis-availability gate is needed. The
+component name SHALL be exactly `pubsub` — the same name `admin.pubsub.name`,
+`dws-orchestrator`'s `emit` tasks, and `dws-controller`'s event publisher already assume; it
+SHALL NOT be configurable to a different name.
 
 Owning component: `charts/dws` (`templates/pubsub-component.yaml`).
 
 #### Scenario: Default render
 
-- **WHEN** `helm template charts/dws` is run with default values (`dapr.enabled=true`,
-  `redis.enabled=true`)
+- **WHEN** `helm template charts/dws` is run with default values (`dapr.enabled=true`)
 - **THEN** a Dapr `Component` named `pubsub` of type `pubsub.redis` is rendered
 
 #### Scenario: Dapr disabled
 
 - **WHEN** `dapr.enabled=false`
-- **THEN** no `pubsub` Component is rendered
-
-#### Scenario: No Redis available
-
-- **WHEN** `dapr.enabled=true`, `redis.enabled=false`, and no external Redis host is configured
 - **THEN** no `pubsub` Component is rendered
 
 ### Requirement: The pubsub Component targets the topic dws.events

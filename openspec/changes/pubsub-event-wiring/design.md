@@ -24,9 +24,9 @@ requirements this design implements.
 - Reuse the Bitnami Redis subchart's own auto-created Service and Secret directly for all three
   Dapr Components — no chart-owned custom Redis Secret, since none of the three Components need a
   composed connection string (unlike Postgres/`DATABASE_URL`).
-- Keep the `redis.enabled` / external-Redis toggle shape identical in spirit to
-  `postgresql.enabled` / `admin.database.url`+`existingSecret`, so chart consumers already
-  familiar with the Postgres toggle recognize the Redis one.
+- Tie Redis's install lifecycle to `dapr.enabled` (its only consumer) rather than an independent
+  toggle, while keeping the external-Redis escape hatch recognizable to chart consumers already
+  familiar with `admin.database.url`+`existingSecret`.
 - Land all three Component templates behind one shared connection-resolution helper so
   `pubsub`/`dws-definitions`/actor-statestore stay consistent by construction.
 
@@ -52,6 +52,28 @@ one here would be dead configuration. Decision: `dapr.io/enabled`/`dapr.io/app-i
 admin's annotation gating but omitting `dapr.io/app-port`, `DAPR_APP_PORT`, and the second
 container port entirely.
 
+### Redis installs whenever Dapr does — no independent `redis.enabled` toggle
+
+Alternative considered: an independent `redis.enabled` value (default `true`), mirroring
+`postgresql.enabled` exactly. Rejected — unlike Postgres (which backs admin regardless of Dapr),
+Redis in this chart exists solely to back the three Dapr Components; an operator who disables
+Dapr has no use for it, and a separate default-true toggle only recreates a redundant "is this
+on" decision that `dapr.enabled` already makes. Decision: `charts/dws/Chart.yaml`'s `redis`
+dependency uses `condition: dapr.enabled` — Redis's install lifecycle is 1:1 with Dapr's, not a
+value of its own.
+
+External Redis (the production escape hatch) is expressed differently as a result: instead of a
+boolean toggle, `redis.external.host` acts as an override switch by its own presence. When it's
+set (non-empty), the three Component templates resolve their `redisHost`/`redisPassword` to that
+external host and `redis.external.existingSecret`/`existingSecretKey` instead of the in-chart
+Bitnami Redis — independent of whether the Bitnami Redis subchart also installed (it still does,
+whenever `dapr.enabled=true`, since Chart-dependency conditions can't express "AND redis.external
+is unset"). Known limitation, not a correctness bug: an operator running Dapr with an external
+production Redis gets an extra, unused in-chart Redis instance unless they separately trim its
+footprint (e.g. `--set redis.master.resources...`) or accept it. This is called out under
+Risks below rather than solved with a second toggle, to avoid re-adding the flag this decision
+just removed.
+
 ### Redis Components reference the Bitnami subchart's own Secret/Service directly
 
 Alternative considered: a chart-owned `templates/redis/secret.yaml` composing a Redis connection
@@ -64,12 +86,12 @@ buying nothing.
 Decision: `templates/redis/` (if it exists as a directory at all) contains no Secret — only, if
 needed, a NOTES/helper stub. `_helpers.tpl` gains:
 - `dws.redis.host` → `{{ .Release.Name }}-redis-master.{{ include "dws.namespace" . }}.svc.cluster.local:6379`
-  when `redis.enabled=true` (Bitnami standalone-architecture default Service name), or
-  `.Values.redis.external.host` when `redis.enabled=false`.
+  when `redis.external.host` is unset (Bitnami standalone-architecture default Service name), or
+  `.Values.redis.external.host` when it is set.
 - `dws.redis.secretName` / `dws.redis.secretKey` → the Bitnami subchart's own Secret name
-  (`{{ .Release.Name }}-redis`) and key (`redis-password`) when enabled, or
+  (`{{ .Release.Name }}-redis`) and key (`redis-password`) by default, or
   `.Values.redis.external.existingSecret` / `existingSecretKey` (default `redis-password`) when
-  disabled — mirroring `admin.database.existingSecret`/`existingSecretKey`.
+  `redis.external.host` is set — mirroring `admin.database.existingSecret`/`existingSecretKey`.
 
 All three Component templates (`pubsub-component.yaml`, `definitions-component.yaml`,
 `actor-statestore-component.yaml`) call these same helpers, so the connection-resolution logic
@@ -112,6 +134,12 @@ Components' `secretKeyRef`] → Verify against `helm template` output for the ac
 version as an implementation task, before writing the Component templates' final helper values;
 `helm lint`/CI's server-side dry-run will also catch a Secret name that doesn't resolve.
 
+[An operator running Dapr with `redis.external.host` set for production still gets an unused
+in-chart Bitnami Redis instance, since `Chart.yaml`'s `condition: dapr.enabled` can't also express
+"AND no external Redis configured"] → Documented, accepted trade-off (see the "no independent
+`redis.enabled` toggle" decision above); the operator can trim or ignore the unused instance, or a
+future change can revisit this if it proves painful in practice.
+
 [Bitnami's relocated `bitnamilegacy` image workaround, applied to `postgresql.image.repository`,
 may or may not be needed for the pinned Redis chart version] → Check at implementation time
 (same-generation Bitnami charts typically need the same workaround); apply
@@ -126,9 +154,8 @@ own test suite already covers its publish path per `docs/events.md`.
 
 ## Migration Plan
 
-No data migration. `redis.enabled` defaults to `true`, matching `postgresql.enabled`'s and
-`dapr.enabled`'s existing default-on convention, so a fresh `helm install` picks up Redis and all
-three Components automatically. An existing release upgrading into this chart version gains a new
+No data migration. Redis and all three Components install automatically on a fresh `helm install`
+since they follow `dapr.enabled`, which already defaults to `true`. An existing release upgrading into this chart version gains a new
 Bitnami Redis subchart deployment and three new Components on `helm upgrade` — no destructive
 change to already-rendered controller/admin/postgres resources. Rollback is a plain
 `helm rollback` to the prior release revision, which removes the Redis subchart's resources and
