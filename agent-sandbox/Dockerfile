@@ -13,6 +13,7 @@ FROM node:24-slim AS node
 FROM ubuntu:24.04
 
 ARG CODEX_NPM_VERSION=0.146.0
+ARG CODEX_ACP_NPM_VERSION=1.4.0
 ARG CLAUDE_CODE_NPM_VERSION=2.1.220
 ARG OPENSPEC_NPM_VERSION=1.6.0
 ARG OPENWIKI_NPM_VERSION=0.2.3
@@ -73,11 +74,12 @@ RUN corepack enable pnpm \
     && pnpm config set store-dir /root/.local/share/pnpm/store --global
 
 # --- Agent CLIs ---
-# Pin the published Claude Code, Codex, OpenSpec, and OpenWiki packages so image rebuilds are reproducible.
+# Pin the published Claude Code, Codex, Codex ACP adapter, OpenSpec, and OpenWiki packages so image rebuilds are reproducible.
 # Node is already present for the TypeScript components, so the CLIs add no additional runtime.
 RUN npm install --global --no-audit --no-fund \
     "@anthropic-ai/claude-code@${CLAUDE_CODE_NPM_VERSION}" \
     "@openai/codex@${CODEX_NPM_VERSION}" \
+    "@agentclientprotocol/codex-acp@${CODEX_ACP_NPM_VERSION}" \
     "@fission-ai/openspec@${OPENSPEC_NPM_VERSION}" \
     "openwiki@${OPENWIKI_NPM_VERSION}"
 
@@ -134,6 +136,7 @@ RUN set -eux; \
     tmux -V; \
     claude --version | grep -q "^${CLAUDE_CODE_NPM_VERSION} (Claude Code)$"; \
     codex --version | grep -q "^codex-cli ${CODEX_NPM_VERSION}$"; \
+    codex-acp --version | grep -q "^@agentclientprotocol/codex-acp ${CODEX_ACP_NPM_VERSION}$"; \
     openspec --version | grep -q "^${OPENSPEC_NPM_VERSION}$"; \
     npm list --global --depth=0 openwiki | grep -q "openwiki@${OPENWIKI_NPM_VERSION}"; \
     openwiki --help >/dev/null; \
