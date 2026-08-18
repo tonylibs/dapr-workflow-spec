@@ -28,4 +28,12 @@ spec:
       value: "false"
 auth:
   secretStore: kubernetes
+# Only dws-orchestrator uses the actor/workflow state store (once it adopts the
+# Dapr Workflow runtime). Scoping prevents unrelated pods' daprd sidecars (admin,
+# controller) from trying to initialize a state.redis Component that also does a
+# CONFIG SET on Redis for keyspace notifications — under load or before Redis is
+# fully warm this exceeds Dapr's 5s per-component init timeout and fatally crashes
+# the sidecar.
+scopes:
+  - dws-orchestrator
 {{- end }}

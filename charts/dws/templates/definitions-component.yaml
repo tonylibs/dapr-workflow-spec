@@ -29,4 +29,11 @@ spec:
       value: "false"
 auth:
   secretStore: kubernetes
+# Only dws-orchestrator reads workflow definitions via the Configuration API.
+# Scoping this Component prevents unrelated pods' daprd sidecars (admin, controller)
+# from trying to initialize the store — a state.redis / configuration.redis init
+# hitting Redis before it's fully warm can exceed Dapr's 5s per-component init
+# timeout and fatally crash the sidecar.
+scopes:
+  - dws-orchestrator
 {{- end }}
