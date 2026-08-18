@@ -252,24 +252,48 @@ jobs:
           kubectl wait --for=condition=Ready pod/pubsub-e2e-subscriber -n "$NS" --timeout=3m
           kubectl wait --for=condition=Ready pod/pubsub-e2e-publisher -n "$NS" --timeout=3m
 
-          # Publish via the publisher pod's now-confirmed-Ready daprd sidecar.
+          # Publish two REAL DWS lifecycle events (per docs/events.md) through the
+          # publisher pod's now-confirmed-Ready daprd sidecar — one from the controller
+          # catalog (io.dws.definition.created), one from the orchestrator catalog
+          # (io.dws.instance.started). Uses the same envelope shape (id/source/type/
+          # time/datacontenttype/data) both Java publishers actually emit, so the test
+          # proves the wiring carries real event payloads, not just a synthetic probe.
           # `kubectl exec` failure exits non-zero under `set -e`, failing the step
           # loudly instead of silently continuing.
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+          DEF_ID="e2e-def-$(date +%s)-$RANDOM"
+          INST_ID="e2e-inst-$(date +%s)-$RANDOM"
+          echo "publishing io.dws.definition.created id=$DEF_ID"
           kubectl exec -n "$NS" pubsub-e2e-publisher -c pub -- \
             curl -sfS -X POST \
               -H 'Content-Type: application/json' \
-              -d "{\"probe\":\"$PROBE\"}" \
+              -d "{\"id\":\"$DEF_ID\",\"source\":\"dws-controller\",\"type\":\"io.dws.definition.created\",\"time\":\"$NOW\",\"datacontenttype\":\"application/json\",\"data\":{\"workflow\":\"order\",\"version\":\"vpubsube2e\",\"createdAt\":\"$NOW\"}}" \
               http://localhost:3500/v1.0/publish/pubsub/dws.events
 
-          # Give the delivery a beat, then look for the probe in the subscriber's log.
-          for i in $(seq 1 30); do
-            if kubectl logs pubsub-e2e-subscriber -n "$NS" -c sub 2>/dev/null | grep -q "$PROBE"; then
-              echo "pubsub delivery confirmed"
-              exit 0
-            fi
+          echo "publishing io.dws.instance.started id=$INST_ID"
+          kubectl exec -n "$NS" pubsub-e2e-publisher -c pub -- \
+            curl -sfS -X POST \
+              -H 'Content-Type: application/json' \
+              -d "{\"id\":\"$INST_ID\",\"source\":\"dws-orchestrator/order\",\"type\":\"io.dws.instance.started\",\"time\":\"$NOW\",\"datacontenttype\":\"application/json\",\"data\":{\"instanceId\":\"inst-e2e\",\"workflow\":\"order\",\"version\":\"vpubsube2e\",\"appId\":\"order\",\"startedAt\":\"$NOW\"}}" \
+              http://localhost:3500/v1.0/publish/pubsub/dws.events
+
+          # Wait until both events land in the subscriber log — checked by unique
+          # per-event id AND by the exact type string, so a delivery of one but not
+          # the other still fails.
+          need_def=1
+          need_inst=1
+          for i in $(seq 1 45); do
+            log=$(kubectl logs pubsub-e2e-subscriber -n "$NS" -c sub 2>/dev/null || true)
+            echo "$log" | grep -q "$DEF_ID"  && echo "$log" | grep -q "io.dws.definition.created" && need_def=0
+            echo "$log" | grep -q "$INST_ID" && echo "$log" | grep -q "io.dws.instance.started"   && need_inst=0
+            [ "$need_def" = "0" ] && [ "$need_inst" = "0" ] && break
             sleep 2
           done
-          echo "::error::pubsub probe $PROBE not observed in subscriber logs"
+          if [ "$need_def" = "0" ] && [ "$need_inst" = "0" ]; then
+            echo "pubsub delivery confirmed: io.dws.definition.created + io.dws.instance.started"
+            exit 0
+          fi
+          echo "::error::pubsub e2e failed — missing: $( [ "$need_def" = "1" ] && echo -n definition.created ) $( [ "$need_inst" = "1" ] && echo -n instance.started )"
           kubectl logs pubsub-e2e-subscriber -n "$NS" -c sub || true
           kubectl logs pubsub-e2e-subscriber -n "$NS" -c daprd --tail=100 || true
           exit 1
