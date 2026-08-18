@@ -1,0 +1,55 @@
+# Local Docker runtime profile for the OpenSandbox lifecycle server.
+#
+# This is an alternative to the Kubernetes agent-sandbox CRD path. Start the
+# server with this file to have each POST /v1/sandboxes create a Docker
+# container on the host running Docker Desktop or Docker Engine.
+#
+# Keep the server loopback-only unless authentication and network exposure have
+# been configured deliberately. Set OPENSANDBOX_SERVER_API_KEY in the
+# environment for normal use. For a strictly local experiment without a key,
+# OpenSandbox requires OPENSANDBOX_INSECURE_SERVER=YES.
+
+[server]
+host = "127.0.0.1"
+port = 8080
+max_sandbox_timeout_seconds = 86400
+
+[log]
+level = "INFO"
+
+[runtime]
+type = "docker"
+execd_image = "opensandbox/execd:v1.0.21"
+
+[storage]
+# Empty means no host bind mounts are accepted by default.
+allowed_host_paths = []
+
+[store]
+type = "sqlite"
+path = "~/.opensandbox/opensandbox.db"
+
+[docker]
+# Bridge mode gives each sandbox its own Docker network namespace and has
+# OpenSandbox allocate host ports from the configured range.
+network_mode = "bridge"
+port_range_min = 40000
+port_range_max = 60000
+drop_capabilities = [
+  "AUDIT_WRITE", "MKNOD", "NET_ADMIN", "NET_RAW", "SYS_ADMIN",
+  "SYS_MODULE", "SYS_PTRACE", "SYS_TIME", "SYS_TTY_CONFIG",
+]
+no_new_privileges = true
+pids_limit = 4096
+
+[ingress]
+# Docker runtime supports direct endpoint access only.
+mode = "direct"
+
+[egress]
+image = "opensandbox/egress:v1.1.4"
+mode = "dns"
+
+[renew_intent]
+enabled = false
+min_interval_seconds = 60
