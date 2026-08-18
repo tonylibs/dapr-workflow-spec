@@ -181,7 +181,16 @@ jobs:
           NS=dws-system
           PROBE="phase-5-$(date +%s)"
 
-          cat <<EOF | kubectl apply -n "$NS" -f -
+          # dapr-ready-hook self-heals admin's sidecar at install time, but the
+          # dapr-sidecar-injector Deployment can flap under kind's tight resource
+          # limits between then and now, meaning a new pod (like our e2e pair) can
+          # be admitted while the injector's mutating webhook is momentarily
+          # unavailable — no sidecar gets injected. Gate on the injector being
+          # Available right before submitting the e2e pods.
+          kubectl rollout status deployment/dapr-sidecar-injector -n "$NS" --timeout=3m
+
+          apply_e2e_pods() {
+            cat <<EOF | kubectl apply -n "$NS" -f -
           apiVersion: dapr.io/v2alpha1
           kind: Subscription
           metadata:
@@ -224,28 +233,37 @@ jobs:
             restartPolicy: Never
             containers:
               - name: pub
-                # Passive placeholder — the actual publish runs via `kubectl exec`
+                # Passive placeholder — the actual publish runs via \`kubectl exec\`
                 # below, after Pod-Ready guarantees the daprd sidecar is up.
                 image: curlimages/curl:8.11.1
                 command: ["sleep", "600"]
           EOF
+          }
 
-          # Confirm sidecar injection actually happened on both Pods before waiting —
-          # if the injector webhook was missed, the Pod would have exactly one container
-          # and would go Ready immediately without a daprd sidecar, hiding the failure.
-          for pod in pubsub-e2e-subscriber pubsub-e2e-publisher; do
-            for i in $(seq 1 30); do
-              containers=$(kubectl get pod "$pod" -n "$NS" -o jsonpath='{.spec.containers[*].name}' 2>/dev/null || true)
+          check_injection() {
+            for pod in pubsub-e2e-subscriber pubsub-e2e-publisher; do
+              for i in $(seq 1 30); do
+                containers=$(kubectl get pod "$pod" -n "$NS" -o jsonpath='{.spec.containers[*].name}' 2>/dev/null || true)
+                case " $containers " in
+                  *" daprd "*) break ;;
+                esac
+                sleep 2
+              done
               case " $containers " in
-                *" daprd "*) break ;;
+                *" daprd "*) ;;
+                *) echo "$pod missing daprd (containers: $containers)"; return 1 ;;
               esac
-              sleep 2
             done
-            case " $containers " in
-              *" daprd "*) ;;
-              *) echo "::error::daprd sidecar was not injected into $pod (containers: $containers)"; exit 1 ;;
-            esac
-          done
+          }
+
+          apply_e2e_pods
+          if ! check_injection; then
+            echo "sidecar injection missed on first apply; deleting and retrying once"
+            kubectl delete pod pubsub-e2e-subscriber pubsub-e2e-publisher -n "$NS" --ignore-not-found --wait=true
+            kubectl rollout status deployment/dapr-sidecar-injector -n "$NS" --timeout=3m
+            apply_e2e_pods
+            check_injection || { echo "::error::daprd sidecar was not injected after retry"; exit 1; }
+          fi
 
           # Ready on a multi-container Pod requires every container Ready, so this
           # blocks until both `sub`/`pub` AND their `daprd` sidecars are up.
