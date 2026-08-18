@@ -169,10 +169,13 @@ jobs:
       - name: End-to-end pubsub delivery check
         # Proves the chart-managed `pubsub` Component actually carries traffic:
         # deploy a Dapr-enabled subscriber Pod bound to topic `dws.events` via a
-        # Subscription CRD, publish a probe message from a Dapr-enabled publisher Pod
-        # through its localhost sidecar, then grep the subscriber Pod's logs for the
-        # payload. Transport-only, per the Phase 5 spec — no controller/orchestrator/
-        # admin round-trip is exercised here.
+        # Subscription CRD and a passive Dapr-enabled publisher Pod, wait for both
+        # pods' `Ready` condition (which requires their daprd sidecars to be Running
+        # AND Ready, so injection races and sidecar-startup timing are already
+        # resolved), then `kubectl exec` the publisher's localhost daprd to publish
+        # a probe, and grep the subscriber Pod's logs for the payload.
+        # Transport-only, per the Phase 5 spec — no controller/orchestrator/admin
+        # round-trip is exercised here.
         run: |
           set -euo pipefail
           NS=dws-system
@@ -209,11 +212,7 @@ jobs:
                     value: "8080"
                 ports:
                   - containerPort: 8080
-          EOF
-
-          kubectl wait --for=condition=Ready pod/pubsub-e2e-subscriber -n "$NS" --timeout=3m
-
-          cat <<EOF | kubectl apply -n "$NS" -f -
+          ---
           apiVersion: v1
           kind: Pod
           metadata:
@@ -225,32 +224,42 @@ jobs:
             restartPolicy: Never
             containers:
               - name: pub
+                # Passive placeholder — the actual publish runs via `kubectl exec`
+                # below, after Pod-Ready guarantees the daprd sidecar is up.
                 image: curlimages/curl:8.11.1
-                command: ["sh", "-c"]
-                args:
-                  - |
-                    # Wait for the daprd sidecar to open its HTTP port before publishing.
-                    for i in \$(seq 1 30); do
-                      curl -sf http://localhost:3500/v1.0/healthz && break || sleep 2
-                    done
-                    curl -sfS -X POST \
-                      -H 'Content-Type: application/json' \
-                      -d '{"probe":"$PROBE"}' \
-                      http://localhost:3500/v1.0/publish/pubsub/dws.events
-                    echo "published $PROBE"
-                    # Keep pod alive briefly so kubectl logs is guaranteed to land.
-                    sleep 5
+                command: ["sleep", "600"]
           EOF
 
-          # Wait for the publisher to finish its curl round-trip.
-          for i in $(seq 1 60); do
-            phase=$(kubectl get pod pubsub-e2e-publisher -n "$NS" -o jsonpath='{.status.phase}' 2>/dev/null || true)
-            [ "$phase" = "Succeeded" ] && break
-            [ "$phase" = "Failed" ] && { echo "::error::publisher pod failed"; break; }
-            sleep 2
+          # Confirm sidecar injection actually happened on both Pods before waiting —
+          # if the injector webhook was missed, the Pod would have exactly one container
+          # and would go Ready immediately without a daprd sidecar, hiding the failure.
+          for pod in pubsub-e2e-subscriber pubsub-e2e-publisher; do
+            for i in $(seq 1 30); do
+              containers=$(kubectl get pod "$pod" -n "$NS" -o jsonpath='{.spec.containers[*].name}' 2>/dev/null || true)
+              case " $containers " in
+                *" daprd "*) break ;;
+              esac
+              sleep 2
+            done
+            case " $containers " in
+              *" daprd "*) ;;
+              *) echo "::error::daprd sidecar was not injected into $pod (containers: $containers)"; exit 1 ;;
+            esac
           done
-          kubectl logs pubsub-e2e-publisher -n "$NS" -c pub
-          kubectl logs pubsub-e2e-publisher -n "$NS" -c pub | grep -q "published $PROBE"
+
+          # Ready on a multi-container Pod requires every container Ready, so this
+          # blocks until both `sub`/`pub` AND their `daprd` sidecars are up.
+          kubectl wait --for=condition=Ready pod/pubsub-e2e-subscriber -n "$NS" --timeout=3m
+          kubectl wait --for=condition=Ready pod/pubsub-e2e-publisher -n "$NS" --timeout=3m
+
+          # Publish via the publisher pod's now-confirmed-Ready daprd sidecar.
+          # `kubectl exec` failure exits non-zero under `set -e`, failing the step
+          # loudly instead of silently continuing.
+          kubectl exec -n "$NS" pubsub-e2e-publisher -c pub -- \
+            curl -sfS -X POST \
+              -H 'Content-Type: application/json' \
+              -d "{\"probe\":\"$PROBE\"}" \
+              http://localhost:3500/v1.0/publish/pubsub/dws.events
 
           # Give the delivery a beat, then look for the probe in the subscriber's log.
           for i in $(seq 1 30); do
