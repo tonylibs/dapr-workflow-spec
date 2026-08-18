@@ -10,6 +10,12 @@ metadata:
 spec:
   type: pubsub.redis
   version: v1
+  # Dapr defaults per-component init to 5s. Redis's Service endpoints don't get
+  # populated until Bitnami's readiness probe (20s initialDelay) first passes, so
+  # an admin/controller/orchestrator sidecar that starts alongside Redis can hit
+  # `connect: connection refused` and fatally exit before Redis warms up. Extend
+  # to 1m so init retries through the warmup window.
+  initTimeout: 1m
   metadata:
     - name: redisHost
       value: {{ include "dws.redis.host" . | quote }}

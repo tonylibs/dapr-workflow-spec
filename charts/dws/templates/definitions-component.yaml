@@ -17,6 +17,9 @@ metadata:
 spec:
   type: configuration.redis
   version: v1
+  # See pubsub-component.yaml — extend past Dapr's 5s default to survive the
+  # Bitnami Redis 20s readiness-probe warmup window without a fatal sidecar exit.
+  initTimeout: 1m
   metadata:
     - name: redisHost
       value: {{ include "dws.redis.host" . | quote }}
