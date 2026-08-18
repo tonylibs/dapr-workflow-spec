@@ -18,6 +18,8 @@ import io.serverlessworkflow.api.types.Document;
 import io.serverlessworkflow.api.types.EmitTask;
 import io.serverlessworkflow.api.types.Endpoint;
 import io.serverlessworkflow.api.types.EndpointUri;
+import io.serverlessworkflow.api.types.ForTask;
+import io.serverlessworkflow.api.types.ForkTask;
 import io.serverlessworkflow.api.types.HTTPArguments;
 import io.serverlessworkflow.api.types.InlineScript;
 import io.serverlessworkflow.api.types.OpenAPIArguments;
@@ -192,6 +194,14 @@ public class WorkflowCompiler {
           collectTaskNames(tryTask.getCatch().getDo(), seen, duplicates);
         }
       }
+      ForkTask forkTask = item.getTask() == null ? null : item.getTask().getForkTask();
+      if (forkTask != null) {
+        collectTaskNames(forkTask.getFork().getBranches(), seen, duplicates);
+      }
+      ForTask forTask = item.getTask() == null ? null : item.getTask().getForTask();
+      if (forTask != null) {
+        collectTaskNames(forTask.getDo(), seen, duplicates);
+      }
     }
   }
 
@@ -224,8 +234,17 @@ public class WorkflowCompiler {
         if (tryTask.getCatch() != null) {
           walk(tryTask.getCatch().getDo(), steps, bindings);
         }
+      } else if (task.getForkTask() != null) {
+        // Same reasoning as try: a fork task deploys nothing itself, but each branch's task is
+        // dispatched exactly like a top-level task, so it needs its own step service/binding.
+        walk(task.getForkTask().getFork().getBranches(), steps, bindings);
+      } else if (task.getForTask() != null) {
+        // Same reasoning again: the body of for.do is dispatched once per iteration exactly like
+        // a top-level task list.
+        walk(task.getForTask().getDo(), steps, bindings);
       }
-      // switch/set/wait/for/raise (and the task lists nested under for/fork) deploy nothing.
+      // switch/set/wait/raise deploy nothing themselves; their nested container types (try, fork,
+      // for) are all walked above.
     }
   }
 
