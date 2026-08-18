@@ -9,7 +9,13 @@
  * maps directly onto `fetchNextPage`.
  */
 
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import {
+	type InfiniteData,
+	useInfiniteQuery,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
+import { useEffect } from "react";
 import {
 	toInstanceDetail,
 	toInstanceRow,
@@ -24,9 +30,18 @@ import {
 	fetchWorkflowDeployments,
 	fetchWorkflows,
 	fetchWorkflowVersions,
+	subscribeToInstance,
+	subscribeToInstanceStatuses,
 	type InstanceFilters,
 } from "./admin-client";
-import type { Page } from "./admin-types";
+import {
+	applyInstanceStatus,
+	applyStatusDelta,
+	applyTaskEvent,
+	type InstanceDetailData,
+	isTerminalInstanceStatus,
+} from "./admin-live";
+import type { InstanceSummaryDto, Page } from "./admin-types";
 import type {
 	InstanceDetail,
 	InstanceRow,
@@ -136,6 +151,11 @@ export function useWorkflowNames() {
 	});
 }
 
+/** Query keys shared with the live-update hooks, which patch these caches directly. */
+export const instancesKey = (filters: InstanceFilters) =>
+	["instances", filters] as const;
+export const instanceKey = (id: string) => ["instance", id] as const;
+
 /**
  * `GET /instances` — filtered server-side. The filters are part of the query
  * key, so changing a chip refetches rather than filtering the current page in
@@ -143,7 +163,7 @@ export function useWorkflowNames() {
  */
 export function useInstances(filters: InstanceFilters) {
 	const query = useInfiniteQuery({
-		queryKey: ["instances", filters],
+		queryKey: instancesKey(filters),
 		initialPageParam: FIRST_PAGE,
 		queryFn: ({ pageParam, signal }) =>
 			fetchInstances(filters, { cursor: pageParam }, signal),
@@ -166,15 +186,114 @@ export function useInstances(filters: InstanceFilters) {
  * separate query without the header lagging behind.
  */
 export function useInstanceDetail(id: string) {
-	return useQuery<InstanceDetail>({
-		queryKey: ["instance", id],
+	return useQuery<InstanceDetailData, Error, InstanceDetail>({
+		queryKey: instanceKey(id),
 		queryFn: async ({ signal }) => {
 			const [instance, tasks] = await Promise.all([
 				fetchInstance(id, signal),
 				fetchAllPages((cursor) => fetchInstanceTasks(id, { cursor }, signal)),
 			]);
-			return toInstanceDetail(instance, tasks);
+			return { instance, tasks };
 		},
+		// The cache holds the raw DTOs and the view model is derived here, so a
+		// pushed event can be merged into the DTOs and re-adapted. Caching the
+		// assembled view model would leave nothing to merge into.
+		select: ({ instance, tasks }) => toInstanceDetail(instance, tasks),
 		retry: retryUnlessClientError,
 	});
+}
+
+// ── Live updates ──────────────────────────────────────────────────────────
+
+/**
+ * Subscribes the open instance to `GET /instances/:id/events` and merges what
+ * arrives into the detail cache, so a running instance's header and timeline
+ * update without the operator hitting "Refresh".
+ *
+ * Only subscribes while `isRunning` — a terminal instance can produce nothing
+ * further — and closes as soon as a pushed status is terminal. That close is
+ * required, not just tidy: dws-admin ends the stream at the same moment, and a
+ * browser treats a server-ended stream as a dropped connection and would
+ * reconnect to it forever.
+ *
+ * Events are merged into the cache rather than triggering `invalidateQueries`,
+ * which would refetch the whole instance per event — the polling this replaces.
+ */
+export function useInstanceLiveUpdates(id: string, isRunning: boolean) {
+	const queryClient = useQueryClient();
+
+	useEffect(() => {
+		if (!isRunning) return;
+
+		let closed = false;
+		// The first connect needs no resync — the query's own fetch is that GET.
+		// Every later `open` is a reconnect, and the stream carries no history,
+		// so whatever happened while disconnected is only recoverable by refetching.
+		let connected = false;
+		const subscription = subscribeToInstance(id, {
+			onOpen: () => {
+				if (connected) {
+					queryClient.invalidateQueries({ queryKey: instanceKey(id) });
+				}
+				connected = true;
+			},
+			onInstance: (event) => {
+				queryClient.setQueryData<InstanceDetailData>(instanceKey(id), (prev) =>
+					applyInstanceStatus(prev, event),
+				);
+				if (isTerminalInstanceStatus(event.status) && !closed) {
+					closed = true;
+					subscription.close();
+				}
+			},
+			onTask: (event) => {
+				queryClient.setQueryData<InstanceDetailData>(instanceKey(id), (prev) =>
+					applyTaskEvent(prev, event),
+				);
+			},
+			// A dropped stream leaves the last fetched data on screen and the
+			// manual "Refresh" working; EventSource retries on its own.
+			onError: () => {},
+		});
+
+		return () => {
+			closed = true;
+			subscription.close();
+		};
+	}, [id, isRunning, queryClient]);
+}
+
+/**
+ * Subscribes the instance list to `GET /instances/events` and patches the
+ * status and end time of rows already loaded. Instances not on the page are
+ * ignored: inserting them would reorder the list under the operator, and the
+ * page they belong to delivers them anyway.
+ */
+export function useInstanceListLiveUpdates(filters: InstanceFilters) {
+	const queryClient = useQueryClient();
+	// The key is an object literal, so depend on its content rather than its
+	// identity — otherwise every render resubscribes.
+	const filtersKey = JSON.stringify(filters);
+
+	useEffect(() => {
+		const key = instancesKey(JSON.parse(filtersKey) as InstanceFilters);
+
+		// As above: resync on reconnect, not on the first connect.
+		let connected = false;
+		const subscription = subscribeToInstanceStatuses({
+			onOpen: () => {
+				if (connected) queryClient.invalidateQueries({ queryKey: key });
+				connected = true;
+			},
+			onStatus: (delta) => {
+				queryClient.setQueryData<InfiniteData<Page<InstanceSummaryDto>>>(
+					key,
+					(prev) => applyStatusDelta(prev, delta),
+				);
+			},
+			onError: () => {},
+		});
+
+		return () => subscription.close();
+	}, [filtersKey, queryClient]);
 }

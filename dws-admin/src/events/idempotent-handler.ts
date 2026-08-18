@@ -14,9 +14,12 @@ export type Transaction = Parameters<Db['transaction']>[0] extends (tx: infer T,
  * first time.
  *
  * Returns true if `work` ran (first delivery), false if the event was already
- * processed (skipped).
+ * processed (skipped). `work`'s own resolved value is ignored — handlers that
+ * produce one (the upserts return what they wrote, for live publication) hand
+ * it to their caller by other means, since it must not be acted on until this
+ * transaction has committed.
  */
-export async function runIdempotent(db: Db, eventId: string, work: (tx: Transaction) => Promise<void>): Promise<boolean> {
+export async function runIdempotent(db: Db, eventId: string, work: (tx: Transaction) => Promise<unknown>): Promise<boolean> {
   return db.transaction(async (tx) => {
     const inserted = await tx
       .insert(processedEvents)

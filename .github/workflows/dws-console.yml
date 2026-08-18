@@ -16,6 +16,9 @@ concurrency:
   group: dws-console-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/dws-console
+
 jobs:
   build:
     name: lint, typecheck & build
@@ -27,8 +30,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # dws-console is the one component on npm rather than pnpm: it ships a
-      # package-lock.json and no pnpm-lock.yaml.
+      # dws-console is the one component built with npm rather than pnpm. A
+      # pnpm-lock.yaml is also checked in, but package-lock.json is the one this
+      # workflow and the Dockerfile install from — keep it the authoritative one.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -61,3 +65,76 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  build-image:
+    name: build & push image
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        # Skip on PRs: the image is built for validation but not pushed.
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # Loaded into the local daemon rather than pushed, so the next step can
+      # run the very image that would ship.
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: dws-console
+          load: true
+          tags: dws-console:smoke
+          cache-from: type=gha,scope=dws-console
+          cache-to: type=gha,mode=max,scope=dws-console
+
+      # A successful build only proves the image assembles; the server entry
+      # could still fail to boot. Run it and require an answer, so a broken
+      # runtime stage fails here rather than in a cluster.
+      - name: Smoke-test the image
+        run: |
+          docker run -d --name dws-console-smoke -p 3000:3000 dws-console:smoke
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/healthz > /dev/null; then break; fi
+            if [ "$i" -eq 30 ]; then
+              echo "container did not become healthy"; docker logs dws-console-smoke; exit 1
+            fi
+            sleep 2
+          done
+          # An SSR route has to render, not just the static health endpoint.
+          curl -fsS -o /dev/null -w 'workflows: %{http_code}\n' http://127.0.0.1:3000/workflows
+          docker rm -f dws-console-smoke
+
+      # Fully cached by the build above, so this re-tags and uploads rather
+      # than rebuilding. Skipped on PRs — validated there, published on merge.
+      - name: Push
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: dws-console
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=dws-console
