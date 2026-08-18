@@ -39,7 +39,7 @@ Both cluster-wide prerequisites are offered, not assumed:
 
 ```
 charts/dws/
-├── Chart.yaml                # dependency: dapr (conditional on dapr.enabled)
+├── Chart.yaml                # dependencies: postgresql, dapr (both conditional)
 ├── values.yaml
 └── templates/
     ├── controller/           # serviceaccount, rbac (role+rolebinding), deployment, service
@@ -51,8 +51,13 @@ charts/dws/
     │                               # replaces the hardcoded dws-orchestrator/k8s/configuration-component.yaml
     ├── actor-statestore-component.yaml  # NEW, Phase 5 — Dapr Component (state.redis, actorStateStore: "true"),
     │                                    # backs dws-orchestrator's Dapr Workflow runtime once it goes live
-    ├── console/              # deployment, service, ingress — disabled by default
+    ├── console/              # empty — disabled by default, blocked on dws-console image (Phase 6)
     ├── knative-install-job.yaml   # hook Job, toggle: knative.enabled (Phase 11)
+    ├── dapr-ready-hook.yaml  # done, Phase 4 — post-install/upgrade Job, self-heals a missed
+    │                         # Dapr sidecar injection on the admin Pod, toggle: dapr.enabled
+    ├── preflight.yaml + _preflight.tpl  # done, Phase 4 — fails install/upgrade fast if
+    │                                    # dapr.enabled=false but Dapr CRDs aren't present
+    ├── tests/admin-db-connection.yaml   # done, Phase 8 — `helm test` DB connectivity check
     └── _helpers.tpl
 ```
 
@@ -62,7 +67,7 @@ there's still no `pubsub-component.yaml` Dapr Component template — both are Ph
 
 ## Phased roadmap
 
-Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 2026-08-17.
+Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 2026-08-18.
 
 | Phase | Status | Goal | Key tasks |
 |---|---|---|---|
