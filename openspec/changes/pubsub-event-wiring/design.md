@@ -42,15 +42,24 @@ requirements this design implements.
 
 ## Decisions
 
-### Controller Dapr annotations: no app-port
+### Controller Dapr annotations: unconditional, no app-port
 
 `dws-controller` only calls out through its Dapr sidecar (`EventPublisher`/`DaprClientProducer`
 publish `dws.events`); grepping `dws-controller/src` confirms no Dapr-routed inbound path (no
 service-invocation target, no declarative subscription endpoint). `dapr.io/app-port` and a second
 container port exist only to tell the sidecar where to forward *inbound* Dapr traffic, so adding
-one here would be dead configuration. Decision: `dapr.io/enabled`/`dapr.io/app-id` only, mirroring
-admin's annotation gating but omitting `dapr.io/app-port`, `DAPR_APP_PORT`, and the second
-container port entirely.
+one here would be dead configuration. Decision: `dapr.io/enabled`/`dapr.io/app-id` only,
+omitting `dapr.io/app-port`, `DAPR_APP_PORT`, and the second container port entirely.
+
+The annotations are rendered **unconditionally** — NOT gated by `.Values.dapr.enabled` (unlike
+the admin Deployment). Alternative considered: mirror admin's `if .Values.dapr.enabled` wrap.
+Rejected — Dapr sidecar annotations are inert without the sidecar-injector webhook running, so a
+`dapr.enabled=false` install still renders them harmlessly, and keeping them always-on means the
+controller starts publishing the moment a Dapr control plane becomes available (whether the
+chart later installs one, or the operator installs one externally) without a follow-up
+`helm upgrade` to flip the annotation on. Admin stays gated because its container also depends
+on `DAPR_PUBSUB_*` env vars whose absence changes application behavior; the controller has no
+matching env-var coupling to the toggle.
 
 ### Redis installs whenever Dapr does — no independent `redis.enabled` toggle
 

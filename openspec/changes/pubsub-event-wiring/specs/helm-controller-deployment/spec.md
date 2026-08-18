@@ -1,13 +1,16 @@
 ## ADDED Requirements
 
-### Requirement: Controller Dapr sidecar annotations are gated by the Dapr toggle
+### Requirement: Controller pod carries Dapr sidecar annotations unconditionally
 
 The controller Deployment's pod template SHALL carry `dapr.io/enabled: "true"` and
-`dapr.io/app-id` annotations when `.Values.dapr.enabled` is `true`, matching the admin
-Deployment's pattern. Because the controller only publishes outbound (definition/deployment
-lifecycle events via the sidecar) and never receives Dapr-routed inbound traffic, it SHALL NOT
-carry a `dapr.io/app-port` annotation or a second container port. When `.Values.dapr.enabled` is
-`false`, the controller pod template SHALL carry no `dapr.io/*` annotations at all.
+`dapr.io/app-id` annotations on every render — they are NOT gated by `.Values.dapr.enabled`
+(unlike the admin Deployment). The annotations are harmless when Dapr is not installed (the
+mutating admission webhook simply is not present to act on them), so rendering them
+unconditionally keeps the controller ready for Dapr as soon as the control plane appears in the
+cluster, whether it is installed by this chart or by an external operator. Because the
+controller only publishes outbound (definition/deployment lifecycle events via the sidecar) and
+never receives Dapr-routed inbound traffic, it SHALL NOT carry a `dapr.io/app-port` annotation
+or a second container port.
 
 Owning component: `charts/dws` (`templates/controller/deployment.yaml`).
 
@@ -21,5 +24,6 @@ Owning component: `charts/dws` (`templates/controller/deployment.yaml`).
 #### Scenario: Dapr disabled
 
 - **WHEN** the chart renders with `dapr.enabled=false`
-- **THEN** the controller Deployment's pod template has no `dapr.io/enabled`, `dapr.io/app-id`,
-  or `dapr.io/app-port` annotation
+- **THEN** the controller Deployment's pod template STILL carries `dapr.io/enabled: "true"` and
+  `dapr.io/app-id`
+- **AND** it still carries no `dapr.io/app-port` annotation

@@ -13,10 +13,13 @@ packaging roadmap Phase 5.
 ## What Changes
 
 - Add `dapr.io/enabled`/`dapr.io/app-id` pod annotations to the controller Deployment
-  (`templates/controller/deployment.yaml`), gated by `.Values.dapr.enabled`, mirroring the admin
-  Deployment. No `dapr.io/app-port`/second container port — `dws-controller` only publishes
-  outbound via `EventPublisher`/`DaprClientProducer`, it never receives Dapr-routed inbound
-  traffic (service invocation target or pubsub subscription), so no app-port is needed.
+  (`templates/controller/deployment.yaml`), rendered unconditionally — NOT gated by
+  `.Values.dapr.enabled` (unlike the admin Deployment). The annotations are harmless without
+  Dapr installed and keep the controller ready to publish the moment a Dapr control plane
+  appears (chart-installed or external). No `dapr.io/app-port`/second container port —
+  `dws-controller` only publishes outbound via `EventPublisher`/`DaprClientProducer`, it never
+  receives Dapr-routed inbound traffic (service invocation target or pubsub subscription), so
+  no app-port is needed.
 - Add `redis` as a conditional Bitnami subchart dependency, gated by `condition: dapr.enabled` —
   not an independent `redis.enabled` toggle. Redis exists solely to back the three Dapr Components
   below, so its lifecycle simply follows Dapr's: `Chart.yaml` dependency entry, a `redis:` values
@@ -68,8 +71,8 @@ Out of scope: Phase 6 (console) and Phase 11 (Knative).
 
 ### Modified Capabilities
 
-- `helm-controller-deployment`: add `dapr.io/enabled`/`dapr.io/app-id` pod annotations, gated by
-  `.Values.dapr.enabled`, matching the pattern already established for the admin Deployment.
+- `helm-controller-deployment`: add `dapr.io/enabled`/`dapr.io/app-id` pod annotations
+  unconditionally (no `dapr.enabled` gate), diverging from admin's gated pattern.
 
 ## Impact
 

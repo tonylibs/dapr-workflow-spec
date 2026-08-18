@@ -1,11 +1,10 @@
 ## 1. Controller Dapr annotations
 
 - [x] 1.1 Add `dapr.io/enabled`/`dapr.io/app-id` pod annotations to
-      `charts/dws/templates/controller/deployment.yaml`, gated by `.Values.dapr.enabled`,
-      mirroring `templates/admin/deployment.yaml`. No `dapr.io/app-port` and no second
-      container port.
+      `charts/dws/templates/controller/deployment.yaml`, rendered unconditionally (NOT gated by
+      `.Values.dapr.enabled` — see design.md). No `dapr.io/app-port` and no second container port.
 - [x] 1.2 `helm template charts/dws` with default values and with `--set dapr.enabled=false`;
-      confirm the controller pod template carries the annotations only in the first case, and
+      confirm the controller pod template carries the two annotations in both cases, and
       never carries `dapr.io/app-port`.
 
 ## 2. Bitnami Redis dependency
