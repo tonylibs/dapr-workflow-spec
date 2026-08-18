@@ -204,35 +204,38 @@ jobs:
             || { echo "::error::admin daprd never registered the dws.events subscription on the pubsub Component"; exit 1; }
 
           echo "--- publish real events via admin's daprd sidecar ---"
-          # Dapr auto-creates `<app-id>-dapr` Service on port 80 -> daprd:3500
-          # for every sidecar-annotated pod. admin's app-id is dws-admin.
-          kubectl port-forward -n "$NS" svc/dws-admin-dapr 3500:80 >/tmp/pf.log 2>&1 &
-          PF_PID=$!
-          trap 'kill $PF_PID 2>/dev/null || true' EXIT
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:3500/v1.0/healthz && break || sleep 2
-          done
-          if ! curl -sf http://localhost:3500/v1.0/healthz; then
-            echo "::error::port-forward to admin daprd not reachable"
-            cat /tmp/pf.log || true
-            exit 1
-          fi
+          # daprd's HTTP API (port 3500) binds to 127.0.0.1 / [::1] only for
+          # security, so port-forward to svc/dws-admin-dapr:80 can't reach it
+          # ("lost connection to pod"). Use `kubectl debug` to add an ephemeral
+          # curl container that SHARES the admin pod's network namespace via
+          # --target=admin — from inside that container, localhost:3500 is
+          # daprd's loopback listener. No security posture change, no fresh
+          # sidecar injection required.
+          admin_pod=$(kubectl get pods -n "$NS" -l app.kubernetes.io/component=admin -o jsonpath='{.items[0].metadata.name}')
+          [ -n "$admin_pod" ] || { echo "::error::no admin pod found"; exit 1; }
+          echo "admin pod: $admin_pod"
 
           NOW=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
           DEF_ID="e2e-def-$(date +%s)-$RANDOM"
           INST_ID="e2e-inst-$(date +%s)-$RANDOM"
 
-          echo "publishing io.dws.definition.created id=$DEF_ID"
-          curl -fsS -o /dev/null -w 'HTTP %{http_code}\n' -X POST \
-            -H 'Content-Type: application/json' \
-            -d "{\"id\":\"$DEF_ID\",\"source\":\"dws-controller\",\"type\":\"io.dws.definition.created\",\"time\":\"$NOW\",\"datacontenttype\":\"application/json\",\"data\":{\"workflow\":\"order\",\"version\":\"vpubsube2e\",\"createdAt\":\"$NOW\"}}" \
-            http://localhost:3500/v1.0/publish/pubsub/dws.events
+          publish() {
+            local id="$1"; local type="$2"; local source="$3"; local data="$4"
+            local body
+            body=$(printf '{"id":"%s","source":"%s","type":"%s","time":"%s","datacontenttype":"application/json","data":%s}' \
+              "$id" "$source" "$type" "$NOW" "$data")
+            echo "publishing $type id=$id"
+            kubectl debug -n "$NS" "$admin_pod" -q -i \
+              --image=curlimages/curl:8.11.1 \
+              --target=admin \
+              -- sh -c "curl -fsS -o /dev/null -w 'HTTP %{http_code}\n' -X POST -H 'Content-Type: application/json' -d '$body' http://localhost:3500/v1.0/publish/pubsub/dws.events"
+          }
 
-          echo "publishing io.dws.instance.started id=$INST_ID"
-          curl -fsS -o /dev/null -w 'HTTP %{http_code}\n' -X POST \
-            -H 'Content-Type: application/json' \
-            -d "{\"id\":\"$INST_ID\",\"source\":\"dws-orchestrator/order\",\"type\":\"io.dws.instance.started\",\"time\":\"$NOW\",\"datacontenttype\":\"application/json\",\"data\":{\"instanceId\":\"inst-e2e\",\"workflow\":\"order\",\"version\":\"vpubsube2e\",\"appId\":\"order\",\"startedAt\":\"$NOW\"}}" \
-            http://localhost:3500/v1.0/publish/pubsub/dws.events
+          publish "$DEF_ID"  "io.dws.definition.created" "dws-controller" \
+            "{\"workflow\":\"order\",\"version\":\"vpubsube2e\",\"createdAt\":\"$NOW\"}"
+
+          publish "$INST_ID" "io.dws.instance.started"   "dws-orchestrator/order" \
+            "{\"instanceId\":\"inst-e2e\",\"workflow\":\"order\",\"version\":\"vpubsube2e\",\"appId\":\"order\",\"startedAt\":\"$NOW\"}"
 
           echo "pubsub e2e confirmed: components present, admin daprd subscribed to dws.events, both real lifecycle events accepted by pubsub Component"
 
