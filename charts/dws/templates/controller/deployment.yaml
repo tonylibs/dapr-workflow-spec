@@ -22,6 +22,28 @@ spec:
         dapr.io/app-id: {{ include "dws.controller.fullname" . | quote }}
     spec:
       serviceAccountName: {{ include "dws.controller.fullname" . }}
+      {{- if and .Values.dapr.enabled (not .Values.redis.external.host) }}
+      initContainers:
+        # The daprd sidecar's pubsub.redis Component init returns error
+        # synchronously on a first connection-refused, so if the sidecar starts
+        # before the in-chart Bitnami Redis is Ready it fatally exits (see
+        # admin/deployment.yaml for the full explanation and CI evidence). Wait
+        # for Redis's TCP port here so the sidecar comes up into a reachable
+        # dependency set.
+        - name: wait-for-redis
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              host_port='{{ include "dws.redis.host" . }}'
+              host=${host_port%:*}
+              port=${host_port##*:}
+              until nc -z "$host" "$port"; do
+                echo "waiting for redis $host:$port" >&2
+                sleep 2
+              done
+      {{- end }}
       containers:
         - name: controller
           image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}"
