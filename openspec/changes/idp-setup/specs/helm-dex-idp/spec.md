@@ -8,7 +8,7 @@ at install time so a working login always exists once Dex is enabled.
 
 ### Requirement: Dex renders as a conditional chart dependency
 
-`charts/dws`'s `Chart.yaml` SHALL declare the upstream `dex-idp` chart (repository
+`charts/dws`'s `Chart.yaml` SHALL declare the upstream `dex` chart (repository
 `https://charts.dexidp.io`) as a dependency gated on `condition: dex.enabled`. `values.yaml`
 SHALL expose `dex.enabled`, defaulting to `false`. When `dex.enabled` is `true`, `helm install`/
 `upgrade` SHALL install Dex as part of the release. When `dex.enabled` is `false`, the chart
@@ -20,14 +20,14 @@ Owning component: `charts/dws` (`Chart.yaml`, `values.yaml`).
 #### Scenario: Dex enabled renders Dex resources
 
 - **WHEN** `helm template charts/dws` (or `helm install`) is run with `dex.enabled=true`
-- **THEN** the rendered/installed release includes the `dex-idp` subchart's Deployment and
+- **THEN** the rendered/installed release includes the `dex` subchart's Deployment and
   Service, the bootstrap-admin credentials Secret, and `NOTES.txt` output describing how to
   retrieve the admin login
 
 #### Scenario: Dex disabled (default) renders no Dex resources
 
 - **WHEN** `helm template charts/dws` is run with default values (`dex.enabled=false`)
-- **THEN** no `dex-idp` subchart resources, bootstrap-admin Secret, or Dex-related content in
+- **THEN** no `dex` subchart resources, bootstrap-admin Secret, or Dex-related content in
   `NOTES.txt` are rendered, and the rest of the chart's rendered output is unchanged
 
 ### Requirement: dws-console is registered as a public PKCE client
@@ -36,7 +36,8 @@ When `dex.enabled` is `true`, Dex's `staticClients` configuration SHALL register
 `dws-console` with `public: true` (no client secret) and a redirect URI sourced from
 `dex.consoleRedirectURI`.
 
-Owning component: `charts/dws` (Dex `values.yaml` passthrough).
+Owning component: `charts/dws` (chart-rendered Dex config Secret, `templates/dex/config-
+secret.yaml`).
 
 #### Scenario: Console client is public with a configurable redirect URI
 
@@ -51,7 +52,8 @@ When `dex.enabled` is `true`, Dex's `staticPasswords` configuration SHALL be see
 one entry representing the bootstrap admin user, identified by `dex.adminUser.email` (default
 `admin@dws.local`).
 
-Owning component: `charts/dws` (Dex `values.yaml` passthrough).
+Owning component: `charts/dws` (chart-rendered Dex config Secret, `templates/dex/config-
+secret.yaml`).
 
 #### Scenario: Bootstrap admin appears in staticPasswords
 
@@ -89,7 +91,8 @@ The bootstrap admin password SHALL be hashed with Sprig's `bcrypt` template func
 `staticPasswords[].hash`. Hashing SHALL happen entirely within Helm templates — no Job, init
 container, or external script SHALL be introduced to compute the hash.
 
-Owning component: `charts/dws` (Dex `values.yaml` passthrough).
+Owning component: `charts/dws` (chart-rendered Dex config Secret, `templates/dex/config-
+secret.yaml`, and the shared `dws.dex.adminPassword` named template).
 
 #### Scenario: staticPasswords hash is a valid bcrypt hash of the generated password
 

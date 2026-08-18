@@ -99,6 +99,35 @@ postgresql:
     networkPolicy:
       enabled: false
 
+# Dex, an optional in-chart IdP for dws-console (auth roadmap Phase 0, docs/roadmaps/dws-auth.md),
+# provided by the upstream dexidp/helm-charts "dex" chart as a conditional dependency (see
+# Chart.yaml). Off by default: no consumer wires up to it until a later phase. When enabled, this
+# chart renders Dex's entire config.yaml itself (configSecret.create: false, pointed at
+# configSecret.name below) rather than using the subchart's static values passthrough, so the
+# bootstrap admin's bcrypt hash can be computed in-template — see templates/dex/secrets.yaml.
+dex:
+  enabled: false
+  # Dex's own issuer URL (OIDC discovery + token `iss` claim), must be reachable by dws-console
+  # and any service validating tokens. This cluster-internal default only works for in-cluster
+  # validation; override with a real externally-reachable URL for anything beyond local testing.
+  issuer: "http://dex.dws.local/dex"
+  # dws-console's registered OIDC redirect URI (public PKCE client, no client secret).
+  consoleRedirectURI: "http://localhost:5173/callback"
+  adminUser:
+    # Bootstrap admin identity. The password is generated at install time and never rotated on
+    # upgrade (see design.md) — never set a password here.
+    email: admin@dws.local
+    # Set to have the bootstrap password sourced from an operator-provided Secret instead of the
+    # chart-generated one (mirrors admin.database.existingSecret above).
+    existingSecret: ""
+    existingSecretKey: ""
+  # Points the dex subchart at the chart-rendered config Secret (templates/dex/secrets.yaml)
+  # instead of building its own from a static values passthrough. Keep configSecret.name in sync
+  # if overridden — both this value and that template must agree on the same Secret name.
+  configSecret:
+    create: false
+    name: "dex-config"
+
 # Image pull secrets, applied to the admin (and other component) pods that reference
 # private registries. More info: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []

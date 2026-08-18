@@ -8,9 +8,9 @@ install has a working credential without hand-editing `values.yaml` with a passw
 
 ## What Changes
 
-- Add `dex-idp` (repo `dexidp/helm-charts`, `https://charts.dexidp.io`) as a conditional Helm
-  dependency in `charts/dws/Chart.yaml`, gated on `condition: dex.enabled`, following the same
-  pattern already used for `postgresql`/`dapr`.
+- Add the upstream `dex` chart (repo `dexidp/helm-charts`, `https://charts.dexidp.io`) as a
+  conditional Helm dependency in `charts/dws/Chart.yaml`, gated on `condition: dex.enabled`,
+  following the same pattern already used for `postgresql`/`dapr`.
 - Configure Dex via `values.yaml`:
   - `staticClients`: register `dws-console` as a public PKCE client (`public: true`, no secret)
     with a configurable redirect URI (`dex.consoleRedirectURI`).

@@ -32,6 +32,11 @@ appVersion: "1.18.0"
 # conditional dependency the same way. It installs only when dapr.enabled is true (the
 # default); set it to false to use a cluster-external Dapr install instead (a preflight
 # check then fails install/upgrade if Dapr CRDs aren't actually present).
+#
+# Dex, an optional in-chart IdP for dws-console (auth roadmap Phase 0), is provided by the
+# upstream dexidp/helm-charts "dex" chart, pulled in as a conditional dependency the same
+# way. It installs only when dex.enabled is true (default false, since no consumer wires up
+# to it until a later phase).
 dependencies:
   - name: postgresql
     version: 16.7.27
@@ -41,3 +46,7 @@ dependencies:
     version: 1.15.4
     repository: https://dapr.github.io/helm-charts/
     condition: dapr.enabled
+  - name: dex
+    version: 0.24.1
+    repository: https://charts.dexidp.io
+    condition: dex.enabled

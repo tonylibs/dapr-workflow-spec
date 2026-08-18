@@ -18,7 +18,7 @@ Ground rules decided during design, carried through every phase below:
 
 ```mermaid
 flowchart TD
-  P0["Phase 0: Dex<br/>in-chart IdP, staticClients/staticPasswords"] --> P1["Phase 1: Console login<br/>PKCE, in-memory token"]
+  P0["Phase 0: Dex ✅<br/>in-chart IdP, staticClients/staticPasswords"] --> P1["Phase 1: Console login<br/>PKCE, in-memory token"]
   P0 --> P2["Phase 2: dws-controller Dapr-gated<br/>sidecar + bearer/role middleware"]
   P2 --> P3["Phase 3: dws-admin write-relay<br/>stateless proxy to dws-controller"]
   P3 --> P4["Phase 4: Admin gateway<br/>nginx: CORS preflight + proxy to<br/>dws-admin's own sidecar invoke path"]
@@ -33,7 +33,7 @@ flowchart TD
 
 | Phase | Scope | Depends on | Status |
 |---|---|---|---|
-| **0** | Add Dex as an optional in-chart dependency (toggle like `postgresql.enabled`); `staticPasswords` for dev users, `staticClients` registers `dws-console` as a public PKCE client; auto-generate a bootstrap admin login (see §2a) | — | ❌ not started |
+| **0** | Add Dex as an optional in-chart dependency (toggle like `postgresql.enabled`); `staticPasswords` for dev users, `staticClients` registers `dws-console` as a public PKCE client; auto-generate a bootstrap admin login (see §2a) | — | ✅ done |
 | **1** | React OIDC client (Authorization Code + PKCE), in-memory token, silent renew, logout | Phase 0 | ❌ not started |
 | **2** | Enable `dws-controller`'s Dapr sidecar (`dapr.io/enabled`/`app-id`/`app-port`); add `bearer` + optional role/Rego `Component`s and a `Configuration` wiring them to its inbound pipeline | Phase 0 (needs the IdP's JWKS endpoint) | ❌ not started |
 | **3** | New route in `dws-admin`: stateless relay that forwards the `Authorization` header + body to `dws-controller` via `dws-admin`'s own local sidecar invoke call. No verification logic — `dws-admin` never inspects the token | Phase 2 | ❌ not started |

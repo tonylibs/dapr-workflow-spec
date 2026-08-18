@@ -8,15 +8,19 @@ the subchart's own name, and chart-owned templates (`templates/admin/secret.yaml
 values. `_helpers.tpl` defines one `dws.<component>.fullname` helper per component
 (`dws.postgres.fullname`, `dws.admin.fullname`, …), used both by chart-owned templates and by
 cross-references to subchart-rendered resource names (`dws.postgres.host`). This change adds
-Dex (`dex-idp`, repo `dexidp/helm-charts`) the same way.
+Dex (chart name `dex`, repo `dexidp/helm-charts`, version `0.24.1`) the same way.
 
-The `dex-idp` chart exposes a single free-form `config` values key that is dumped directly as
-Dex's own YAML config (schema at `https://dexidp.io/docs/`) — there is no structured
-`staticClients`/`staticPasswords` schema in the subchart's own `values.yaml` beyond that
-passthrough. Everything Dex-specific in this change (`staticClients`, `staticPasswords`,
-`enablePasswordDB`) is therefore written under `dex.config.*` in `charts/dws/values.yaml`,
-flowing straight into the subchart as-is — the same pattern already used for `postgresql.auth.*`
-flowing into the Bitnami subchart.
+The `dex` chart exposes a single free-form `config` values key that is dumped directly (via
+`toYaml`) into a Secret it creates itself when `configSecret.create` is `true` (the default),
+which its Deployment mounts as `/etc/dex/config.yaml`. Because `values.yaml` is plain data, not
+a template, nothing computed at render time (a generated password, a `bcrypt` hash) can be
+injected through that passthrough — sprig/template functions only run inside `.tpl` files. The
+chart also supports `configSecret.create: false` with `configSecret.name: <existing secret>`,
+letting a *different* Secret supply `config.yaml` instead. This change uses that: `charts/dws`
+sets `dex.configSecret.create: false` and renders the entire Dex configuration itself, in a
+chart-owned template, precisely so the bootstrap admin's hash can be computed in-line. The
+subchart is left to provide only the Deployment/Service/RBAC around that externally-supplied
+config.
 
 See `proposal.md` for motivation; see `specs/helm-dex-idp/spec.md` for the behavior contract.
 
@@ -52,29 +56,34 @@ credentials`) as needed by the Secret template and `NOTES.txt`. Chosen over hard
 inline in each template so every Dex-owned resource name derives from one source, matching how
 `dws.admin.fullname` is reused across `templates/admin/*.yaml`.
 
-**D2 — Bootstrap-admin Secret is a chart-owned template outside the `dex-idp` subchart, not
-subchart-templated.** The subchart only renders Dex's own Deployment/Service/ConfigMap from
-`dex.config`; it has no concept of "also mint me a credentials Secret." A new
-`charts/dws/templates/dex/admin-secret.yaml` (parallel to `templates/admin/secret.yaml`) owns:
-- Generating the password: `{{- $existing := lookup "v1" "Secret" (include "dws.namespace" .)
-  (include "dws.dex.adminCredentials.fullname" .) }}` — if found, reuse
-  `$existing.data.password | b64dec`; if not, `randAlphaNum 20`.
-- Rendering `stringData: { email: ..., password: ... }`.
+**D2 — Two chart-owned Secrets: a retrieval Secret (plaintext, operator-facing) and a config
+Secret (Dex-facing, hash only).** `charts/dws/templates/dex/admin-secret.yaml` (parallel to
+`templates/admin/secret.yaml`) renders `<dws.dex.adminCredentials.fullname>` with `stringData: {
+email, password }` — the one `NOTES.txt` tells the operator to `kubectl get`. Separately,
+`charts/dws/templates/dex/config-secret.yaml` renders the Secret named by
+`dex.configSecret.name`, containing the full Dex `config.yaml` (base64, under `data`, matching
+the subchart's own `secret.yaml` shape exactly) — `issuer`, `storage`, `web`, `enablePasswordDB`,
+the `staticClients` entry, and `staticPasswords` with the `bcrypt` hash. `values.yaml` sets
+`dex.configSecret.create: false` and a fixed `dex.configSecret.name` (default `dex-config`) so
+the subchart mounts this chart-rendered Secret instead of building its own from a static
+passthrough. Splitting the two keeps the plaintext-bearing Secret narrowly scoped (only an
+operator with Secret-read access sees the password) separate from the Dex-facing Secret (which
+only ever holds the hash).
 
-This mirrors `templates/admin/secret.yaml`'s existing `existingSecret`-guarded shape (`{{- if
-and ... (not .Values.dex.adminUser.existingSecret) }}`), extended with the `lookup` guard for
-upgrade-stability, which the admin DB Secret doesn't need (that value is operator-literal, not
-generated).
+**D3 — The password itself is computed once, by a single named template, called from both
+Secrets.** Rather than each of the two Secret templates independently calling
+`lookup`/`randAlphaNum` (risking divergence — the retrieval Secret storing password A while
+Dex's config hashes password B), `dws.dex.adminPassword` (a named template in `_helpers.tpl`)
+encapsulates the lookup-guarded generation:
+- If `dex.adminUser.existingSecret` is set, read the password from that operator-supplied Secret
+  (via `lookup`) instead of generating one.
+- Otherwise, `lookup` the chart's own admin-credentials Secret; reuse its stored password if
+  found, else `randAlphaNum 20`.
 
-**D3 — The bcrypt hash is computed inline in the `dex.config.staticPasswords` values block via a
-named template, not duplicated between the Secret and the Dex config.** Rather than each of the
-Secret template and the `dex.config` block independently calling `lookup`/`randAlphaNum`
-(risking the two diverging, e.g. Secret stores password A but Dex is configured with a hash of
-password B), a single named template (e.g. `dws.dex.adminPassword`, defined in `_helpers.tpl`)
-encapsulates the lookup-guarded generation and is called once per render pass from both the
-`staticPasswords` block (wrapped in `bcrypt`) and the admin-credentials Secret (plaintext).
-Because Helm template evaluation is deterministic per values/lookup input within a single
-render, both call sites resolve to the same generated (or reused) password.
+Both `templates/dex/admin-secret.yaml` (plaintext) and `dws.dex.config`'s `staticPasswords` entry
+(wrapped in `bcrypt`) call `include "dws.dex.adminPassword" .`. Helm template evaluation is
+deterministic per values/lookup input within a single render, so both call sites resolve to the
+same generated (or reused) password.
 
 **D4 — `dex.enabled` defaults to `false`.** Unlike `postgresql`/`dapr` (both default `true`,
 since the chart's core admin/controller stack needs a database and Dapr to function at all), Dex
@@ -96,11 +105,16 @@ migration.
   dry-run against a cluster (per the requirement's own `helm upgrade` scenario), not offline
   `helm template`, to prove the reuse path. `helm template` is only used to prove *rendering*
   (Secret/Deployment/NOTES shape), not the reuse guarantee.
-- **[Risk] `dex-idp` subchart's `config` values shape is a free-form passthrough with no schema
-  validation from Helm** → Mitigation: `helm lint`/`helm template` in the acceptance criteria
-  catches YAML-shape mistakes; a malformed `staticClients`/`staticPasswords` block would surface
-  as a Dex pod CrashLoop at runtime, not a template-time failure — acceptable since Phase 0's
-  acceptance criteria are template/dry-run-level, not a live-login test.
+- **[Risk] Dex's config schema has no Helm-side validation — a malformed `issuer`/`storage`/
+  `staticClients` shape in `dws.dex.config`'s output only surfaces as a Dex pod CrashLoop at
+  runtime, not a template-time failure** → Mitigation: `helm lint`/`helm template` in the
+  acceptance criteria catch YAML-shape mistakes in the rendered Secret; the dry-run install
+  criterion (spec-required) additionally proves the pod actually starts, not just that the
+  Secret renders.
+- **[Risk] `dex.configSecret.name` is a fixed literal (not derived from `dws.fullname`/release
+  name like other chart resources), since values.yaml cannot call template helpers** →
+  Mitigation: documented default (`dex-config`) is overridable like `admin.database.existingSecret`;
+  acceptable for a single Dex instance per namespace, the only supported topology in Phase 0.
 - **[Trade-off] Bootstrap admin is a single static password, not rotatable without manual Secret
   deletion** → Accepted per roadmap §2a; this is explicitly a bootstrap/dev mechanism, not a
   production credential-management story.
