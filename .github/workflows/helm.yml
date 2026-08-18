@@ -153,6 +153,118 @@ jobs:
       - name: Wait for postgres rollout
         run: kubectl rollout status statefulset/dws-postgresql -n dws-system --timeout=5m
 
+      - name: Wait for redis rollout
+        # The chart's Bitnami Redis subchart (backs the Dapr pubsub / dws-definitions /
+        # actor-statestore Components) installs whenever dapr.enabled=true, per the
+        # Chart.yaml condition wired in for Phase 5. Wait for it before asserting the
+        # pubsub Component below.
+        run: kubectl rollout status statefulset/dws-redis-master -n dws-system --timeout=5m
+
+      - name: Assert pubsub Component present
+        run: |
+          kubectl get component pubsub -n dws-system
+          kubectl get component dws-definitions -n dws-system
+          kubectl get component dws-actor-statestore -n dws-system
+
+      - name: End-to-end pubsub delivery check
+        # Proves the chart-managed `pubsub` Component actually carries traffic:
+        # deploy a Dapr-enabled subscriber Pod bound to topic `dws.events` via a
+        # Subscription CRD, publish a probe message from a Dapr-enabled publisher Pod
+        # through its localhost sidecar, then grep the subscriber Pod's logs for the
+        # payload. Transport-only, per the Phase 5 spec — no controller/orchestrator/
+        # admin round-trip is exercised here.
+        run: |
+          set -euo pipefail
+          NS=dws-system
+          PROBE="phase-5-$(date +%s)"
+
+          cat <<EOF | kubectl apply -n "$NS" -f -
+          apiVersion: dapr.io/v2alpha1
+          kind: Subscription
+          metadata:
+            name: pubsub-e2e-sub
+          spec:
+            pubsubname: pubsub
+            topic: dws.events
+            routes:
+              default: /events
+          scopes:
+            - pubsub-e2e-subscriber
+          ---
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: pubsub-e2e-subscriber
+            annotations:
+              dapr.io/enabled: "true"
+              dapr.io/app-id: "pubsub-e2e-subscriber"
+              dapr.io/app-port: "8080"
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: sub
+                image: mendhak/http-https-echo:36
+                env:
+                  - name: HTTP_PORT
+                    value: "8080"
+                ports:
+                  - containerPort: 8080
+          EOF
+
+          kubectl wait --for=condition=Ready pod/pubsub-e2e-subscriber -n "$NS" --timeout=3m
+
+          cat <<EOF | kubectl apply -n "$NS" -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: pubsub-e2e-publisher
+            annotations:
+              dapr.io/enabled: "true"
+              dapr.io/app-id: "pubsub-e2e-publisher"
+          spec:
+            restartPolicy: Never
+            containers:
+              - name: pub
+                image: curlimages/curl:8.11.1
+                command: ["sh", "-c"]
+                args:
+                  - |
+                    # Wait for the daprd sidecar to open its HTTP port before publishing.
+                    for i in \$(seq 1 30); do
+                      curl -sf http://localhost:3500/v1.0/healthz && break || sleep 2
+                    done
+                    curl -sfS -X POST \
+                      -H 'Content-Type: application/json' \
+                      -d '{"probe":"$PROBE"}' \
+                      http://localhost:3500/v1.0/publish/pubsub/dws.events
+                    echo "published $PROBE"
+                    # Keep pod alive briefly so kubectl logs is guaranteed to land.
+                    sleep 5
+          EOF
+
+          # Wait for the publisher to finish its curl round-trip.
+          for i in $(seq 1 60); do
+            phase=$(kubectl get pod pubsub-e2e-publisher -n "$NS" -o jsonpath='{.status.phase}' 2>/dev/null || true)
+            [ "$phase" = "Succeeded" ] && break
+            [ "$phase" = "Failed" ] && { echo "::error::publisher pod failed"; break; }
+            sleep 2
+          done
+          kubectl logs pubsub-e2e-publisher -n "$NS" -c pub
+          kubectl logs pubsub-e2e-publisher -n "$NS" -c pub | grep -q "published $PROBE"
+
+          # Give the delivery a beat, then look for the probe in the subscriber's log.
+          for i in $(seq 1 30); do
+            if kubectl logs pubsub-e2e-subscriber -n "$NS" -c sub 2>/dev/null | grep -q "$PROBE"; then
+              echo "pubsub delivery confirmed"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::pubsub probe $PROBE not observed in subscriber logs"
+          kubectl logs pubsub-e2e-subscriber -n "$NS" -c sub || true
+          kubectl logs pubsub-e2e-subscriber -n "$NS" -c daprd --tail=100 || true
+          exit 1
+
       - name: Debug pod state on failure
         if: failure()
         run: |
@@ -168,6 +280,16 @@ jobs:
           kubectl get pods -n dws-system -l app.kubernetes.io/name=dapr -o wide || true
           echo "--- dapr-ready-hook job logs ---"
           kubectl logs -n dws-system -l app.kubernetes.io/component=dapr-ready-hook --all-containers --prefix --tail=200 || true
+          echo "--- redis pod state ---"
+          kubectl describe statefulset/dws-redis-master -n dws-system || true
+          kubectl logs -n dws-system -l app.kubernetes.io/name=redis --all-containers --prefix --tail=200 || true
+          echo "--- dapr Components (dws-system) ---"
+          kubectl get components -n dws-system -o wide || true
+          kubectl describe component pubsub -n dws-system || true
+          echo "--- pubsub e2e pods ---"
+          kubectl get pods -n dws-system -l 'app.kubernetes.io/name!=redis' -o wide | grep pubsub-e2e || true
+          kubectl logs pubsub-e2e-publisher -n dws-system --all-containers --prefix --tail=200 || true
+          kubectl logs pubsub-e2e-subscriber -n dws-system --all-containers --prefix --tail=200 || true
 
       - name: Run helm test
         run: helm test dws --namespace dws-system --logs

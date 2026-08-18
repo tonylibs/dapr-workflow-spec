@@ -17,6 +17,11 @@ spec:
       labels:
         {{- include "dws.labels" . | nindent 8 }}
         app.kubernetes.io/component: controller
+      {{- if .Values.dapr.enabled }}
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: {{ include "dws.controller.fullname" . | quote }}
+      {{- end }}
     spec:
       serviceAccountName: {{ include "dws.controller.fullname" . }}
       containers:

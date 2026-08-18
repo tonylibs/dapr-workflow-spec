@@ -1,0 +1,31 @@
+{{- if .Values.dapr.enabled }}
+{{- /*
+  Dapr actor/workflow state store. Not consumed by anything yet — dws-orchestrator does
+  not call the Dapr Workflow runtime today — but provisioned per Helm packaging Phase 5's
+  stated scope so it is ready when that lands.
+*/}}
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: {{ include "dws.fullname" . }}-actor-statestore
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: actor-statestore
+spec:
+  type: state.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      value: {{ include "dws.redis.host" . | quote }}
+    - name: redisPassword
+      secretKeyRef:
+        name: {{ include "dws.redis.secretName" . }}
+        key: {{ include "dws.redis.secretKey" . }}
+    - name: actorStateStore
+      value: "true"
+    - name: enableTLS
+      value: "false"
+auth:
+  secretStore: kubernetes
+{{- end }}

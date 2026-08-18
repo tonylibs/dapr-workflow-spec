@@ -1,0 +1,32 @@
+{{- if .Values.dapr.enabled }}
+{{- /*
+  Dapr Configuration store backing the workflow definitions. Chart-managed replacement
+  for the hand-applied dws-orchestrator/k8s/configuration-component.yaml (kept there for
+  non-chart deployments). Applications may only READ from this store via the
+  Configuration API; the controller writes definition keys directly into the Redis
+  backing store.
+*/}}
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: dws-definitions
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: definitions
+spec:
+  type: configuration.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      value: {{ include "dws.redis.host" . | quote }}
+    - name: redisPassword
+      secretKeyRef:
+        name: {{ include "dws.redis.secretName" . }}
+        key: {{ include "dws.redis.secretKey" . }}
+    # Definition values are plain YAML/JSON text; do not treat them as JSON documents.
+    - name: enableTLS
+      value: "false"
+auth:
+  secretStore: kubernetes
+{{- end }}
