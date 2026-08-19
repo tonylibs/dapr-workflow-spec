@@ -6,12 +6,13 @@ Redis host.
 
 ## ADDED Requirements
 
-### Requirement: The dws-definitions Component renders when Dapr is enabled
+### Requirement: The dws-definitions Component always renders
 
 `charts/dws` SHALL render `templates/definitions-component.yaml`, a Dapr `Component` of type
-`configuration.redis` named `dws-definitions`, whenever `.Values.dapr.enabled` is `true`. Its
-Redis connection metadata SHALL resolve to the chart's Redis backend the same way as the `pubsub`
-Component (built-in or external, per `helm-redis-dependency`).
+`configuration.redis` named `dws-definitions`, on every render — NOT gated by
+`.Values.dapr.enabled` (see `helm-pubsub-component` for the rationale). Its Redis connection
+metadata SHALL resolve to the chart's Redis backend the same way as the `pubsub` Component
+(built-in or external, per `helm-redis-dependency`).
 
 The Component SHALL declare `scopes: [dws-orchestrator]` at the top level so only orchestrator
 pods' daprd sidecars initialize it — admin and controller sidecars never touch it, since only
@@ -25,7 +26,7 @@ Owning component: `charts/dws` (`templates/definitions-component.yaml`).
 - **THEN** a Dapr `Component` named `dws-definitions` of type `configuration.redis` is rendered
 - **AND** its top-level `scopes` field lists `dws-orchestrator`
 
-#### Scenario: Dapr disabled
+#### Scenario: Dapr externally managed
 
-- **WHEN** `dapr.enabled=false`
-- **THEN** no `dws-definitions` Component is rendered
+- **WHEN** `helm template charts/dws --set dapr.enabled=false` is run
+- **THEN** the same `dws-definitions` Component is still rendered

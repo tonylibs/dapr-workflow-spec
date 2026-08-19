@@ -1,8 +1,11 @@
-{{- if .Values.dapr.enabled }}
 {{- /*
   Dapr actor/workflow state store. Not consumed by anything yet — dws-orchestrator does
   not call the Dapr Workflow runtime today — but provisioned per Helm packaging Phase 5's
   stated scope so it is ready when that lands.
+  Always rendered: `dapr.enabled=false` means "Dapr is externally managed, its CRDs are
+  already in the cluster" (the preflight check enforces this), so a `dapr.io/v1alpha1`
+  Component still applies cleanly. Only the chart-installed Dapr *control plane* is
+  gated by `dapr.enabled`, not the Components consumed by that control plane.
 */}}
 apiVersion: dapr.io/v1alpha1
 kind: Component
@@ -41,4 +44,3 @@ auth:
 # the sidecar.
 scopes:
   - dws-orchestrator
-{{- end }}

@@ -1,10 +1,11 @@
-{{- if .Values.dapr.enabled }}
 {{- /*
   Dapr Configuration store backing the workflow definitions. Chart-managed replacement
   for the hand-applied dws-orchestrator/k8s/configuration-component.yaml (kept there for
   non-chart deployments). Applications may only READ from this store via the
   Configuration API; the controller writes definition keys directly into the Redis
   backing store.
+  Always rendered — see actor-statestore-component.yaml for the rationale
+  (`dapr.enabled=false` means externally-managed Dapr, CRDs already present).
 */}}
 apiVersion: dapr.io/v1alpha1
 kind: Component
@@ -39,4 +40,3 @@ auth:
 # timeout and fatally crash the sidecar.
 scopes:
   - dws-orchestrator
-{{- end }}

@@ -6,15 +6,17 @@ prerequisite documented in `docs/events.md` instead of requiring a hand-applied 
 
 ## ADDED Requirements
 
-### Requirement: The pubsub Component renders when Dapr is enabled
+### Requirement: The pubsub Component always renders
 
 `charts/dws` SHALL render `templates/pubsub-component.yaml`, a Dapr `Component` of type
-`pubsub.redis` named `pubsub`, whenever `.Values.dapr.enabled` is `true`. A Redis connection is
-always resolvable in that case — built-in (per `helm-redis-dependency`, which installs Redis
-whenever Dapr is enabled) or external — so no separate Redis-availability gate is needed. The
-component name SHALL be exactly `pubsub` — the same name `admin.pubsub.name`,
-`dws-orchestrator`'s `emit` tasks, and `dws-controller`'s event publisher already assume; it
-SHALL NOT be configurable to a different name.
+`pubsub.redis` named `pubsub`, on every render — NOT gated by `.Values.dapr.enabled`.
+`dapr.enabled=false` means "Dapr is externally managed and its CRDs are already in the
+cluster" (the preflight check enforces this), so a `dapr.io/v1alpha1` Component applies
+cleanly whether Dapr was chart-installed or not. Only the Dapr *control plane* is gated by
+`dapr.enabled`, not the Components consumed by that control plane. The component name SHALL
+be exactly `pubsub` — the same name `admin.pubsub.name`, `dws-orchestrator`'s `emit` tasks,
+and `dws-controller`'s event publisher already assume; it SHALL NOT be configurable to a
+different name.
 
 Owning component: `charts/dws` (`templates/pubsub-component.yaml`).
 
@@ -23,10 +25,11 @@ Owning component: `charts/dws` (`templates/pubsub-component.yaml`).
 - **WHEN** `helm template charts/dws` is run with default values (`dapr.enabled=true`)
 - **THEN** a Dapr `Component` named `pubsub` of type `pubsub.redis` is rendered
 
-#### Scenario: Dapr disabled
+#### Scenario: Dapr externally managed
 
-- **WHEN** `dapr.enabled=false`
-- **THEN** no `pubsub` Component is rendered
+- **WHEN** `helm template charts/dws --set dapr.enabled=false` is run
+- **THEN** the same `pubsub` Component is still rendered — the operator's externally-managed
+  Dapr control plane picks it up the same way the chart-installed one would
 
 ### Requirement: The pubsub Component targets the topic dws.events
 

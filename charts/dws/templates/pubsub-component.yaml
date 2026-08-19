@@ -1,4 +1,7 @@
-{{- if .Values.dapr.enabled }}
+{{- /*
+  Always rendered — see actor-statestore-component.yaml for the rationale
+  (`dapr.enabled=false` means externally-managed Dapr, CRDs already present).
+*/}}
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
@@ -27,4 +30,3 @@ spec:
       value: "false"
 auth:
   secretStore: kubernetes
-{{- end }}
