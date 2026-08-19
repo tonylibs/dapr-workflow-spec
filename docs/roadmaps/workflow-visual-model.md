@@ -19,27 +19,49 @@ business operation.
 | Component | Desired stack |
 |---|---|
 | Flow service | .NET application, Dapr .NET Workflow SDK, registered `Workflow` classes, Dapr sidecar, and the shared workflow/actor state store. |
-| Step service | Java/Spring Boot application, Dapr Java Workflow SDK or Spring workflow support, registered `WorkflowActivity` implementations, Dapr sidecar, and its external-integration clients. |
+| Step service | Java/Spring Boot application, Dapr Java Workflow SDK or Spring workflow support, registered `WorkflowActivity` implementations, Dapr sidecar, and an HTTP/Dapr service-invocation client for the task's Knative function. |
 
 ### Main responsibilities
 
 | Component | Responsibilities |
 |---|---|
 | Flow service | Own durable orchestration; invoke child Flow services and Step activities; preserve flow state and scoped context; handle sequencing, retries, errors, loops, and fork joins/races. |
-| Step service | Validate and map input; perform one business operation; call external systems; return data or a failure; remain idempotent for retries; and emit step telemetry. It never owns orchestration or child flows. |
+| Step service | Validate and map input; select the task's Knative function; call that function over HTTP; return data or a failure; remain idempotent for retries; and emit step telemetry. It never owns orchestration or child flows. |
 
 ### Workflow-task ownership
 
 | Component | Tasks and constructs |
 |---|---|
 | Flow service | Top-level `main` flow, `for`, `try`, `catch`, and `fork` branch-flow lifecycle. The parent Flow service performs `allOf` or `anyOf` for a `fork`. |
-| Step service | `call`, `run`, `set`, `switch`, `wait`, `listen`, `emit`, and `raise`. |
+| Step service | `call`, `run`, `set`, `switch`, `wait`, `listen`, `emit`, and `raise`. The `call` and `run` variants delegate their concrete work to Knative functions; the remaining Step task types can remain local Activity implementations. |
 
 At the service boundary, a .NET Flow calls another .NET Flow through
 `CallChildWorkflowAsync` with the target Flow app ID, and calls a Java Step through
 `CallActivityAsync` with the target Step app ID. Every participating app must share a Dapr
 namespace and workflow/actor state store, publish compatible JSON contracts, and be allowed by
 workflow access policy.
+
+### Step-to-function delegation
+
+For an I/O step, the Java Step Activity is a durable boundary and does not embed the protocol or
+execution implementation. After the .NET parent invokes it with `CallActivityAsync`, the activity
+resolves the task-derived target app ID and sends the task input to the target Knative function's
+HTTP `POST /run` endpoint, preferably through Dapr service invocation.
+
+```text
+.NET Flow Workflow
+  └─ CallActivityAsync(target: java-step-service)
+       └─ Java Step WorkflowActivity
+            └─ HTTP POST /run (target: task-derived Knative function)
+                 ├─ dws-call-http
+                 ├─ dws-call-openapi
+                 └─ dws-run-shell / dws-run-script-*
+```
+
+The function response becomes the Step Activity result and is returned durably to the parent Flow.
+Function failures become structured activity failures for the Flow service's retry and `try`/`catch`
+handling. This preserves the existing DWS separation: generic Knative function runners execute
+the task-specific I/O, while the workflow layer retains orchestration and retry ownership.
 
 ## Terms
 
