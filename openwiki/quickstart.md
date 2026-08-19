@@ -15,7 +15,7 @@ DWS (`dapr-workflow-spec`) is a config-driven workflow platform for Kubernetes. 
 - [Lifecycle events](integrations/lifecycle-events.md) explains the shared Dapr pub/sub stream that observes controller deployment and orchestrator execution lifecycles.
 - [Administrative read model](integrations/admin-read-model.md) explains how `dws-admin` turns that stream into a durable Postgres query view and read-only APIs.
 - [OWS DSL feature roadmap](architecture/roadmap.md) tracks DSL 1.0 task-type and cross-cutting feature coverage against the current implementation, phased into build order.
-- [Cluster-hosted agent sandbox](architecture/agent-sandbox.md) explains the CI-validated development image and Kubernetes session templates for persistent agent work.
+- [Agent sandbox](architecture/agent-sandbox.md) explains the CI-validated development image, cluster-hosted session templates, and local Docker-backed alternative for persistent agent work.
 - [Helm chart packaging](architecture/helm-chart-roadmap.md) explains how `charts/dws` installs the controller and administrative read model, including its database and CI/release checks.
 
 The repository has four independently built components; run builds and tests from each component directory rather than from the repository root:
