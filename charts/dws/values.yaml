@@ -5,9 +5,9 @@
 # Namespace to deploy into. Defaults to the release namespace when empty.
 namespaceOverride: ""
 
-# Chart-wide globals. security.allowInsecureImages lets the Bitnami postgresql subchart
-# run the relocated docker.io/bitnamilegacy image (see postgresql.image below); it has no
-# effect when postgresql.enabled is false.
+# Chart-wide globals. security.allowInsecureImages lets the Bitnami postgresql AND redis
+# subcharts run the relocated docker.io/bitnamilegacy images (see postgresql.image and
+# redis.image below); it has no effect when both subcharts are disabled.
 global:
   security:
     allowInsecureImages: true
@@ -98,6 +98,41 @@ postgresql:
     # kind/dev clusters: skip the default-on NetworkPolicy so admin can reach Postgres freely.
     networkPolicy:
       enabled: false
+
+# In-chart Redis backing the chart's three Dapr Redis Components (pubsub,
+# dws-definitions, actor state store), provided by the upstream Bitnami redis subchart.
+# There is NO independent redis.enabled toggle — the subchart's install lifecycle
+# follows dapr.enabled (see Chart.yaml). Values here flow straight into the subchart —
+# see https://github.com/bitnami/charts/tree/main/bitnami/redis for the full schema.
+#
+# External Redis: set redis.external.host to override the three Components'
+# redisHost/redisPassword to point at an operator-managed Redis. The built-in Bitnami
+# Redis subchart still installs alongside whenever Dapr is enabled — a documented
+# trade-off (Helm dependency conditions cannot express "AND redis.external.host unset").
+redis:
+  # Single-node dev/eval deployment.
+  architecture: standalone
+  # Bitnami relocated its free container images out of docker.io/bitnami; the tags this
+  # chart version pins now live under docker.io/bitnamilegacy. Point the image there and
+  # allow the non-default repository (see global.security.allowInsecureImages).
+  image:
+    repository: bitnamilegacy/redis
+  auth:
+    password: dws
+  master:
+    persistence:
+      size: 1Gi
+    # kind/dev clusters: skip the default-on NetworkPolicy so Dapr Components can
+    # reach Redis freely.
+    networkPolicy:
+      enabled: false
+  # External Redis override. When external.host is non-empty, the three Dapr Component
+  # templates use it (and external.existingSecret/existingSecretKey) instead of the
+  # built-in Bitnami Redis. Leave empty (default) to use the in-chart Redis.
+  external:
+    host: ""
+    existingSecret: ""
+    existingSecretKey: "redis-password"
 
 # Image pull secrets, applied to the admin (and other component) pods that reference
 # private registries. More info: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/

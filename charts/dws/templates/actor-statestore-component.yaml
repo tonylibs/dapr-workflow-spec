@@ -1,0 +1,46 @@
+{{- /*
+  Dapr actor/workflow state store. Not consumed by anything yet — dws-orchestrator does
+  not call the Dapr Workflow runtime today — but provisioned per Helm packaging Phase 5's
+  stated scope so it is ready when that lands.
+  Always rendered: `dapr.enabled=false` means "Dapr is externally managed, its CRDs are
+  already in the cluster" (the preflight check enforces this), so a `dapr.io/v1alpha1`
+  Component still applies cleanly. Only the chart-installed Dapr *control plane* is
+  gated by `dapr.enabled`, not the Components consumed by that control plane.
+*/}}
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: {{ include "dws.fullname" . }}-actor-statestore
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: actor-statestore
+spec:
+  type: state.redis
+  version: v1
+  # See pubsub-component.yaml — extend past Dapr's 5s default to survive the
+  # Bitnami Redis 20s readiness-probe warmup window. state.redis also issues
+  # CONFIG SET for keyspace notifications on init, which is Redis-side work
+  # that particularly benefits from the wider window.
+  initTimeout: 1m
+  metadata:
+    - name: redisHost
+      value: {{ include "dws.redis.host" . | quote }}
+    - name: redisPassword
+      secretKeyRef:
+        name: {{ include "dws.redis.secretName" . }}
+        key: {{ include "dws.redis.secretKey" . }}
+    - name: actorStateStore
+      value: "true"
+    - name: enableTLS
+      value: "false"
+auth:
+  secretStore: kubernetes
+# Only dws-orchestrator uses the actor/workflow state store (once it adopts the
+# Dapr Workflow runtime). Scoping prevents unrelated pods' daprd sidecars (admin,
+# controller) from trying to initialize a state.redis Component that also does a
+# CONFIG SET on Redis for keyspace notifications — under load or before Redis is
+# fully warm this exceeds Dapr's 5s per-component init timeout and fatally crashes
+# the sidecar.
+scopes:
+  - dws-orchestrator

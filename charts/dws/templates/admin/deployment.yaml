@@ -28,6 +28,49 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- $wantPostgresWait := .Values.postgresql.enabled }}
+      {{- $wantRedisWait := and .Values.dapr.enabled (not .Values.redis.external.host) }}
+      {{- if or $wantPostgresWait $wantRedisWait }}
+      initContainers:
+        # Bitnami subcharts (postgresql, redis) don't gate the app pod's startup
+        # on their own readiness — helm applies everything in one pass, so the
+        # admin pod races the backing services. Postgres-not-ready crashes the
+        # admin container mid-migration (ECONNREFUSED on port 5432); Redis-not-
+        # ready fatally exits the daprd sidecar during pubsub.redis Component
+        # init (`connect: connection refused` — pubsub.redis returns error
+        # synchronously, so `spec.initTimeout` on the Component does not save it).
+        # Wait for both TCP ports here so admin's containers start into a
+        # reachable dependency set.
+        {{- if $wantPostgresWait }}
+        - name: wait-for-postgres
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ include "dws.postgres.host" . }} 5432; do
+                echo "waiting for postgres {{ include "dws.postgres.host" . }}:5432" >&2
+                sleep 2
+              done
+        {{- end }}
+        {{- if $wantRedisWait }}
+        - name: wait-for-redis
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              # Strip the :port suffix off dws.redis.host — nc wants host and
+              # port as separate args.
+              host_port='{{ include "dws.redis.host" . }}'
+              host=${host_port%:*}
+              port=${host_port##*:}
+              until nc -z "$host" "$port"; do
+                echo "waiting for redis $host:$port" >&2
+                sleep 2
+              done
+        {{- end }}
+      {{- end }}
       containers:
         - name: admin
           image: "{{ .Values.admin.image.repository }}:{{ .Values.admin.image.tag | default .Chart.AppVersion }}"

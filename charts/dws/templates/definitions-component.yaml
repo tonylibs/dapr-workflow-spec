@@ -1,0 +1,42 @@
+{{- /*
+  Dapr Configuration store backing the workflow definitions. Chart-managed replacement
+  for the hand-applied dws-orchestrator/k8s/configuration-component.yaml (kept there for
+  non-chart deployments). Applications may only READ from this store via the
+  Configuration API; the controller writes definition keys directly into the Redis
+  backing store.
+  Always rendered — see actor-statestore-component.yaml for the rationale
+  (`dapr.enabled=false` means externally-managed Dapr, CRDs already present).
+*/}}
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: dws-definitions
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: definitions
+spec:
+  type: configuration.redis
+  version: v1
+  # See pubsub-component.yaml — extend past Dapr's 5s default to survive the
+  # Bitnami Redis 20s readiness-probe warmup window without a fatal sidecar exit.
+  initTimeout: 1m
+  metadata:
+    - name: redisHost
+      value: {{ include "dws.redis.host" . | quote }}
+    - name: redisPassword
+      secretKeyRef:
+        name: {{ include "dws.redis.secretName" . }}
+        key: {{ include "dws.redis.secretKey" . }}
+    # Definition values are plain YAML/JSON text; do not treat them as JSON documents.
+    - name: enableTLS
+      value: "false"
+auth:
+  secretStore: kubernetes
+# Only dws-orchestrator reads workflow definitions via the Configuration API.
+# Scoping this Component prevents unrelated pods' daprd sidecars (admin, controller)
+# from trying to initialize the store — a state.redis / configuration.redis init
+# hitting Redis before it's fully warm can exceed Dapr's 5s per-component init
+# timeout and fatally crash the sidecar.
+scopes:
+  - dws-orchestrator
