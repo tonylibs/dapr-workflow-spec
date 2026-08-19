@@ -1,6 +1,6 @@
 # Roadmaps
 
-Four independent roadmaps, one per surface. Each moves on its own timeline and has its own
+Five independent roadmaps, one per surface. Each moves on its own timeline and has its own
 "done" bar — read the one relevant to what you're touching.
 
 | Roadmap | Surface | Current phase |
@@ -9,6 +9,7 @@ Four independent roadmaps, one per surface. Each moves on its own timeline and h
 | [`dws-console` web UI](dws-console.md) | Operator-facing web app (TanStack Start) + `dws-admin` push API | Phase 2.5 done — workflow browser + instance monitor wired to the live `dws-admin` read API. Phase 3 (live updates) next — scope now spans both repos: build the `dws-admin` push API and wire the console to it. Phases 4 (definition submission) and 5 (auth) unblocked and available in parallel — see [`dws-auth.md`](dws-auth.md), which now owns the detailed sequencing for both |
 | [`dws-console` auth](dws-auth.md) | Login (OIDC/PKCE in the console) + a Dapr-gated write path from `dws-admin` to `dws-controller` | Phase 0 (Dex as an in-chart IdP) next — nothing started yet |
 | [Helm chart packaging](helm-packaging.md) | `charts/dws` — cluster install of the control plane | Phases 0–5 done (controller, admin+DB with in-chart Postgres, Dapr as a conditional chart dependency + preflight check + sidecar self-heal hook, controller-side Dapr sidecar annotations, in-chart Bitnami Redis subchart tied to `dapr.enabled`, `pubsub`/`dws-definitions`/actor-statestore Dapr Component templates, end-to-end pub/sub delivery assertion in CI) plus Phases 8–9 done (full lint/template/kind-integration CI, OCI publish to ghcr.io). Phase 6 (console) still blocked, Phase 10 (docs) not started, Phase 11 (Knative — split out of Phase 4) deferred and independent |
+| [Workflow visual model](workflow-visual-model.md) | Future structural workflow visualizer — workflow, flow, step, and inline-fork branch entities | ❌ proposal only — no implementation yet |
 
 ## How they relate
 
