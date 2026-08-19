@@ -28,6 +28,11 @@ args = ["-y", "@playwright/mcp@latest", "--extension"]
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-sequential-thinking"]
 
+# Local OpenSandbox lifecycle server, configured by agent-sandbox/opensandbox/docker.toml.
+[mcp_servers.opensandbox]
+command = "opensandbox-mcp"
+args = ["--domain", "localhost:8080", "--protocol", "http"]
+
 [features]
 multi_agent = true
 

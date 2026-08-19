@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenSandbox Sandbox"
+  short_description: "Create and access Docker-backed OpenSandbox sandboxes"
+  default_prompt: "Create an OpenSandbox Docker sandbox through MCP and run a command in it."

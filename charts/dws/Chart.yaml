@@ -37,6 +37,14 @@ appVersion: "1.18.0"
 # upstream dexidp/helm-charts "dex" chart, pulled in as a conditional dependency the same
 # way. It installs only when dex.enabled is true (default false, since no consumer wires up
 # to it until a later phase).
+#
+# In-chart Redis backing the three Dapr Redis Components (pubsub, dws-definitions,
+# actor state store) is provided by the upstream Bitnami Redis chart. It has NO
+# independent enable toggle of its own — it exists solely to back those Components, so
+# its condition is dapr.enabled: enabled whenever Dapr is (default), and not installed
+# at all when Dapr is disabled. To point the Components at an external Redis instead,
+# set redis.external.host (see values.yaml); the built-in subchart still installs
+# alongside — a documented trade-off.
 dependencies:
   - name: postgresql
     version: 16.7.27
@@ -50,3 +58,7 @@ dependencies:
     version: 0.24.1
     repository: https://charts.dexidp.io
     condition: dex.enabled
+  - name: redis
+    version: 28.0.6
+    repository: oci://registry-1.docker.io/bitnamicharts
+    condition: dapr.enabled

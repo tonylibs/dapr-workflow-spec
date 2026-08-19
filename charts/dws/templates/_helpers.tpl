@@ -219,3 +219,36 @@ see dws.dex.resolvePassword's memoization note.
 {{- toYaml $config }}
 {{- end }}
 
+{{/*
+Redis connection helpers — resolve host and Secret name/key for the three Dapr Redis
+Components (pubsub, dws-definitions, actor state store). Presence of
+.Values.redis.external.host is the override signal: unset means the in-chart Bitnami
+Redis subchart's own Service (<release>-redis-master:6379) and auto-created Secret
+(<release>-redis, key redis-password); set means the external host and
+.Values.redis.external.existingSecret / existingSecretKey instead. There is no
+redis.enabled toggle — Redis follows dapr.enabled (see Chart.yaml).
+*/}}
+{{- define "dws.redis.host" -}}
+{{- if .Values.redis.external.host }}
+{{- .Values.redis.external.host }}
+{{- else }}
+{{- printf "%s-redis-master.%s.svc.cluster.local:6379" .Release.Name (include "dws.namespace" .) }}
+{{- end }}
+{{- end }}
+
+{{- define "dws.redis.secretName" -}}
+{{- if .Values.redis.external.host }}
+{{- required "redis.external.existingSecret is required when redis.external.host is set" .Values.redis.external.existingSecret }}
+{{- else }}
+{{- printf "%s-redis" .Release.Name }}
+{{- end }}
+{{- end }}
+
+{{- define "dws.redis.secretKey" -}}
+{{- if .Values.redis.external.host }}
+{{- default "redis-password" .Values.redis.external.existingSecretKey }}
+{{- else }}
+{{- print "redis-password" }}
+{{- end }}
+{{- end }}
+

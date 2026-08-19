@@ -2,6 +2,7 @@ package io.dws.orchestrator.workflow.activity;
 
 import io.dws.orchestrator.workflow.WorkflowSupport;
 import io.serverlessworkflow.api.types.ForTask;
+import io.serverlessworkflow.api.types.ForkTask;
 import io.serverlessworkflow.api.types.Task;
 import io.serverlessworkflow.api.types.TaskItem;
 import io.serverlessworkflow.api.types.TryTask;
@@ -11,17 +12,17 @@ import java.util.List;
  * Resolves a task by name against the pod's one pinned definition. The in-process activities take a
  * task name rather than the task itself, so their inputs stay small and JSON-serializable.
  *
- * <p>The search descends into a try task's {@code try} and {@code catch.do} lists and a for task's
- * {@code do} list, so a nested task is resolvable exactly like a top-level one. That is sound
- * because task names are unique across the whole definition — {@code dws-controller} rejects
- * duplicates at compile time, since a {@code call}/{@code run} task's Dapr app-id is derived from
- * its name alone.
+ * <p>The search descends into a try task's {@code try} and {@code catch.do} lists, a for task's
+ * {@code do} list, and a fork task's {@code fork.branches} list, so a nested task is resolvable
+ * exactly like a top-level one. That is sound because task names are unique across the whole
+ * definition — {@code dws-controller} rejects duplicates at compile time, since a {@code
+ * call}/{@code run} task's Dapr app-id is derived from its name alone.
  */
-final class DefinitionLookup {
+public final class DefinitionLookup {
 
   private DefinitionLookup() {}
 
-  static Task taskByName(String taskName) {
+  public static Task taskByName(String taskName) {
     Task found = search(WorkflowSupport.definition().getDo(), taskName);
     if (found == null) {
       throw new IllegalStateException("definition has no task named '" + taskName + "'");
@@ -55,6 +56,13 @@ final class DefinitionLookup {
       ForTask forTask = task.getForTask();
       if (forTask != null) {
         Task nested = search(forTask.getDo(), taskName);
+        if (nested != null) {
+          return nested;
+        }
+      }
+      ForkTask forkTask = task.getForkTask();
+      if (forkTask != null) {
+        Task nested = search(forkTask.getFork().getBranches(), taskName);
         if (nested != null) {
           return nested;
         }

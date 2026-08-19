@@ -45,6 +45,7 @@ import io.serverlessworkflow.api.WorkflowReader;
 import io.serverlessworkflow.api.types.Workflow;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -916,5 +917,386 @@ class InterpreterWorkflowIntegrationTest {
         .hasMessageContaining("loop");
     verify(ctx, org.mockito.Mockito.never()).complete(any());
     assertThat(adminEventTypes(ctx)).contains("io.dws.instance.failed");
+  }
+
+  // ---- fork ----------------------------------------------------------------
+
+  /**
+   * Stubs {@code ctx.callChildWorkflow(ForkBranchWorkflow.NAME, ...)} so each branch resolves to
+   * the {@link Task} the test hands in for that branch name, keyed off the {@link ForkBranchInput}
+   * each call is made with. Does not re-run {@link ForkBranchWorkflow}'s real dispatch — that is
+   * {@code ForkBranchWorkflowTest}'s job; this only tests {@code dispatchFork}'s own orchestration.
+   */
+  @SuppressWarnings("unchecked")
+  private static void stubForkBranches(WorkflowContext ctx, Map<String, Task<JsonNode>> byBranch) {
+    when(ctx.callChildWorkflow(
+            org.mockito.ArgumentMatchers.eq(io.dws.orchestrator.workflow.ForkBranchWorkflow.NAME),
+            any(),
+            eq(JsonNode.class)))
+        .thenAnswer(
+            inv -> {
+              io.dws.orchestrator.workflow.ForkBranchInput input = inv.getArgument(1);
+              Task<JsonNode> task = byBranch.get(input.taskName());
+              if (task == null) {
+                throw new AssertionError("no stub for branch " + input.taskName());
+              }
+              return task;
+            });
+  }
+
+  /** {@code ctx.allOf} resolving to each handle's {@code await()} result, in list order. */
+  @SuppressWarnings("unchecked")
+  private static void stubAllOf(WorkflowContext ctx) {
+    when(ctx.allOf(any(List.class)))
+        .thenAnswer(
+            inv -> {
+              List<Task<Object>> handles = inv.getArgument(0);
+              Task<List<Object>> combined = mock(Task.class);
+              when(combined.await())
+                  .thenAnswer(ignored -> handles.stream().map(Task::await).toList());
+              return combined;
+            });
+  }
+
+  /** {@code ctx.anyOf} resolving to the handle at {@code winningIndex}, regardless of order. */
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  private static void stubAnyOf(WorkflowContext ctx, int winningIndex) {
+    when(ctx.anyOf(any(List.class)))
+        .thenAnswer(
+            inv -> {
+              // Raw types here (rather than List<Task<?>>/Task<Task<?>>) sidestep a wildcard-
+              // capture mismatch: each `Task<?>` read from the list captures a distinct, unrelated
+              // wildcard, so it cannot be handed straight to a `Task<Task<?>>` stub.
+              List<Task> handles = inv.getArgument(0);
+              Task combined = mock(Task.class);
+              Task winner = handles.get(winningIndex);
+              when(combined.await()).thenReturn(winner);
+              return combined;
+            });
+  }
+
+  /**
+   * Builds a real {@link io.dapr.durabletask.CompositeTaskFailedException} via reflection: every
+   * constructor on that SDK class is package-private to {@code io.dapr.durabletask}, so this test
+   * package cannot call {@code new} directly, but {@code ctx.allOf} throws exactly this type when
+   * one joined branch fails — matching that exact contract (rather than a generic {@code
+   * RuntimeException}) is the point of this test.
+   */
+  private static io.dapr.durabletask.CompositeTaskFailedException compositeTaskFailedException(
+      String message, List<? extends Exception> causes) {
+    try {
+      java.lang.reflect.Constructor<io.dapr.durabletask.CompositeTaskFailedException> ctor =
+          io.dapr.durabletask.CompositeTaskFailedException.class.getDeclaredConstructor(
+              String.class, List.class);
+      ctor.setAccessible(true);
+      return ctor.newInstance(message, causes);
+    } catch (ReflectiveOperationException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void forkJoinsAllBranchesIntoAnArrayInDeclaredOrder() throws Exception {
+    seedInline(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: fork-workflow
+          version: '1.0.0'
+        do:
+          - raiseAlarm:
+              fork:
+                compete: false
+                branches:
+                  - callNurse:
+                      set:
+                        paged: '"nurse"'
+                  - callSecurity:
+                      set:
+                        paged: '"security"'
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{}"));
+
+    Task<JsonNode> nurse = taskWithThenApply();
+    when(nurse.await()).thenReturn(mapper.readTree("{\"paged\":\"nurse\"}"));
+    Task<JsonNode> security = taskWithThenApply();
+    when(security.await()).thenReturn(mapper.readTree("{\"paged\":\"security\"}"));
+    stubForkBranches(ctx, Map.of("callNurse", nurse, "callSecurity", security));
+    stubAllOf(ctx);
+
+    workflow.execute(ctx);
+
+    JsonNode output = completionOutput(ctx);
+    assertThat(output.isArray()).isTrue();
+    assertThat(output.get(0).get("paged").textValue()).isEqualTo("nurse");
+    assertThat(output.get(1).get("paged").textValue()).isEqualTo("security");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void forkCompeteReturnsTheWinningBranchOnly() throws Exception {
+    seedInline(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: fork-workflow
+          version: '1.0.0'
+        do:
+          - raiseAlarm:
+              fork:
+                compete: true
+                branches:
+                  - callNurse:
+                      set:
+                        paged: '"nurse"'
+                  - callSecurity:
+                      set:
+                        paged: '"security"'
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{}"));
+
+    Task<JsonNode> nurse = taskWithThenApply();
+    when(nurse.await()).thenReturn(mapper.readTree("{\"paged\":\"nurse\"}"));
+    Task<JsonNode> security = taskWithThenApply();
+    when(security.await()).thenReturn(mapper.readTree("{\"paged\":\"security\"}"));
+    stubForkBranches(ctx, Map.of("callNurse", nurse, "callSecurity", security));
+    stubAnyOf(ctx, 0); // callNurse's handle is index 0 (declared first)
+
+    workflow.execute(ctx);
+
+    JsonNode output = completionOutput(ctx);
+    assertThat(output.isArray()).isFalse();
+    assertThat(output.get("paged").textValue()).isEqualTo("nurse");
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void forkJoinFailurePropagatesAndIsCaughtByEnclosingTry() throws Exception {
+    seedInline(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: fork-workflow
+          version: '1.0.0'
+        do:
+          - guarded:
+              try:
+                - raiseAlarm:
+                    fork:
+                      compete: false
+                      branches:
+                        - callNurse:
+                            set:
+                              paged: '"nurse"'
+                        - callSecurity:
+                            raise:
+                              error:
+                                type: https://example.com/errors/paging-down
+                                status: 500
+                                title: Down
+                                detail: paging system down
+              catch:
+                do:
+                  - recovered:
+                      set:
+                        paged: '"fallback"'
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{}"));
+
+    Task<JsonNode> nurse = taskWithThenApply();
+    when(nurse.await()).thenReturn(mapper.readTree("{\"paged\":\"nurse\"}"));
+    Task<JsonNode> security = taskWithThenApply();
+    when(security.await())
+        .thenThrow(
+            compositeTaskFailedException(
+                "one branch failed", List.of(new RuntimeException("paging system down"))));
+    stubForkBranches(ctx, Map.of("callNurse", nurse, "callSecurity", security));
+    // allOf itself throws the composite failure, matching the real SDK contract.
+    when(ctx.allOf(any(List.class)))
+        .thenAnswer(
+            inv -> {
+              throw compositeTaskFailedException(
+                  "one branch failed", List.of(new RuntimeException("paging system down")));
+            });
+    when(ctx.callActivity(
+            eq(io.dws.orchestrator.workflow.activity.CatchDecisionActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(io.dws.orchestrator.workflow.activity.CatchDecision.class)))
+        .thenAnswer(
+            inv ->
+                completed(
+                    new io.dws.orchestrator.workflow.activity.CatchDecision(
+                        true, false, 0L, mapper.readTree("{\"status\":500}"), "error")));
+    when(ctx.callActivity(
+            eq(EvaluateSetActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenAnswer(
+            inv -> completed(EvaluateSetActivity.apply((EvaluateSetRequest) inv.getArgument(1))));
+
+    workflow.execute(ctx);
+
+    JsonNode output = completionOutput(ctx);
+    assertThat(output.get("paged").textValue()).isEqualTo("fallback");
+  }
+
+  /**
+   * Workflow-parallelism spec: a branch's {@code export.as} does not thread out of the fork. A task
+   * before the fork exports {@code $context}, the fork's branch also declares an {@code export.as},
+   * and the task after the fork reads {@code $context} back through {@code output.as}: it must see
+   * the pre-fork context, unchanged — the branch's export stays inside its own child instance and
+   * never rewrites the parent's context.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void forkBranchExportDoesNotLeakIntoContextSeenAfterTheFork() throws Exception {
+    seedInline(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: fork-context-workflow
+          version: '1.0.0'
+        do:
+          - seedContext:
+              set:
+                marker: '"present"'
+              export:
+                as: '${ { origin: "before-fork" } }'
+              then: raiseAlarm
+          - raiseAlarm:
+              fork:
+                compete: false
+                branches:
+                  - callNurse:
+                      set:
+                        paged: '"nurse"'
+                      export:
+                        as: '${ { origin: "inside-branch" } }'
+                  - callSecurity:
+                      set:
+                        paged: '"security"'
+              then: afterFork
+          - afterFork:
+              set:
+                done: true
+              output:
+                as: '${ { seenOrigin: $context.origin } }'
+              then: end
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{}"));
+
+    // The data-flow phases run for real, exactly as stubDataFlow does for the dataflow fixture, so
+    // export.as writes $context and the later output.as reads it back.
+    when(ctx.callActivity(
+            eq(DataFlowInputActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenAnswer(
+            inv ->
+                completed(DataFlowPipeline.applyInput((DataFlowInputRequest) inv.getArgument(1))));
+    when(ctx.callActivity(
+            eq(DataFlowOutputActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(DataFlowResult.class)))
+        .thenAnswer(
+            inv ->
+                completed(
+                    DataFlowPipeline.applyOutput((DataFlowOutputRequest) inv.getArgument(1))));
+
+    Task<JsonNode> nurse = taskWithThenApply();
+    when(nurse.await()).thenReturn(mapper.readTree("{\"paged\":\"nurse\"}"));
+    Task<JsonNode> security = taskWithThenApply();
+    when(security.await()).thenReturn(mapper.readTree("{\"paged\":\"security\"}"));
+    stubForkBranches(ctx, Map.of("callNurse", nurse, "callSecurity", security));
+    stubAllOf(ctx);
+
+    workflow.execute(ctx);
+
+    // The context after the fork is the one that entered it: the branch's `inside-branch` export
+    // did not thread out.
+    JsonNode output = completionOutput(ctx);
+    assertThat(output.get("seenOrigin").textValue()).isEqualTo("before-fork");
+  }
+
+  /**
+   * compete:true winning-branch failure is caught by the enclosing try. The winning (first-settled)
+   * branch fails, so {@code dispatchFork}'s {@code winner.await()} re-throws that branch's
+   * exception; the enclosing try catches it and its {@code catch.do} recovers, so the recovered
+   * value is observable — mirrors {@code forkJoinFailurePropagatesAndIsCaughtByEnclosingTry} but
+   * for the anyOf/compete path (a single failing winner is enough; no composite needed).
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void forkCompeteWinningBranchFailurePropagatesAndIsCaughtByEnclosingTry() throws Exception {
+    seedInline(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: fork-compete-workflow
+          version: '1.0.0'
+        do:
+          - guarded:
+              try:
+                - raiseAlarm:
+                    fork:
+                      compete: true
+                      branches:
+                        - callNurse:
+                            set:
+                              paged: '"nurse"'
+                        - callSecurity:
+                            set:
+                              paged: '"security"'
+              catch:
+                do:
+                  - recovered:
+                      set:
+                        paged: '"fallback"'
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{}"));
+
+    // The winning branch (callNurse, declared first) fails: its own await re-throws.
+    Task<JsonNode> nurse = taskWithThenApply();
+    when(nurse.await()).thenThrow(new RuntimeException("paging system down"));
+    Task<JsonNode> security = taskWithThenApply();
+    when(security.await()).thenReturn(mapper.readTree("{\"paged\":\"security\"}"));
+    stubForkBranches(ctx, Map.of("callNurse", nurse, "callSecurity", security));
+    stubAnyOf(ctx, 0); // callNurse's handle is index 0 (declared first) — it wins and fails.
+
+    when(ctx.callActivity(
+            eq(io.dws.orchestrator.workflow.activity.CatchDecisionActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(io.dws.orchestrator.workflow.activity.CatchDecision.class)))
+        .thenAnswer(
+            inv ->
+                completed(
+                    new io.dws.orchestrator.workflow.activity.CatchDecision(
+                        true, false, 0L, mapper.readTree("{\"status\":500}"), "error")));
+
+    workflow.execute(ctx);
+
+    JsonNode output = completionOutput(ctx);
+    assertThat(output.get("paged").textValue()).isEqualTo("fallback");
   }
 }

@@ -1,0 +1,32 @@
+{{- /*
+  Always rendered — see actor-statestore-component.yaml for the rationale
+  (`dapr.enabled=false` means externally-managed Dapr, CRDs already present).
+*/}}
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: pubsub
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pubsub
+spec:
+  type: pubsub.redis
+  version: v1
+  # Dapr defaults per-component init to 5s. Redis's Service endpoints don't get
+  # populated until Bitnami's readiness probe (20s initialDelay) first passes, so
+  # an admin/controller/orchestrator sidecar that starts alongside Redis can hit
+  # `connect: connection refused` and fatally exit before Redis warms up. Extend
+  # to 1m so init retries through the warmup window.
+  initTimeout: 1m
+  metadata:
+    - name: redisHost
+      value: {{ include "dws.redis.host" . | quote }}
+    - name: redisPassword
+      secretKeyRef:
+        name: {{ include "dws.redis.secretName" . }}
+        key: {{ include "dws.redis.secretKey" . }}
+    - name: enableTLS
+      value: "false"
+auth:
+  secretStore: kubernetes

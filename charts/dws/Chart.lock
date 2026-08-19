@@ -8,5 +8,8 @@ dependencies:
 - name: dex
   repository: https://charts.dexidp.io
   version: 0.24.1
-digest: sha256:03d75afe3e2c3ccd19ca505c8779ded33425a2a4e89b40bfe3ed3b0b21d8ccf6
-generated: "2026-08-19T11:01:44.600709252Z"
+- name: redis
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 28.0.6
+digest: sha256:59c5cb98e39d7e6989a2631703aec022776f992e23b38363e0567f5427413466
+generated: "2026-08-19T12:21:37.785034861Z"
