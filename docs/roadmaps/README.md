@@ -1,13 +1,14 @@
 # Roadmaps
 
-Four independent roadmaps, one per surface. Each moves on its own timeline and has its own
+Five independent roadmaps, one per surface. Each moves on its own timeline and has its own
 "done" bar — read the one relevant to what you're touching.
 
 | Roadmap | Surface | Current phase |
 |---|---|---|
 | [Open Workflow Spec feature coverage](openworkflow-features.md) | `dws-controller` + `dws-orchestrator` — DSL 1.0 task types and cross-cutting features | Phase 2 done — all slices shipped (`try`/`catch`/`retry`, `raise`, `for`, `fork` + generalized nested `do`: `try-catch-retry`, `raise-task`, `for-task`, `fork-task`). Phase 3 (RFC 7807 error model, timeouts) next |
-| [`dws-console` web UI](dws-console.md) | Operator-facing web app (TanStack Start) + `dws-admin` push API | Phase 2.5 done — workflow browser + instance monitor wired to the live `dws-admin` read API. Phase 3 (live updates) next — scope now spans both repos: build the `dws-admin` push API and wire the console to it. Phases 4 (definition submission) and 5 (auth) unblocked and available in parallel — see [`dws-auth.md`](dws-auth.md), which now owns the detailed sequencing for both |
-| [`dws-console` auth](dws-auth.md) | Login (OIDC/PKCE in the console) + a Dapr-gated write path from `dws-admin` to `dws-controller` | Phase 0 (Dex as an in-chart IdP) next — nothing started yet |
+| [`dws-console` web UI](dws-console.md) | Operator-facing web app (TanStack Start) + `dws-admin` push API | Phases 0–3 and 6 done — workflow browser + instance monitor wired live to `dws-admin` (SSE push, no polling), shipped as a container image built/smoke-tested by CI. Phases 4 (definition submission) and 5 (auth) next — detailed sequencing now split across [`dws-console-submission.md`](dws-console-submission.md) (editor/upload/visualize UX, built public/unauthenticated for now) and [`dws-auth.md`](dws-auth.md) (login + write-path auth, added later) |
+| [`dws-console` definition submission](dws-console-submission.md) | Console-side authoring UX: raw YAML/JSON editor, file upload, dry-run validation, read-only graph preview, exploratory editable canvas | Nothing started. Deliberately built against a public, unauthenticated `dws-controller` endpoint (CORS only) — no dependency on `dws-auth.md`, which guards/replaces this transport later |
+| [`dws-console` auth](dws-auth.md) | Login (OIDC/PKCE in the console) + a Dapr-gated write path from `dws-admin` to `dws-controller` | Phase 0 (Dex as an in-chart IdP) done. Phase 1 (console OIDC/PKCE client) and Phase 2 (`dws-controller` Dapr-gated sidecar + bearer/role middleware) next — both only depend on Phase 0, can run in parallel |
 | [Helm chart packaging](helm-packaging.md) | `charts/dws` — cluster install of the control plane | Phases 0–5 done (controller, admin+DB with in-chart Postgres, Dapr as a conditional chart dependency + preflight check + sidecar self-heal hook, controller-side Dapr sidecar annotations, in-chart Bitnami Redis subchart tied to `dapr.enabled`, `pubsub`/`dws-definitions`/actor-statestore Dapr Component templates, end-to-end pub/sub delivery assertion in CI) plus Phases 8–9 done (full lint/template/kind-integration CI, OCI publish to ghcr.io). Phase 6 (console) still blocked, Phase 10 (docs) not started, Phase 11 (Knative — split out of Phase 4) deferred and independent |
 
 ## How they relate
@@ -28,4 +29,4 @@ flowchart LR
 
 ## Status legend
 
-Used consistently across all three docs: ✅ done · ⚠️ partial/stubbed · ❌ not started.
+Used consistently across all docs: ✅ done · ⚠️ partial/stubbed · ❌ not started.

@@ -2,7 +2,9 @@
 
 Operator-facing web app for DWS. Reads from `dws-admin`'s read API (see
 [`dws-admin/README.md`](../../dws-admin/README.md)); writes (submitting definitions) go direct
-to `dws-controller`. The app has moved past the UI-complete prototype stage: workflow-browser and
+to `dws-controller` — public and unauthenticated for now, deliberately decoupled from auth; see
+[`dws-console-submission.md`](dws-console-submission.md). The app has moved past the UI-complete
+prototype stage: workflow-browser and
 instance-monitor screens are now wired to the live `dws-admin` API via TanStack Query — no route
 reads from [`src/lib/mock-data.ts`](../../dws-console/src/lib/mock-data.ts) for data anymore (it's
 kept around for shared types/constants only). See [§6 Progress snapshot](#6-progress-snapshot) for
@@ -35,11 +37,10 @@ flowchart TD
   P1 --> P2["Phase 2: Instance monitor ✅<br/>UI built, live API"]
   P2 --> P25["Phase 2.5: Wire to live API ✅<br/>mock-data.ts → TanStack Query"]
   P25 --> P3["Phase 3: Live updates ✅<br/>dws-admin SSE push API<br/>+ console wired to it"]
-  P25 --> P4["Phase 4: Definition submission<br/>direct POST to dws-controller<br/>unblocked, not yet started"]
+  P25 --> P4["Phase 4: Definition submission<br/>public/unauthenticated for now<br/>see dws-console-submission.md"]
   P25 --> P5["Phase 5: Auth<br/>ties to OWS Phase 4<br/>unblocked, not yet started"]
-  P4 --> P5
   P3 --> P6["Phase 6: Containerize ✅<br/>Dockerfile + CI"]
-  P5 --> P6
+  P5 -.guards later, doesn't gate.-> P4
 ```
 
 ## 3. Phased roadmap
@@ -51,8 +52,8 @@ flowchart TD
 | **2** | Instance monitor: instance list with status filter, instance detail, task-event timeline | `dws-admin` `/instances*` (done) | ✅ done — live API |
 | **2.5** | Wire Phases 1–2 to the real API: replace `mock-data.ts` reads with TanStack Query calls against `dws-admin` | TanStack Query provider (done) | ✅ done — merged `497d7c8c` (2026-08-12), follow-up fix `d30c36f9` |
 | **3** | Live status updates on running instances, backend included: the `dws-admin` push API plus the console's consumption of it | Phase 2.5 (done) | ✅ done — SSE, on `dws-admin`'s existing read listener; both instance screens live-wired |
-| **4** | Submit new/updated definitions from the console (`POST` to `dws-controller`) | `dws-controller`'s existing compile endpoint + CORS story | ❌ not started — unblocked, available in parallel with Phase 3 |
-| **5** | Console-level auth (login, session, RBAC on write actions) | [OWS Phase 4 — auth/secrets](openworkflow-features.md) for backend parity | ❌ not started — unblocked, available in parallel with Phase 3 |
+| **4** | Submit new/updated definitions from the console (`POST` to `dws-controller`) | `dws-controller`'s existing compile endpoint + CORS story | ❌ not started — public/unauthenticated by design; detailed sequencing in [`dws-console-submission.md`](dws-console-submission.md), no dependency on Phase 5 |
+| **5** | Console-level auth (login, session, RBAC on write actions) | [OWS Phase 4 — auth/secrets](openworkflow-features.md) for backend parity | ❌ not started — unblocked, available in parallel with Phase 3/4; guards Phase 4's write path whenever it lands, doesn't gate it |
 | **6** | Dockerfile + CI workflow, publish `ghcr.io/tonylibs/dws-console` | Phases 3–5 substantially done | ✅ done — image + CI build/smoke-test/push; unblocks [Helm Phase 5](helm-packaging.md) |
 
 ## 4. Rationale for ordering
@@ -69,18 +70,24 @@ flowchart TD
 - **4 is independent of 2/3**: definition submission only needs the workflow browser's API-client
   scaffolding, not the instance monitor or Phase 3's push work. Fully unblocked now that Phase 2.5
   is merged, and can run in parallel with Phase 3.
-- **5 before 6**: shipping a container image with write access and no auth is a bad default. Phase 6
-  shipped ahead of Phase 5 anyway, which is safe *only because* Phase 4 has not landed: the console
-  is read-only today, so the image exposes no write path to leave unauthenticated. That stops being
-  true the moment definition submission merges — **Phase 5 must land with (or before) Phase 4**, not
-  merely before the image.
+- **4 and 5 are decoupled, deliberately**: an earlier draft of this roadmap required Phase 5 to land
+  with or before Phase 4, since Phase 6 already auto-publishes the console image to `ghcr.io` on
+  every merge to `main` — a write path with no auth guard would ship the moment Phase 4 merged.
+  That's been reconsidered: Phase 4 now ships public/unauthenticated on its own timeline (see
+  [`dws-console-submission.md`](dws-console-submission.md)), and Phase 5 adds the guard whenever
+  it's ready, rather than gating Phase 4's start. Accepted consequence: from the moment Phase 4
+  merges until Phase 5 lands, the published image carries a live, unauthenticated write path —
+  fine for internal/dev clusters, a real risk for anything less trusted running in that window.
 - **6 last**: no Dockerfile exists today, which is why [Helm packaging Phase 5](helm-packaging.md#phased-roadmap)
   currently ships the console toggle disabled by default.
 
 ## 5. Open items
 
-- No design for how the console authenticates to `dws-admin`/`dws-controller` in-cluster
-  (service-to-service vs. browser-direct) — needs a decision before Phase 4.
+- ~~No design for how the console authenticates to `dws-admin`/`dws-controller` in-cluster~~ —
+  decided for the interim: browser-direct, unauthenticated, gated only by CORS on `dws-controller`.
+  `dws-auth.md`'s ground rules keep `dws-controller` purely internal long-term (reached only via a
+  `dws-admin` relay), so expect this direct path to be replaced, not merely guarded, once Phase 5
+  lands — see [`dws-console-submission.md`](dws-console-submission.md)'s open items.
 - ~~Push mechanism for Phase 3 (SSE vs. WebSocket vs. short-poll)~~ — settled in Phase 3: **SSE**,
   served from Nest's own listener (`PORT`). The `@dbc-tech/nest-dapr` `DaprServer` second listener
   was checked and rejected: it is a `@dapr/dapr`-owned Express instance with no hook for
@@ -94,8 +101,8 @@ flowchart TD
   actually served. Predates Phase 3 and affects every console→admin call in local development, not
   just the new ones.
 - The "Definition" tab's graph view (`components/definition-graph.tsx`) still only imports a
-  *type* from `mock-data.ts` and isn't wired to a real DSL payload — worth folding into Phase 4's
-  scope alongside the submission form, since both need the live definition source.
+  *type* from `mock-data.ts` and isn't wired to a real DSL payload — now tracked as
+  [`dws-console-submission.md`](dws-console-submission.md) Phase 4 ("Workflow diagram").
 
 ## 6. Progress snapshot
 
@@ -116,5 +123,7 @@ What exists in `dws-console/src/` today, checked directly against the repo (not 
 **Bottom line**: Phases 0–3 and 6 are done — the console reads live cluster state end to end for
 workflows and instances, a running instance updates itself as `dws-admin` ingests its events (no
 polling, no manual refresh), and the app ships as a container image built and smoke-tested by CI.
-**Phases 4 (definition submission) and 5 (auth) are what remain**; both are unblocked, but see §4 —
-now that an image exists, auth needs to land with submission rather than after it.
+**Phases 4 (definition submission) and 5 (auth) are what remain**, and — per a deliberate call, see
+§4 — no longer gate each other: Phase 4 ships public/unauthenticated on its own timeline
+([`dws-console-submission.md`](dws-console-submission.md)), Phase 5 adds the guard whenever it's
+ready.
