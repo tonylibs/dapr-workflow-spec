@@ -34,70 +34,86 @@ Constraints that shape the approach:
 
 ## Decisions
 
-### D1 — Library: `oidc-client-ts` + `react-oidc-context`
-Use `oidc-client-ts` (the maintained successor to `oidc-client-js`) with the `react-oidc-context`
-wrapper.
-- **Why:** `react-oidc-context` provides `<AuthProvider>` and a `useAuth()` hook — a ready app-wide
-  React context (deliverable 4) — while `oidc-client-ts` implements PKCE, the iframe silent-renew
-  handshake (`automaticSilentRenew` / `signinSilent`), and RP-initiated logout
-  (`signoutRedirect` using the discovered `end_session_endpoint`) directly (deliverables 1, 5, 6).
-  Both are actively maintained and framework-appropriate.
-- **Alternatives:** raw `oidc-client-ts` without the wrapper (more context/plumbing to hand-write);
-  `@auth0/auth0-react` or similar (vendor-oriented, not a generic Dex/OIDC fit); hand-rolling the
-  flow (rejected — crypto and token handling should not be bespoke).
+### D1 — Library: `oidc-spa`
+Use [`oidc-spa`](https://www.oidc-spa.dev/) as the OIDC client.
+- **Why:** it is purpose-built for Vite + React single-page apps and covers every deliverable out
+  of the box — Authorization Code + PKCE, automatic **iframe silent renew**, and **RP-initiated
+  logout** (via the IdP's `end_session_endpoint`) — with **zero runtime dependencies**. Its React
+  binding (`createReactOidc` → `OidcProvider` + `useOidc`) gives the app-wide auth context and hook
+  (deliverable 4) directly. Tokens are held **in memory by design** (see D2), which matches the
+  ground rule instead of having to be configured around. As a bonus it **syncs login/logout state
+  across tabs** (D7) — not required by the roadmap, but valuable precisely because the token is
+  in-memory-only: a second tab would otherwise not learn the session ended.
+- **Alternatives:** `oidc-client-ts` + `react-oidc-context` (also viable and OIDC-certified, but
+  needs an explicit `InMemoryWebStorage` userStore, a hand-wired context, and a separate
+  silent-callback route — more plumbing for the same result; no cross-tab sync); `oauth4webapi`
+  (spec-correct low-level primitives, but session/renew/logout are hand-built); Auth.js / Better
+  Auth (wrong category — server-session BFF frameworks that keep the token server-side, contrary to
+  the in-memory-token ground rule); vendor SDKs like `@auth0/auth0-react` (IdP-locked, not a generic
+  Dex fit).
 
-### D2 — In-memory token store via `InMemoryWebStorage`
-Configure the `UserManager` `userStore` as
-`new WebStorageStateStore({ store: new InMemoryWebStorage() })` (both from `oidc-client-ts`).
-- **Why:** this is exactly the "token in memory only" ground rule — the `User` object (which holds
-  the access/ID tokens) lives in a plain in-memory map, never `localStorage`/`sessionStorage`. A
-  reload therefore starts with no token (the app then attempts a silent renew or shows sign-in).
-- **Trade-off / nuance:** the *transient* PKCE `state`/`code_verifier` (`stateStore`) legitimately
-  must survive the full-page redirect to Dex and back, so it cannot be pure in-memory. Leave the
-  `stateStore` on the default `sessionStorage`: it holds only short-lived, single-use PKCE
-  state, never the access token, and oidc-client-ts clears it on callback. This satisfies the
-  ground rule (which targets the *access token*) — documented so a reviewer doesn't read the
-  sessionStorage `oidc.*` state entry as a violation.
+### D2 — In-memory token by design
+`oidc-spa` keeps the access/ID tokens in memory (a JS closure), never in `localStorage` or
+`sessionStorage`, so the "token in memory only" ground rule holds without extra storage config.
+- **Why:** a reload therefore starts with no token in web storage; `oidc-spa` re-establishes the
+  session with a silent (`prompt=none`) SSO check against Dex if the IdP session is still valid, or
+  presents sign-in otherwise.
+- **Nuance:** any transient value `oidc-spa` needs to carry across the redirect (PKCE state) is
+  short-lived and single-use, never the access token — a test asserts the access token is absent
+  from both web storages (see Risks).
 
 ### D3 — SSR safety: client-only auth boundary
-Mount `<AuthProvider>` in `routes/__root.tsx` but ensure the `UserManager` and every OIDC call only
-touch the browser. Construct OIDC config/manager lazily and guard on `typeof window !== "undefined"`
-(and/or a `ClientOnly` boundary / effect-time initialization), so server rendering never constructs
-a `UserManager` or reads `window`.
-- **Why:** `oidc-client-ts` assumes a browser; instantiating it during SSR throws. TanStack Start
-  renders `__root` on the server, so the provider must degrade to an inert/unauthenticated state on
-  the server and hydrate the real client on the browser.
+`oidc-spa` is browser-only. Mount `OidcProvider` in `routes/__root.tsx` but construct the OIDC
+instance lazily/browser-guarded (`typeof window !== "undefined"`, a `ClientOnly` boundary, or
+effect-time init) so TanStack Start's server render never instantiates it or reads `window`; on the
+server the tree renders in an inert/unauthenticated state and hydrates the real client in the
+browser.
+- **Why:** instantiating a browser OIDC client during SSR throws; `server.js` server-renders every
+  non-asset request, so the guard is required.
 - **Alternative:** move auth entirely below a client-only subtree — heavier and still needs the same
   guard; the guard is the minimal correct fix.
 
-### D4 — Routes: `/callback` and `/silent-callback`
-Add two file routes:
-- `src/routes/callback.tsx` — completes the interactive code exchange (`signinCallback`), then
-  navigates back into the app. Matches the registered redirect URI path.
-- `src/routes/silent-callback.tsx` — minimal, client-only; finishes the hidden-iframe
-  `prompt=none` handshake (`signinSilentCallback`) and renders nothing meaningful (it lives inside
-  the iframe). Its URL is the `silent_redirect_uri`.
-- **Why two routes:** oidc-client-ts distinguishes the top-level callback from the iframe silent
-  callback; conflating them makes the iframe try to render the full app. Regenerate
-  `routeTree.gen.ts` after adding them.
+### D4 — Callback handling on `/callback`; silent renew is internal
+Dex has one registered redirect URI (`dex.consoleRedirectURI`, corrected to `…/callback`), and the
+spec requires the console to handle the redirect at `/callback`. Configure `oidc-spa` so its OIDC
+`redirect_uri` is that `/callback` URL, and add a `src/routes/callback.tsx` file route where
+`oidc-spa` finishes the exchange (it detects the `?code&state` params, completes PKCE, then returns
+the operator into the app). Regenerate `routeTree.gen.ts` after adding it.
+- **No separate `/silent-callback` route** (unlike an `oidc-client-ts` setup): `oidc-spa` runs the
+  hidden-iframe `prompt=none` renew internally. Depending on the installed `oidc-spa` version this
+  may require a small static silent-SSO asset under `public/` — confirm against that version's docs
+  at implementation time and add it if needed. This is the one integration detail to verify; it does
+  not change the specs.
+- **Redirect-URI mechanics to confirm:** `oidc-spa`'s exact API for pinning the `redirect_uri` to a
+  `/callback` subpath (vs. its default home-URL handling) is version-specific — verify it lines up
+  with Dex's registered value during implementation; the fixed constraint is "Dex-registered URI ==
+  the path the console serves", not any particular `oidc-spa` option name.
 
 ### D5 — OIDC configuration via `VITE_OIDC_*`, redirect derived at runtime
-Source `authority` (Dex issuer), `client_id`, and `scope` from `VITE_OIDC_*` env (documented in
-`.env.example`), defaulting `client_id` to `dws-console` and scope to `openid profile email`.
-Derive `redirect_uri`/`post_logout_redirect_uri`/`silent_redirect_uri` from
-`window.location.origin` + a fixed path (`/callback`, `/`, `/silent-callback`) at runtime rather
-than pinning a host in env.
-- **Why:** the console is served from different origins in dev vs deployment; deriving the redirect
-  from the live origin keeps one build working everywhere, and matches how Dex validates the
-  registered URI (path + port). The chart default `dex.consoleRedirectURI` is corrected to
-  `http://localhost:3000/callback` so a default local install lines up with `vite dev --port 3000`.
-- **Alternative:** fully env-pinned redirect URIs — more env surface and easy to get out of sync
-  with the served port; rejected for the derive-from-origin approach.
+Pass `oidc-spa`'s `issuerUri`, `clientId`, and `scopes` from `import.meta.env.VITE_OIDC_*`
+(documented in `.env.example`), defaulting `clientId` to `dws-console` and scopes to
+`openid profile email`. Derive the redirect/post-logout URLs from `window.location.origin` + fixed
+paths (`/callback`, `/`) at runtime rather than pinning a host in env.
+- **Why:** the console is served from different origins in dev vs deployment; deriving from the live
+  origin keeps one build working everywhere and matches how Dex validates the registered URI (path +
+  port). The chart default `dex.consoleRedirectURI` is corrected to `http://localhost:3000/callback`
+  so a default local install lines up with `vite dev --port 3000`.
+- **Alternative:** fully env-pinned redirect URIs — more env surface, easy to drift from the served
+  port; rejected for the derive-from-origin approach.
 
 ### D6 — Silent renew wiring
-Enable `automaticSilentRenew: true` on the `UserManager` and set `silent_redirect_uri`; the library
-schedules a `prompt=none` iframe request before expiry and updates the in-memory user. Surface
-renew failure by moving to signed-out state (no redirect loop).
+Rely on `oidc-spa`'s built-in automatic silent renew: it schedules a `prompt=none` iframe request
+before token expiry and refreshes the in-memory tokens with no full-page redirect. On a renew that
+fails because the Dex session is gone (`login_required`/`interaction_required`), surface a
+signed-out state through `useOidc` rather than looping.
+
+### D7 — Cross-tab session sync (bonus)
+Keep `oidc-spa`'s cross-tab synchronization on: when one tab logs out (or a session ends), other
+open tabs observe the signed-out state too.
+- **Why:** with an in-memory-only token, each tab holds its own token and a second tab would not
+  otherwise learn the session ended until its own next renew. This is not a roadmap requirement but
+  it closes a real gap the in-memory constraint creates, at no extra cost since `oidc-spa` provides
+  it. Captured as a spec scenario so the behavior is intentional, not incidental.
 
 ## Risks / Trade-offs
 
@@ -110,11 +126,15 @@ renew failure by moving to signed-out state (no redirect loop).
   to reach in dev. → Flag in `.env.example` / README; do not invent a workaround. Discovery will
   fail loudly if unreachable, which is acceptable (login unavailable, rest of app fine — per the
   additive requirement).
-- **SSR double-mount / hydration.** A `UserManager` constructed at import time would break SSR. →
-  D3's lazy, browser-guarded construction; verify `pnpm build` (SSR bundle) and a dev load both work.
-- **sessionStorage PKCE state misread as a token leak.** → D2 documents that only transient PKCE
-  state is there, never the access token; a test asserts the access token is absent from both web
-  storages.
+- **SSR double-mount / hydration.** A browser OIDC instance constructed at import time would break
+  SSR. → D3's lazy, browser-guarded construction; verify `pnpm build` (SSR bundle) and a dev load
+  both work.
+- **`oidc-spa` redirect-URI / silent-SSO mechanics are version-specific.** Pinning the OIDC
+  `redirect_uri` to `/callback` and whether a static silent-SSO asset is needed depend on the
+  installed `oidc-spa` version. → D4: confirm against that version's docs during implementation; the
+  fixed constraint (Dex-registered URI == served path) does not change.
+- **Access token must not leak to web storage.** → D2: `oidc-spa` holds tokens in memory; a test
+  asserts the access token is absent from both `localStorage` and `sessionStorage` while signed in.
 - **`http://` (non-TLS) origins.** `crypto.subtle` (PKCE) requires a secure context; `localhost` is
   treated as secure so dev works, but a non-localhost `http://` deployment would break PKCE. →
   Note as a deployment constraint (out of scope to fix here).
@@ -122,7 +142,7 @@ renew failure by moving to signed-out state (no redirect loop).
 ## Migration Plan
 
 Additive and dev-facing; no data migration.
-- Add deps in `dws-console` (`pnpm add oidc-client-ts react-oidc-context`), wire provider/routes,
+- Add the dep in `dws-console` (`pnpm add oidc-spa`), wire the provider and `/callback` route,
   regenerate routes, add `.env.example` entries, and correct the chart default.
 - Rollback: revert the `dws-console` changes and the one-line `values.yaml` default. Because login
   is additive and never gates reads, reverting leaves the console exactly as it was.

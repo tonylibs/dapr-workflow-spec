@@ -9,20 +9,23 @@ phase (5/6), which have nothing to attach a token to until login exists.
 
 ## What Changes
 
-- Add an OIDC client dependency to `dws-console` (`oidc-client-ts` + the `react-oidc-context`
-  React wrapper) covering Authorization Code + PKCE, iframe-based silent renew, and RP-initiated
-  logout. Rationale in `design.md`: `react-oidc-context` gives an app-wide React context and a
-  `useAuth()` hook out of the box, and `oidc-client-ts` ships an `InMemoryWebStorage` so the
-  access token never touches `localStorage`/`sessionStorage`.
-- Mount an `AuthProvider` above the app (in `routes/__root.tsx`) configured for the Dex authority,
-  the `dws-console` public client, in-memory user/token storage, and automatic silent renew.
+- Add the `oidc-spa` OIDC client dependency to `dws-console`, covering Authorization Code + PKCE,
+  iframe-based silent renew, and RP-initiated logout. Rationale in `design.md`: `oidc-spa` is
+  dependency-free and purpose-built for Vite + React SPAs (this stack), holds the access token in
+  memory by design (never `localStorage`/`sessionStorage`), and its React binding gives an app-wide
+  auth context + `useOidc()` hook. It also syncs login/logout across tabs — not required by the
+  roadmap, but a useful bonus given the in-memory-only token (a second tab would otherwise not learn
+  the session ended).
+- Mount `oidc-spa`'s `OidcProvider` above the app (in `routes/__root.tsx`) configured for the Dex
+  authority, the `dws-console` public client, and automatic silent renew.
 - Add a sign-in trigger (a header control / sign-in view) that starts the redirect to Dex.
-- Add a `/callback` TanStack Router file route (`routes/callback.tsx`) that completes the PKCE
-  code exchange and returns the operator to the app.
-- Add a `/silent-callback` route (minimal, client-only) that finishes the hidden-iframe
-  `prompt=none` renew handshake.
+- Add a `/callback` TanStack Router file route (`routes/callback.tsx`) where `oidc-spa` completes
+  the PKCE code exchange and returns the operator to the app. (No dedicated `/silent-callback`
+  route — `oidc-spa` runs the hidden-iframe `prompt=none` renew internally; see `design.md` D4.)
 - Expose authenticated identity app-wide (in-memory only) so UI can reflect signed-in state; wire
   a logout control that clears local state **and** redirects through Dex's `end_session_endpoint`.
+- Keep `oidc-spa`'s cross-tab session sync on, so a logout/session-end in one tab is reflected in
+  other open tabs.
 - **Fix** `charts/dws/values.yaml`: `dex.consoleRedirectURI` defaults to
   `http://localhost:5173/callback`, but the console dev server runs on port 3000
   (`vite dev --port 3000`). Change the default to `http://localhost:3000/callback` so the
@@ -46,7 +49,8 @@ already works.
 ### New Capabilities
 - `console-auth`: `dws-console`'s browser-side OIDC login — Authorization Code + PKCE sign-in
   against Dex, in-memory access-token storage, the `/callback` code exchange, app-wide in-memory
-  auth state, iframe silent renew, and RP-initiated logout through Dex's `end_session_endpoint`.
+  auth state, iframe silent renew, cross-tab session consistency, and RP-initiated logout through
+  Dex's `end_session_endpoint`.
 
 ### Modified Capabilities
 (none) — the `dex.consoleRedirectURI` fix changes only a **default value** in
@@ -57,10 +61,10 @@ redirect to) is captured as console behavior under `console-auth` below.
 
 ## Impact
 
-- `dws-console/package.json`: add `oidc-client-ts` and `react-oidc-context` dependencies.
-- `dws-console/src/routes/__root.tsx`: wrap the app shell in the OIDC `AuthProvider`.
-- `dws-console/src/routes/callback.tsx`, `.../silent-callback.tsx`: new file routes (regenerates
-  `routeTree.gen.ts`).
+- `dws-console/package.json`: add the `oidc-spa` dependency.
+- `dws-console/src/routes/__root.tsx`: wrap the app shell in `oidc-spa`'s `OidcProvider`.
+- `dws-console/src/routes/callback.tsx`: new file route (regenerates `routeTree.gen.ts`). A static
+  silent-SSO asset under `public/` may also be needed depending on the `oidc-spa` version (design D4).
 - `dws-console/src/lib/` (new auth module) + `src/components/`: OIDC config builder, sign-in /
   sign-out controls, signed-in identity surface.
 - `dws-console/.env.example`: new `VITE_OIDC_*` entries.

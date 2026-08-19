@@ -85,6 +85,19 @@ Owning component: `dws-console`.
 - **THEN** the console transitions to a signed-out state rather than looping, and the operator can
   sign in again
 
+### Requirement: Session state is consistent across tabs
+
+The `dws-console` SHALL keep authentication state consistent across the operator's open tabs of the
+app: when the session ends in one tab (explicit logout or session termination), other open tabs
+SHALL converge to a signed-out state rather than continuing to present an authenticated UI backed by
+a token only that other tab held.
+
+Owning component: `dws-console`.
+
+#### Scenario: Logout in one tab signs out the others
+- **WHEN** the operator has the console open in two tabs and logs out (or the session ends) in one
+- **THEN** the other tab converges to a signed-out state rather than remaining in an authenticated UI
+
 ### Requirement: Logout is RP-initiated through the IdP
 
 The `dws-console` SHALL, on logout, clear its in-memory auth state AND redirect the browser to
