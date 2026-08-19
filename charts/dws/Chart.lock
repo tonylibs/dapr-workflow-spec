@@ -2,5 +2,14 @@ dependencies:
 - name: postgresql
   repository: oci://registry-1.docker.io/bitnamicharts
   version: 16.7.27
-digest: sha256:6fbb2d72eeffa5642d7158c0c7aaad596851e65272e3dc3411ce74c6f580b8e1
-generated: "2026-08-08T17:37:11.726646634Z"
+- name: dapr
+  repository: https://dapr.github.io/helm-charts/
+  version: 1.15.4
+- name: dex
+  repository: https://charts.dexidp.io
+  version: 0.24.1
+- name: redis
+  repository: oci://registry-1.docker.io/bitnamicharts
+  version: 28.0.6
+digest: sha256:59c5cb98e39d7e6989a2631703aec022776f992e23b38363e0567f5427413466
+generated: "2026-08-19T12:21:37.785034861Z"

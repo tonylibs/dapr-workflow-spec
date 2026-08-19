@@ -33,6 +33,11 @@ appVersion: "1.18.0"
 # default); set it to false to use a cluster-external Dapr install instead (a preflight
 # check then fails install/upgrade if Dapr CRDs aren't actually present).
 #
+# Dex, an optional in-chart IdP for dws-console (auth roadmap Phase 0), is provided by the
+# upstream dexidp/helm-charts "dex" chart, pulled in as a conditional dependency the same
+# way. It installs only when dex.enabled is true (default false, since no consumer wires up
+# to it until a later phase).
+#
 # In-chart Redis backing the three Dapr Redis Components (pubsub, dws-definitions,
 # actor state store) is provided by the upstream Bitnami Redis chart. It has NO
 # independent enable toggle of its own — it exists solely to back those Components, so
@@ -49,6 +54,10 @@ dependencies:
     version: 1.15.4
     repository: https://dapr.github.io/helm-charts/
     condition: dapr.enabled
+  - name: dex
+    version: 0.24.1
+    repository: https://charts.dexidp.io
+    condition: dex.enabled
   - name: redis
     version: 28.0.6
     repository: oci://registry-1.docker.io/bitnamicharts

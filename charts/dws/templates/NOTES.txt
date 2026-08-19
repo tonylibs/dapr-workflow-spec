@@ -1,0 +1,13 @@
+{{- if .Values.dex.enabled }}
+Dex (dws-console's in-chart IdP) is enabled.
+
+Retrieve the bootstrap admin login:
+{{- if .Values.dex.adminUser.existingSecret }}
+
+  kubectl get secret {{ .Values.dex.adminUser.existingSecret }} -n {{ include "dws.namespace" . }} -o jsonpath='{.data.{{ .Values.dex.adminUser.existingSecretKey | default "password" }}}' | base64 -d; echo
+{{- else }}
+
+  kubectl get secret {{ include "dws.dex.adminCredentials.fullname" . }} -n {{ include "dws.namespace" . }} -o jsonpath='{.data.email}' | base64 -d; echo
+  kubectl get secret {{ include "dws.dex.adminCredentials.fullname" . }} -n {{ include "dws.namespace" . }} -o jsonpath='{.data.password}' | base64 -d; echo
+{{- end }}
+{{- end }}
