@@ -62,44 +62,49 @@ Use [`oidc-spa`](https://www.oidc-spa.dev/) as the OIDC client.
   short-lived and single-use, never the access token — a test asserts the access token is absent
   from both web storages (see Risks).
 
-### D3 — SSR safety: client-only auth boundary
-`oidc-spa` is browser-only. Mount `OidcProvider` in `routes/__root.tsx` but construct the OIDC
-instance lazily/browser-guarded (`typeof window !== "undefined"`, a `ClientOnly` boundary, or
-effect-time init) so TanStack Start's server render never instantiates it or reads `window`; on the
-server the tree renders in an inert/unauthenticated state and hydrates the real client in the
-browser.
-- **Why:** instantiating a browser OIDC client during SSR throws; `server.js` server-renders every
-  non-asset request, so the guard is required.
-- **Alternative:** move auth entirely below a client-only subtree — heavier and still needs the same
-  guard; the guard is the minimal correct fix.
+### D3 — SSR safety via `oidc-spa`'s official TanStack Start adapter + Vite plugin
+The installed `oidc-spa` (v10) ships a dedicated TanStack Start integration: the
+`oidc-spa/react-tanstack-start` entrypoint and the `oidc-spa/vite-plugin` Vite plugin, which
+auto-detects a TanStack Start project (by the `tanstack-react-start:config` plugin) and performs the
+client/server entry transformations itself. Use those rather than hand-rolling a
+`typeof window !== "undefined"` guard.
+- **Why:** `dws-console` server-renders every non-asset request (`server.js` + `tanstackStart()`), so
+  a browser-only OIDC client needs SSR handling. The library solves this for exactly this stack —
+  the plugin injects the server-entry wiring (its `__withOidcSpaServerEntry` /
+  `__disableSsrIfLoginEnforced` exports are underscore-prefixed internals, applied by the plugin, not
+  called by app code). Using the official path is more robust than a bespoke guard and is
+  forward-compatible with Phases 5/6 (the same adapter exposes `oidcFnMiddleware` and `enforceLogin`,
+  both unused here).
+- **Plugin ordering:** the plugin declares `enforce: "pre"`, so Vite orders it ahead of
+  `tanstackStart()` regardless of array position; list it early anyway for readability.
+- **Alternative:** the pure-client `oidc-spa/react-spa` adapter plus a manual SSR guard — simpler in
+  isolation, but fights the SSR setup this app actually has and would be replaced at Phase 5.
 
-### D4 — Callback handling on `/callback`; silent renew is internal
-Dex has one registered redirect URI (`dex.consoleRedirectURI`, corrected to `…/callback`), and the
-spec requires the console to handle the redirect at `/callback`. Configure `oidc-spa` so its OIDC
-`redirect_uri` is that `/callback` URL, and add a `src/routes/callback.tsx` file route where
-`oidc-spa` finishes the exchange (it detects the `?code&state` params, completes PKCE, then returns
-the operator into the app). Regenerate `routeTree.gen.ts` after adding it.
-- **No separate `/silent-callback` route** (unlike an `oidc-client-ts` setup): `oidc-spa` runs the
-  hidden-iframe `prompt=none` renew internally. Depending on the installed `oidc-spa` version this
-  may require a small static silent-SSO asset under `public/` — confirm against that version's docs
-  at implementation time and add it if needed. This is the one integration detail to verify; it does
-  not change the specs.
-- **Redirect-URI mechanics to confirm:** `oidc-spa`'s exact API for pinning the `redirect_uri` to a
-  `/callback` subpath (vs. its default home-URL handling) is version-specific — verify it lines up
-  with Dex's registered value during implementation; the fixed constraint is "Dex-registered URI ==
-  the path the console serves", not any particular `oidc-spa` option name.
+### D4 — Redirect URI is the app root; no `/callback` route
+`oidc-spa` v10 **does not accept a redirect-URI parameter at all**. Its README is explicit: *"The
+Redirect URI (callback URL) is the root URL of your app (no public/callback.html involved)"*, and
+`createOidc`/`bootstrapOidc` take only `issuerUri`, `clientId`, `scopes` (plus optional tuning). The
+library completes the code exchange in-place on the app's own root URL and then restores the route
+the operator started from.
+- **Consequence:** there is **no `/callback` route**, and `dex.consoleRedirectURI` must be registered
+  as the console's **root URL** (`http://localhost:3000/` by default), not `…/callback`. The original
+  plan called for a `/callback` route; that is not expressible with this library, and registering a
+  `/callback` URI that `oidc-spa` will never use would only break login. The underlying bug the
+  roadmap flagged — the chart default pointing at the wrong port (`:5173`, while the dev server runs
+  on `:3000`) — is still fixed, just to `http://localhost:3000/`.
+- **Silent renew** is likewise internal: `oidc-spa` runs the hidden-iframe `prompt=none` flow itself,
+  with no dedicated route and no static callback asset.
 
-### D5 — OIDC configuration via `VITE_OIDC_*`, redirect derived at runtime
+### D5 — OIDC configuration via `VITE_OIDC_*`
 Pass `oidc-spa`'s `issuerUri`, `clientId`, and `scopes` from `import.meta.env.VITE_OIDC_*`
 (documented in `.env.example`), defaulting `clientId` to `dws-console` and scopes to
-`openid profile email`. Derive the redirect/post-logout URLs from `window.location.origin` + fixed
-paths (`/callback`, `/`) at runtime rather than pinning a host in env.
-- **Why:** the console is served from different origins in dev vs deployment; deriving from the live
-  origin keeps one build working everywhere and matches how Dex validates the registered URI (path +
-  port). The chart default `dex.consoleRedirectURI` is corrected to `http://localhost:3000/callback`
-  so a default local install lines up with `vite dev --port 3000`.
-- **Alternative:** fully env-pinned redirect URIs — more env surface, easy to drift from the served
-  port; rejected for the derive-from-origin approach.
+`profile email` (`openid` is added by the library automatically). There are no redirect URLs to
+configure (D4) — the library derives them from the app's own origin, which is what keeps one build
+working across dev and deployment origins.
+- **Bootstrap shape:** v10 exposes no React provider component. `oidcSpa.createUtils()` returns a
+  module-level `{ bootstrapOidc, useOidc, getOidc, enforceLogin }` singleton; `bootstrapOidc({
+  implementation: "real", … })` is called once at module scope. Auth state is therefore app-wide by
+  construction, without a context provider in `__root.tsx`.
 
 ### D6 — Silent renew wiring
 Rely on `oidc-spa`'s built-in automatic silent renew: it schedules a `prompt=none` iframe request
@@ -126,13 +131,13 @@ open tabs observe the signed-out state too.
   to reach in dev. → Flag in `.env.example` / README; do not invent a workaround. Discovery will
   fail loudly if unreachable, which is acceptable (login unavailable, rest of app fine — per the
   additive requirement).
-- **SSR double-mount / hydration.** A browser OIDC instance constructed at import time would break
-  SSR. → D3's lazy, browser-guarded construction; verify `pnpm build` (SSR bundle) and a dev load
-  both work.
-- **`oidc-spa` redirect-URI / silent-SSO mechanics are version-specific.** Pinning the OIDC
-  `redirect_uri` to `/callback` and whether a static silent-SSO asset is needed depend on the
-  installed `oidc-spa` version. → D4: confirm against that version's docs during implementation; the
-  fixed constraint (Dex-registered URI == served path) does not change.
+- **SSR double-mount / hydration.** A browser OIDC instance reaching the server render would break
+  SSR. → D3 delegates this to `oidc-spa`'s official Vite plugin + TanStack Start adapter; verify
+  `pnpm build` (SSR bundle) and a dev load both work.
+- **Redirect URI is not configurable (resolved, was an open question).** `oidc-spa` v10 pins the
+  redirect URI to the app root. → D4: register the console's root URL in Dex and add no `/callback`
+  route. Anyone re-reading the roadmap's "implement the matching /callback route" wording should read
+  D4 first — that deliverable is not expressible with this library.
 - **Access token must not leak to web storage.** → D2: `oidc-spa` holds tokens in memory; a test
   asserts the access token is absent from both `localStorage` and `sessionStorage` while signed in.
 - **`http://` (non-TLS) origins.** `crypto.subtle` (PKCE) requires a secure context; `localhost` is

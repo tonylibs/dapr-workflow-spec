@@ -112,7 +112,12 @@ dex:
   # validation; override with a real externally-reachable URL for anything beyond local testing.
   issuer: "http://dex.dws.local/dex"
   # dws-console's registered OIDC redirect URI (public PKCE client, no client secret).
-  consoleRedirectURI: "http://localhost:5173/callback"
+  # This MUST be the console's root URL, not a /callback sub-path: the console's OIDC client
+  # completes the Authorization Code + PKCE exchange in place on the app's own root URL and then
+  # restores the route the operator started from, so that root URL is the only redirect URI it
+  # ever sends to Dex. The default matches the console's dev server (`pnpm dev` → port 3000);
+  # override it with the console's real origin for any deployed install.
+  consoleRedirectURI: "http://localhost:3000/"
   adminUser:
     # Bootstrap admin identity. The password is generated at install time and never rotated on
     # upgrade (see design.md) — never set a password here.

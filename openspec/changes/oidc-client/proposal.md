@@ -16,20 +16,23 @@ phase (5/6), which have nothing to attach a token to until login exists.
   auth context + `useOidc()` hook. It also syncs login/logout across tabs — not required by the
   roadmap, but a useful bonus given the in-memory-only token (a second tab would otherwise not learn
   the session ended).
-- Mount `oidc-spa`'s `OidcProvider` above the app (in `routes/__root.tsx`) configured for the Dex
-  authority, the `dws-console` public client, and automatic silent renew.
+- Wire `oidc-spa`'s official TanStack Start integration (`oidc-spa/react-tanstack-start` +
+  `oidc-spa/vite-plugin`), bootstrapped once at module scope with the Dex issuer and the
+  `dws-console` public client. v10 exposes no React provider — auth state is an app-wide singleton
+  read through `useOidc()` (see `design.md` D3/D5).
 - Add a sign-in trigger (a header control / sign-in view) that starts the redirect to Dex.
-- Add a `/callback` TanStack Router file route (`routes/callback.tsx`) where `oidc-spa` completes
-  the PKCE code exchange and returns the operator to the app. (No dedicated `/silent-callback`
-  route — `oidc-spa` runs the hidden-iframe `prompt=none` renew internally; see `design.md` D4.)
+- **No `/callback` route.** `oidc-spa` v10 pins the OIDC redirect URI to the app's root URL and
+  completes the PKCE exchange in place, then restores the route the operator started from; it has no
+  redirect-URI option. `dex.consoleRedirectURI` is therefore registered as the console's root URL and
+  silent renew runs internally with no dedicated route (see `design.md` D4).
 - Expose authenticated identity app-wide (in-memory only) so UI can reflect signed-in state; wire
   a logout control that clears local state **and** redirects through Dex's `end_session_endpoint`.
 - Keep `oidc-spa`'s cross-tab session sync on, so a logout/session-end in one tab is reflected in
   other open tabs.
 - **Fix** `charts/dws/values.yaml`: `dex.consoleRedirectURI` defaults to
   `http://localhost:5173/callback`, but the console dev server runs on port 3000
-  (`vite dev --port 3000`). Change the default to `http://localhost:3000/callback` so the
-  registered redirect URI matches the route the console actually serves.
+  (`vite dev --port 3000`). Change the default to `http://localhost:3000/` so the registered
+  redirect URI matches the URL the console actually serves and hands to Dex (root URL, per D4).
 - Add the OIDC configuration knobs to `dws-console/.env.example` (authority/issuer, client id,
   scopes) following the existing `VITE_*` convention.
 
@@ -62,9 +65,9 @@ redirect to) is captured as console behavior under `console-auth` below.
 ## Impact
 
 - `dws-console/package.json`: add the `oidc-spa` dependency.
-- `dws-console/src/routes/__root.tsx`: wrap the app shell in `oidc-spa`'s `OidcProvider`.
-- `dws-console/src/routes/callback.tsx`: new file route (regenerates `routeTree.gen.ts`). A static
-  silent-SSO asset under `public/` may also be needed depending on the `oidc-spa` version (design D4).
+- `dws-console/vite.config.ts`: add the `oidc-spa/vite-plugin` plugin (SSR/entry wiring, design D3).
+- `dws-console/src/lib/oidc.ts` (new): `oidcSpa.createUtils()` + `bootstrapOidc`, exporting
+  `useOidc`. No new routes and no `/callback` (design D4).
 - `dws-console/src/lib/` (new auth module) + `src/components/`: OIDC config builder, sign-in /
   sign-out controls, signed-in identity surface.
 - `dws-console/.env.example`: new `VITE_OIDC_*` entries.

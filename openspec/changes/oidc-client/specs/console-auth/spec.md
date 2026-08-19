@@ -21,14 +21,14 @@ Owning component: `dws-console`.
   PKCE `code_challenge`, and the `dws-console` client id
 
 #### Scenario: Callback completes the code exchange
-- **WHEN** Dex redirects back to the console's `/callback` route with an authorization code and the
-  matching state
+- **WHEN** Dex redirects back to the console's registered redirect URI with an authorization code
+  and the matching state
 - **THEN** the console exchanges the code for tokens using the stored PKCE verifier and transitions
   to an authenticated state without a further full-page redirect
 
 #### Scenario: Failed or denied authorization surfaces an error
-- **WHEN** the `/callback` route is reached with an error response (e.g. access denied) or a state
-  that does not match the request
+- **WHEN** the console is returned to with an error response (e.g. access denied) or a state that
+  does not match the request
 - **THEN** the console does not enter an authenticated state and shows a sign-in error rather than
   crashing or looping
 
@@ -115,19 +115,20 @@ Owning component: `dws-console`.
 - **WHEN** Dex completes RP-initiated logout and returns the browser to the console
 - **THEN** the console renders a signed-out state and offers sign-in
 
-### Requirement: Callback route matches the registered redirect URI
+### Requirement: Registered redirect URI matches the URL the console serves
 
-The `dws-console` SHALL serve its OIDC redirect handling at the `/callback` path, matching the
-redirect URI registered for the `dws-console` client in Dex (`dex.consoleRedirectURI`). The chart's
-default `dex.consoleRedirectURI` and the console dev server's port SHALL agree so a default local
-install can complete the flow without reconfiguration.
+The redirect URI registered for the `dws-console` client in Dex (`dex.consoleRedirectURI`) SHALL be
+a URL the console actually serves and handles the OIDC redirect at. The chart's default
+`dex.consoleRedirectURI` and the console dev server's origin SHALL agree so a default local install
+can complete the flow without reconfiguration.
 
-Owning component: `dws-console` (callback route); `charts/dws` (default redirect-URI value).
+Owning component: `dws-console` (redirect handling); `charts/dws` (default redirect-URI value).
 
-#### Scenario: Default redirect URI resolves to a served route on the dev port
+#### Scenario: Default redirect URI resolves to a URL the console serves
 - **WHEN** the chart is installed with defaults and the console is run with its dev script
-- **THEN** the registered redirect URI's path (`/callback`) and port match a route the console
-  actually serves, so the redirect back from Dex is handled rather than 404'ing
+- **THEN** the registered redirect URI's origin and path match a URL the console actually serves, so
+  the redirect back from Dex is handled rather than 404'ing or being rejected by Dex as an
+  unregistered redirect URI
 
 ### Requirement: Login is additive and does not gate existing behavior
 

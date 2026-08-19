@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { Clock, List, ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
+import { AuthControl } from "./auth-control";
 
 export type NavKey = "workflows" | "instances" | "controller";
 
@@ -87,7 +88,12 @@ export function AppLayout({
 							);
 						})}
 					</div>
-					{topRight && <div className="top-right">{topRight}</div>}
+					{/* Always rendered: the auth control belongs on every screen, so this
+					    is no longer conditional on a route supplying `topRight`. */}
+					<div className="top-right">
+						{topRight}
+						<AuthControl />
+					</div>
 				</div>
 
 				{children}

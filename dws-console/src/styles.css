@@ -230,6 +230,14 @@ h4 {
   align-items: center;
   gap: 10px;
 }
+.auth-identity {
+  font-size: 13px;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .pane {
   padding: 28px;
   display: flex;
