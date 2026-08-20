@@ -119,7 +119,8 @@ class ForkBranchWorkflowTest {
 
     org.mockito.ArgumentCaptor<Object> output = org.mockito.ArgumentCaptor.forClass(Object.class);
     org.mockito.Mockito.verify(ctx).complete(output.capture());
-    JsonNode result = (JsonNode) output.getValue();
+    InterpreterWorkflow.Dispatch dispatch = (InterpreterWorkflow.Dispatch) output.getValue();
+    JsonNode result = dispatch.data();
     assertThat(result.get("seed").intValue()).isEqualTo(1);
     assertThat(result.get("paged").textValue()).isEqualTo("nurse");
   }
@@ -193,7 +194,8 @@ class ForkBranchWorkflowTest {
 
     org.mockito.ArgumentCaptor<Object> output = org.mockito.ArgumentCaptor.forClass(Object.class);
     org.mockito.Mockito.verify(ctx).complete(output.capture());
-    JsonNode result = (JsonNode) output.getValue();
+    InterpreterWorkflow.Dispatch dispatch = (InterpreterWorkflow.Dispatch) output.getValue();
+    JsonNode result = dispatch.data();
     assertThat(result.get("paged").textValue()).isEqualTo("recovered");
   }
 }

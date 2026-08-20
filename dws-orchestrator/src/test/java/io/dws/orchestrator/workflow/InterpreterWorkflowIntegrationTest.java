@@ -932,7 +932,7 @@ class InterpreterWorkflowIntegrationTest {
     when(ctx.callChildWorkflow(
             org.mockito.ArgumentMatchers.eq(io.dws.orchestrator.workflow.ForkBranchWorkflow.NAME),
             any(),
-            eq(JsonNode.class)))
+            eq(InterpreterWorkflow.Dispatch.class)))
         .thenAnswer(
             inv -> {
               io.dws.orchestrator.workflow.ForkBranchInput input = inv.getArgument(1);
@@ -940,8 +940,27 @@ class InterpreterWorkflowIntegrationTest {
               if (task == null) {
                 throw new AssertionError("no stub for branch " + input.taskName());
               }
-              return task;
+              return dispatchOf(task);
             });
+  }
+
+  /**
+   * Wraps a branch's raw data {@link Task} into the {@link InterpreterWorkflow.Dispatch} {@code
+   * ctx.callChildWorkflow} now yields for {@code ForkBranchWorkflow.NAME} — {@code dispatchFork}
+   * reads only {@code .data()} off it, so context/then/end are unused placeholders here.
+   */
+  @SuppressWarnings("unchecked")
+  private static Task<InterpreterWorkflow.Dispatch> dispatchOf(Task<JsonNode> dataTask) {
+    Task<InterpreterWorkflow.Dispatch> wrapped = mock(Task.class);
+    when(wrapped.await())
+        .thenAnswer(
+            ignored ->
+                new InterpreterWorkflow.Dispatch(
+                    dataTask.await(),
+                    null,
+                    null,
+                    io.dws.orchestrator.workflow.ScopeEnd.FELL_THROUGH));
+    return wrapped;
   }
 
   /** {@code ctx.allOf} resolving to each handle's {@code await()} result, in list order. */

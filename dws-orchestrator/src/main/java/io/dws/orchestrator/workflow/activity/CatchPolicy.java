@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dws.orchestrator.error.WorkflowErrors;
 import io.dws.orchestrator.expr.JqEvaluator;
 import io.dws.orchestrator.workflow.WorkflowSupport;
-import io.serverlessworkflow.api.types.DurationInline;
 import io.serverlessworkflow.api.types.ErrorFilter;
 import io.serverlessworkflow.api.types.Retry;
 import io.serverlessworkflow.api.types.RetryBackoff;
@@ -148,7 +147,6 @@ public final class CatchPolicy {
       return NO_RETRY;
     }
     RetryPolicy policy = resolvePolicy(clause.getRetry());
-    rejectUnsupported(policy);
 
     if (!allows(policy.getWhen(), policy.getExceptWhen(), request, error, variable)) {
       return NO_RETRY;
@@ -182,17 +180,20 @@ public final class CatchPolicy {
   }
 
   /**
-   * {@code limit.attempt.duration} is a per-attempt timeout, which needs cancellation machinery the
-   * interpreter does not have. Rejected loudly rather than accepted as a no-op — a silently ignored
-   * timeout is the post-deployment mystery this codebase avoids.
+   * The per-attempt duration a {@code try} task's retry policy declares, or {@code null} when none
+   * applies. Resolved directly here (not via {@link CatchDecisionActivity}) because a per-attempt
+   * timeout must bound an attempt before it runs, not be decided after it already failed — {@link
+   * io.dws.orchestrator.workflow.InterpreterWorkflow#dispatchTry} calls this once per attempt,
+   * before running the attempt's task list.
    */
-  private static void rejectUnsupported(RetryPolicy policy) {
-    RetryLimit limit = policy.getLimit();
-    if (limit != null && limit.getAttempt() != null && limit.getAttempt().getDuration() != null) {
-      throw new IllegalStateException(
-          "retry policy limit.attempt.duration is not supported: per-attempt timeouts are not "
-              + "implemented");
+  public static Duration perAttemptTimeout(TryTaskCatch clause) {
+    if (clause == null || clause.getRetry() == null) {
+      return null;
     }
+    RetryLimit limit = resolvePolicy(clause.getRetry()).getLimit();
+    TimeoutAfter duration =
+        limit == null || limit.getAttempt() == null ? null : limit.getAttempt().getDuration();
+    return duration == null ? null : WorkflowSupport.durationOf(duration);
   }
 
   /**
@@ -210,7 +211,7 @@ public final class CatchPolicy {
     }
     if (limit.getDuration() != null) {
       long elapsed = request.nowEpochMillis() - request.firstFailureEpochMillis();
-      return elapsed > durationOf(limit.getDuration()).toMillis();
+      return elapsed > WorkflowSupport.durationOf(limit.getDuration()).toMillis();
     }
     return false;
   }
@@ -224,7 +225,8 @@ public final class CatchPolicy {
    * attempt number, exponential doubles it per attempt.
    */
   private static long delayFor(RetryPolicy policy, int attempt) {
-    Duration base = policy.getDelay() == null ? DEFAULT_DELAY : durationOf(policy.getDelay());
+    Duration base =
+        policy.getDelay() == null ? DEFAULT_DELAY : WorkflowSupport.durationOf(policy.getDelay());
     long millis = base.toMillis();
 
     RetryBackoff backoff = policy.getBackoff();
@@ -236,35 +238,12 @@ public final class CatchPolicy {
 
     RetryPolicyJitter jitter = policy.getJitter();
     if (jitter != null) {
-      long from = durationOf(jitter.getFrom()).toMillis();
-      long to = durationOf(jitter.getTo()).toMillis();
+      long from = WorkflowSupport.durationOf(jitter.getFrom()).toMillis();
+      long to = WorkflowSupport.durationOf(jitter.getTo()).toMillis();
       long span = Math.max(to - from, 0L);
       // Drawn here, inside the activity: Dapr records the result, so replay reuses this value.
       millis += from + (span == 0 ? 0 : ThreadLocalRandom.current().nextLong(span));
     }
     return millis;
-  }
-
-  /**
-   * Converts an Open Workflow Specification inline/ISO-8601 duration to a {@link Duration}. Mirrors
-   * the interpreter's own conversion; both read the same {@code TimeoutAfter} union.
-   */
-  static Duration durationOf(TimeoutAfter after) {
-    if (after == null) {
-      return Duration.ZERO;
-    }
-    DurationInline inline = after.getDurationInline();
-    if (inline != null) {
-      return Duration.ofDays(inline.getDays())
-          .plusHours(inline.getHours())
-          .plusMinutes(inline.getMinutes())
-          .plusSeconds(inline.getSeconds())
-          .plusMillis(inline.getMilliseconds());
-    }
-    String literal =
-        after.getDurationExpression() != null
-            ? after.getDurationExpression()
-            : after.getDurationLiteral();
-    return (literal != null && !literal.isBlank()) ? Duration.parse(literal) : Duration.ZERO;
   }
 }

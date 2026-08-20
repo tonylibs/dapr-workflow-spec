@@ -94,11 +94,48 @@ class WorkflowErrorsTest {
         WorkflowErrors.build(ErrorKind.COMMUNICATION, 503, "fetchOrder", STEP_503, mapper);
 
     assertThat(error.get("type").textValue())
-        .isEqualTo("https://open-workflow-specification.org/dsl/errors/types/communication");
+        .isEqualTo("https://serverlessworkflow.io/spec/1.0.0/errors/communication");
     assertThat(error.get("status").intValue()).isEqualTo(503);
     assertThat(error.get("instance").textValue()).isEqualTo("/fetchOrder");
     assertThat(error.get("title").textValue()).isEqualTo("Communication error");
     assertThat(error.get("detail").textValue()).isEqualTo(STEP_503);
+  }
+
+  @Test
+  void everyKindsTypeUriIsUnderTheStandardNamespace() {
+    for (ErrorKind kind : ErrorKind.values()) {
+      assertThat(kind.typeUri())
+          .startsWith("https://serverlessworkflow.io/spec/1.0.0/errors/")
+          .endsWith(
+              switch (kind) {
+                case VALIDATION -> "validation";
+                case COMMUNICATION -> "communication";
+                case AUTHORIZATION -> "authorization";
+                case EXPRESSION -> "expression";
+                case TIMEOUT -> "timeout";
+                case RUNTIME -> "runtime";
+              });
+    }
+  }
+
+  @Test
+  void taskTimeoutMessageIsATimeoutError() {
+    String message = "task 'chargePayment' timed out after PT30S";
+
+    assertThat(WorkflowErrors.classify(message)).isEqualTo(ErrorKind.TIMEOUT);
+    assertThat(WorkflowErrors.statusOf(message, ErrorKind.TIMEOUT)).isEqualTo(408);
+    assertThat(WorkflowErrors.failingTaskName(message, "guarded")).isEqualTo("chargePayment");
+    assertThat(WorkflowErrors.of(message, "guarded", mapper).get("title").textValue())
+        .isEqualTo("Timeout error");
+  }
+
+  @Test
+  void workflowTimeoutMessageIsATimeoutErrorWithNoTaskName() {
+    String message = "workflow timed out after PT1H";
+
+    assertThat(WorkflowErrors.classify(message)).isEqualTo(ErrorKind.TIMEOUT);
+    assertThat(WorkflowErrors.statusOf(message, ErrorKind.TIMEOUT)).isEqualTo(408);
+    assertThat(WorkflowErrors.failingTaskName(message, "guarded")).isEqualTo("guarded");
   }
 
   @Test

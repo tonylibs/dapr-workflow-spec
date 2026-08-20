@@ -70,16 +70,52 @@ public class InterpreterWorkflow implements Workflow {
 
     publish(ctx, events.instanceStarted());
 
+    Duration workflowTimeout =
+        WorkflowSupport.workflowTimeoutOf(WorkflowSupport.definition().getTimeout());
+
     try {
       // The top-level `do` is just the outermost scope. Whichever way it ends — ran off the end,
       // `exit`, or `end` — completing the outermost scope is completing the instance.
-      ScopeResult result = runTaskList(ctx, items, data, context, Map.of(), 0, events, mapper);
+      ScopeResult result =
+          workflowTimeout == null
+              ? runTaskList(ctx, items, data, context, Map.of(), 0, events, mapper)
+              : runGuardedTopLevelScope(ctx, data, context, workflowTimeout);
       publish(ctx, events.instanceCompleted());
       ctx.complete(result.data());
     } catch (RuntimeException e) {
       publish(ctx, events.instanceFailed(String.valueOf(e.getMessage())));
       throw e;
     }
+  }
+
+  /**
+   * Runs the top-level {@code do} list as a {@link ScopeRunnerWorkflow} child instance, racing it
+   * against the document's {@code timeout} deadline.
+   *
+   * <p>The deadline sits outside and above the top-level scope: a {@code try} task declared at the
+   * top level lives inside the raced child instance, so it still catches its own tasks' failures,
+   * but cannot catch the instance-wide deadline itself — there is nothing above the top level for
+   * it to be caught by. A timer win throws directly, which {@link #execute}'s existing {@code
+   * catch} block turns into the standard {@code instanceFailed} publish and rethrow, unchanged.
+   */
+  private ScopeResult runGuardedTopLevelScope(
+      WorkflowContext ctx, JsonNode data, JsonNode context, Duration timeout) {
+    io.dapr.durabletask.Task<ScopeResult> scope =
+        ctx.callChildWorkflow(
+            ScopeRunnerWorkflow.NAME,
+            new ScopeRunnerInput(null, data, context, Map.of(), 0),
+            ScopeResult.class);
+    java.time.ZonedDateTime deadline =
+        ctx.getCurrentInstant().plus(timeout).atZone(java.time.ZoneOffset.UTC);
+    io.dapr.durabletask.Task<Void> timer = ctx.createTimer(deadline);
+    List<io.dapr.durabletask.Task<?>> race = new java.util.ArrayList<>();
+    race.add(scope);
+    race.add(timer);
+    io.dapr.durabletask.Task<?> winner = ctx.anyOf(race).await();
+    if (winner == timer) {
+      throw new IllegalStateException("workflow timed out after " + timeout);
+    }
+    return (ScopeResult) winner.await();
   }
 
   /**
@@ -132,7 +168,7 @@ public class InterpreterWorkflow implements Workflow {
       FlowOutcome then;
       try {
         Dispatch result =
-            dispatch(ctx, task, name, data, context, variables, depth, events, mapper);
+            dispatchWithTimeout(ctx, task, name, data, context, variables, depth, events, mapper);
         data = result.data();
         context = result.context();
         then = result.then();
@@ -181,6 +217,51 @@ public class InterpreterWorkflow implements Workflow {
     static Body leaf(JsonNode data, JsonNode context, FlowOutcome then) {
       return new Body(data, context, then, ScopeEnd.FELL_THROUGH);
     }
+  }
+
+  /**
+   * Dispatches one task item, honouring its {@code timeout} when it declares one.
+   *
+   * <p>The timeout check lives here — at {@link #dispatch}'s one ordinary call site inside {@link
+   * #runTaskList} — and nowhere inside {@link #dispatch} or {@link ForkBranchWorkflow} itself,
+   * deliberately: {@link ForkBranchWorkflow} is reused below to give the guarded task a single
+   * {@code Task} handle to race against a timer, and {@link ForkBranchWorkflow#execute} calls
+   * {@link #dispatch} directly. Checking the timeout inside {@link #dispatch} would see it again on
+   * that re-entry and start another guarded child instance forever.
+   *
+   * <p>A task with no {@code timeout} takes the exact path it did before this method existed —
+   * {@link #dispatch} in-process, no child instance, no timer.
+   */
+  private Dispatch dispatchWithTimeout(
+      WorkflowContext ctx,
+      Task task,
+      String name,
+      JsonNode data,
+      JsonNode context,
+      Map<String, JsonNode> variables,
+      int depth,
+      AdminEventBuilder events,
+      ObjectMapper mapper) {
+    TaskBase base = DataFlowPipeline.baseOf(task);
+    Duration timeout = base == null ? null : WorkflowSupport.taskTimeoutOf(base.getTimeout());
+    if (timeout == null) {
+      return dispatch(ctx, task, name, data, context, variables, depth, events, mapper);
+    }
+
+    io.dapr.durabletask.Task<Dispatch> body =
+        ctx.callChildWorkflow(
+            ForkBranchWorkflow.NAME,
+            new ForkBranchInput(name, data, context, variables, depth),
+            Dispatch.class);
+    io.dapr.durabletask.Task<Void> timer = ctx.createTimer(timeout);
+    List<io.dapr.durabletask.Task<?>> race = new java.util.ArrayList<>();
+    race.add(body);
+    race.add(timer);
+    io.dapr.durabletask.Task<?> winner = ctx.anyOf(race).await();
+    if (winner == timer) {
+      throw new IllegalStateException("task '" + name + "' timed out after " + timeout);
+    }
+    return (Dispatch) winner.await();
   }
 
   /**
@@ -429,11 +510,16 @@ public class InterpreterWorkflow implements Workflow {
       AdminEventBuilder events,
       ObjectMapper mapper) {
     long firstFailureMillis = 0L;
+    Duration attemptTimeout = CatchPolicy.perAttemptTimeout(tryTask.getCatch());
 
     for (int attempt = 1; ; attempt++) {
       try {
         ScopeResult body =
-            runTaskList(ctx, tryTask.getTry(), data, context, variables, depth + 1, events, mapper);
+            attemptTimeout == null
+                ? runTaskList(
+                    ctx, tryTask.getTry(), data, context, variables, depth + 1, events, mapper)
+                : runGuardedTryAttempt(
+                    ctx, name, data, context, variables, depth + 1, attemptTimeout);
         return new Body(body.data(), body.context(), FlowOutcome.of(tryTask.getThen()), body.end());
       } catch (RuntimeException failure) {
         long now = ctx.getCurrentInstant().toEpochMilli();
@@ -469,6 +555,39 @@ public class InterpreterWorkflow implements Workflow {
         return recover(ctx, tryTask, data, context, decision, variables, depth, events, mapper);
       }
     }
+  }
+
+  /**
+   * Runs one {@code try} attempt via a {@link ScopeRunnerWorkflow} child instance, racing it
+   * against the retry policy's {@code limit.attempt.duration}. A timer win throws the same shape of
+   * timeout failure a task-level timeout does, so it lands in {@link #dispatchTry}'s existing
+   * {@code catch (RuntimeException failure)} block and is handed to {@link CatchDecisionActivity}
+   * exactly like any other attempt failure — counted toward {@code limit.attempt.count}/{@code
+   * limit.duration}, gated by {@code catch.when}/{@code exceptWhen}, and so on, with no special
+   * casing beyond how the failure was produced.
+   */
+  private ScopeResult runGuardedTryAttempt(
+      WorkflowContext ctx,
+      String tryTaskName,
+      JsonNode data,
+      JsonNode context,
+      Map<String, JsonNode> variables,
+      int depth,
+      Duration timeout) {
+    io.dapr.durabletask.Task<ScopeResult> attempt =
+        ctx.callChildWorkflow(
+            ScopeRunnerWorkflow.NAME,
+            new ScopeRunnerInput(tryTaskName, data, context, variables, depth),
+            ScopeResult.class);
+    io.dapr.durabletask.Task<Void> timer = ctx.createTimer(timeout);
+    List<io.dapr.durabletask.Task<?>> race = new java.util.ArrayList<>();
+    race.add(attempt);
+    race.add(timer);
+    io.dapr.durabletask.Task<?> winner = ctx.anyOf(race).await();
+    if (winner == timer) {
+      throw new IllegalStateException("task '" + tryTaskName + "' timed out after " + timeout);
+    }
+    return (ScopeResult) winner.await();
   }
 
   /**
@@ -580,7 +699,7 @@ public class InterpreterWorkflow implements Workflow {
       throw new IllegalStateException("task '" + name + "': fork has no branches");
     }
 
-    List<io.dapr.durabletask.Task<JsonNode>> handles = new java.util.ArrayList<>();
+    List<io.dapr.durabletask.Task<Dispatch>> handles = new java.util.ArrayList<>();
     for (TaskItem branch : branches) {
       ForkBranchInput input =
           new ForkBranchInput(branch.getName(), data, context, variables, depth + 1);
@@ -590,19 +709,19 @@ public class InterpreterWorkflow implements Workflow {
       // per-call child id that is deterministic on replay (name-based UUIDv5 of the parent id, the
       // replay-safe workflow instant, and a per-parent sub-orchestration counter) yet unique per
       // call (the counter increments), so each branch creation is distinct and replay-stable.
-      handles.add(ctx.callChildWorkflow(ForkBranchWorkflow.NAME, input, JsonNode.class));
+      handles.add(ctx.callChildWorkflow(ForkBranchWorkflow.NAME, input, Dispatch.class));
     }
 
     if (forkTask.getFork().isCompete()) {
       List<io.dapr.durabletask.Task<?>> raceHandles = new java.util.ArrayList<>(handles);
       io.dapr.durabletask.Task<?> winner = ctx.anyOf(raceHandles).await();
-      JsonNode result = (JsonNode) winner.await();
-      return new Body(result, context, then, ScopeEnd.FELL_THROUGH);
+      Dispatch result = (Dispatch) winner.await();
+      return new Body(result.data(), context, then, ScopeEnd.FELL_THROUGH);
     }
 
-    List<JsonNode> results = ctx.allOf(handles).await();
+    List<Dispatch> results = ctx.allOf(handles).await();
     ArrayNode array = mapper.createArrayNode();
-    results.forEach(array::add);
+    results.forEach(r -> array.add(r.data()));
     return new Body(array, context, then, ScopeEnd.FELL_THROUGH);
   }
 
