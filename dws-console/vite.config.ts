@@ -4,6 +4,7 @@ import { devtools } from "@tanstack/devtools-vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 
 import viteReact from "@vitejs/plugin-react";
+import { oidcSpa } from "oidc-spa/vite-plugin";
 import { defineConfig } from "vite";
 
 // Where the dev server forwards dws-admin calls. Proxying keeps every request
@@ -19,7 +20,10 @@ const ADMIN_PREFIX = "/dws-admin";
 
 const config = defineConfig({
 	resolve: { tsconfigPaths: true },
-	plugins: [devtools(), tailwindcss(), tanstackStart(), viteReact()],
+	// oidcSpa() wires OIDC into the TanStack Start client/server entries so login
+	// works with SSR (see src/lib/oidc.ts). It declares enforce: "pre", so Vite
+	// orders it ahead of tanstackStart() wherever it sits in this list.
+	plugins: [devtools(), tailwindcss(), oidcSpa(), tanstackStart(), viteReact()],
 	server: {
 		proxy: {
 			[ADMIN_PREFIX]: {
