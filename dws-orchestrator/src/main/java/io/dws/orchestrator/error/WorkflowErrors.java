@@ -17,9 +17,12 @@ import java.util.regex.Pattern;
  * {@code DataFlowException} both write a stable marker into their message precisely so this
  * classification is possible.
  *
- * <p>RFC 7807 Problem Details formatting and the standard Open Workflow Specification error-type
- * catalogue are out of scope here (Phase 3); these five fields are the DSL's own, so that phase
- * enriches them rather than replacing the concept.
+ * <p>{@code type} is a URI under the standard Open Workflow Specification error-type catalogue (see
+ * {@link ErrorKind}). Classification here still only distinguishes the failure shapes this runtime
+ * actually produces — a validation/transform failure, a step-service communication failure, a
+ * deadline timeout, or an unclassified runtime failure — so an expression/transform failure stays
+ * {@link ErrorKind#VALIDATION} rather than {@link ErrorKind#EXPRESSION}, and {@link
+ * ErrorKind#AUTHORIZATION} is never produced (no authentication exists yet).
  */
 public final class WorkflowErrors {
 
@@ -31,6 +34,14 @@ public final class WorkflowErrors {
 
   private static final String STEP_MARKER = "step '";
   private static final String DATA_FLOW_MARKER = "data flow failed:";
+
+  /**
+   * Marker a task/workflow/retry-attempt timeout's failure message carries (see {@code
+   * InterpreterWorkflow}/{@code CatchPolicy}'s guarded-execution timeout messages). Checked first
+   * because a task-level timeout's message also starts with {@code task '<name>'}, which would
+   * otherwise fall through to the runtime default rather than being recognised as a timeout.
+   */
+  private static final String TIMEOUT_MARKER = "timed out after";
 
   /**
    * Markers a migrated step's activity worker folds into its failure message (full form {@code step
@@ -56,6 +67,9 @@ public final class WorkflowErrors {
   /** Classifies a failure from its message. Anything unrecognised is a runtime error. */
   public static ErrorKind classify(String failureMessage) {
     String message = failureMessage == null ? "" : failureMessage;
+    if (message.contains(TIMEOUT_MARKER)) {
+      return ErrorKind.TIMEOUT;
+    }
     if (message.contains(DATA_FLOW_MARKER)) {
       return ErrorKind.VALIDATION;
     }

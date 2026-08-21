@@ -11,6 +11,7 @@ import io.dws.orchestrator.workflow.WorkflowSupport;
 import io.serverlessworkflow.api.WorkflowFormat;
 import io.serverlessworkflow.api.WorkflowReader;
 import io.serverlessworkflow.api.types.Workflow;
+import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -106,7 +107,7 @@ class CatchPolicyTest {
             """
             errors:
               with:
-                type: https://open-workflow-specification.org/dsl/errors/types/communication
+                type: https://serverlessworkflow.io/spec/1.0.0/errors/communication
             """));
 
     assertThat(CatchPolicy.decide(request(FAILURE_503, 1)).caught()).isTrue();
@@ -182,7 +183,7 @@ class CatchPolicyTest {
   }
 
   @Test
-  void perAttemptDurationLimitIsRejected() throws Exception {
+  void perAttemptDurationLimitIsAcceptedAndDoesNotAffectTheVerdict() throws Exception {
     seedYaml(
         catchYaml(
             """
@@ -195,9 +196,40 @@ class CatchPolicyTest {
                     seconds: 5
             """));
 
-    assertThatThrownBy(() -> CatchPolicy.decide(request(FAILURE_503, 1)))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("limit.attempt.duration");
+    CatchDecision decision = CatchPolicy.decide(request(FAILURE_503, 1));
+
+    assertThat(decision.caught()).isTrue();
+    assertThat(decision.retry()).isTrue();
+  }
+
+  @Test
+  void perAttemptTimeoutResolvesTheDeclaredDuration() throws Exception {
+    seedYaml(
+        catchYaml(
+            """
+            retry:
+              delay:
+                seconds: 1
+              limit:
+                attempt:
+                  duration:
+                    seconds: 5
+            """));
+
+    Duration duration =
+        CatchPolicy.perAttemptTimeout(
+            DefinitionLookup.taskByName("guarded").getTryTask().getCatch());
+
+    assertThat(duration).isEqualTo(Duration.ofSeconds(5));
+  }
+
+  @Test
+  void perAttemptTimeoutIsNullWhenNotDeclared() {
+    Duration duration =
+        CatchPolicy.perAttemptTimeout(
+            DefinitionLookup.taskByName("guarded").getTryTask().getCatch());
+
+    assertThat(duration).isNull();
   }
 
   // ---- backoff, jitter, limits --------------------------------------------
