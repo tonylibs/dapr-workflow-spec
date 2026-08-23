@@ -80,4 +80,25 @@ describe('buildRequest contract - auth layering', () => {
     const req = await prepareOutbound(engine, { petId: 5 });
     expect(req.headers.Authorization).toBe('Bearer tok');
   });
+
+  it('routes oauth through the local sidecar without a static Authorization header', async () => {
+    const engine = await engineFor(
+      baseEnv({
+        OPERATION_ID: 'findPetsByStatus',
+        PARAMETERS: '{"status":".s"}',
+        AUTH_SCHEME: 'oauth2',
+        OAUTH_ENDPOINT: 'accounts-oauth',
+        DAPR_HTTP_PORT: '3600',
+      }),
+    );
+    // Simulate a static Authorization value from a document or caller. OAuth
+    // must let the Dapr middleware supply the external credential instead.
+    const req = await prepareOutbound(
+      { ...engine, auth: { ...engine.auth, headers: { authorization: 'must-not-reach-upstream' } } },
+      { s: 'pending' },
+    );
+    expect(req.url).toBe('http://localhost:3600/v1.0/invoke/accounts-oauth/method/api/v3/pet/findByStatus?status=pending');
+    expect(req.headers.Authorization).toBeUndefined();
+    expect(req.headers.authorization).toBeUndefined();
+  });
 });

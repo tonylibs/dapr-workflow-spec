@@ -11,6 +11,8 @@ const DEFAULT_API_KEY_HEADER = 'X-API-Key';
 export interface AuthMaterial {
   readonly headers: Readonly<Record<string, string>>;
   readonly query: Readonly<Record<string, string>>;
+  /** OAuth is handled by Dapr's sidecar, never by a runner-managed token. */
+  readonly oauth?: { readonly endpoint: string; readonly daprHttpPort: string };
 }
 
 const EMPTY: AuthMaterial = { headers: {}, query: {} };
@@ -29,12 +31,20 @@ export function buildAuthMaterial(
     case 'none':
       return EMPTY;
     case 'bearer':
-      return { headers: { Authorization: `Bearer ${req(secret)}` }, query: {} };
+      return { headers: { Authorization: `Bearer ${'token' in auth ? auth.token : req(secret)}` }, query: {} };
     case 'basic':
-      // The secret is the raw `user:password`; encode it for Basic auth.
-      return { headers: { Authorization: `Basic ${base64(req(secret))}` }, query: {} };
+      // Legacy secrets contain raw `user:password`; generated env vars keep the
+      // username and password independently secret-backed.
+      return {
+        headers: {
+          Authorization: `Basic ${base64('username' in auth ? `${auth.username}:${auth.password}` : req(secret))}`,
+        },
+        query: {},
+      };
     case 'apiKey':
       return apiKeyMaterial(req(secret), apiKeyScheme);
+    case 'oauth2':
+      return { headers: {}, query: {}, oauth: { endpoint: auth.endpoint, daprHttpPort: auth.daprHttpPort } };
   }
 }
 

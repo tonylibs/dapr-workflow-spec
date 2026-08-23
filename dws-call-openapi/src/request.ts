@@ -63,5 +63,26 @@ function applyAuth(
     finalUrl = parsed.href;
   }
 
-  return { url: finalUrl, method, headers: mergedHeaders, body };
+  if (auth.oauth === undefined) {
+    return { url: finalUrl, method, headers: mergedHeaders, body };
+  }
+
+  // The Dapr OAuth middleware owns Authorization for the external endpoint.
+  // Remove a spec- or caller-provided static value in a case-insensitive way.
+  const headersWithoutAuthorization = Object.fromEntries(
+    Object.entries(mergedHeaders).filter(([name]) => name.toLowerCase() !== 'authorization'),
+  );
+  return {
+    url: daprInvocationUrl(finalUrl, auth.oauth.endpoint, auth.oauth.daprHttpPort),
+    method,
+    headers: headersWithoutAuthorization,
+    body,
+  };
+}
+
+/** Rewrites only the destination; swagger-client has already serialized path and query. */
+function daprInvocationUrl(url: string, endpoint: string, port: string): string {
+  const target = new URL(url);
+  const path = target.pathname === '' ? '/' : target.pathname;
+  return `http://localhost:${port}/v1.0/invoke/${encodeURIComponent(endpoint)}/method${path}${target.search}`;
 }

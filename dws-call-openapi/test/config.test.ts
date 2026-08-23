@@ -89,6 +89,27 @@ describe('loadConfig', () => {
     expect(cfg.auth).toEqual({ type: 'apiKey', secret: { kind: 'store', store: 'vault', key: 'petkey' } });
   });
 
+  it('accepts generated basic credentials without a legacy inline secret', () => {
+    const cfg = loadConfig(baseEnv({ AUTH_SCHEME: 'basic', AUTH_USERNAME: 'alice', AUTH_PASSWORD: 'pw' }));
+    expect(cfg.auth).toEqual({ type: 'basic', username: 'alice', password: 'pw' });
+  });
+
+  it('accepts the generated bearer token contract', () => {
+    const cfg = loadConfig(baseEnv({ AUTH_SCHEME: 'bearer', AUTH_TOKEN: 'tok' }));
+    expect(cfg.auth).toEqual({ type: 'bearer', token: 'tok' });
+  });
+
+  it('accepts generated oauth routing and defaults the sidecar port', () => {
+    const cfg = loadConfig(baseEnv({ AUTH_SCHEME: 'oauth2', OAUTH_ENDPOINT: 'accounts-oauth' }));
+    expect(cfg.auth).toEqual({ type: 'oauth2', endpoint: 'accounts-oauth', daprHttpPort: '3500' });
+  });
+
+  it('rejects incomplete generated credentials', () => {
+    expect(() => loadConfig(baseEnv({ AUTH_SCHEME: 'basic', AUTH_USERNAME: 'alice' }))).toThrow(/AUTH_PASSWORD/);
+    expect(() => loadConfig(baseEnv({ AUTH_SCHEME: 'bearer' }))).toThrow(/AUTH_TOKEN/);
+    expect(() => loadConfig(baseEnv({ AUTH_SCHEME: 'oauth2' }))).toThrow(/OAUTH_ENDPOINT/);
+  });
+
   it('rejects auth without any secret source', () => {
     expect(() => loadConfig(baseEnv({ AUTH_TYPE: 'bearer' }))).toThrow(/AUTH_SECRET/);
   });

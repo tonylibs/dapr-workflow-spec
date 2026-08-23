@@ -17,6 +17,21 @@ describe('buildAuthMaterial', () => {
     expect(m.headers.Authorization).toBe(`Basic ${Buffer.from('u:p').toString('base64')}`);
   });
 
+  it('uses generated basic username and password independently', () => {
+    const m = buildAuthMaterial({ type: 'basic', username: 'alice', password: 'pw' }, undefined, undefined);
+    expect(m.headers.Authorization).toBe(`Basic ${Buffer.from('alice:pw').toString('base64')}`);
+  });
+
+  it('uses a generated bearer token without secret-store resolution', () => {
+    const m = buildAuthMaterial({ type: 'bearer', token: 'tok' }, undefined, undefined);
+    expect(m.headers).toEqual({ Authorization: 'Bearer tok' });
+  });
+
+  it('defers oauth authorization to the Dapr sidecar', () => {
+    const m = buildAuthMaterial({ type: 'oauth2', endpoint: 'accounts-oauth', daprHttpPort: '3600' }, undefined, undefined);
+    expect(m).toEqual({ headers: {}, query: {}, oauth: { endpoint: 'accounts-oauth', daprHttpPort: '3600' } });
+  });
+
   it('places an apiKey in the scheme-defined header', () => {
     const m = buildAuthMaterial(
       { type: 'apiKey', secret: { kind: 'inline', value: 'k' } },

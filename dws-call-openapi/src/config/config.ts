@@ -6,7 +6,7 @@
  */
 
 export type OutputMode = 'replace' | 'merge';
-export type AuthType = 'none' | 'bearer' | 'basic' | 'apiKey';
+export type AuthType = 'none' | 'bearer' | 'basic' | 'apiKey' | 'oauth2';
 
 /** Where an auth secret comes from: an inline env value or the Dapr secret store. */
 export type SecretRef =
@@ -17,7 +17,12 @@ export type AuthConfig =
   | { readonly type: 'none' }
   | { readonly type: 'bearer'; readonly secret: SecretRef }
   | { readonly type: 'basic'; readonly secret: SecretRef }
-  | { readonly type: 'apiKey'; readonly secret: SecretRef };
+  | { readonly type: 'apiKey'; readonly secret: SecretRef }
+  // Controller-generated auth is injected through Kubernetes Secret env refs.
+  // Keep it distinct from the legacy inline/Dapr secret-store forms above.
+  | { readonly type: 'bearer'; readonly token: string }
+  | { readonly type: 'basic'; readonly username: string; readonly password: string }
+  | { readonly type: 'oauth2'; readonly endpoint: string; readonly daprHttpPort: string };
 
 /** Fully-resolved, validated step configuration. */
 export interface Config {
@@ -173,14 +178,71 @@ function parseTimeout(raw: string | undefined): number {
 }
 
 function parseAuth(env: Env): AuthConfig {
+  const generatedScheme = nonEmpty(env.AUTH_SCHEME);
+  if (generatedScheme !== undefined) {
+    return parseGeneratedAuth(generatedScheme, env);
+  }
+
+  return parseLegacyAuth(env);
+}
+
+/** Parses the pre-existing standalone API-key and Dapr secret-store contract. */
+function parseLegacyAuth(env: Env): AuthConfig {
   const type = (nonEmpty(env.AUTH_TYPE) ?? 'none').toLowerCase();
   if (type === 'none') return { type: 'none' };
   if (type !== 'bearer' && type !== 'basic' && type !== 'apiKey' && type !== 'apikey') {
     throw new ConfigError(`AUTH_TYPE must be one of none|bearer|basic|apiKey, got ${type}`);
   }
   const secret = parseSecretRef(env);
-  const normalized: Exclude<AuthType, 'none'> = type === 'apikey' ? 'apiKey' : (type as 'bearer' | 'basic' | 'apiKey');
-  return { type: normalized, secret };
+  switch (type) {
+    case 'bearer':
+      return { type: 'bearer', secret };
+    case 'basic':
+      return { type: 'basic', secret };
+    // The input was lowercased, so only this branch reaches the legacy API key form.
+    case 'apikey':
+      return { type: 'apiKey', secret };
+    default:
+      throw new ConfigError(`AUTH_TYPE must be one of none|bearer|basic|apiKey, got ${type}`);
+  }
+}
+
+/** Parses controller-generated Kubernetes Secret env values without legacy fallbacks. */
+function parseGeneratedAuth(rawScheme: string, env: Env): AuthConfig {
+  const scheme = rawScheme.toLowerCase();
+  switch (scheme) {
+    case 'none':
+      return { type: 'none' };
+    case 'basic':
+      return {
+        type: 'basic',
+        username: requiredGeneratedAuthValue(env, 'AUTH_USERNAME', scheme),
+        password: requiredGeneratedAuthValue(env, 'AUTH_PASSWORD', scheme),
+      };
+    case 'bearer':
+      return { type: 'bearer', token: requiredGeneratedAuthValue(env, 'AUTH_TOKEN', scheme) };
+    case 'oauth2': {
+      const endpoint = nonEmpty(env.OAUTH_ENDPOINT);
+      if (endpoint === undefined) {
+        throw new ConfigError('OAUTH_ENDPOINT is required when AUTH_SCHEME=oauth2');
+      }
+      return {
+        type: 'oauth2',
+        endpoint,
+        daprHttpPort: nonEmpty(env.DAPR_HTTP_PORT) ?? DEFAULT_DAPR_HTTP_PORT,
+      };
+    }
+    default:
+      throw new ConfigError(`AUTH_SCHEME must be one of none|basic|bearer|oauth2, got ${rawScheme}`);
+  }
+}
+
+function requiredGeneratedAuthValue(env: Env, key: string, scheme: string): string {
+  if (nonEmpty(env[key]) === undefined) {
+    throw new ConfigError(`${key} is required when AUTH_SCHEME=${scheme}`);
+  }
+  // Preserve the secret bytes exactly; whitespace can be a valid credential.
+  return env[key] as string;
 }
 
 function parseSecretRef(env: Env): SecretRef {
