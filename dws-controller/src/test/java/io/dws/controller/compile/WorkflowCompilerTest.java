@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.dws.controller.model.DeploymentPlan;
+import io.dws.controller.model.EnvValue.Literal;
+import io.dws.controller.model.EnvValue.SecretKeyRef;
 import io.dws.controller.model.ImageCatalog;
 import io.dws.controller.model.StepService;
 import io.dws.controller.model.TaskKind;
@@ -31,6 +33,22 @@ class WorkflowCompilerTest {
   private final WorkflowCompiler compiler = new WorkflowCompiler(IMAGES, url -> OPENAPI_DOC);
 
   @Test
+  @DisplayName("step services retain literal and secret-key environment value types")
+  void stepServiceSupportsTypedEnvironmentValues() {
+    StepService step =
+        new StepService(
+            "call-api",
+            TaskKind.CALL_HTTP,
+            "sw-call-http:1.0",
+            Map.of(
+                "AUTH_TOKEN", new SecretKeyRef("API_TOKEN", "value"),
+                "ENDPOINT", new Literal("https://api.example.test")));
+
+    assertThat(step.env().get("AUTH_TOKEN")).isEqualTo(new SecretKeyRef("API_TOKEN", "value"));
+    assertThat(step.env().get("ENDPOINT")).isEqualTo(new Literal("https://api.example.test"));
+  }
+
+  @Test
   @DisplayName("order.yaml compiles to three call-http steps with exact env")
   void orderCompilesToThreeHttpSteps() {
     DeploymentPlan plan = compiler.compile(fixture("order.yaml"));
@@ -47,11 +65,20 @@ class WorkflowCompilerTest {
         .containsExactly("check-inventory", "charge-payment", "notify-out-of-stock");
 
     assertThat(step(plan, "check-inventory").env())
-        .isEqualTo(Map.of("METHOD", "get", "ENDPOINT", "http://inventory.local/api/check"));
+        .isEqualTo(
+            Map.of(
+                "METHOD", new Literal("get"),
+                "ENDPOINT", new Literal("http://inventory.local/api/check")));
     assertThat(step(plan, "charge-payment").env())
-        .isEqualTo(Map.of("METHOD", "post", "ENDPOINT", "http://payment.local/api/charge"));
+        .isEqualTo(
+            Map.of(
+                "METHOD", new Literal("post"),
+                "ENDPOINT", new Literal("http://payment.local/api/charge")));
     assertThat(step(plan, "notify-out-of-stock").env())
-        .isEqualTo(Map.of("METHOD", "post", "ENDPOINT", "http://notify.local/api/oos"));
+        .isEqualTo(
+            Map.of(
+                "METHOD", new Literal("post"),
+                "ENDPOINT", new Literal("http://notify.local/api/oos")));
   }
 
   @Test
@@ -67,7 +94,9 @@ class WorkflowCompilerTest {
     assertThat(plan.orchestrator().replicas()).isEqualTo(1);
     assertThat(plan.orchestrator().env())
         .isEqualTo(
-            Map.of("DEFINITION_STORE", plan.definitionResource(), "DEFINITION_KEY", "definition"));
+            Map.of(
+                "DEFINITION_STORE", new Literal(plan.definitionResource()),
+                "DEFINITION_KEY", new Literal("definition")));
     assertThat(plan.definitionResource()).isEqualTo("dws-def-order-" + plan.versionId());
   }
 
@@ -105,10 +134,12 @@ class WorkflowCompilerTest {
     assertThat(step.name()).isEqualTo("find-pet");
     assertThat(step.kind()).isEqualTo(TaskKind.CALL_OPENAPI);
     assertThat(step.image()).isEqualTo("sw-call-openapi:1.0");
-    assertThat(step.env()).containsEntry("DOCUMENT_URL", "http://petstore.local/openapi.json");
-    assertThat(step.env()).containsEntry("DOCUMENT_SHA256", SpecDigest.sha256Hex(OPENAPI_DOC));
-    assertThat(step.env()).containsEntry("OPERATION_ID", "findPetById");
-    assertThat(step.env().get("PARAMETERS")).contains("petId");
+    assertThat(step.env())
+        .containsEntry("DOCUMENT_URL", new Literal("http://petstore.local/openapi.json"));
+    assertThat(step.env())
+        .containsEntry("DOCUMENT_SHA256", new Literal(SpecDigest.sha256Hex(OPENAPI_DOC)));
+    assertThat(step.env()).containsEntry("OPERATION_ID", new Literal("findPetById"));
+    assertThat(literal(step, "PARAMETERS")).contains("petId");
   }
 
   @Test
@@ -122,12 +153,12 @@ class WorkflowCompilerTest {
     assertThat(step.kind()).isEqualTo(TaskKind.RUN_SHELL);
     assertThat(step.image()).isEqualTo("sw-run-shell:1.0");
     assertThat(step.env())
-        .containsEntry("COMMAND", "./sync.sh")
-        .containsEntry("ENVIRONMENT", "{\"API_TOKEN\":\"abc\"}")
-        .containsEntry("RETURN", "stdout");
+        .containsEntry("COMMAND", new Literal("./sync.sh"))
+        .containsEntry("ENVIRONMENT", new Literal("{\"API_TOKEN\":\"abc\"}"))
+        .containsEntry("RETURN", new Literal("stdout"));
     // ARGUMENTS must be a JSON object with keys in definition order (region, then env — the
     // reverse of alphabetical order, so a key-sorting mapper would produce a different string).
-    assertThat(step.env().get("ARGUMENTS")).isEqualTo("{\"region\":\"eu\",\"env\":\"prod\"}");
+    assertThat(literal(step, "ARGUMENTS")).isEqualTo("{\"region\":\"eu\",\"env\":\"prod\"}");
   }
 
   @Test
@@ -140,9 +171,9 @@ class WorkflowCompilerTest {
     assertThat(step.kind()).isEqualTo(TaskKind.RUN_SCRIPT_JS);
     assertThat(step.image()).isEqualTo("sw-run-script-js:1.0");
     assertThat(step.env())
-        .containsEntry("SCRIPT", "console.log(JSON.stringify({ok: true}));")
-        .containsEntry("ARGUMENTS", "{\"count\":3}")
-        .containsEntry("RETURN", "all");
+        .containsEntry("SCRIPT", new Literal("console.log(JSON.stringify({ok: true}));"))
+        .containsEntry("ARGUMENTS", new Literal("{\"count\":3}"))
+        .containsEntry("RETURN", new Literal("all"));
     assertThat(step.env()).doesNotContainKey("LANGUAGE");
   }
 
@@ -154,7 +185,7 @@ class WorkflowCompilerTest {
     StepService step = plan.steps().get(0);
     assertThat(step.kind()).isEqualTo(TaskKind.RUN_SCRIPT_PYTHON);
     assertThat(step.image()).isEqualTo("sw-run-script-python:1.0");
-    assertThat(step.env()).containsEntry("RETURN", "stdout");
+    assertThat(step.env()).containsEntry("RETURN", new Literal("stdout"));
   }
 
   @Test
@@ -289,7 +320,7 @@ class WorkflowCompilerTest {
     DeploymentPlan plan = compiler.compile(yaml);
 
     assertThat(plan.steps()).hasSize(1);
-    assertThat(plan.steps().get(0).env()).containsEntry("ARGUMENTS", "{\"def\":1}");
+    assertThat(plan.steps().get(0).env()).containsEntry("ARGUMENTS", new Literal("{\"def\":1}"));
   }
 
   @Test
@@ -643,6 +674,10 @@ class WorkflowCompilerTest {
         .filter(s -> s.name().equals(name))
         .findFirst()
         .orElseThrow(() -> new AssertionError("no step " + name));
+  }
+
+  private static String literal(StepService step, String name) {
+    return ((Literal) step.env().get(name)).value();
   }
 
   private static String fixture(String name) {

@@ -20,6 +20,7 @@ import imports.io.dapr.WorkflowAccessPolicySpecRules;
 import imports.io.dapr.WorkflowAccessPolicySpecRulesActivities;
 import imports.io.dapr.WorkflowAccessPolicySpecRulesCallers;
 import io.dws.controller.model.DeploymentPlan;
+import io.dws.controller.model.EnvValue;
 import io.dws.controller.model.OrchestratorSpec;
 import io.dws.controller.model.StepService;
 import io.dws.controller.model.TaskKind;
@@ -238,12 +239,15 @@ public class StackSynthesizer {
     return kind != TaskKind.CALL_OPENAPI;
   }
 
-  private static List<ServiceSpecTemplateSpecContainersEnv> knativeEnv(Map<String, String> env) {
+  private static List<ServiceSpecTemplateSpecContainersEnv> knativeEnv(Map<String, EnvValue> env) {
     List<ServiceSpecTemplateSpecContainersEnv> vars = new ArrayList<>(env.size());
     env.forEach(
         (name, value) ->
             vars.add(
-                ServiceSpecTemplateSpecContainersEnv.builder().name(name).value(value).build()));
+                ServiceSpecTemplateSpecContainersEnv.builder()
+                    .name(name)
+                    .value(literalValue(value))
+                    .build()));
     return vars;
   }
 
@@ -294,10 +298,17 @@ public class StackSynthesizer {
     return annotations;
   }
 
-  private static List<EnvVar> envVars(Map<String, String> env) {
+  private static List<EnvVar> envVars(Map<String, EnvValue> env) {
     List<EnvVar> vars = new ArrayList<>(env.size());
-    env.forEach((name, value) -> vars.add(new EnvVar(name, value, null)));
+    env.forEach((name, value) -> vars.add(new EnvVar(name, literalValue(value), null)));
     return vars;
+  }
+
+  private static String literalValue(EnvValue value) {
+    if (value instanceof EnvValue.Literal literal) {
+      return literal.value();
+    }
+    throw new IllegalArgumentException("Secret environment values require secret-key rendering");
   }
 
   private static GenericKubernetesResource toDynamicResource(Chart chart) {

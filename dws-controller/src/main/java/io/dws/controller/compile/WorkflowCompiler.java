@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import io.dws.controller.model.DeploymentPlan;
+import io.dws.controller.model.EnvValue;
 import io.dws.controller.model.ImageCatalog;
 import io.dws.controller.model.OrchestratorSpec;
 import io.dws.controller.model.StepService;
@@ -95,7 +96,9 @@ public class WorkflowCompiler {
             w,
             ORCHESTRATOR_PORT,
             1,
-            Map.of("DEFINITION_STORE", defResource, "DEFINITION_KEY", DEFINITION_KEY));
+            Map.of(
+                "DEFINITION_STORE", new EnvValue.Literal(defResource),
+                "DEFINITION_KEY", new EnvValue.Literal(DEFINITION_KEY)));
 
     return new DeploymentPlan(
         w, versionId, version, defResource, specText, steps, bindings, orchestrator);
@@ -250,7 +253,7 @@ public class WorkflowCompiler {
 
   private StepService httpStep(String taskName, CallHTTP call) {
     HTTPArguments with = call.getWith();
-    Map<String, String> env = new LinkedHashMap<>();
+    Map<String, EnvValue> env = new LinkedHashMap<>();
     putIfPresent(env, "METHOD", with.getMethod());
     putIfPresent(env, "ENDPOINT", resolveEndpoint(with.getEndpoint()));
     if (with.getHeaders() != null) {
@@ -280,7 +283,7 @@ public class WorkflowCompiler {
 
   private StepService openApiStep(String taskName, CallOpenAPI call) {
     OpenAPIArguments with = call.getWith();
-    Map<String, String> env = new LinkedHashMap<>();
+    Map<String, EnvValue> env = new LinkedHashMap<>();
     String documentUrl =
         with.getDocument() != null ? resolveEndpoint(with.getDocument().getEndpoint()) : null;
     putIfPresent(env, "DOCUMENT_URL", documentUrl);
@@ -305,7 +308,7 @@ public class WorkflowCompiler {
     if (cfg.getRunShell() != null) {
       RunShell runShell = cfg.getRunShell();
       Shell shell = runShell.getShell();
-      Map<String, String> env = new LinkedHashMap<>();
+      Map<String, EnvValue> env = new LinkedHashMap<>();
       putIfPresent(env, "COMMAND", shell.getCommand());
       if (shell.getArguments() != null) {
         putIfPresent(
@@ -315,7 +318,7 @@ public class WorkflowCompiler {
         putIfPresent(
             env, "ENVIRONMENT", toOrderedJson(shell.getEnvironment().getAdditionalProperties()));
       }
-      env.put("RETURN", returnValue(runShell));
+      env.put("RETURN", new EnvValue.Literal(returnValue(runShell)));
       return new StepService(Names.kebab(taskName), TaskKind.RUN_SHELL, images.runShell(), env);
     }
 
@@ -378,7 +381,7 @@ public class WorkflowCompiler {
                       + "' is not supported; use 'js' or 'python'"));
     }
 
-    Map<String, String> env = new LinkedHashMap<>();
+    Map<String, EnvValue> env = new LinkedHashMap<>();
     putIfPresent(env, "SCRIPT", inline.getCode());
     if (inline.getArguments() != null) {
       Map<String, Object> args = inline.getArguments().getAdditionalProperties();
@@ -389,7 +392,7 @@ public class WorkflowCompiler {
       putIfPresent(
           env, "ENVIRONMENT", toOrderedJson(inline.getEnvironment().getAdditionalProperties()));
     }
-    env.put("RETURN", returnValue(runScript));
+    env.put("RETURN", new EnvValue.Literal(returnValue(runScript)));
 
     return new StepService(Names.kebab(taskName), kind, image, env);
   }
@@ -621,9 +624,9 @@ public class WorkflowCompiler {
     }
   }
 
-  private static void putIfPresent(Map<String, String> env, String key, String value) {
+  private static void putIfPresent(Map<String, EnvValue> env, String key, String value) {
     if (value != null && !value.isBlank()) {
-      env.put(key, value);
+      env.put(key, new EnvValue.Literal(value));
     }
   }
 

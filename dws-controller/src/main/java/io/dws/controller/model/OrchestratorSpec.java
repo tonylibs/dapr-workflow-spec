@@ -7,7 +7,7 @@ import java.util.Map;
  * sw-orchestrator} image pointed at the immutable definition ConfigMap.
  */
 public record OrchestratorSpec(
-    String name, String image, String appId, int appPort, int replicas, Map<String, String> env) {
+    String name, String image, String appId, int appPort, int replicas, Map<String, EnvValue> env) {
 
   public OrchestratorSpec {
     env = Map.copyOf(env);

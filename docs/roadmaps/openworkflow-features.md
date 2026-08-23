@@ -52,9 +52,9 @@ flowchart TD
   P2a --> P2b[Phase 2.2: raise ✅]
   P2b --> P2c[Phase 2.3: for ✅]
   P2c --> P2d[Phase 2.4: fork parallel +<br/>generalize nested do ✅]
-  P1 --> P3[Phase 3: Fault Tolerance<br/>Problem Details, timeouts<br/>next up]
+  P1 --> P3[Phase 3: Fault Tolerance<br/>Problem Details, timeouts ✅]
   P2d --> P3
-  P3 --> P4[Phase 4: Authentication + Secrets]
+  P3 --> P4[Phase 4: Authentication + Secrets<br/>current]
   P4 --> P5[Phase 5: Protocol Expansion<br/>gRPC, AsyncAPI, A2A]
   P1 --> P6[Phase 6: Scheduling<br/>cron/every/after/on]
   P4 --> P7[Phase 7: Catalogs + Extensions]
@@ -70,8 +70,8 @@ Data flow is the foundation: retry/catch, extensions, and error handling all rea
 | **0.5** ✅ | Build `dws-run` prebuilt images (shell/script); container/workflow rejected at compile time | `dws-run` component | done — `2026-07-26-dws-run`, merged |
 | **1** ✅ | `input.from/schema`, `output.as/schema`, `export.as/schema`, validation faults | orchestrator | done — `2026-07-27-data-flow-pipeline`, merged |
 | **2** ✅ | `try`/`catch`/`retry`, `raise`, `for`, `fork` (parallel), nested `do` | orchestrator, controller | done — `try-catch-retry`, `raise-task`, `for-task`, `fork-task` |
-| **3** | RFC 7807 error model, standard error types, task/workflow timeouts | orchestrator | opsx — new capability |
-| **4** | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi | opsx — new capability |
+| **3** ✅ | RFC 7807 error model, standard error types, task/workflow timeouts | orchestrator | complete |
+| **4** **(current)** | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi | opsx — new capability |
 | **5** | gRPC, AsyncAPI, A2A call protocols | new `dws-call-grpc`/`dws-call-asyncapi`/`dws-call-a2a` images | opsx — new components |
 | **6** | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) | opsx — new capability |
 | **7** | Catalogs, custom functions, extensions (`before`/`after`), external resources | controller, orchestrator | opsx — new capability |
@@ -96,3 +96,17 @@ introducing the scope-aware task-list runner (`runTaskList`) that every later sl
 - **4 before 5/7**: new protocols and catalogs both need auth to call real external services.
 - **6 is independent**: scheduling only touches the controller's trigger path, not the interpreter — can be pulled forward if needed.
 - **8 last**: read model is a pure consumer of Phase 0's event contract; no orchestrator/controller changes required once events exist.
+
+## 5a. Phase 4 secret extension
+
+Phase 4 adds the DWS-specific `$secrets` scope to `set` and `switch`. Unlike the upstream DSL,
+this can expose secret material through assigned workflow data or selected branches, so authors
+must treat it as potentially leaking data.
+
+## Future spikes
+
+- **Static-credential Dapr Wasm middleware:** Evaluate a workflow-scoped Wasm filter that creates
+  Basic or Bearer `Authorization` headers before Dapr invokes an external endpoint. This is not
+  Phase 4 scope, which retains runner-local Basic/Bearer construction. A spike must assess Wasm
+  artifact ownership and supply chain, secret-derived configuration, request-path isolation, and
+  compatibility with the Dapr runtime pinned by `charts/dws`.
