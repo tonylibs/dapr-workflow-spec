@@ -51,7 +51,7 @@ dependencies:
     repository: oci://registry-1.docker.io/bitnamicharts
     condition: postgresql.enabled
   - name: dapr
-    version: 1.15.4
+    version: 1.18.1
     repository: https://dapr.github.io/helm-charts/
     condition: dapr.enabled
   - name: dex

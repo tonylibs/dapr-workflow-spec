@@ -217,6 +217,8 @@ public class StackSynthesizer {
     return List.of(
         secretMetadata("clientId", middleware.clientId()),
         secretMetadata("clientSecret", middleware.clientSecret()),
+        // Dapr 1.18.1's released middleware splits this metadata on commas. Keep this runtime
+        // contract even though the current component documentation describes a space delimiter.
         valueMetadata("scopes", String.join(",", middleware.scopes())),
         valueMetadata("tokenURL", middleware.tokenUrl()),
         valueMetadata("headerName", "authorization"),

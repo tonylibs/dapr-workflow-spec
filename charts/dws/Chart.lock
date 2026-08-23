@@ -4,12 +4,12 @@ dependencies:
   version: 16.7.27
 - name: dapr
   repository: https://dapr.github.io/helm-charts/
-  version: 1.15.4
+  version: 1.18.1
 - name: dex
   repository: https://charts.dexidp.io
   version: 0.24.1
 - name: redis
   repository: oci://registry-1.docker.io/bitnamicharts
   version: 28.0.6
-digest: sha256:59c5cb98e39d7e6989a2631703aec022776f992e23b38363e0567f5427413466
-generated: "2026-08-19T12:21:37.785034861Z"
+digest: sha256:db58b0b9f2f233d58bbe10044c0ff1eaff2ad7a26b9c87315d81ee5f9bee251d
+generated: "2026-08-23T17:50:08.5121503+07:00"

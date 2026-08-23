@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -267,7 +268,7 @@ class StackSynthesizerTest {
   }
 
   @Test
-  @DisplayName("OAuth middleware uses secret metadata, canonical scopes, and a narrow path filter")
+  @DisplayName("Dapr 1.18.1 OAuth middleware uses comma-delimited scopes and a narrow path filter")
   void oauthMiddlewareUsesSecretMetadataAndNarrowPathFilter() {
     DeploymentPlan plan = compiler.compile(sharedOAuthDefinition());
     OAuthEndpoint descriptor = plan.oauthEndpoints().getFirst();
@@ -298,6 +299,20 @@ class StackSynthesizerTest {
                 "^/v1\\.0/invoke/" + descriptor.name() + "/method(?:/v1/account|/v1/accounts)$"));
     assertThat(metadataEntry(metadata, "clientId")).doesNotContainKey("value");
     assertThat(metadataEntry(metadata, "clientSecret")).doesNotContainKey("value");
+    Pattern pathFilter =
+        Pattern.compile((String) metadataEntry(metadata, "pathFilter").get("value"));
+    assertThat(
+            pathFilter
+                .matcher("/v1.0/invoke/" + descriptor.name() + "/method/v1/account")
+                .matches())
+        .isTrue();
+    assertThat(
+            pathFilter
+                .matcher("/v1.0/invoke/" + descriptor.name() + "/method/v1/unrelated")
+                .matches())
+        .isFalse();
+    assertThat(pathFilter.matcher("/v1.0/invoke/other-endpoint/method/v1/account").matches())
+        .isFalse();
 
     String serialized = Serialization.asJson(component);
     assertThat(serialized)

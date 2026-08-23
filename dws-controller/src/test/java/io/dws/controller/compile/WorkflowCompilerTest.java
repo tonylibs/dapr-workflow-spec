@@ -263,6 +263,44 @@ class WorkflowCompilerTest {
   }
 
   @Test
+  @DisplayName("OAuth2 client_credentials policies reject an empty scope set")
+  void oauthWithEmptyScopesRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: oauth-empty-scopes
+          version: '1.0.0'
+        use:
+          secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET]
+          authentications:
+            accounts:
+              oauth2:
+                authority: https://identity.example.test
+                grant: client_credentials
+                client:
+                  id: ${ $secrets.OAUTH_CLIENT_ID }
+                  secret: ${ $secrets.OAUTH_CLIENT_SECRET }
+                scopes: []
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    use: accounts
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining(
+            "oauth2 client_credentials authentication requires at least one scope");
+  }
+
+  @Test
   @DisplayName("equivalent OAuth2 calls share one canonical endpoint descriptor")
   void equivalentOAuthCallsShareCanonicalEndpoint() {
     String yaml =

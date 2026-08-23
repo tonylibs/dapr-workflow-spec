@@ -123,14 +123,52 @@ Primary references:
 - `dws-controller/src/test/java/io/dws/controller/k8s/StackSynthesizerTest.java`
 - `dws-controller/src/test/resources/fixtures/oauth.yaml`
 
-## Concerns for integration verification
+## Review fix round 1: Dapr 1.18.1 binding
 
-- The repository currently pins Dapr 1.15.4. The 1.15 middleware implementation does not expose
-  the current `pathFilter` option, while the current Dapr documentation and implementation do.
-  Task 6's pinned-version mock-IdP integration must verify the intended isolation and decide whether
-  the deployment requires a Dapr upgrade or another compatibility adjustment.
-- The current Dapr middleware implementation rejects an empty OAuth scopes value, while the DSL
-  compiler currently accepts an empty scope list. Pinned-runtime integration should settle whether
-  the compiler must reject empty scopes or synthesize an accepted default.
+The upgrade path selected during review resolves both original integration concerns:
+
+- `charts/dws/Chart.yaml` now pins the Dapr dependency to stable `1.18.1`.
+- Helm regenerated `Chart.lock` with Dapr `1.18.1` and digest
+  `sha256:db58b0b9f2f233d58bbe10044c0ff1eaff2ad7a26b9c87315d81ee5f9bee251d`.
+- The committed dependency archive changed from `dapr-1.15.4.tgz` to `dapr-1.18.1.tgz`.
+- The controller's existing Dapr CRD bundle remains unchanged. It is already documented as the
+  Dapr 1.18.2 bundle, and the controller suite plus Helm rendering exposed no compatibility reason
+  to regenerate it for the 1.18.1 runtime.
+- The directly affected Open Workflow rollout roadmap now names Dapr 1.18.1 as the chart baseline.
+- OAuth2 `client_credentials` compilation rejects a missing or empty scope set before constructing
+  a deployment plan.
+- Non-empty normalized scopes remain comma-delimited in Component metadata. This is intentional:
+  Dapr 1.18.1's released middleware implementation splits the value on commas even though the
+  current component documentation describes a space-delimited value. See the released source:
+  https://github.com/dapr/components-contrib/blob/release-1.18/middleware/http/oauth2clientcredentials/oauth2clientcredentials_middleware.go
+- The Dapr 1.18.1 compatibility test asserts that the generated anchored `pathFilter` matches the
+  intended external invocation route and rejects both an unrelated path and a different endpoint.
+
+### Review-fix TDD evidence
+
+- RED: `WorkflowCompilerTest#oauthWithEmptyScopesRejected` failed because compilation returned
+  normally for `scopes: []`.
+- GREEN: the focused compiler validation and Dapr synthesis compatibility tests both passed.
+- Full controller suite:
+  `./mvnw -Dexec.skip=true test` -> 90 tests run, 0 failures, 0 errors, 0 skipped; BUILD SUCCESS.
+
+### Helm evidence
+
+- Helm was initially unavailable on `PATH`. The available package manager installed Helm 4.2.4,
+  clearing the lock-generation blocker; no digest was invented.
+- `helm dependency update charts/dws` regenerated the lock and downloaded Dapr 1.18.1.
+- `helm dependency build charts/dws` passed against the regenerated lock after registering the
+  official Dapr and Dex repositories.
+- `helm lint charts/dws` passed: 1 chart linted, 0 failed (only the existing icon recommendation).
+- `helm template dws charts/dws` passed and rendered Dapr resources labeled version 1.18.1.
+
+### Additional review-fix files
+
+- `charts/dws/Chart.yaml`
+- `charts/dws/Chart.lock`
+- `charts/dws/charts/dapr-1.18.1.tgz` (replaces `dapr-1.15.4.tgz`)
+- `docs/roadmaps/openworkflow-features.md`
+- `dws-controller/src/test/java/io/dws/controller/compile/WorkflowCompilerTest.java`
 
 Commit message: `feat: synthesize workflow secret and oauth resources`.
+Review-fix commit message: `fix: bind oauth resources to dapr 1.18.1`.

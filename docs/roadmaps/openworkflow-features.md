@@ -109,4 +109,4 @@ must treat it as potentially leaking data.
   Basic or Bearer `Authorization` headers before Dapr invokes an external endpoint. This is not
   Phase 4 scope, which retains runner-local Basic/Bearer construction. A spike must assess Wasm
   artifact ownership and supply chain, secret-derived configuration, request-path isolation, and
-  compatibility with the Dapr runtime pinned by `charts/dws`.
+  compatibility with the Dapr 1.18.1 runtime pinned by `charts/dws`.
