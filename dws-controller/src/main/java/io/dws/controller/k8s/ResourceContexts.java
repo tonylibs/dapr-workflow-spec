@@ -23,6 +23,24 @@ public final class ResourceContexts {
           .withNamespaced(true)
           .build();
 
+  public static final ResourceDefinitionContext DAPR_HTTP_ENDPOINT =
+      new ResourceDefinitionContext.Builder()
+          .withGroup("dapr.io")
+          .withVersion("v1alpha1")
+          .withKind("HTTPEndpoint")
+          .withPlural("httpendpoints")
+          .withNamespaced(true)
+          .build();
+
+  public static final ResourceDefinitionContext DAPR_CONFIGURATION =
+      new ResourceDefinitionContext.Builder()
+          .withGroup("dapr.io")
+          .withVersion("v1alpha1")
+          .withKind("Configuration")
+          .withPlural("configurations")
+          .withNamespaced(true)
+          .build();
+
   public static final ResourceDefinitionContext WORKFLOW_ACCESS_POLICY =
       new ResourceDefinitionContext.Builder()
           .withGroup("dapr.io")

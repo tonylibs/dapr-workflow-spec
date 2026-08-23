@@ -122,9 +122,7 @@ public class WorkflowCompiler {
             w,
             ORCHESTRATOR_PORT,
             1,
-            Map.of(
-                "DEFINITION_STORE", new EnvValue.Literal(defResource),
-                "DEFINITION_KEY", new EnvValue.Literal(DEFINITION_KEY)));
+            orchestratorEnv(defResource, context.secrets()));
 
     return new DeploymentPlan(
         w,
@@ -141,6 +139,17 @@ public class WorkflowCompiler {
   /** The public version string: {@code <workflow>@v<sha256-8>}. */
   public static String version(String workflow, String versionId) {
     return workflow + "@" + versionId;
+  }
+
+  private static Map<String, EnvValue> orchestratorEnv(
+      String definitionResource, Set<String> secrets) {
+    Map<String, EnvValue> env = new LinkedHashMap<>();
+    env.put("DEFINITION_STORE", new EnvValue.Literal(definitionResource));
+    env.put("DEFINITION_KEY", new EnvValue.Literal(DEFINITION_KEY));
+    for (String secret : secrets) {
+      env.put("SECRET_" + secret, new EnvValue.SecretKeyRef(secret, SECRET_KEY));
+    }
+    return env;
   }
 
   // ---- parsing / validation ------------------------------------------------
