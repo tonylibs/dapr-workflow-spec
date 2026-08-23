@@ -3,10 +3,12 @@ package io.dws.controller.compile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.EnvValue.Literal;
 import io.dws.controller.model.EnvValue.SecretKeyRef;
 import io.dws.controller.model.ImageCatalog;
+import io.dws.controller.model.OAuthEndpoint;
 import io.dws.controller.model.StepService;
 import io.dws.controller.model.TaskKind;
 import io.dws.controller.model.TopicBinding;
@@ -46,6 +48,314 @@ class WorkflowCompilerTest {
 
     assertThat(step.env().get("AUTH_TOKEN")).isEqualTo(new SecretKeyRef("API_TOKEN", "value"));
     assertThat(step.env().get("ENDPOINT")).isEqualTo(new Literal("https://api.example.test"));
+  }
+
+  @Test
+  @DisplayName("a named bearer policy resolves its declared scalar secret")
+  void namedBearerPolicyResolvesDeclaredSecret() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: named-bearer
+          version: '1.0.0'
+        use:
+          secrets: [API_TOKEN]
+          authentications:
+            accounts:
+              bearer:
+                token: ${ $secrets.API_TOKEN }
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    use: accounts
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(step(plan, "get-account").env())
+        .containsEntry("AUTH_SCHEME", new Literal("bearer"))
+        .containsEntry("AUTH_TOKEN", new SecretKeyRef("API_TOKEN", "value"));
+  }
+
+  @Test
+  @DisplayName("an inline basic policy resolves for an OpenAPI call")
+  void inlineBasicPolicyResolvesForOpenApi() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: inline-basic
+          version: '1.0.0'
+        use:
+          secrets: [API_USER, API_PASSWORD]
+        do:
+          - listAccounts:
+              call: openapi
+              with:
+                document:
+                  endpoint:
+                    uri: https://api.example.test/openapi.json
+                    authentication:
+                      basic:
+                        username: ${ $secrets.API_USER }
+                        password: ${ $secrets.API_PASSWORD }
+                operationId: listAccounts
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(step(plan, "list-accounts").env())
+        .containsEntry("AUTH_SCHEME", new Literal("basic"))
+        .containsEntry("AUTH_USERNAME", new SecretKeyRef("API_USER", "value"))
+        .containsEntry("AUTH_PASSWORD", new SecretKeyRef("API_PASSWORD", "value"));
+  }
+
+  @Test
+  @DisplayName("an unknown named authentication policy is rejected")
+  void unknownNamedAuthenticationPolicyRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: unknown-auth
+          version: '1.0.0'
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    use: missing
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("missing");
+  }
+
+  @Test
+  @DisplayName("an authentication policy cannot reference an undeclared scalar secret")
+  void undeclaredAuthenticationSecretRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: undeclared-secret
+          version: '1.0.0'
+        use:
+          secrets: [OTHER_TOKEN]
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    bearer:
+                      token: ${ $secrets.API_TOKEN }
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("API_TOKEN")
+        .hasMessageContaining("not declared");
+  }
+
+  @Test
+  @DisplayName("a literal credential is rejected instead of entering the deployment plan")
+  void literalAuthenticationCredentialRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: literal-secret
+          version: '1.0.0'
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    bearer:
+                      token: plaintext-test-token
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("credential")
+        .hasMessageContaining("declared secret")
+        .hasMessageNotContaining("plaintext-test-token");
+  }
+
+  @Test
+  @DisplayName("duplicate scalar secret declarations are rejected")
+  void duplicateScalarSecretDeclarationRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: duplicate-secret
+          version: '1.0.0'
+        use:
+          secrets: [API_TOKEN, API_TOKEN]
+        do:
+          - finish:
+              set:
+                done: true
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("Duplicate secret declaration")
+        .hasMessageContaining("API_TOKEN");
+  }
+
+  @Test
+  @DisplayName("OAuth2 grants other than client_credentials are rejected")
+  void unsupportedOAuthGrantRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: oauth-password
+          version: '1.0.0'
+        use:
+          secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET]
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    oauth2:
+                      authority: https://identity.example.test
+                      grant: password
+                      client:
+                        id: ${ $secrets.OAUTH_CLIENT_ID }
+                        secret: ${ $secrets.OAUTH_CLIENT_SECRET }
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("client_credentials");
+  }
+
+  @Test
+  @DisplayName("equivalent OAuth2 calls share one canonical endpoint descriptor")
+  void equivalentOAuthCallsShareCanonicalEndpoint() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: oauth-accounts
+          version: '1.0.0'
+        use:
+          secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET]
+          authentications:
+            accounts:
+              oauth2:
+                authority: https://identity.example.test
+                grant: client_credentials
+                client:
+                  id: ${ $secrets.OAUTH_CLIENT_ID }
+                  secret: ${ $secrets.OAUTH_CLIENT_SECRET }
+                endpoints:
+                  token: /oauth/token
+                scopes: [accounts.read]
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    use: accounts
+          - listAccounts:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/accounts
+                  authentication:
+                    use: accounts
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(plan.oauthEndpoints()).hasSize(1);
+    OAuthEndpoint endpoint = plan.oauthEndpoints().getFirst();
+    assertThat(endpoint.baseUrl()).isEqualTo("https://api.example.test");
+    assertThat(endpoint.paths()).containsExactlyInAnyOrder("/v1/account", "/v1/accounts");
+    assertThat(endpoint.appIds()).containsExactlyInAnyOrder("get-account", "list-accounts");
+    assertThat(endpoint.middleware().tokenUrl())
+        .isEqualTo("https://identity.example.test/oauth/token");
+    assertThat(endpoint.middleware().clientId())
+        .isEqualTo(new SecretKeyRef("OAUTH_CLIENT_ID", "value"));
+    assertThat(endpoint.middleware().clientSecret())
+        .isEqualTo(new SecretKeyRef("OAUTH_CLIENT_SECRET", "value"));
+    assertThat(endpoint.middleware().scopes()).containsExactly("accounts.read");
+    assertThat(plan.steps())
+        .allSatisfy(
+            service ->
+                assertThat(service.env())
+                    .containsEntry("AUTH_SCHEME", new Literal("oauth2"))
+                    .containsEntry("OAUTH_ENDPOINT", new Literal(endpoint.name())));
+  }
+
+  @Test
+  @DisplayName("compiled authentication descriptors never contain credential plaintext")
+  void compiledAuthenticationContainsNoCredentialPlaintext() throws Exception {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: safe-auth
+          version: '1.0.0'
+        use:
+          secrets: [API_USER, API_PASSWORD]
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    basic:
+                      username: ${ $secrets.API_USER }
+                      password: ${ $secrets.API_PASSWORD }
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+    String serializedPlan = new ObjectMapper().writeValueAsString(plan);
+
+    assertThat(serializedPlan).doesNotContain("alice", "correct-horse-battery-staple");
+    assertThat(plan.specText()).doesNotContain("alice", "correct-horse-battery-staple");
+    assertThat(step(plan, "get-account").env().values())
+        .allMatch(value -> value instanceof Literal || value instanceof SecretKeyRef);
   }
 
   @Test

@@ -6,24 +6,37 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.EnvValue;
 import io.dws.controller.model.ImageCatalog;
+import io.dws.controller.model.OAuthEndpoint;
+import io.dws.controller.model.OAuthMiddleware;
 import io.dws.controller.model.OrchestratorSpec;
 import io.dws.controller.model.StepService;
 import io.dws.controller.model.TaskKind;
 import io.dws.controller.model.TopicBinding;
 import io.serverlessworkflow.api.WorkflowFormat;
 import io.serverlessworkflow.api.WorkflowReader;
+import io.serverlessworkflow.api.types.AuthenticationPolicyUnion;
+import io.serverlessworkflow.api.types.BasicAuthenticationPolicy;
+import io.serverlessworkflow.api.types.BasicAuthenticationProperties;
+import io.serverlessworkflow.api.types.BearerAuthenticationPolicy;
+import io.serverlessworkflow.api.types.BearerAuthenticationProperties;
 import io.serverlessworkflow.api.types.CallHTTP;
 import io.serverlessworkflow.api.types.CallOpenAPI;
 import io.serverlessworkflow.api.types.CallTask;
 import io.serverlessworkflow.api.types.Document;
 import io.serverlessworkflow.api.types.EmitTask;
 import io.serverlessworkflow.api.types.Endpoint;
+import io.serverlessworkflow.api.types.EndpointConfiguration;
 import io.serverlessworkflow.api.types.EndpointUri;
 import io.serverlessworkflow.api.types.ForTask;
 import io.serverlessworkflow.api.types.ForkTask;
 import io.serverlessworkflow.api.types.HTTPArguments;
 import io.serverlessworkflow.api.types.InlineScript;
+import io.serverlessworkflow.api.types.OAuth2AuthenticationData;
+import io.serverlessworkflow.api.types.OAuth2AuthenticationDataClient;
+import io.serverlessworkflow.api.types.OAuth2AuthenticationPolicy;
+import io.serverlessworkflow.api.types.OAuth2ConnectAuthenticationProperties;
 import io.serverlessworkflow.api.types.OpenAPIArguments;
+import io.serverlessworkflow.api.types.ReferenceableAuthenticationPolicy;
 import io.serverlessworkflow.api.types.RunScript;
 import io.serverlessworkflow.api.types.RunShell;
 import io.serverlessworkflow.api.types.RunTask;
@@ -36,12 +49,19 @@ import io.serverlessworkflow.api.types.TaskItem;
 import io.serverlessworkflow.api.types.TryTask;
 import io.serverlessworkflow.api.types.UriTemplate;
 import io.serverlessworkflow.api.types.Workflow;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Pure compile pass: parse + validate an Open Workflow Specification DSL 1.0 definition and walk it
@@ -52,6 +72,9 @@ public class WorkflowCompiler {
 
   private static final int ORCHESTRATOR_PORT = 8080;
   private static final String DEFINITION_KEY = "definition";
+  private static final String SECRET_KEY = "value";
+  private static final Pattern SECRET_REFERENCE =
+      Pattern.compile("^\\$\\{\\s*\\$secrets\\.([A-Za-z0-9][A-Za-z0-9_.-]*)\\s*}$");
 
   private final ImageCatalog images;
   private final OpenApiDocumentFetcher documentFetcher;
@@ -85,9 +108,12 @@ public class WorkflowCompiler {
     String version = version(w, versionId);
     String defResource = Names.definitionResource(w, versionId);
 
+    CompileContext context =
+        new CompileContext(
+            w, versionId, declaredSecrets(workflow), declaredAuthentications(workflow));
     List<StepService> steps = new ArrayList<>();
     List<TopicBinding> bindings = new ArrayList<>();
-    walk(workflow.getDo(), steps, bindings);
+    walk(workflow.getDo(), steps, bindings, context);
 
     OrchestratorSpec orchestrator =
         new OrchestratorSpec(
@@ -101,7 +127,15 @@ public class WorkflowCompiler {
                 "DEFINITION_KEY", new EnvValue.Literal(DEFINITION_KEY)));
 
     return new DeploymentPlan(
-        w, versionId, version, defResource, specText, steps, bindings, orchestrator);
+        w,
+        versionId,
+        version,
+        defResource,
+        specText,
+        steps,
+        bindings,
+        orchestrator,
+        context.oauthEndpoints());
   }
 
   /** The public version string: {@code <workflow>@v<sha256-8>}. */
@@ -158,6 +192,16 @@ public class WorkflowCompiler {
     if (workflow.getDo() == null || workflow.getDo().isEmpty()) {
       errors.add("Workflow has no 'do' tasks");
     }
+    Set<String> secretNames = new LinkedHashSet<>();
+    if (workflow.getUse() != null && workflow.getUse().getSecrets() != null) {
+      for (String secret : workflow.getUse().getSecrets()) {
+        if (isBlank(secret)) {
+          errors.add("Secret declarations must be non-empty scalar names");
+        } else if (!secretNames.add(secret)) {
+          errors.add("Duplicate secret declaration '" + secret + "'");
+        }
+      }
+    }
     for (String duplicate : duplicateTaskNames(workflow.getDo())) {
       errors.add(
           "Duplicate task name '"
@@ -210,7 +254,11 @@ public class WorkflowCompiler {
 
   // ---- task walk -----------------------------------------------------------
 
-  private void walk(List<TaskItem> tasks, List<StepService> steps, List<TopicBinding> bindings) {
+  private void walk(
+      List<TaskItem> tasks,
+      List<StepService> steps,
+      List<TopicBinding> bindings,
+      CompileContext context) {
     if (tasks == null) {
       return;
     }
@@ -219,9 +267,9 @@ public class WorkflowCompiler {
       Task task = item.getTask();
       CallTask call = task.getCallTask();
       if (call != null && call.getCallHTTP() != null) {
-        steps.add(httpStep(taskName, call.getCallHTTP()));
+        steps.add(httpStep(taskName, call.getCallHTTP(), context));
       } else if (call != null && call.getCallOpenAPI() != null) {
-        steps.add(openApiStep(taskName, call.getCallOpenAPI()));
+        steps.add(openApiStep(taskName, call.getCallOpenAPI(), context));
       } else if (task.getRunTask() != null) {
         steps.add(runStep(taskName, task.getRunTask()));
       } else if (task.getEmitTask() != null) {
@@ -233,29 +281,31 @@ public class WorkflowCompiler {
         // ordinary tasks and need their own step services — the orchestrator invokes them by the
         // same kebab-cased app-id it uses for a top-level task.
         TryTask tryTask = task.getTryTask();
-        walk(tryTask.getTry(), steps, bindings);
+        walk(tryTask.getTry(), steps, bindings, context);
         if (tryTask.getCatch() != null) {
-          walk(tryTask.getCatch().getDo(), steps, bindings);
+          walk(tryTask.getCatch().getDo(), steps, bindings, context);
         }
       } else if (task.getForkTask() != null) {
         // Same reasoning as try: a fork task deploys nothing itself, but each branch's task is
         // dispatched exactly like a top-level task, so it needs its own step service/binding.
-        walk(task.getForkTask().getFork().getBranches(), steps, bindings);
+        walk(task.getForkTask().getFork().getBranches(), steps, bindings, context);
       } else if (task.getForTask() != null) {
         // Same reasoning again: the body of for.do is dispatched once per iteration exactly like
         // a top-level task list.
-        walk(task.getForTask().getDo(), steps, bindings);
+        walk(task.getForTask().getDo(), steps, bindings, context);
       }
       // switch/set/wait/raise deploy nothing themselves; their nested container types (try, fork,
       // for) are all walked above.
     }
   }
 
-  private StepService httpStep(String taskName, CallHTTP call) {
+  private StepService httpStep(String taskName, CallHTTP call, CompileContext context) {
     HTTPArguments with = call.getWith();
     Map<String, EnvValue> env = new LinkedHashMap<>();
     putIfPresent(env, "METHOD", with.getMethod());
-    putIfPresent(env, "ENDPOINT", resolveEndpoint(with.getEndpoint()));
+    String endpoint = resolveEndpoint(with.getEndpoint());
+    putIfPresent(env, "ENDPOINT", endpoint);
+    applyAuth(env, resolveAuth(taskName, with.getEndpoint(), endpoint, context));
     if (with.getHeaders() != null) {
       if (with.getHeaders().getHTTPHeaders() != null) {
         putIfPresent(
@@ -281,12 +331,15 @@ public class WorkflowCompiler {
     return new StepService(Names.kebab(taskName), TaskKind.CALL_HTTP, images.callHttp(), env);
   }
 
-  private StepService openApiStep(String taskName, CallOpenAPI call) {
+  private StepService openApiStep(String taskName, CallOpenAPI call, CompileContext context) {
     OpenAPIArguments with = call.getWith();
     Map<String, EnvValue> env = new LinkedHashMap<>();
     String documentUrl =
         with.getDocument() != null ? resolveEndpoint(with.getDocument().getEndpoint()) : null;
     putIfPresent(env, "DOCUMENT_URL", documentUrl);
+    if (with.getDocument() != null) {
+      applyAuth(env, resolveAuth(taskName, with.getDocument().getEndpoint(), documentUrl, context));
+    }
     if (documentUrl != null) {
       putIfPresent(
           env, "DOCUMENT_SHA256", SpecDigest.sha256Hex(documentFetcher.fetch(documentUrl)));
@@ -559,6 +612,308 @@ public class WorkflowCompiler {
     String type = emit.getEmit().getEvent().getWith().getType();
     String topic = type != null ? type : taskName;
     return java.util.Optional.of(new TopicBinding(taskName, TopicBinding.Direction.EMIT, topic));
+  }
+
+  // ---- secret / authentication resolution --------------------------------
+
+  private static Set<String> declaredSecrets(Workflow workflow) {
+    if (workflow.getUse() == null || workflow.getUse().getSecrets() == null) {
+      return Set.of();
+    }
+    return Collections.unmodifiableSet(new LinkedHashSet<>(workflow.getUse().getSecrets()));
+  }
+
+  private static Map<String, AuthenticationPolicyUnion> declaredAuthentications(Workflow workflow) {
+    if (workflow.getUse() == null || workflow.getUse().getAuthentications() == null) {
+      return Map.of();
+    }
+    return Collections.unmodifiableMap(
+        new LinkedHashMap<>(workflow.getUse().getAuthentications().getAdditionalProperties()));
+  }
+
+  private ResolvedAuth resolveAuth(
+      String taskName, Endpoint endpoint, String endpointUrl, CompileContext context) {
+    EndpointConfiguration configuration =
+        endpoint == null ? null : endpoint.getEndpointConfiguration();
+    ReferenceableAuthenticationPolicy reference =
+        configuration == null ? null : configuration.getAuthentication();
+    if (reference == null) {
+      return ResolvedAuth.NONE;
+    }
+
+    AuthenticationPolicyUnion policy;
+    if (reference.getAuthenticationPolicyReference() != null) {
+      String name = reference.getAuthenticationPolicyReference().getUse();
+      policy = context.authentications().get(name);
+      if (policy == null) {
+        throw invalid(taskName, "authentication policy '" + name + "' is not declared");
+      }
+    } else {
+      policy = reference.getAuthenticationPolicy();
+    }
+    if (policy == null) {
+      throw invalid(taskName, "authentication policy is empty or unrecognized");
+    }
+    return resolveAuthPolicy(taskName, endpointUrl, policy, context);
+  }
+
+  private ResolvedAuth resolveAuthPolicy(
+      String taskName,
+      String endpointUrl,
+      AuthenticationPolicyUnion policy,
+      CompileContext context) {
+    BasicAuthenticationPolicy basic = policy.getBasicAuthenticationPolicy();
+    if (basic != null) {
+      if (basic.getBasic() == null || basic.getBasic().getBasicAuthenticationProperties() == null) {
+        throw invalid(
+            taskName,
+            "basic authentication must declare username and password as scalar secret references");
+      }
+      BasicAuthenticationProperties properties =
+          basic.getBasic().getBasicAuthenticationProperties();
+      return new ResolvedAuth(
+          AuthScheme.BASIC,
+          Map.of(
+              "AUTH_USERNAME",
+              secretRef(taskName, "basic username", properties.getUsername(), context),
+              "AUTH_PASSWORD",
+              secretRef(taskName, "basic password", properties.getPassword(), context)),
+          Optional.empty());
+    }
+
+    BearerAuthenticationPolicy bearer = policy.getBearerAuthenticationPolicy();
+    if (bearer != null) {
+      if (bearer.getBearer() == null
+          || bearer.getBearer().getBearerAuthenticationProperties() == null) {
+        throw invalid(
+            taskName, "bearer authentication must declare a token as a scalar secret reference");
+      }
+      BearerAuthenticationProperties properties =
+          bearer.getBearer().getBearerAuthenticationProperties();
+      return new ResolvedAuth(
+          AuthScheme.BEARER,
+          Map.of("AUTH_TOKEN", secretRef(taskName, "bearer token", properties.getToken(), context)),
+          Optional.empty());
+    }
+
+    OAuth2AuthenticationPolicy oauth = policy.getOAuth2AuthenticationPolicy();
+    if (oauth != null) {
+      if (oauth.getOauth2() == null
+          || oauth.getOauth2().getOAuth2ConnectAuthenticationProperties() == null) {
+        throw invalid(
+            taskName, "oauth2 authentication must use an inline client_credentials configuration");
+      }
+      OAuth2ConnectAuthenticationProperties properties =
+          oauth.getOauth2().getOAuth2ConnectAuthenticationProperties();
+      if (properties.getGrant()
+          != OAuth2AuthenticationData.OAuth2AuthenticationDataGrant.CLIENT_CREDENTIALS) {
+        throw invalid(taskName, "oauth2 authentication supports only the client_credentials grant");
+      }
+      OAuth2AuthenticationDataClient client = properties.getClient();
+      if (client == null) {
+        throw invalid(taskName, "oauth2 client_credentials authentication requires a client");
+      }
+      if (!isBlank(client.getAssertion())) {
+        throw invalid(
+            taskName, "oauth2 client assertions are not supported for client_credentials");
+      }
+      String clientAuthentication =
+          client.getAuthentication() == null
+              ? OAuth2AuthenticationDataClient.ClientAuthentication.CLIENT_SECRET_POST.value()
+              : client.getAuthentication().value();
+      OAuthMiddleware middleware =
+          new OAuthMiddleware(
+              oauthTokenUrl(taskName, properties),
+              secretRef(taskName, "oauth2 client id", client.getId(), context),
+              secretRef(taskName, "oauth2 client secret", client.getSecret(), context),
+              clientAuthentication,
+              properties.getScopes() == null ? List.of() : properties.getScopes());
+      String oauthEndpoint = context.registerOAuth(taskName, endpointUrl, middleware);
+      return new ResolvedAuth(AuthScheme.OAUTH2, Map.of(), Optional.of(oauthEndpoint));
+    }
+
+    throw invalid(taskName, "authentication type is unsupported; use basic, bearer, or oauth2");
+  }
+
+  private static EnvValue.SecretKeyRef secretRef(
+      String taskName, String field, String expression, CompileContext context) {
+    Matcher matcher =
+        expression == null ? SECRET_REFERENCE.matcher("") : SECRET_REFERENCE.matcher(expression);
+    if (!matcher.matches()) {
+      throw invalid(
+          taskName, field + " credential must reference a declared secret as ${ $secrets.NAME }");
+    }
+    String name = matcher.group(1);
+    if (!context.secrets().contains(name)) {
+      throw invalid(taskName, field + " references secret '" + name + "' which is not declared");
+    }
+    return new EnvValue.SecretKeyRef(name, SECRET_KEY);
+  }
+
+  private static String oauthTokenUrl(
+      String taskName, OAuth2ConnectAuthenticationProperties properties) {
+    String authority = uriString(properties.getAuthority());
+    if (isBlank(authority)) {
+      throw invalid(taskName, "oauth2 client_credentials authentication requires an authority");
+    }
+    URI authorityUri = absoluteUri(taskName, authority, "oauth2 authority");
+    String tokenPath =
+        properties.getEndpoints() == null ? "/oauth2/token" : properties.getEndpoints().getToken();
+    if (isBlank(tokenPath)) {
+      throw invalid(taskName, "oauth2 token endpoint must not be empty");
+    }
+    return authorityUri.resolve(tokenPath).normalize().toString();
+  }
+
+  private static void applyAuth(Map<String, EnvValue> env, ResolvedAuth auth) {
+    if (auth.scheme() == AuthScheme.NONE) {
+      return;
+    }
+    env.put("AUTH_SCHEME", new EnvValue.Literal(auth.scheme().value));
+    env.putAll(auth.credentials());
+    auth.oauthEndpoint().ifPresent(name -> env.put("OAUTH_ENDPOINT", new EnvValue.Literal(name)));
+  }
+
+  private static CompilationException invalid(String taskName, String message) {
+    return new CompilationException(List.of("task '" + taskName + "': " + message));
+  }
+
+  private enum AuthScheme {
+    NONE("none"),
+    BASIC("basic"),
+    BEARER("bearer"),
+    OAUTH2("oauth2");
+
+    private final String value;
+
+    AuthScheme(String value) {
+      this.value = value;
+    }
+  }
+
+  private record ResolvedAuth(
+      AuthScheme scheme,
+      Map<String, EnvValue.SecretKeyRef> credentials,
+      Optional<String> oauthEndpoint) {
+
+    private static final ResolvedAuth NONE =
+        new ResolvedAuth(AuthScheme.NONE, Map.of(), Optional.empty());
+
+    private ResolvedAuth {
+      credentials = Map.copyOf(credentials);
+    }
+  }
+
+  private record OAuthKey(String baseUrl, OAuthMiddleware middleware) {}
+
+  private static final class OAuthAccumulator {
+
+    private final String name;
+    private final String baseUrl;
+    private final OAuthMiddleware middleware;
+    private final Set<String> paths = new LinkedHashSet<>();
+    private final Set<String> appIds = new LinkedHashSet<>();
+
+    private OAuthAccumulator(String name, String baseUrl, OAuthMiddleware middleware) {
+      this.name = name;
+      this.baseUrl = baseUrl;
+      this.middleware = middleware;
+    }
+
+    private OAuthEndpoint descriptor() {
+      return new OAuthEndpoint(name, baseUrl, paths, appIds, middleware);
+    }
+  }
+
+  private static final class CompileContext {
+
+    private final String workflow;
+    private final String versionId;
+    private final Set<String> secrets;
+    private final Map<String, AuthenticationPolicyUnion> authentications;
+    private final Map<OAuthKey, OAuthAccumulator> oauth = new LinkedHashMap<>();
+
+    private CompileContext(
+        String workflow,
+        String versionId,
+        Set<String> secrets,
+        Map<String, AuthenticationPolicyUnion> authentications) {
+      this.workflow = workflow;
+      this.versionId = versionId;
+      this.secrets = secrets;
+      this.authentications = authentications;
+    }
+
+    private Set<String> secrets() {
+      return secrets;
+    }
+
+    private Map<String, AuthenticationPolicyUnion> authentications() {
+      return authentications;
+    }
+
+    private String registerOAuth(String taskName, String endpointUrl, OAuthMiddleware middleware) {
+      EndpointTarget target = endpointTarget(taskName, endpointUrl);
+      OAuthKey key = new OAuthKey(target.baseUrl(), middleware);
+      OAuthAccumulator endpoint =
+          oauth.computeIfAbsent(
+              key,
+              ignored ->
+                  new OAuthAccumulator(
+                      oauthName(workflow, versionId, key), key.baseUrl(), middleware));
+      endpoint.paths.add(target.path());
+      endpoint.appIds.add(Names.kebab(taskName));
+      return endpoint.name;
+    }
+
+    private List<OAuthEndpoint> oauthEndpoints() {
+      return oauth.values().stream().map(OAuthAccumulator::descriptor).toList();
+    }
+  }
+
+  private record EndpointTarget(String baseUrl, String path) {}
+
+  private static EndpointTarget endpointTarget(String taskName, String endpointUrl) {
+    if (isBlank(endpointUrl)) {
+      throw invalid(taskName, "oauth2 authentication requires a static endpoint URI");
+    }
+    URI uri = absoluteUri(taskName, endpointUrl, "oauth2 endpoint");
+    if (uri.getRawAuthority() == null || uri.getUserInfo() != null) {
+      throw invalid(taskName, "oauth2 endpoint must identify an external host without user info");
+    }
+    String baseUrl =
+        uri.getScheme().toLowerCase(Locale.ROOT)
+            + "://"
+            + uri.getRawAuthority().toLowerCase(Locale.ROOT);
+    String path = isBlank(uri.getRawPath()) ? "/" : uri.getRawPath();
+    return new EndpointTarget(baseUrl, path);
+  }
+
+  private static URI absoluteUri(String taskName, String value, String field) {
+    try {
+      URI uri = URI.create(value);
+      if (!uri.isAbsolute()) {
+        throw new IllegalArgumentException("relative");
+      }
+      return uri;
+    } catch (IllegalArgumentException e) {
+      throw invalid(taskName, field + " must be a static absolute URI");
+    }
+  }
+
+  private static String oauthName(String workflow, String versionId, OAuthKey key) {
+    OAuthMiddleware middleware = key.middleware();
+    String canonical =
+        String.join(
+            "\n",
+            key.baseUrl(),
+            middleware.tokenUrl(),
+            middleware.clientId().name(),
+            middleware.clientSecret().name(),
+            middleware.clientAuthentication(),
+            String.join("\u001f", middleware.scopes()));
+    String hash = SpecDigest.sha256Hex(canonical.getBytes(StandardCharsets.UTF_8)).substring(0, 8);
+    return workflow + "-" + versionId + "-oauth-" + hash;
   }
 
   // ---- endpoint / json helpers --------------------------------------------

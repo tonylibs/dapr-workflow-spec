@@ -155,7 +155,7 @@ class WorkflowResourceTest {
         .statusCode(200)
         .body("workflow", equalTo("order"))
         .body("steps", hasSize(3))
-        .body("orchestrator.env.DEFINITION_KEY", equalTo("definition"));
+        .body("orchestrator.env.DEFINITION_KEY.value", equalTo("definition"));
   }
 
   @Test
