@@ -735,13 +735,17 @@ public class WorkflowCompiler {
         throw invalid(
             taskName, "oauth2 client_credentials authentication requires at least one scope");
       }
+      if (scopes.stream().anyMatch(scope -> scope == null || scope.isBlank())) {
+        throw invalid(taskName, "oauth2 scopes must not contain blank entries");
+      }
+      List<String> normalizedScopes = scopes.stream().map(String::strip).toList();
       OAuthMiddleware middleware =
           new OAuthMiddleware(
               oauthTokenUrl(taskName, properties),
               secretRef(taskName, "oauth2 client id", client.getId(), context),
               secretRef(taskName, "oauth2 client secret", client.getSecret(), context),
               clientAuthentication,
-              scopes);
+              normalizedScopes);
       String oauthEndpoint = context.registerOAuth(taskName, endpointUrl, middleware);
       return new ResolvedAuth(AuthScheme.OAUTH2, Map.of(), Optional.of(oauthEndpoint));
     }

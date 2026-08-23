@@ -20,6 +20,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class WorkflowCompilerTest {
 
@@ -265,39 +267,30 @@ class WorkflowCompilerTest {
   @Test
   @DisplayName("OAuth2 client_credentials policies reject an empty scope set")
   void oauthWithEmptyScopesRejected() {
-    String yaml =
-        """
-        document:
-          dsl: '1.0.0'
-          namespace: default
-          name: oauth-empty-scopes
-          version: '1.0.0'
-        use:
-          secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET]
-          authentications:
-            accounts:
-              oauth2:
-                authority: https://identity.example.test
-                grant: client_credentials
-                client:
-                  id: ${ $secrets.OAUTH_CLIENT_ID }
-                  secret: ${ $secrets.OAUTH_CLIENT_SECRET }
-                scopes: []
-        do:
-          - getAccount:
-              call: http
-              with:
-                method: get
-                endpoint:
-                  uri: https://api.example.test/v1/account
-                  authentication:
-                    use: accounts
-        """;
-
-    assertThatThrownBy(() -> compiler.compile(yaml))
+    assertThatThrownBy(() -> compiler.compile(oauthDefinitionWithScopes("")))
         .isInstanceOf(CompilationException.class)
         .hasMessageContaining(
             "oauth2 client_credentials authentication requires at least one scope");
+  }
+
+  @ParameterizedTest(name = "scope entry {0} is rejected")
+  @ValueSource(strings = {"''", "'   '"})
+  @DisplayName("OAuth2 client_credentials policies reject blank scope entries")
+  void oauthWithBlankScopeEntryRejected(String scopeEntry) {
+    assertThatThrownBy(() -> compiler.compile(oauthDefinitionWithScopes(scopeEntry)))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("oauth2 scopes must not contain blank entries");
+  }
+
+  @Test
+  @DisplayName("OAuth2 scope entries are trimmed before canonicalization")
+  void oauthScopeEntriesAreTrimmed() {
+    DeploymentPlan plan =
+        compiler.compile(
+            oauthDefinitionWithScopes("' accounts.write ', 'accounts.read ', 'accounts.read'"));
+
+    assertThat(plan.oauthEndpoints().getFirst().middleware().scopes())
+        .containsExactly("accounts.read", "accounts.write");
   }
 
   @Test
@@ -1116,6 +1109,37 @@ class WorkflowCompilerTest {
         .extracting(StepService::name)
         .containsExactly("check-inventory", "charge-payment", "notify-out-of-stock");
     assertThat(plan.bindings()).isEmpty();
+  }
+
+  private static String oauthDefinitionWithScopes(String scopeEntries) {
+    return """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: oauth-scope-validation
+          version: '1.0.0'
+        use:
+          secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET]
+          authentications:
+            accounts:
+              oauth2:
+                authority: https://identity.example.test
+                grant: client_credentials
+                client:
+                  id: ${ $secrets.OAUTH_CLIENT_ID }
+                  secret: ${ $secrets.OAUTH_CLIENT_SECRET }
+                scopes: [%s]
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    use: accounts
+        """
+        .formatted(scopeEntries);
   }
 
   private static StepService step(DeploymentPlan plan, String name) {

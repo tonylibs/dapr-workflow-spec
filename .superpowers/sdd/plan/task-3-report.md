@@ -172,3 +172,26 @@ The upgrade path selected during review resolves both original integration conce
 
 Commit message: `feat: synthesize workflow secret and oauth resources`.
 Review-fix commit message: `fix: bind oauth resources to dapr 1.18.1`.
+
+## Review fix round 2: OAuth scope-entry validation
+
+Compiler validation now rejects every null, empty-string, or whitespace-only OAuth scope entry
+before constructing `OAuthMiddleware`, the DeploymentPlan, or Dapr metadata. Retained entries are
+stripped before the existing sorted-set canonicalization, so padded duplicates collapse to the same
+normalized scope and no surrounding whitespace reaches the comma-delimited Component value.
+
+### Round-2 TDD evidence
+
+- RED: the focused test run produced three expected failures. Empty-string and whitespace-only
+  entries compiled successfully, while padded entries remained distinct untrimmed values.
+- GREEN: four focused cases passed: the existing empty-list rejection, empty-string rejection,
+  whitespace-only rejection, and stripping/deduplication of valid entries.
+- Full controller suite:
+  `./mvnw -Dexec.skip=true test` -> 93 tests run, 0 failures, 0 errors, 0 skipped; BUILD SUCCESS.
+
+### Round-2 files
+
+- `dws-controller/src/main/java/io/dws/controller/compile/WorkflowCompiler.java`
+- `dws-controller/src/test/java/io/dws/controller/compile/WorkflowCompilerTest.java`
+
+Round-2 commit message: `fix: validate oauth scope entries`.
