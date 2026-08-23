@@ -1,5 +1,6 @@
 package io.dws.controller.compile;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -60,6 +61,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -75,6 +77,9 @@ public class WorkflowCompiler {
   private static final String SECRET_KEY = "value";
   private static final Pattern SECRET_REFERENCE =
       Pattern.compile("^\\$\\{\\s*\\$secrets\\.([A-Za-z0-9][A-Za-z0-9_.-]*)\\s*}$");
+  private static final Pattern OPENAPI_SERVER_VARIABLE = Pattern.compile("\\{([^{}]+)}");
+  private static final Set<String> HTTP_METHODS =
+      Set.of("get", "put", "post", "delete", "options", "head", "patch", "trace");
 
   private final ImageCatalog images;
   private final OpenApiDocumentFetcher documentFetcher;
@@ -346,12 +351,25 @@ public class WorkflowCompiler {
     String documentUrl =
         with.getDocument() != null ? resolveEndpoint(with.getDocument().getEndpoint()) : null;
     putIfPresent(env, "DOCUMENT_URL", documentUrl);
-    if (with.getDocument() != null) {
-      applyAuth(env, resolveAuth(taskName, with.getDocument().getEndpoint(), documentUrl, context));
+    byte[] document = documentUrl == null ? null : documentFetcher.fetch(documentUrl);
+    ReferenceableAuthenticationPolicy authentication = with.getAuthentication();
+    if (authentication == null && with.getDocument() != null) {
+      authentication = endpointAuthentication(with.getDocument().getEndpoint());
     }
-    if (documentUrl != null) {
-      putIfPresent(
-          env, "DOCUMENT_SHA256", SpecDigest.sha256Hex(documentFetcher.fetch(documentUrl)));
+    if (authentication != null) {
+      ReferenceableAuthenticationPolicy selectedAuthentication = authentication;
+      applyAuth(
+          env,
+          resolveAuth(
+              taskName,
+              selectedAuthentication,
+              () ->
+                  effectiveOpenApiOAuthEndpoint(
+                      taskName, documentUrl, document, with.getOperationId()),
+              context));
+    }
+    if (document != null) {
+      putIfPresent(env, "DOCUMENT_SHA256", SpecDigest.sha256Hex(document));
     }
     putIfPresent(env, "OPERATION_ID", with.getOperationId());
     if (with.getParameters() != null) {
@@ -642,13 +660,18 @@ public class WorkflowCompiler {
 
   private ResolvedAuth resolveAuth(
       String taskName, Endpoint endpoint, String endpointUrl, CompileContext context) {
-    EndpointConfiguration configuration =
-        endpoint == null ? null : endpoint.getEndpointConfiguration();
-    ReferenceableAuthenticationPolicy reference =
-        configuration == null ? null : configuration.getAuthentication();
+    ReferenceableAuthenticationPolicy reference = endpointAuthentication(endpoint);
     if (reference == null) {
       return ResolvedAuth.NONE;
     }
+    return resolveAuth(taskName, reference, () -> endpointUrl, context);
+  }
+
+  private ResolvedAuth resolveAuth(
+      String taskName,
+      ReferenceableAuthenticationPolicy reference,
+      Supplier<String> oauthEndpoint,
+      CompileContext context) {
 
     AuthenticationPolicyUnion policy;
     if (reference.getAuthenticationPolicyReference() != null) {
@@ -663,12 +686,12 @@ public class WorkflowCompiler {
     if (policy == null) {
       throw invalid(taskName, "authentication policy is empty or unrecognized");
     }
-    return resolveAuthPolicy(taskName, endpointUrl, policy, context);
+    return resolveAuthPolicy(taskName, oauthEndpoint, policy, context);
   }
 
   private ResolvedAuth resolveAuthPolicy(
       String taskName,
-      String endpointUrl,
+      Supplier<String> oauthEndpoint,
       AuthenticationPolicyUnion policy,
       CompileContext context) {
     BasicAuthenticationPolicy basic = policy.getBasicAuthenticationPolicy();
@@ -746,8 +769,8 @@ public class WorkflowCompiler {
               secretRef(taskName, "oauth2 client secret", client.getSecret(), context),
               clientAuthentication,
               normalizedScopes);
-      String oauthEndpoint = context.registerOAuth(taskName, endpointUrl, middleware);
-      return new ResolvedAuth(AuthScheme.OAUTH2, Map.of(), Optional.of(oauthEndpoint));
+      String endpointName = context.registerOAuth(taskName, oauthEndpoint.get(), middleware);
+      return new ResolvedAuth(AuthScheme.OAUTH2, Map.of(), Optional.of(endpointName));
     }
 
     throw invalid(taskName, "authentication type is unsupported; use basic, bearer, or oauth2");
@@ -795,6 +818,133 @@ public class WorkflowCompiler {
   private static CompilationException invalid(String taskName, String message) {
     return new CompilationException(List.of("task '" + taskName + "': " + message));
   }
+
+  private static ReferenceableAuthenticationPolicy endpointAuthentication(Endpoint endpoint) {
+    EndpointConfiguration configuration =
+        endpoint == null ? null : endpoint.getEndpointConfiguration();
+    return configuration == null ? null : configuration.getAuthentication();
+  }
+
+  private static String effectiveOpenApiOAuthEndpoint(
+      String taskName, String documentUrl, byte[] document, String operationId) {
+    if (isBlank(documentUrl) || document == null) {
+      throw invalid(taskName, "OpenAPI OAuth requires a static document URI");
+    }
+
+    JsonNode api = parseOpenApiDocument(taskName, document);
+    OpenApiOperation operation = findOpenApiOperation(taskName, api, operationId);
+    JsonNode server =
+        firstServer(operation.operation().get("servers"))
+            .or(() -> firstServer(operation.pathItem().get("servers")))
+            .or(() -> firstServer(api.get("servers")))
+            .orElse(null);
+    String serverUrl = server == null ? "/" : textValue(server.get("url"));
+    if (isBlank(serverUrl)) {
+      throw invalid(taskName, "OpenAPI OAuth server must declare a usable URL");
+    }
+
+    String expandedServer = expandOpenApiServer(taskName, serverUrl, server);
+    URI serverUri;
+    try {
+      serverUri = URI.create(expandedServer);
+    } catch (IllegalArgumentException e) {
+      throw invalid(taskName, "OpenAPI OAuth server URL is invalid");
+    }
+
+    URI effective = serverUri;
+    if (!serverUri.isAbsolute()) {
+      URI documentUri = httpUri(documentUrl);
+      if (documentUri == null) {
+        throw invalid(
+            taskName, "OpenAPI OAuth relative server requires an HTTP(S) document URL as its base");
+      }
+      effective = documentUri.resolve(serverUri).normalize();
+    }
+
+    if (!isHttp(effective)
+        || effective.getRawAuthority() == null
+        || effective.getUserInfo() != null) {
+      throw invalid(taskName, "OpenAPI OAuth server must be an HTTP(S) URL without user info");
+    }
+    return effective.toString();
+  }
+
+  private static JsonNode parseOpenApiDocument(String taskName, byte[] document) {
+    try {
+      String text = new String(document, StandardCharsets.UTF_8);
+      return detectFormat(text).mapper().readTree(document);
+    } catch (Exception e) {
+      throw invalid(taskName, "OpenAPI OAuth requires a parseable OpenAPI document");
+    }
+  }
+
+  private static OpenApiOperation findOpenApiOperation(
+      String taskName, JsonNode api, String operationId) {
+    JsonNode paths = api.get("paths");
+    if (isBlank(operationId) || paths == null || !paths.isObject()) {
+      throw invalid(taskName, "OpenAPI OAuth operationId was not found in the document");
+    }
+    for (var path : paths.properties()) {
+      JsonNode pathItem = path.getValue();
+      if (!pathItem.isObject()) {
+        continue;
+      }
+      for (var field : pathItem.properties()) {
+        JsonNode candidate = field.getValue();
+        if (HTTP_METHODS.contains(field.getKey().toLowerCase(Locale.ROOT))
+            && candidate.isObject()
+            && operationId.equals(textValue(candidate.get("operationId")))) {
+          return new OpenApiOperation(pathItem, candidate);
+        }
+      }
+    }
+    throw invalid(taskName, "OpenAPI OAuth operationId '" + operationId + "' was not found");
+  }
+
+  private static Optional<JsonNode> firstServer(JsonNode servers) {
+    if (servers == null || !servers.isArray() || servers.isEmpty() || !servers.get(0).isObject()) {
+      return Optional.empty();
+    }
+    return Optional.of(servers.get(0));
+  }
+
+  private static String expandOpenApiServer(String taskName, String serverUrl, JsonNode server) {
+    JsonNode variables = server == null ? null : server.get("variables");
+    Matcher matcher = OPENAPI_SERVER_VARIABLE.matcher(serverUrl);
+    StringBuffer expanded = new StringBuffer();
+    while (matcher.find()) {
+      JsonNode definition = variables == null ? null : variables.get(matcher.group(1));
+      String value = definition == null ? null : textValue(definition.get("default"));
+      if (value == null) {
+        throw invalid(
+            taskName,
+            "OpenAPI OAuth server URL has unresolved variable '" + matcher.group(1) + "'");
+      }
+      matcher.appendReplacement(expanded, Matcher.quoteReplacement(value));
+    }
+    matcher.appendTail(expanded);
+    return expanded.toString();
+  }
+
+  private static String textValue(JsonNode node) {
+    return node != null && node.isTextual() ? node.textValue() : null;
+  }
+
+  private static URI httpUri(String value) {
+    try {
+      URI uri = URI.create(value);
+      return isHttp(uri) && uri.getRawAuthority() != null ? uri : null;
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
+  }
+
+  private static boolean isHttp(URI uri) {
+    return uri.getScheme() != null
+        && (uri.getScheme().equalsIgnoreCase("http") || uri.getScheme().equalsIgnoreCase("https"));
+  }
+
+  private record OpenApiOperation(JsonNode pathItem, JsonNode operation) {}
 
   private enum AuthScheme {
     NONE("none"),

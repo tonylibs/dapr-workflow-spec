@@ -123,6 +123,80 @@ class WorkflowCompilerTest {
   }
 
   @Test
+  @DisplayName("OpenAPI OAuth targets the API server when the document is a file URL")
+  void openApiOAuthUsesApiServerForFileDocument() {
+    WorkflowCompiler openApiCompiler =
+        new WorkflowCompiler(
+            IMAGES, ignored -> openApiDocument("https://accounts.example.test/api/v2"));
+
+    DeploymentPlan plan =
+        openApiCompiler.compile(openApiOAuthDefinition("file:///contracts/accounts.json"));
+
+    assertThat(plan.oauthEndpoints())
+        .singleElement()
+        .satisfies(
+            endpoint -> {
+              assertThat(endpoint.baseUrl()).isEqualTo("https://accounts.example.test");
+              assertThat(endpoint.paths()).containsExactly("/api/v2");
+            });
+  }
+
+  @Test
+  @DisplayName("OpenAPI OAuth targets an absolute API server instead of the HTTP document host")
+  void openApiOAuthUsesApiServerDifferentFromHttpDocument() {
+    WorkflowCompiler openApiCompiler =
+        new WorkflowCompiler(
+            IMAGES, ignored -> openApiDocument("https://accounts.example.test/api/v2"));
+
+    DeploymentPlan plan =
+        openApiCompiler.compile(
+            openApiOAuthDefinition("https://definitions.example.test/openapi/accounts.json"));
+
+    assertThat(plan.oauthEndpoints())
+        .singleElement()
+        .satisfies(
+            endpoint -> {
+              assertThat(endpoint.baseUrl()).isEqualTo("https://accounts.example.test");
+              assertThat(endpoint.paths()).containsExactly("/api/v2");
+            });
+  }
+
+  @Test
+  @DisplayName("OpenAPI OAuth resolves a relative API server against the HTTP document URL")
+  void openApiOAuthResolvesRelativeServerAgainstHttpDocument() {
+    WorkflowCompiler openApiCompiler =
+        new WorkflowCompiler(IMAGES, ignored -> openApiDocument("../api/v2"));
+
+    DeploymentPlan plan =
+        openApiCompiler.compile(
+            openApiOAuthDefinition("https://definitions.example.test/contracts/accounts.json"));
+
+    assertThat(plan.oauthEndpoints())
+        .singleElement()
+        .satisfies(
+            endpoint -> {
+              assertThat(endpoint.baseUrl()).isEqualTo("https://definitions.example.test");
+              assertThat(endpoint.paths()).containsExactly("/api/v2");
+            });
+  }
+
+  @Test
+  @DisplayName("OpenAPI OAuth rejects an API server that is not HTTP or HTTPS")
+  void openApiOAuthRejectsNonHttpServer() {
+    WorkflowCompiler openApiCompiler =
+        new WorkflowCompiler(IMAGES, ignored -> openApiDocument("file:///srv/accounts"));
+
+    assertThatThrownBy(
+            () ->
+                openApiCompiler.compile(
+                    openApiOAuthDefinition(
+                        "https://definitions.example.test/openapi/accounts.json")))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("OpenAPI OAuth server")
+        .hasMessageContaining("HTTP(S)");
+  }
+
+  @Test
   @DisplayName("an unknown named authentication policy is rejected")
   void unknownNamedAuthenticationPolicyRejected() {
     String yaml =
@@ -1140,6 +1214,57 @@ class WorkflowCompilerTest {
                     use: accounts
         """
         .formatted(scopeEntries);
+  }
+
+  private static String openApiOAuthDefinition(String documentUrl) {
+    return """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: openapi-oauth-server
+          version: '1.0.0'
+        use:
+          secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET]
+          authentications:
+            accounts:
+              oauth2:
+                authority: https://identity.example.test
+                grant: client_credentials
+                client:
+                  id: ${ $secrets.OAUTH_CLIENT_ID }
+                  secret: ${ $secrets.OAUTH_CLIENT_SECRET }
+                scopes: [accounts.read]
+        do:
+          - listAccounts:
+              call: openapi
+              with:
+                document:
+                  endpoint: %s
+                operationId: listAccounts
+                authentication:
+                  use: accounts
+        """
+        .formatted(documentUrl);
+  }
+
+  private static byte[] openApiDocument(String serverUrl) {
+    return """
+        {
+          "openapi": "3.0.3",
+          "info": {"title": "Accounts", "version": "1.0.0"},
+          "servers": [{"url": "%s"}],
+          "paths": {
+            "/accounts": {
+              "get": {
+                "operationId": "listAccounts",
+                "responses": {"200": {"description": "ok"}}
+              }
+            }
+          }
+        }
+        """
+        .formatted(serverUrl)
+        .getBytes(StandardCharsets.UTF_8);
   }
 
   private static StepService step(DeploymentPlan plan, String name) {
