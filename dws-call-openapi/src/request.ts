@@ -44,14 +44,22 @@ export function buildOutboundRequest(
   return applyAuth(built.url, built.method, built.headers, built.body, engine.auth);
 }
 
-function applyAuth(
+export function applyAuth(
   url: string,
   method: string,
   headers: Readonly<Record<string, string>>,
   body: unknown,
   auth: AuthMaterial,
 ): OutboundRequest {
-  const mergedHeaders = { ...headers, ...auth.headers };
+  // HTTP header names are case-insensitive. A Swagger-built lower-case
+  // `authorization` would otherwise survive alongside the canonical generated
+  // `Authorization`, and undici can send the stale value. Only Basic/Bearer
+  // provide this header, so API-key behavior is left untouched.
+  const authSuppliesAuthorization = Object.keys(auth.headers).some((name) => name.toLowerCase() === 'authorization');
+  const baseHeaders = authSuppliesAuthorization
+    ? Object.fromEntries(Object.entries(headers).filter(([name]) => name.toLowerCase() !== 'authorization'))
+    : headers;
+  const mergedHeaders = { ...baseHeaders, ...auth.headers };
 
   let finalUrl = url;
   const queryEntries = Object.entries(auth.query);

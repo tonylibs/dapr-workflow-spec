@@ -6,8 +6,10 @@
  * swagger-client's internal serialization.
  */
 import { describe, expect, it } from 'vitest';
+import { buildAuthMaterial } from '../src/auth.js';
 import { buildEngine, type Engine } from '../src/openapi/engine.js';
 import { loadConfig } from '../src/config/config.js';
+import { applyAuth } from '../src/request.js';
 import { prepareOutbound } from '../src/runner.js';
 import { baseEnv, templatedEnv } from './helpers.js';
 
@@ -64,6 +66,22 @@ describe('buildRequest contract - encoding and servers', () => {
 });
 
 describe('buildRequest contract - auth layering', () => {
+  it('replaces a lowercase prebuilt authorization header with generated basic auth', () => {
+    const generated = buildAuthMaterial({ type: 'basic', username: 'alice', password: 'pw' }, undefined, undefined);
+    const request = applyAuth(
+      'https://upstream.test/orders',
+      'GET',
+      { authorization: 'static-credential', 'X-Trace': 'trace-1' },
+      undefined,
+      generated,
+    );
+
+    expect(request.headers.Authorization).toBe(`Basic ${Buffer.from('alice:pw').toString('base64')}`);
+    expect(request.headers.authorization).toBeUndefined();
+    expect(Object.keys(request.headers).filter((name) => name.toLowerCase() === 'authorization')).toHaveLength(1);
+    expect(request.headers['X-Trace']).toBe('trace-1');
+  });
+
   it('adds an apiKey query parameter from resolved auth material', async () => {
     const engine = await engineFor(
       baseEnv({ PARAMETERS: '{"petId":".petId"}', AUTH_TYPE: 'apiKey', AUTH_SECRET: 'k9' }),
