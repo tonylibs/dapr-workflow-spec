@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.dws.controller.k8s.StackSynthesizer;
 import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.EnvValue.Literal;
 import io.dws.controller.model.EnvValue.SecretKeyRef;
@@ -12,6 +13,7 @@ import io.dws.controller.model.OAuthEndpoint;
 import io.dws.controller.model.StepService;
 import io.dws.controller.model.TaskKind;
 import io.dws.controller.model.TopicBinding;
+import io.fabric8.kubernetes.api.model.ConfigMap;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -322,6 +324,105 @@ class WorkflowCompilerTest {
                 assertThat(service.env())
                     .containsEntry("AUTH_SCHEME", new Literal("oauth2"))
                     .containsEntry("OAUTH_ENDPOINT", new Literal(endpoint.name())));
+  }
+
+  @Test
+  @DisplayName("OAuth scope order and repetition do not split equivalent endpoint descriptors")
+  void oauthScopesAreCanonicalizedAsASet() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: canonical-oauth-scopes
+          version: '1.0.0'
+        use:
+          secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET]
+          authentications:
+            firstPolicy:
+              oauth2:
+                authority: https://identity.example.test
+                grant: client_credentials
+                client:
+                  id: ${ $secrets.OAUTH_CLIENT_ID }
+                  secret: ${ $secrets.OAUTH_CLIENT_SECRET }
+                endpoints:
+                  token: /oauth/token
+                scopes: [accounts.write, accounts.read, accounts.read]
+            secondPolicy:
+              oauth2:
+                authority: https://identity.example.test
+                grant: client_credentials
+                client:
+                  id: ${ $secrets.OAUTH_CLIENT_ID }
+                  secret: ${ $secrets.OAUTH_CLIENT_SECRET }
+                endpoints:
+                  token: /oauth/token
+                scopes: [accounts.read, accounts.write]
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    use: firstPolicy
+          - listAccounts:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/accounts
+                  authentication:
+                    use: secondPolicy
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(plan.oauthEndpoints()).hasSize(1);
+    OAuthEndpoint endpoint = plan.oauthEndpoints().getFirst();
+    assertThat(endpoint.paths()).containsExactlyInAnyOrder("/v1/account", "/v1/accounts");
+    assertThat(endpoint.appIds()).containsExactlyInAnyOrder("get-account", "list-accounts");
+    assertThat(endpoint.middleware().scopes()).containsExactly("accounts.read", "accounts.write");
+    assertThat(plan.steps())
+        .extracting(service -> service.env().get("OAUTH_ENDPOINT"))
+        .containsOnly(new Literal(endpoint.name()));
+  }
+
+  @Test
+  @DisplayName("the synthesized definition ConfigMap contains no credential plaintext")
+  void synthesizedDefinitionConfigMapContainsNoCredentialPlaintext() {
+    String representativeCredential = "correct-horse-battery-staple";
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: config-map-safe-auth
+          version: '1.0.0'
+        use:
+          secrets: [API_TOKEN]
+          authentications:
+            accounts:
+              bearer:
+                token: ${ $secrets.API_TOKEN }
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    use: accounts
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+    ConfigMap definition = new StackSynthesizer().definitionConfigMap(plan, "default");
+    String payload = definition.getData().get("definition");
+
+    assertThat(payload).isEqualTo(yaml).doesNotContain(representativeCredential);
   }
 
   @Test
