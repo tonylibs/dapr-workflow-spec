@@ -1,0 +1,27 @@
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: oauth-apply
+  version: '1.0.0'
+use:
+  secrets: [oauthclientid, oauthclientsecret]
+  authentications:
+    accounts:
+      oauth2:
+        authority: https://identity.example.test
+        grant: client_credentials
+        client:
+          id: ${ $secrets.oauthclientid }
+          secret: ${ $secrets.oauthclientsecret }
+        endpoints:
+          token: /oauth/token
+        scopes: [accounts.read]
+do:
+  - getAccount:
+      call: http
+      with:
+        method: get
+        endpoint:
+          uri: https://api.example.test/v1/account
+          authentication:
+            use: accounts

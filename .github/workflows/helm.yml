@@ -11,6 +11,11 @@ on:
       - 'charts/**'
       - '.github/workflows/helm.yml'
   workflow_dispatch:
+    inputs:
+      dapr_version:
+        description: Dapr Helm chart version for the OAuth path-filter integration probe
+        required: false
+        default: '1.18.1'
 
 concurrency:
   group: helm-chart-${{ github.workflow }}-${{ github.ref }}
@@ -18,6 +23,9 @@ concurrency:
 
 env:
   CHART_DIR: charts/dws
+  # The OAuth integration job installs this exact version independently of the chart so a
+  # maintainer can exercise a newer compatible Dapr release without changing Chart.yaml.
+  DAPR_VERSION: ${{ inputs.dapr_version || '1.18.1' }}
   # OCI registry namespace for the packaged chart: ghcr.io/<owner>/charts
   OCI_REGISTRY: ghcr.io/${{ github.repository_owner }}/charts
 
@@ -319,11 +327,35 @@ jobs:
             exit 1
           fi
 
+  integration-oauth-path-filter:
+    name: OAuth pathFilter with Dapr ${{ inputs.dapr_version || '1.18.1' }}
+    runs-on: ubuntu-latest
+    needs: verify
+    # This deliberately uses an isolated Dapr release instead of the full chart install: no
+    # published controller/runner image is needed to prove Dapr's appHttpPipeline behavior. The
+    # fixture applies the same version-scoped resource shape StackSynthesizer emits for a step.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+
+      - name: Verify OAuth endpoint path isolation
+        run: bash ./scripts/verify-dapr-oauth-path-filter.sh
+
   release:
     name: package & push (OCI)
     # Publish only on merge to the default branch — PRs verify but never push.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: verify
+    # A chart release must also have passed the live Dapr OAuth path-isolation probe. Without this
+    # dependency GitHub could publish after `verify` succeeded while the independent probe failed.
+    needs: [verify, integration-oauth-path-filter]
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -47,8 +47,7 @@ export async function buildEngine(config: Config): Promise<Engine> {
   const apiKeyScheme = findApiKeyScheme(spec);
   const server = readServer(spec, config.serverVariables);
 
-  const secret =
-    config.auth.type === 'none' ? undefined : await resolveSecret(config.auth.secret, config.daprHttpPort);
+  const secret = 'secret' in config.auth ? await resolveSecret(config.auth.secret, config.daprHttpPort) : undefined;
   const auth = buildAuthMaterial(config.auth, secret, apiKeyScheme);
 
   return { config, spec, template, validator, server, auth };

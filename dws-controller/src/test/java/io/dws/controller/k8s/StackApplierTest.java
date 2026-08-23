@@ -97,6 +97,50 @@ class StackApplierTest {
   }
 
   @Test
+  @DisplayName("apply creates the scoped OAuth endpoint, middleware, and sidecar configuration")
+  void createsOAuthResources() {
+    DeploymentPlan plan = compiler.compile(fixture("oauth.yaml"));
+    String resourceName = plan.oauthEndpoints().getFirst().name();
+
+    applier.apply(plan);
+
+    GenericKubernetesResource endpoint =
+        client
+            .genericKubernetesResources(ResourceContexts.DAPR_HTTP_ENDPOINT)
+            .inNamespace(NAMESPACE)
+            .withName(resourceName)
+            .get();
+    GenericKubernetesResource component =
+        client
+            .genericKubernetesResources(ResourceContexts.DAPR_COMPONENT)
+            .inNamespace(NAMESPACE)
+            .withName(resourceName)
+            .get();
+    GenericKubernetesResource configuration =
+        client
+            .genericKubernetesResources(ResourceContexts.DAPR_CONFIGURATION)
+            .inNamespace(NAMESPACE)
+            .withName(resourceName)
+            .get();
+
+    assertThat(endpoint).isNotNull();
+    assertThat(component).isNotNull();
+    assertThat(configuration).isNotNull();
+    assertThat(endpoint.getMetadata().getLabels())
+        .containsEntry(Labels.WORKFLOW, "oauth-apply")
+        .containsEntry(Labels.VERSION, plan.versionId());
+    assertThat(component.getAdditionalProperties()).containsEntry("scopes", List.of("get-account"));
+    assertThat(
+            client
+                .genericKubernetesResources(ResourceContexts.KNATIVE_SERVICE)
+                .inNamespace(NAMESPACE)
+                .withName("get-account")
+                .get()
+                .getAdditionalProperties())
+        .isNotEmpty();
+  }
+
+  @Test
   @DisplayName("apply creates one Dapr-enabled Knative Service per step")
   void createsKnativeServicePerStep() {
     DeploymentPlan plan = compiler.compile(fixture("order.yaml"));

@@ -3,17 +3,25 @@ package io.dws.controller.compile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.dws.controller.k8s.StackSynthesizer;
 import io.dws.controller.model.DeploymentPlan;
+import io.dws.controller.model.EnvValue.Literal;
+import io.dws.controller.model.EnvValue.SecretKeyRef;
 import io.dws.controller.model.ImageCatalog;
+import io.dws.controller.model.OAuthEndpoint;
 import io.dws.controller.model.StepService;
 import io.dws.controller.model.TaskKind;
 import io.dws.controller.model.TopicBinding;
+import io.fabric8.kubernetes.api.model.ConfigMap;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class WorkflowCompilerTest {
 
@@ -29,6 +37,588 @@ class WorkflowCompilerTest {
       "OPENAPI-DOCUMENT-BYTES".getBytes(StandardCharsets.UTF_8);
 
   private final WorkflowCompiler compiler = new WorkflowCompiler(IMAGES, url -> OPENAPI_DOC);
+
+  @Test
+  @DisplayName("step services retain literal and secret-key environment value types")
+  void stepServiceSupportsTypedEnvironmentValues() {
+    StepService step =
+        new StepService(
+            "call-api",
+            TaskKind.CALL_HTTP,
+            "sw-call-http:1.0",
+            Map.of(
+                "AUTH_TOKEN", new SecretKeyRef("apitoken", "value"),
+                "ENDPOINT", new Literal("https://api.example.test")));
+
+    assertThat(step.env().get("AUTH_TOKEN")).isEqualTo(new SecretKeyRef("apitoken", "value"));
+    assertThat(step.env().get("ENDPOINT")).isEqualTo(new Literal("https://api.example.test"));
+  }
+
+  @Test
+  @DisplayName("a named bearer policy resolves its declared scalar secret")
+  void namedBearerPolicyResolvesDeclaredSecret() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: named-bearer
+          version: '1.0.0'
+        use:
+          secrets: [apitoken]
+          authentications:
+            accounts:
+              bearer:
+                token: ${ $secrets.apitoken }
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    use: accounts
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(step(plan, "get-account").env())
+        .containsEntry("AUTH_SCHEME", new Literal("bearer"))
+        .containsEntry("AUTH_TOKEN", new SecretKeyRef("apitoken", "value"));
+  }
+
+  @Test
+  @DisplayName("DNS-1123 secret names use jq bracket notation when referenced by authentication")
+  void dns1123SecretNameCanUseJqBracketNotation() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: bearer-dns-name
+          version: '1.0.0'
+        use:
+          secrets: [api-token]
+          authentications:
+            accounts:
+              bearer:
+                token: '${ $secrets["api-token"] }'
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://accounts.example.test/me
+                  authentication:
+                    use: accounts
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(step(plan, "get-account").env())
+        .containsEntry("AUTH_TOKEN", new SecretKeyRef("api-token", "value"));
+  }
+
+  @Test
+  @DisplayName("an inline basic policy resolves for an OpenAPI call")
+  void inlineBasicPolicyResolvesForOpenApi() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: inline-basic
+          version: '1.0.0'
+        use:
+          secrets: [apiuser, apipassword]
+        do:
+          - listAccounts:
+              call: openapi
+              with:
+                document:
+                  endpoint:
+                    uri: https://api.example.test/openapi.json
+                    authentication:
+                      basic:
+                        username: ${ $secrets.apiuser }
+                        password: ${ $secrets.apipassword }
+                operationId: listAccounts
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(step(plan, "list-accounts").env())
+        .containsEntry("AUTH_SCHEME", new Literal("basic"))
+        .containsEntry("AUTH_USERNAME", new SecretKeyRef("apiuser", "value"))
+        .containsEntry("AUTH_PASSWORD", new SecretKeyRef("apipassword", "value"));
+  }
+
+  @Test
+  @DisplayName("OpenAPI OAuth targets the API server when the document is a file URL")
+  void openApiOAuthUsesApiServerForFileDocument() {
+    WorkflowCompiler openApiCompiler =
+        new WorkflowCompiler(
+            IMAGES, ignored -> openApiDocument("https://accounts.example.test/api/v2"));
+
+    DeploymentPlan plan =
+        openApiCompiler.compile(openApiOAuthDefinition("file:///contracts/accounts.json"));
+
+    assertThat(plan.oauthEndpoints())
+        .singleElement()
+        .satisfies(
+            endpoint -> {
+              assertThat(endpoint.baseUrl()).isEqualTo("https://accounts.example.test");
+              assertThat(endpoint.paths()).containsExactly("/api/v2");
+            });
+  }
+
+  @Test
+  @DisplayName("OpenAPI OAuth targets an absolute API server instead of the HTTP document host")
+  void openApiOAuthUsesApiServerDifferentFromHttpDocument() {
+    WorkflowCompiler openApiCompiler =
+        new WorkflowCompiler(
+            IMAGES, ignored -> openApiDocument("https://accounts.example.test/api/v2"));
+
+    DeploymentPlan plan =
+        openApiCompiler.compile(
+            openApiOAuthDefinition("https://definitions.example.test/openapi/accounts.json"));
+
+    assertThat(plan.oauthEndpoints())
+        .singleElement()
+        .satisfies(
+            endpoint -> {
+              assertThat(endpoint.baseUrl()).isEqualTo("https://accounts.example.test");
+              assertThat(endpoint.paths()).containsExactly("/api/v2");
+            });
+  }
+
+  @Test
+  @DisplayName("OpenAPI OAuth resolves a relative API server against the HTTP document URL")
+  void openApiOAuthResolvesRelativeServerAgainstHttpDocument() {
+    WorkflowCompiler openApiCompiler =
+        new WorkflowCompiler(IMAGES, ignored -> openApiDocument("../api/v2"));
+
+    DeploymentPlan plan =
+        openApiCompiler.compile(
+            openApiOAuthDefinition("https://definitions.example.test/contracts/accounts.json"));
+
+    assertThat(plan.oauthEndpoints())
+        .singleElement()
+        .satisfies(
+            endpoint -> {
+              assertThat(endpoint.baseUrl()).isEqualTo("https://definitions.example.test");
+              assertThat(endpoint.paths()).containsExactly("/api/v2");
+            });
+  }
+
+  @Test
+  @DisplayName("OpenAPI OAuth rejects an API server that is not HTTP or HTTPS")
+  void openApiOAuthRejectsNonHttpServer() {
+    WorkflowCompiler openApiCompiler =
+        new WorkflowCompiler(IMAGES, ignored -> openApiDocument("file:///srv/accounts"));
+
+    assertThatThrownBy(
+            () ->
+                openApiCompiler.compile(
+                    openApiOAuthDefinition(
+                        "https://definitions.example.test/openapi/accounts.json")))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("OpenAPI OAuth server")
+        .hasMessageContaining("HTTP(S)");
+  }
+
+  @Test
+  @DisplayName("an unknown named authentication policy is rejected")
+  void unknownNamedAuthenticationPolicyRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: unknown-auth
+          version: '1.0.0'
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    use: missing
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("missing");
+  }
+
+  @Test
+  @DisplayName("an authentication policy cannot reference an undeclared scalar secret")
+  void undeclaredAuthenticationSecretRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: undeclared-secret
+          version: '1.0.0'
+        use:
+          secrets: [othertoken]
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    bearer:
+                      token: ${ $secrets.apitoken }
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("apitoken")
+        .hasMessageContaining("not declared");
+  }
+
+  @Test
+  @DisplayName("a literal credential is rejected instead of entering the deployment plan")
+  void literalAuthenticationCredentialRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: literal-secret
+          version: '1.0.0'
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    bearer:
+                      token: plaintext-test-token
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("credential")
+        .hasMessageContaining("declared secret")
+        .hasMessageNotContaining("plaintext-test-token");
+  }
+
+  @Test
+  @DisplayName("duplicate scalar secret declarations are rejected")
+  void duplicateScalarSecretDeclarationRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: duplicate-secret
+          version: '1.0.0'
+        use:
+          secrets: [apitoken, apitoken]
+        do:
+          - finish:
+              set:
+                done: true
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("Duplicate secret declaration")
+        .hasMessageContaining("apitoken");
+  }
+
+  @Test
+  @DisplayName("scalar secret declarations must be DNS-1123 Kubernetes Secret names")
+  void scalarSecretDeclarationMustBeDns1123Name() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: invalid-secret-name
+          version: '1.0.0'
+        use:
+          secrets: [API_TOKEN]
+        do:
+          - finish:
+              set:
+                done: true
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("DNS-1123");
+  }
+
+  @Test
+  @DisplayName("OAuth2 grants other than client_credentials are rejected")
+  void unsupportedOAuthGrantRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: oauth-password
+          version: '1.0.0'
+        use:
+          secrets: [oauthclientid, oauthclientsecret]
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    oauth2:
+                      authority: https://identity.example.test
+                      grant: password
+                      client:
+                        id: ${ $secrets.oauthclientid }
+                        secret: ${ $secrets.oauthclientsecret }
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("client_credentials");
+  }
+
+  @Test
+  @DisplayName("OAuth2 client_credentials policies reject an empty scope set")
+  void oauthWithEmptyScopesRejected() {
+    assertThatThrownBy(() -> compiler.compile(oauthDefinitionWithScopes("")))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining(
+            "oauth2 client_credentials authentication requires at least one scope");
+  }
+
+  @ParameterizedTest(name = "scope entry {0} is rejected")
+  @ValueSource(strings = {"''", "'   '"})
+  @DisplayName("OAuth2 client_credentials policies reject blank scope entries")
+  void oauthWithBlankScopeEntryRejected(String scopeEntry) {
+    assertThatThrownBy(() -> compiler.compile(oauthDefinitionWithScopes(scopeEntry)))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("oauth2 scopes must not contain blank entries");
+  }
+
+  @Test
+  @DisplayName("OAuth2 scope entries are trimmed before canonicalization")
+  void oauthScopeEntriesAreTrimmed() {
+    DeploymentPlan plan =
+        compiler.compile(
+            oauthDefinitionWithScopes("' accounts.write ', 'accounts.read ', 'accounts.read'"));
+
+    assertThat(plan.oauthEndpoints().getFirst().middleware().scopes())
+        .containsExactly("accounts.read", "accounts.write");
+  }
+
+  @Test
+  @DisplayName("equivalent OAuth2 calls share one canonical endpoint descriptor")
+  void equivalentOAuthCallsShareCanonicalEndpoint() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: oauth-accounts
+          version: '1.0.0'
+        use:
+          secrets: [oauthclientid, oauthclientsecret]
+          authentications:
+            accounts:
+              oauth2:
+                authority: https://identity.example.test
+                grant: client_credentials
+                client:
+                  id: ${ $secrets.oauthclientid }
+                  secret: ${ $secrets.oauthclientsecret }
+                endpoints:
+                  token: /oauth/token
+                scopes: [accounts.read]
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    use: accounts
+          - listAccounts:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/accounts
+                  authentication:
+                    use: accounts
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(plan.oauthEndpoints()).hasSize(1);
+    OAuthEndpoint endpoint = plan.oauthEndpoints().getFirst();
+    assertThat(endpoint.baseUrl()).isEqualTo("https://api.example.test");
+    assertThat(endpoint.paths()).containsExactlyInAnyOrder("/v1/account", "/v1/accounts");
+    assertThat(endpoint.appIds()).containsExactlyInAnyOrder("get-account", "list-accounts");
+    assertThat(endpoint.middleware().tokenUrl())
+        .isEqualTo("https://identity.example.test/oauth/token");
+    assertThat(endpoint.middleware().clientId())
+        .isEqualTo(new SecretKeyRef("oauthclientid", "value"));
+    assertThat(endpoint.middleware().clientSecret())
+        .isEqualTo(new SecretKeyRef("oauthclientsecret", "value"));
+    assertThat(endpoint.middleware().scopes()).containsExactly("accounts.read");
+    assertThat(plan.steps())
+        .allSatisfy(
+            service ->
+                assertThat(service.env())
+                    .containsEntry("AUTH_SCHEME", new Literal("oauth2"))
+                    .containsEntry("OAUTH_ENDPOINT", new Literal(endpoint.name())));
+  }
+
+  @Test
+  @DisplayName("OAuth scope order and repetition do not split equivalent endpoint descriptors")
+  void oauthScopesAreCanonicalizedAsASet() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: canonical-oauth-scopes
+          version: '1.0.0'
+        use:
+          secrets: [oauthclientid, oauthclientsecret]
+          authentications:
+            firstPolicy:
+              oauth2:
+                authority: https://identity.example.test
+                grant: client_credentials
+                client:
+                  id: ${ $secrets.oauthclientid }
+                  secret: ${ $secrets.oauthclientsecret }
+                endpoints:
+                  token: /oauth/token
+                scopes: [accounts.write, accounts.read, accounts.read]
+            secondPolicy:
+              oauth2:
+                authority: https://identity.example.test
+                grant: client_credentials
+                client:
+                  id: ${ $secrets.oauthclientid }
+                  secret: ${ $secrets.oauthclientsecret }
+                endpoints:
+                  token: /oauth/token
+                scopes: [accounts.read, accounts.write]
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    use: firstPolicy
+          - listAccounts:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/accounts
+                  authentication:
+                    use: secondPolicy
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(plan.oauthEndpoints()).hasSize(1);
+    OAuthEndpoint endpoint = plan.oauthEndpoints().getFirst();
+    assertThat(endpoint.paths()).containsExactlyInAnyOrder("/v1/account", "/v1/accounts");
+    assertThat(endpoint.appIds()).containsExactlyInAnyOrder("get-account", "list-accounts");
+    assertThat(endpoint.middleware().scopes()).containsExactly("accounts.read", "accounts.write");
+    assertThat(plan.steps())
+        .extracting(service -> service.env().get("OAUTH_ENDPOINT"))
+        .containsOnly(new Literal(endpoint.name()));
+  }
+
+  @Test
+  @DisplayName("the synthesized definition ConfigMap contains no credential plaintext")
+  void synthesizedDefinitionConfigMapContainsNoCredentialPlaintext() {
+    String representativeCredential = "correct-horse-battery-staple";
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: config-map-safe-auth
+          version: '1.0.0'
+        use:
+          secrets: [apitoken]
+          authentications:
+            accounts:
+              bearer:
+                token: ${ $secrets.apitoken }
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    use: accounts
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+    ConfigMap definition = new StackSynthesizer().definitionConfigMap(plan, "default");
+    String payload = definition.getData().get("definition");
+
+    assertThat(payload).isEqualTo(yaml).doesNotContain(representativeCredential);
+  }
+
+  @Test
+  @DisplayName("compiled authentication descriptors never contain credential plaintext")
+  void compiledAuthenticationContainsNoCredentialPlaintext() throws Exception {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: safe-auth
+          version: '1.0.0'
+        use:
+          secrets: [apiuser, apipassword]
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    basic:
+                      username: ${ $secrets.apiuser }
+                      password: ${ $secrets.apipassword }
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+    String serializedPlan = new ObjectMapper().writeValueAsString(plan);
+
+    assertThat(serializedPlan).doesNotContain("alice", "correct-horse-battery-staple");
+    assertThat(plan.specText()).doesNotContain("alice", "correct-horse-battery-staple");
+    assertThat(step(plan, "get-account").env().values())
+        .allMatch(value -> value instanceof Literal || value instanceof SecretKeyRef);
+  }
 
   @Test
   @DisplayName("order.yaml compiles to three call-http steps with exact env")
@@ -47,11 +637,20 @@ class WorkflowCompilerTest {
         .containsExactly("check-inventory", "charge-payment", "notify-out-of-stock");
 
     assertThat(step(plan, "check-inventory").env())
-        .isEqualTo(Map.of("METHOD", "get", "ENDPOINT", "http://inventory.local/api/check"));
+        .isEqualTo(
+            Map.of(
+                "METHOD", new Literal("get"),
+                "ENDPOINT", new Literal("http://inventory.local/api/check")));
     assertThat(step(plan, "charge-payment").env())
-        .isEqualTo(Map.of("METHOD", "post", "ENDPOINT", "http://payment.local/api/charge"));
+        .isEqualTo(
+            Map.of(
+                "METHOD", new Literal("post"),
+                "ENDPOINT", new Literal("http://payment.local/api/charge")));
     assertThat(step(plan, "notify-out-of-stock").env())
-        .isEqualTo(Map.of("METHOD", "post", "ENDPOINT", "http://notify.local/api/oos"));
+        .isEqualTo(
+            Map.of(
+                "METHOD", new Literal("post"),
+                "ENDPOINT", new Literal("http://notify.local/api/oos")));
   }
 
   @Test
@@ -67,7 +666,9 @@ class WorkflowCompilerTest {
     assertThat(plan.orchestrator().replicas()).isEqualTo(1);
     assertThat(plan.orchestrator().env())
         .isEqualTo(
-            Map.of("DEFINITION_STORE", plan.definitionResource(), "DEFINITION_KEY", "definition"));
+            Map.of(
+                "DEFINITION_STORE", new Literal(plan.definitionResource()),
+                "DEFINITION_KEY", new Literal("definition")));
     assertThat(plan.definitionResource()).isEqualTo("dws-def-order-" + plan.versionId());
   }
 
@@ -105,10 +706,12 @@ class WorkflowCompilerTest {
     assertThat(step.name()).isEqualTo("find-pet");
     assertThat(step.kind()).isEqualTo(TaskKind.CALL_OPENAPI);
     assertThat(step.image()).isEqualTo("sw-call-openapi:1.0");
-    assertThat(step.env()).containsEntry("DOCUMENT_URL", "http://petstore.local/openapi.json");
-    assertThat(step.env()).containsEntry("DOCUMENT_SHA256", SpecDigest.sha256Hex(OPENAPI_DOC));
-    assertThat(step.env()).containsEntry("OPERATION_ID", "findPetById");
-    assertThat(step.env().get("PARAMETERS")).contains("petId");
+    assertThat(step.env())
+        .containsEntry("DOCUMENT_URL", new Literal("http://petstore.local/openapi.json"));
+    assertThat(step.env())
+        .containsEntry("DOCUMENT_SHA256", new Literal(SpecDigest.sha256Hex(OPENAPI_DOC)));
+    assertThat(step.env()).containsEntry("OPERATION_ID", new Literal("findPetById"));
+    assertThat(literal(step, "PARAMETERS")).contains("petId");
   }
 
   @Test
@@ -122,12 +725,12 @@ class WorkflowCompilerTest {
     assertThat(step.kind()).isEqualTo(TaskKind.RUN_SHELL);
     assertThat(step.image()).isEqualTo("sw-run-shell:1.0");
     assertThat(step.env())
-        .containsEntry("COMMAND", "./sync.sh")
-        .containsEntry("ENVIRONMENT", "{\"API_TOKEN\":\"abc\"}")
-        .containsEntry("RETURN", "stdout");
+        .containsEntry("COMMAND", new Literal("./sync.sh"))
+        .containsEntry("ENVIRONMENT", new Literal("{\"API_TOKEN\":\"abc\"}"))
+        .containsEntry("RETURN", new Literal("stdout"));
     // ARGUMENTS must be a JSON object with keys in definition order (region, then env — the
     // reverse of alphabetical order, so a key-sorting mapper would produce a different string).
-    assertThat(step.env().get("ARGUMENTS")).isEqualTo("{\"region\":\"eu\",\"env\":\"prod\"}");
+    assertThat(literal(step, "ARGUMENTS")).isEqualTo("{\"region\":\"eu\",\"env\":\"prod\"}");
   }
 
   @Test
@@ -140,9 +743,9 @@ class WorkflowCompilerTest {
     assertThat(step.kind()).isEqualTo(TaskKind.RUN_SCRIPT_JS);
     assertThat(step.image()).isEqualTo("sw-run-script-js:1.0");
     assertThat(step.env())
-        .containsEntry("SCRIPT", "console.log(JSON.stringify({ok: true}));")
-        .containsEntry("ARGUMENTS", "{\"count\":3}")
-        .containsEntry("RETURN", "all");
+        .containsEntry("SCRIPT", new Literal("console.log(JSON.stringify({ok: true}));"))
+        .containsEntry("ARGUMENTS", new Literal("{\"count\":3}"))
+        .containsEntry("RETURN", new Literal("all"));
     assertThat(step.env()).doesNotContainKey("LANGUAGE");
   }
 
@@ -154,7 +757,7 @@ class WorkflowCompilerTest {
     StepService step = plan.steps().get(0);
     assertThat(step.kind()).isEqualTo(TaskKind.RUN_SCRIPT_PYTHON);
     assertThat(step.image()).isEqualTo("sw-run-script-python:1.0");
-    assertThat(step.env()).containsEntry("RETURN", "stdout");
+    assertThat(step.env()).containsEntry("RETURN", new Literal("stdout"));
   }
 
   @Test
@@ -289,7 +892,7 @@ class WorkflowCompilerTest {
     DeploymentPlan plan = compiler.compile(yaml);
 
     assertThat(plan.steps()).hasSize(1);
-    assertThat(plan.steps().get(0).env()).containsEntry("ARGUMENTS", "{\"def\":1}");
+    assertThat(plan.steps().get(0).env()).containsEntry("ARGUMENTS", new Literal("{\"def\":1}"));
   }
 
   @Test
@@ -638,11 +1241,97 @@ class WorkflowCompilerTest {
     assertThat(plan.bindings()).isEmpty();
   }
 
+  private static String oauthDefinitionWithScopes(String scopeEntries) {
+    return """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: oauth-scope-validation
+          version: '1.0.0'
+        use:
+          secrets: [oauthclientid, oauthclientsecret]
+          authentications:
+            accounts:
+              oauth2:
+                authority: https://identity.example.test
+                grant: client_credentials
+                client:
+                  id: ${ $secrets.oauthclientid }
+                  secret: ${ $secrets.oauthclientsecret }
+                scopes: [%s]
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://api.example.test/v1/account
+                  authentication:
+                    use: accounts
+        """
+        .formatted(scopeEntries);
+  }
+
+  private static String openApiOAuthDefinition(String documentUrl) {
+    return """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: openapi-oauth-server
+          version: '1.0.0'
+        use:
+          secrets: [oauthclientid, oauthclientsecret]
+          authentications:
+            accounts:
+              oauth2:
+                authority: https://identity.example.test
+                grant: client_credentials
+                client:
+                  id: ${ $secrets.oauthclientid }
+                  secret: ${ $secrets.oauthclientsecret }
+                scopes: [accounts.read]
+        do:
+          - listAccounts:
+              call: openapi
+              with:
+                document:
+                  endpoint: %s
+                operationId: listAccounts
+                authentication:
+                  use: accounts
+        """
+        .formatted(documentUrl);
+  }
+
+  private static byte[] openApiDocument(String serverUrl) {
+    return """
+        {
+          "openapi": "3.0.3",
+          "info": {"title": "Accounts", "version": "1.0.0"},
+          "servers": [{"url": "%s"}],
+          "paths": {
+            "/accounts": {
+              "get": {
+                "operationId": "listAccounts",
+                "responses": {"200": {"description": "ok"}}
+              }
+            }
+          }
+        }
+        """
+        .formatted(serverUrl)
+        .getBytes(StandardCharsets.UTF_8);
+  }
+
   private static StepService step(DeploymentPlan plan, String name) {
     return plan.steps().stream()
         .filter(s -> s.name().equals(name))
         .findFirst()
         .orElseThrow(() -> new AssertionError("no step " + name));
+  }
+
+  private static String literal(StepService step, String name) {
+    return ((Literal) step.env().get(name)).value();
   }
 
   private static String fixture(String name) {

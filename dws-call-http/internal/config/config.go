@@ -35,11 +35,38 @@ const (
 )
 
 const (
-	defaultPort    = "8080"
-	defaultMethod  = "POST"
-	defaultTask    = "call-http"
-	defaultTimeout = 30 * time.Second
+	defaultPort         = "8080"
+	defaultMethod       = "POST"
+	defaultTask         = "call-http"
+	defaultTimeout      = 30 * time.Second
+	defaultDaprHTTPPort = "3500"
 )
+
+// AuthScheme determines how this step authenticates its outbound call.
+type AuthScheme string
+
+const (
+	// AuthNone sends the request without runner-managed authentication.
+	AuthNone AuthScheme = "none"
+	// AuthBasic sends an HTTP Basic authorization header.
+	AuthBasic AuthScheme = "basic"
+	// AuthBearer sends an HTTP Bearer authorization header.
+	AuthBearer AuthScheme = "bearer"
+	// AuthOAuth2 routes the request through the local Dapr HTTP sidecar.
+	AuthOAuth2 AuthScheme = "oauth2"
+)
+
+// Auth is the normalized, secret-backed authentication configuration for a
+// step. OAuth credentials are intentionally absent: Dapr's middleware reads
+// them from Kubernetes Secret references rather than exposing them to the step.
+type Auth struct {
+	Scheme        AuthScheme
+	Username      string
+	Password      string
+	Token         string
+	OAuthEndpoint string
+	DaprHTTPPort  string
+}
 
 // Config is the fully-resolved step configuration.
 type Config struct {
@@ -54,6 +81,7 @@ type Config struct {
 	Output             OutputMode
 	Timeout            time.Duration
 	InsecureSkipVerify bool
+	Auth               Auth
 }
 
 // Load reads configuration from the environment and validates it. It returns a
@@ -112,7 +140,47 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	cfg.Auth, err = parseAuth()
+	if err != nil {
+		return Config{}, err
+	}
+
 	return cfg, nil
+}
+
+func parseAuth() (Auth, error) {
+	auth := Auth{
+		Scheme: AuthScheme(strings.ToLower(strings.TrimSpace(getenv("AUTH_SCHEME", string(AuthNone))))),
+	}
+
+	switch auth.Scheme {
+	case AuthNone:
+		return auth, nil
+	case AuthBasic:
+		auth.Username = os.Getenv("AUTH_USERNAME")
+		auth.Password = os.Getenv("AUTH_PASSWORD")
+		if auth.Username == "" || auth.Password == "" {
+			return Auth{}, fmt.Errorf("AUTH_USERNAME and AUTH_PASSWORD are required when AUTH_SCHEME=basic")
+		}
+	case AuthBearer:
+		auth.Token = os.Getenv("AUTH_TOKEN")
+		if auth.Token == "" {
+			return Auth{}, fmt.Errorf("AUTH_TOKEN is required when AUTH_SCHEME=bearer")
+		}
+	case AuthOAuth2:
+		auth.OAuthEndpoint = strings.TrimSpace(os.Getenv("OAUTH_ENDPOINT"))
+		if auth.OAuthEndpoint == "" {
+			return Auth{}, fmt.Errorf("OAUTH_ENDPOINT is required when AUTH_SCHEME=oauth2")
+		}
+		auth.DaprHTTPPort = strings.TrimSpace(getenv("DAPR_HTTP_PORT", defaultDaprHTTPPort))
+		if auth.DaprHTTPPort == "" {
+			return Auth{}, fmt.Errorf("DAPR_HTTP_PORT is required when AUTH_SCHEME=oauth2")
+		}
+	default:
+		return Auth{}, fmt.Errorf("AUTH_SCHEME must be one of none|basic|bearer|oauth2, got %q", auth.Scheme)
+	}
+
+	return auth, nil
 }
 
 func getenv(key, def string) string {

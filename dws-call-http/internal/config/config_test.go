@@ -42,7 +42,83 @@ func TestLoad(t *testing.T) {
 				if c.InsecureSkipVerify {
 					t.Errorf("insecureSkipVerify: got true, want false")
 				}
+				if c.Auth.Scheme != AuthNone {
+					t.Errorf("auth scheme: got %q, want none", c.Auth.Scheme)
+				}
 			},
+		},
+		{
+			name: "basic authentication reads secret-backed credentials",
+			env: map[string]string{
+				"ENDPOINT":      "https://svc/x",
+				"AUTH_SCHEME":   "basic",
+				"AUTH_USERNAME": "alice",
+				"AUTH_PASSWORD": "pw",
+			},
+			check: func(t *testing.T, c Config) {
+				if c.Auth.Scheme != AuthBasic || c.Auth.Username != "alice" || c.Auth.Password != "pw" {
+					t.Errorf("auth: got %+v, want basic alice credentials", c.Auth)
+				}
+			},
+		},
+		{
+			name: "bearer authentication reads secret-backed token",
+			env: map[string]string{
+				"ENDPOINT":    "https://svc/x",
+				"AUTH_SCHEME": "bearer",
+				"AUTH_TOKEN":  "token-value",
+			},
+			check: func(t *testing.T, c Config) {
+				if c.Auth.Scheme != AuthBearer || c.Auth.Token != "token-value" {
+					t.Errorf("auth: got %+v, want bearer token", c.Auth)
+				}
+			},
+		},
+		{
+			name: "oauth authentication defaults sidecar port",
+			env: map[string]string{
+				"ENDPOINT":       "https://svc/x",
+				"AUTH_SCHEME":    "oauth2",
+				"OAUTH_ENDPOINT": "workflow-oauth-inventory",
+			},
+			check: func(t *testing.T, c Config) {
+				if c.Auth.Scheme != AuthOAuth2 || c.Auth.OAuthEndpoint != "workflow-oauth-inventory" || c.Auth.DaprHTTPPort != "3500" {
+					t.Errorf("auth: got %+v, want oauth2 endpoint and port", c.Auth)
+				}
+			},
+		},
+		{
+			name: "basic authentication requires both credentials",
+			env: map[string]string{
+				"ENDPOINT":      "https://svc/x",
+				"AUTH_SCHEME":   "basic",
+				"AUTH_USERNAME": "alice",
+			},
+			wantErr: true,
+		},
+		{
+			name: "bearer authentication requires token",
+			env: map[string]string{
+				"ENDPOINT":    "https://svc/x",
+				"AUTH_SCHEME": "bearer",
+			},
+			wantErr: true,
+		},
+		{
+			name: "oauth authentication requires endpoint",
+			env: map[string]string{
+				"ENDPOINT":    "https://svc/x",
+				"AUTH_SCHEME": "oauth2",
+			},
+			wantErr: true,
+		},
+		{
+			name: "unknown authentication scheme fails",
+			env: map[string]string{
+				"ENDPOINT":    "https://svc/x",
+				"AUTH_SCHEME": "digest",
+			},
+			wantErr: true,
 		},
 		{
 			name: "method uppercased",

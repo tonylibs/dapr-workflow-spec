@@ -10,6 +10,7 @@ import io.dws.orchestrator.workflow.WorkflowSupport;
 import io.serverlessworkflow.api.types.SetTask;
 import io.serverlessworkflow.api.types.SetTaskConfiguration;
 import io.serverlessworkflow.api.types.Task;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import one.util.streamex.EntryStream;
@@ -56,7 +57,10 @@ public class EvaluateSetActivity implements WorkflowActivity {
                     .or(
                         () ->
                             Optional.ofNullable(set.getString())
-                                .map(expr -> jq.evaluate(expr, data, scope(request.variables())))
+                                .map(
+                                    expr ->
+                                        jq.evaluate(
+                                            expr, data, scopeWithSecrets(request.variables())))
                                 .filter(JsonNode::isObject)))
         .orElse(base);
   }
@@ -82,17 +86,29 @@ public class EvaluateSetActivity implements WorkflowActivity {
       JqEvaluator jq,
       ObjectMapper mapper) {
     if (value instanceof String expr) {
-      return jq.evaluate(expr, data, scope(variables));
+      return jq.evaluate(expr, data, scopeWithSecrets(variables));
     }
     return mapper.valueToTree(value);
   }
 
   /**
-   * Scope-local jq bindings for this task — today only the error caught by an enclosing {@code
-   * catch}, so a recovery task can read it. Null-tolerant because a request serialized before this
-   * component existed omits it.
+   * Scope-local jq bindings for control-flow tasks that do not support DWS secrets. Null-tolerant
+   * because a request serialized before this component existed omits it.
    */
   static Map<String, JsonNode> scope(Map<String, JsonNode> variables) {
     return variables == null ? Map.of() : variables;
+  }
+
+  /**
+   * jq bindings for {@code set}/{@code switch}. Task-local variables retain their existing meaning,
+   * but {@code secrets} is reserved for the immutable DWS startup-secret binding.
+   */
+  static Map<String, JsonNode> scopeWithSecrets(Map<String, JsonNode> variables) {
+    Map<String, JsonNode> scope = new LinkedHashMap<>();
+    if (variables != null) {
+      scope.putAll(variables);
+    }
+    scope.put("secrets", WorkflowSupport.mapper().valueToTree(WorkflowSupport.secrets()));
+    return Map.copyOf(scope);
   }
 }

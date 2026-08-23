@@ -71,6 +71,17 @@ public class StackApplier {
 
       applyDynamic(
           ResourceContexts.DAPR_COMPONENT, synthesizer.configurationComponent(plan, namespace));
+      for (GenericKubernetesResource endpoint : synthesizer.oauthHttpEndpoints(plan, namespace)) {
+        applyDynamic(ResourceContexts.DAPR_HTTP_ENDPOINT, endpoint);
+      }
+      for (GenericKubernetesResource middleware :
+          synthesizer.oauthMiddlewareComponents(plan, namespace)) {
+        applyDynamic(ResourceContexts.DAPR_COMPONENT, middleware);
+      }
+      for (GenericKubernetesResource configuration :
+          synthesizer.oauthConfigurations(plan, namespace)) {
+        applyDynamic(ResourceContexts.DAPR_CONFIGURATION, configuration);
+      }
       for (GenericKubernetesResource service : synthesizer.knativeServices(plan, namespace)) {
         applyDynamic(ResourceContexts.KNATIVE_SERVICE, service);
       }
@@ -191,6 +202,8 @@ public class StackApplier {
     deleteDynamic(ResourceContexts.KNATIVE_SERVICE, selector);
     deleteDynamic(ResourceContexts.WORKFLOW_ACCESS_POLICY, selector);
     deleteDynamic(ResourceContexts.DAPR_COMPONENT, selector);
+    deleteDynamic(ResourceContexts.DAPR_HTTP_ENDPOINT, selector);
+    deleteDynamic(ResourceContexts.DAPR_CONFIGURATION, selector);
   }
 
   private void deleteDynamic(ResourceDefinitionContext context, Map<String, String> selector) {

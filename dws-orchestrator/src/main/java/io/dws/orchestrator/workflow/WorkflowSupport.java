@@ -1,5 +1,6 @@
 package io.dws.orchestrator.workflow;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
@@ -14,6 +15,7 @@ import io.serverlessworkflow.api.types.TimeoutAfter;
 import io.serverlessworkflow.api.types.UseTimeouts;
 import io.serverlessworkflow.api.types.Workflow;
 import java.time.Duration;
+import java.util.Map;
 import lombok.experimental.UtilityClass;
 
 /**
@@ -45,6 +47,7 @@ public class WorkflowSupport {
   private static volatile DaprClient daprClient;
   private static volatile WorkflowTaskOptions defaultTaskOptions;
   private static volatile String defaultPubsub;
+  private static volatile Map<String, JsonNode> secrets = Map.of();
 
   public static void init(
       Workflow definition,
@@ -56,6 +59,30 @@ public class WorkflowSupport {
       DaprClient daprClient,
       WorkflowTaskOptions defaultTaskOptions,
       String defaultPubsub) {
+    init(
+        definition,
+        workflowName,
+        appId,
+        definitionKey,
+        jqEvaluator,
+        mapper,
+        daprClient,
+        defaultTaskOptions,
+        defaultPubsub,
+        Map.of());
+  }
+
+  public static void init(
+      Workflow definition,
+      String workflowName,
+      String appId,
+      String definitionKey,
+      JqEvaluator jqEvaluator,
+      ObjectMapper mapper,
+      DaprClient daprClient,
+      WorkflowTaskOptions defaultTaskOptions,
+      String defaultPubsub,
+      Map<String, JsonNode> secrets) {
     WorkflowSupport.definition = definition;
     WorkflowSupport.workflowName = workflowName;
     WorkflowSupport.appId = appId;
@@ -65,6 +92,7 @@ public class WorkflowSupport {
     WorkflowSupport.daprClient = daprClient;
     WorkflowSupport.defaultTaskOptions = defaultTaskOptions;
     WorkflowSupport.defaultPubsub = defaultPubsub;
+    WorkflowSupport.secrets = secrets == null ? Map.of() : Map.copyOf(secrets);
   }
 
   public static Workflow definition() {
@@ -107,6 +135,15 @@ public class WorkflowSupport {
 
   public static String defaultPubsub() {
     return require(defaultPubsub, "defaultPubsub");
+  }
+
+  /**
+   * The workflow's declared startup secrets, bound as jq {@code $secrets} for {@code set} and
+   * {@code switch}. This is a DWS extension: workflow authors must not export these values into
+   * workflow data, event payloads, or logs.
+   */
+  public static Map<String, JsonNode> secrets() {
+    return secrets;
   }
 
   /**

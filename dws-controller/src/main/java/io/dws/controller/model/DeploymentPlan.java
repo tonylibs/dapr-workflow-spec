@@ -15,6 +15,7 @@ import java.util.List;
  * @param steps one entry per deployable I/O task
  * @param bindings pub/sub topic bindings from emit/listen tasks
  * @param orchestrator the dedicated orchestrator Deployment for this version
+ * @param oauthEndpoints canonical external-host/OAuth policy descriptors for Dapr synthesis
  */
 public record DeploymentPlan(
     String workflow,
@@ -24,10 +25,34 @@ public record DeploymentPlan(
     String specText,
     List<StepService> steps,
     List<TopicBinding> bindings,
-    OrchestratorSpec orchestrator) {
+    OrchestratorSpec orchestrator,
+    List<OAuthEndpoint> oauthEndpoints) {
 
   public DeploymentPlan {
     steps = List.copyOf(steps);
     bindings = List.copyOf(bindings);
+    oauthEndpoints = List.copyOf(oauthEndpoints);
+  }
+
+  /** Compatibility constructor for plans without OAuth resources. */
+  public DeploymentPlan(
+      String workflow,
+      String versionId,
+      String version,
+      String definitionResource,
+      String specText,
+      List<StepService> steps,
+      List<TopicBinding> bindings,
+      OrchestratorSpec orchestrator) {
+    this(
+        workflow,
+        versionId,
+        version,
+        definitionResource,
+        specText,
+        steps,
+        bindings,
+        orchestrator,
+        List.of());
   }
 }

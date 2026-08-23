@@ -1,5 +1,6 @@
 package io.dws.orchestrator.config;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dapr.client.DaprClient;
 import io.dapr.workflows.WorkflowTaskOptions;
@@ -22,6 +23,9 @@ import io.dws.orchestrator.workflow.activity.EvaluateSwitchActivity;
 import io.dws.orchestrator.workflow.activity.EvaluateWhileActivity;
 import io.dws.orchestrator.workflow.activity.RaiseErrorActivity;
 import io.serverlessworkflow.api.types.Workflow;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
@@ -71,6 +75,7 @@ public class WorkflowRuntimeBootstrap implements DisposableBean {
     String workflowName = definition.getDocument().getName();
     String appId =
         (props.getAppId() != null && !props.getAppId().isBlank()) ? props.getAppId() : workflowName;
+    Map<String, JsonNode> secrets = secretScope(definition, mapper, System::getenv);
     WorkflowSupport.init(
         definition,
         workflowName,
@@ -80,7 +85,8 @@ public class WorkflowRuntimeBootstrap implements DisposableBean {
         mapper,
         daprClient,
         defaultTaskOptions,
-        props.getDefaultPubsub());
+        props.getDefaultPubsub(),
+        secrets);
 
     WorkflowRuntimeBuilder builder =
         new WorkflowRuntimeBuilder().registerWorkflow(workflowName, InterpreterWorkflow.class);
@@ -112,6 +118,26 @@ public class WorkflowRuntimeBootstrap implements DisposableBean {
             "dws-workflow-runtime");
     runtimeThread.setDaemon(true);
     runtimeThread.start();
+  }
+
+  /**
+   * Reads the controller-projected values once at startup. Only names explicitly declared by {@code
+   * document.use.secrets} are considered; this DWS jq extension is deliberately not logged because
+   * workflow authors must not export secret values into data, events, or logs.
+   */
+  static Map<String, JsonNode> secretScope(
+      Workflow definition, ObjectMapper mapper, Function<String, String> environment) {
+    if (definition.getUse() == null || definition.getUse().getSecrets() == null) {
+      return Map.of();
+    }
+    Map<String, JsonNode> secrets = new LinkedHashMap<>();
+    for (String name : definition.getUse().getSecrets()) {
+      String value = environment.apply("SECRET_" + name);
+      if (value != null) {
+        secrets.put(name, mapper.getNodeFactory().textNode(value));
+      }
+    }
+    return Map.copyOf(secrets);
   }
 
   @Override

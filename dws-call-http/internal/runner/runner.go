@@ -5,9 +5,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	neturl "net/url"
 	"strings"
@@ -102,6 +104,12 @@ func (r *Runner) buildRequest(ctx context.Context, input map[string]any) (*http.
 	if err != nil {
 		return nil, err
 	}
+	if r.cfg.Auth.Scheme == config.AuthOAuth2 {
+		target, err = daprInvocationURL(target, r.cfg.Auth.OAuthEndpoint, r.cfg.Auth.DaprHTTPPort)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	body, hasJSONBody, err := r.buildBody(input)
 	if err != nil {
@@ -118,7 +126,44 @@ func (r *Runner) buildRequest(ctx context.Context, input map[string]any) (*http.
 	for k, v := range r.cfg.Headers {
 		req.Header.Set(k, v)
 	}
+	switch r.cfg.Auth.Scheme {
+	case config.AuthBasic:
+		credential := base64.StdEncoding.EncodeToString([]byte(r.cfg.Auth.Username + ":" + r.cfg.Auth.Password))
+		req.Header.Set("Authorization", "Basic "+credential)
+	case config.AuthBearer:
+		req.Header.Set("Authorization", "Bearer "+r.cfg.Auth.Token)
+	case config.AuthOAuth2:
+		// Dapr's OAuth middleware owns the external Authorization header.
+		req.Header.Del("Authorization")
+	}
 	return req, nil
+}
+
+// daprInvocationURL converts the configured external target into Dapr's HTTP
+// endpoint invocation path. It keeps the target's escaped path and query so
+// Dapr sends the same request to the external HTTPEndpoint resource.
+func daprInvocationURL(target, endpoint, port string) (string, error) {
+	u, err := neturl.Parse(target)
+	if err != nil {
+		return "", fmt.Errorf("parse OAuth target: %w", err)
+	}
+	if u.Scheme == "" || u.Host == "" {
+		return "", fmt.Errorf("parse OAuth target: expected absolute URL, got %q", target)
+	}
+
+	path := u.EscapedPath()
+	if path == "" {
+		path = "/"
+	}
+	prefix := "/v1.0/invoke/" + neturl.PathEscape(endpoint) + "/method"
+	invocation := &neturl.URL{
+		Scheme:   "http",
+		Host:     net.JoinHostPort("localhost", port),
+		Path:     prefix + u.Path,
+		RawPath:  prefix + path,
+		RawQuery: u.RawQuery,
+	}
+	return invocation.String(), nil
 }
 
 func (r *Runner) appendQuery(target string, input map[string]any) (string, error) {
