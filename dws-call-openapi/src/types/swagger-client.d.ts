@@ -13,6 +13,8 @@ declare module 'swagger-client' {
     serverVariables?: Record<string, string>;
     requestContentType?: string;
     responseContentType?: string;
+    /** Base URL used by swagger-client to resolve relative OpenAPI server URLs. */
+    contextUrl?: string;
   }
 
   export interface BuiltRequest {

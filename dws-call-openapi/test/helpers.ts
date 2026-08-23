@@ -16,6 +16,11 @@ export function fixtureRaw(): string {
   return readFileSync(fixtureFsPath, 'utf8');
 }
 
+/** Raw fixture bytes for tests that serve a document through a mocked HTTP URL. */
+export function fixtureRawByName(fileName: string): string {
+  return readFileSync(fileURLToPath(new URL(`./fixtures/${fileName}`, import.meta.url)), 'utf8');
+}
+
 /** SHA-256 of the fixture, for DOCUMENT_SHA256. */
 export function fixtureSha(): string {
   return createHash('sha256').update(fixtureRaw(), 'utf8').digest('hex');
@@ -47,6 +52,22 @@ export function fixtureEnv(
   const raw = readFileSync(fileURLToPath(url), 'utf8');
   return {
     DOCUMENT_URL: url.href,
+    DOCUMENT_SHA256: createHash('sha256').update(raw, 'utf8').digest('hex'),
+    ...defaults,
+    ...overrides,
+  };
+}
+
+/** Env for a fixture fetched through HTTP(S), rather than read from the filesystem. */
+export function httpFixtureEnv(
+  fileName: string,
+  documentUrl: string,
+  defaults: Record<string, string | undefined>,
+  overrides: Record<string, string | undefined> = {},
+): Record<string, string | undefined> {
+  const raw = fixtureRawByName(fileName);
+  return {
+    DOCUMENT_URL: documentUrl,
     DOCUMENT_SHA256: createHash('sha256').update(raw, 'utf8').digest('hex'),
     ...defaults,
     ...overrides,

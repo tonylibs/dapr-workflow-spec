@@ -5,17 +5,21 @@
  * plus URL-encoding and templated-server cases. We assert the mapping, not
  * swagger-client's internal serialization.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildAuthMaterial } from '../src/auth.js';
 import { buildEngine, type Engine } from '../src/openapi/engine.js';
 import { loadConfig } from '../src/config/config.js';
 import { applyAuth } from '../src/request.js';
 import { prepareOutbound } from '../src/runner.js';
-import { baseEnv, templatedEnv } from './helpers.js';
+import { baseEnv, fixtureRawByName, httpFixtureEnv, templatedEnv } from './helpers.js';
 
 function engineFor(env: Record<string, string | undefined>): Promise<Engine> {
   return buildEngine(loadConfig(env));
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('buildRequest contract - parameter categories', () => {
   it('maps a jq-evaluated path parameter into the URL path', async () => {
@@ -118,5 +122,43 @@ describe('buildRequest contract - auth layering', () => {
     expect(req.url).toBe('http://localhost:3600/v1.0/invoke/accounts-oauth/method/api/v3/pet/findByStatus?status=pending');
     expect(req.headers.Authorization).toBeUndefined();
     expect(req.headers.authorization).toBeUndefined();
+  });
+
+  it('resolves an HTTP-loaded relative server to an absolute direct request', async () => {
+    const documentUrl = 'https://definitions.test/catalog/openapi.json';
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(fixtureRawByName('relative-server.json'), { status: 200 }));
+    const engine = await engineFor(
+      httpFixtureEnv(
+        'relative-server.json',
+        documentUrl,
+        { OPERATION_ID: 'listOrders', TASK: 'list-orders' },
+        { PARAMETERS: '{"limit":".limit"}' },
+      ),
+    );
+
+    const req = await prepareOutbound(engine, { limit: 1 });
+    expect(req.url).toBe('https://definitions.test/inventory/v1/orders?limit=1');
+  });
+
+  it('resolves an HTTP-loaded relative server before OAuth sidecar routing', async () => {
+    const documentUrl = 'https://definitions.test/catalog/openapi.json';
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(fixtureRawByName('relative-server.json'), { status: 200 }));
+    const engine = await engineFor(
+      httpFixtureEnv(
+        'relative-server.json',
+        documentUrl,
+        { OPERATION_ID: 'listOrders', TASK: 'list-orders' },
+        {
+          PARAMETERS: '{"limit":".limit"}',
+          AUTH_SCHEME: 'oauth2',
+          OAUTH_ENDPOINT: 'accounts-oauth',
+          DAPR_HTTP_PORT: '3600',
+        },
+      ),
+    );
+
+    const req = await prepareOutbound(engine, { limit: 1 });
+    expect(req.url).toBe('http://localhost:3600/v1.0/invoke/accounts-oauth/method/inventory/v1/orders?limit=1');
+    expect(req.headers.Authorization).toBeUndefined();
   });
 });

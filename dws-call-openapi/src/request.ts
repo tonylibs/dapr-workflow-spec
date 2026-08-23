@@ -30,11 +30,17 @@ export function buildOutboundRequest(
   for (const param of params) {
     parameters[param.name] = param.value;
   }
+  const contextUrl = httpContextUrl(engine.config.documentUrl);
 
   const built = SwaggerClient.buildRequest({
     spec: engine.spec,
     operationId: engine.config.operationId,
     parameters,
+    // A relative OAS server is relative to the HTTP(S) document location.
+    // Do not synthesize a base for file documents: their pre-existing relative
+    // request behavior remains unchanged, and controller OAuth validation
+    // rejects that unsupported target before deployment.
+    ...(contextUrl === undefined ? {} : { contextUrl }),
     ...(binding.hasBody ? { requestBody: binding.body } : {}),
     ...(engine.server.url !== undefined
       ? { server: engine.server.url, serverVariables: { ...engine.server.variables } }
@@ -42,6 +48,11 @@ export function buildOutboundRequest(
   });
 
   return applyAuth(built.url, built.method, built.headers, built.body, engine.auth);
+}
+
+function httpContextUrl(documentUrl: string): string | undefined {
+  const protocol = new URL(documentUrl).protocol;
+  return protocol === 'http:' || protocol === 'https:' ? documentUrl : undefined;
 }
 
 export function applyAuth(
