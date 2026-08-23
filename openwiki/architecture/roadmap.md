@@ -39,9 +39,10 @@ Source: `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/Interpreter
 | Feature | Status |
 |---|---|
 | Data flow (`input.from/schema`, `output.as/schema`, `export.as/schema`) | Not started — raw data passed through untransformed |
-| Catch error object | Done (Phase 2 slice) — `try` filters and recovery expressions receive `{type, status, instance, title, detail}`; it is not yet an RFC 7807 response model or standard error catalogue |
-| Errors as Problem Details (RFC 7807) + standard error types | Not started — plain Java exceptions outside `try` handling |
-| Timeouts (workflow/task) | Not started — `retry.limit.attempt.duration` is explicitly rejected |
+| Catch error object | Done (Phase 2 slice) — `try` filters and recovery expressions receive `{type, status, instance, title, detail}` |
+| Standard error types | Done — `validation`, `communication`, `authorization`, `expression`, and `timeout` use the `https://serverlessworkflow.io/spec/1.0.0/errors/` URI catalogue; `runtime` remains a 500 catch-all, while authorization/expression are not yet produced automatically |
+| Timeouts (workflow/task/retry attempt) | Done — inline or named task and workflow deadlines use durable timers; retry `limit.attempt.duration` is a catchable timeout failure |
+| Errors as Problem Details (RFC 7807) | Not started — failures remain runtime error objects within `try` handling rather than an RFC 7807 response model |
 | Authentication (basic/bearer/oauth2) | Not started |
 | Secrets | Not started |
 | Catalogs / custom functions | Not started |
@@ -56,7 +57,7 @@ Source: `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/Interpreter
 flowchart TD
   P0[Phase 0: Lifecycle events<br/>in flight] --> P8[Phase 8: dws-admin read model]
   P1[Phase 1: Data flow pipeline] --> P2[Phase 2: Core flow completeness<br/>try/catch/retry, raise, for done<br/>fork and general nested do remain]
-  P1 --> P3[Phase 3: Fault tolerance<br/>Problem Details, timeouts]
+  P1 --> P3[Phase 3: Fault tolerance<br/>error catalogue and timeouts done<br/>Problem Details remain]
   P2 --> P3
   P3 --> P4[Phase 4: Authentication + secrets]
   P4 --> P5[Phase 5: Protocol expansion<br/>gRPC, AsyncAPI, A2A]
@@ -73,7 +74,7 @@ Data flow (Phase 1) is the foundation: retry/catch, extensions, and error handli
 | 0 (in flight) | Finish lifecycle CloudEvents publishing | controller, orchestrator |
 | 1 | `input.from/schema`, `output.as/schema`, `export.as/schema`, validation faults | orchestrator |
 | 2 (in progress) | `try`/`catch`/`retry`, `raise`, and sequential `for` iteration complete; `fork` (parallel) and general nested `do` remain | orchestrator |
-| 3 | RFC 7807 error model, standard error types, task/workflow timeouts | orchestrator |
+| 3 (partial) | Standard error types and task/workflow/retry-attempt timeouts complete; RFC 7807 response modeling remains | orchestrator |
 | 4 | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi |
 | 5 | gRPC, AsyncAPI, A2A call protocols | new `dws-call-grpc`/`dws-call-asyncapi`/`dws-call-a2a` images |
 | 6 | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) |
@@ -85,7 +86,7 @@ Per [`CLAUDE.md`'s workflow routing](../../CLAUDE.md), each phase is a new capab
 ## Rationale for ordering
 
 - **1 before 2/3**: retry/catch and error handling are meaningless without a real input/output/context pipeline to operate on.
-- **2 before 3**: `try`/`raise` define the fault surface that timeouts and Problem Details formatting attach to.
+- **2 before 3**: `try`/`raise` define the fault surface that the implemented error catalogue and timeouts use; RFC 7807 response formatting remains the next Phase 3 concern.
 - **4 before 5/7**: new protocols and catalogs both need auth to call real external services.
 - **6 is independent**: scheduling only touches the controller's trigger path, not the interpreter — can be pulled forward if needed.
 - **8 is last**: the read model is a pure consumer of Phase 0's event contract; no orchestrator/controller changes are required once events exist.
