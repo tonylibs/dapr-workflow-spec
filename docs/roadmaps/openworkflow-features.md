@@ -109,6 +109,11 @@ must treat it as potentially leaking data.
 the Helm workflow defaults `DAPR_VERSION` to that version; its manual-dispatch input permits a
 newer compatible Dapr chart to be tested before any chart-pin upgrade.
 
+The probe installs and removes a Dapr Helm release, including its control-plane and any
+cluster-scoped Dapr resources the upstream chart manages. Run it only on a disposable cluster;
+the probe is intentionally manually dispatched rather than being a trigger for an unchanged DWS
+chart release.
+
 Before deploying a definition that declares `use.secrets`, an operator must create each referenced
 Kubernetes Secret in the workflow namespace. Each scalar logical secret maps to a Secret of the
 same name whose data key is **`value`**. Missing secret references prevent the affected workload

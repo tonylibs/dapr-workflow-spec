@@ -5,14 +5,10 @@ on:
     branches: [main]
     paths:
       - 'charts/**'
-      - 'dws-controller/**'
-      - 'scripts/verify-dapr-oauth-path-filter.sh'
       - '.github/workflows/helm.yml'
   pull_request:
     paths:
       - 'charts/**'
-      - 'dws-controller/**'
-      - 'scripts/verify-dapr-oauth-path-filter.sh'
       - '.github/workflows/helm.yml'
   workflow_dispatch:
     inputs:

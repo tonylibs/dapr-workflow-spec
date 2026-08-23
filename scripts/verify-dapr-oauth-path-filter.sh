@@ -13,15 +13,25 @@ DAPR_RELEASE="${OAUTH_E2E_DAPR_RELEASE:-dws-oauth-e2e-dapr}"
 ENDPOINT_NAME="oauth-e2e-endpoint-v1"
 CLIENT_APP_ID="oauth-e2e-client"
 
+delete_namespace_and_wait() {
+  local namespace="$1"
+  kubectl delete namespace "$namespace" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  kubectl wait --for=delete namespace/"$namespace" --timeout=3m >/dev/null 2>&1 || true
+}
+
 cleanup() {
   helm uninstall "$DAPR_RELEASE" --namespace "$DAPR_NAMESPACE" --wait --timeout 2m >/dev/null 2>&1 || true
-  kubectl delete namespace "$TEST_NAMESPACE" --ignore-not-found --wait=false >/dev/null 2>&1 || true
-  kubectl delete namespace "$DAPR_NAMESPACE" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  delete_namespace_and_wait "$TEST_NAMESPACE"
+  delete_namespace_and_wait "$DAPR_NAMESPACE"
 }
-trap cleanup EXIT
 
 command -v helm >/dev/null
 command -v kubectl >/dev/null
+
+# Make a retry safe even if a preceding process was interrupted while its namespaces were
+# terminating. This is intentionally limited to the fixed disposable-cluster names above.
+cleanup
+trap cleanup EXIT
 
 echo "Installing Dapr Helm chart version ${DAPR_VERSION}"
 helm repo add dapr https://dapr.github.io/helm-charts/ --force-update
