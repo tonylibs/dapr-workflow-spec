@@ -57,8 +57,8 @@ Independent final review reported no critical or important implementation findin
 
 ## 5. Implementation Signal
 
-- [x] Implementation code is committed in `de42dd98..16e6732b` (17 commits).
-- [ ] Change artifacts are not yet committed; this report and the prior planning artifacts are staged for the next documentation commit.
+- [x] Implementation code and change artifacts are committed in `de42dd98..91f9b269` (18 commits).
+- [x] Worktree was clean after committing the verification artifacts; this report's closure status remains FAIL only for the explicit environment-dependent tasks above.
 
 Fresh verification evidence:
 
