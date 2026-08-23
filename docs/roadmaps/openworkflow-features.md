@@ -103,6 +103,22 @@ Phase 4 adds the DWS-specific `$secrets` scope to `set` and `switch`. Unlike the
 this can expose secret material through assigned workflow data or selected branches, so authors
 must treat it as potentially leaking data.
 
+### Phase 4 rollout and rollback
+
+`charts/dws` pins the Dapr control-plane chart at **1.18.1**. The OAuth path-isolation probe in
+the Helm workflow defaults `DAPR_VERSION` to that version; its manual-dispatch input permits a
+newer compatible Dapr chart to be tested before any chart-pin upgrade.
+
+Before deploying a definition that declares `use.secrets`, an operator must create each referenced
+Kubernetes Secret in the workflow namespace. Each scalar logical secret maps to a Secret of the
+same name whose data key is **`value`**. Missing secret references prevent the affected workload
+from starting; definitions and generated resource metadata never contain the secret values.
+
+To roll back an OAuth-enabled definition version, delete that version's deployed workflow stack.
+This deletes its version-scoped `HTTPEndpoint`, OAuth middleware `Component`, and Dapr
+`Configuration` alongside its step workloads. Retain the operator-managed Kubernetes Secrets for
+other versions or later redeployments; they are not owned by the workflow stack.
+
 ## Future spikes
 
 - **Static-credential Dapr Wasm middleware:** Evaluate a workflow-scoped Wasm filter that creates
