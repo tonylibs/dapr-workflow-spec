@@ -1,8 +1,10 @@
 package io.dws.controller.k8s;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.dws.controller.model.DeploymentPlan;
+import io.dws.controller.model.EnvValue.SecretKeyRef;
 import io.dws.controller.model.OrchestratorSpec;
 import io.dws.controller.model.StepService;
 import io.dws.controller.model.TaskKind;
@@ -86,6 +88,21 @@ class StackSynthesizerTest {
             "lookup-price", TaskKind.CALL_OPENAPI, "ghcr.io/tonylibs/step:latest", Map.of());
 
     assertThat(synthesizer.workflowAccessPolicies(planWith(step), NAMESPACE)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("a secret-key environment value is rejected until secret projection is implemented")
+  void secretKeyEnvironmentValueIsRejected() {
+    StepService step =
+        new StepService(
+            "call-api",
+            TaskKind.CALL_HTTP,
+            "ghcr.io/tonylibs/step:latest",
+            Map.of("AUTH_TOKEN", new SecretKeyRef("API_TOKEN", "value")));
+
+    assertThatThrownBy(() -> synthesizer.knativeServices(planWith(step), NAMESPACE))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("Secret environment values require secret-key rendering");
   }
 
   private Map<String, String> synthesizeStepAnnotations(TaskKind kind) {

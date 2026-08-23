@@ -32,8 +32,8 @@ Two different readiness axes get conflated below — worth separating:
 | Feature | Status |
 |---|---|
 | Data flow (`input.from/schema`, `output.as/schema`, `export.as/schema`) | ❌ raw data passed through untransformed |
-| Errors as Problem Details (RFC 7807) + standard error types | ❌ plain Java exceptions |
-| Timeouts (workflow/task) | ❌ |
+| Errors as Problem Details (RFC 7807) + standard error types | ✅ |
+| Timeouts (workflow/task) | ✅ |
 | Authentication (basic/bearer/oauth2) | ❌ |
 | Secrets | ❌ |
 | Catalogs / custom functions | ❌ |
