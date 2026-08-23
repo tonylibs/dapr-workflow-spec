@@ -240,7 +240,7 @@ func TestBuildRequestAuthentication(t *testing.T) {
 				Query:    map[string]string{"region": "{region}"},
 				BodyMode: config.BodyNone,
 				Auth: config.Auth{
-					Scheme:       config.AuthOAuth2,
+					Scheme:        config.AuthOAuth2,
 					OAuthEndpoint: "workflow-oauth-inventory",
 					DaprHTTPPort:  "3600",
 				},
