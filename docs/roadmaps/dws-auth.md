@@ -18,7 +18,7 @@ Ground rules decided during design, carried through every phase below:
 
 ```mermaid
 flowchart TD
-  P0["Phase 0: Dex ✅<br/>in-chart IdP, staticClients/staticPasswords"] --> P1["Phase 1: Console login ⚠️<br/>implemented; Dex 2.44 lacks<br/>session check + RP logout"]
+  P0["Phase 0: Dex ✅<br/>in-chart IdP, staticClients/staticPasswords"] --> P1["Phase 1: Console login ✅<br/>OIDC/PKCE client,<br/>in-memory auth state"]
   P0 --> P2["Phase 2: dws-controller Dapr-gated<br/>sidecar + bearer/role middleware"]
   P2 --> P3["Phase 3: dws-admin write-relay<br/>stateless proxy to dws-controller"]
   P3 --> P4["Phase 4: Admin gateway<br/>nginx: CORS preflight + proxy to<br/>dws-admin's own sidecar invoke path"]
@@ -27,6 +27,8 @@ flowchart TD
   P5 --> P6["Phase 6: Guard reads too<br/>(deferred, separate phase)"]
   P0 --> P7["Phase 7: User management<br/>admin creates users, assigns built-in role<br/>(further-out, exploratory)"]
   P4 --> P7
+  P1 -. deferred .-> P8["Phase 8: Bundled IdP interoperability<br/>Dex browser sessions, silent renew,<br/>RP logout + two-tab acceptance"]
+  P0 -. upgrade or replace .-> P8
 ```
 
 ## 2. Phased roadmap
@@ -34,15 +36,16 @@ flowchart TD
 | Phase | Scope | Depends on | Status |
 |---|---|---|---|
 | **0** | Add Dex as an optional in-chart dependency (toggle like `postgresql.enabled`); `staticPasswords` for dev users, `staticClients` registers `dws-console` as a public PKCE client; auto-generate a bootstrap admin login (see §2a) | — | ✅ done |
-| **1** | React OIDC client (Authorization Code + PKCE), in-memory token, silent renew, logout | Phase 0 | ⚠️ partial — implementation merged in `ed1fdfc2`; live Docker Desktop validation found that chart-pinned Dex 2.44.0 cannot complete `prompt=none` or advertise RP logout |
+| **1** | React OIDC client (Authorization Code + PKCE), in-memory token, silent-renew integration, logout integration, additive unauthenticated reads | Phase 0 | ✅ done — implementation merged in `ed1fdfc2`; local gates, chart contract checks, live discovery/CORS/PKCE request evidence, and failure-state handling are verified. Bundled-Dex interoperability acceptance moved to Phase 8 |
 | **2** | Enable `dws-controller`'s Dapr sidecar (`dapr.io/enabled`/`app-id`/`app-port`); add a bearer `Component` and a `Configuration` wiring it to the inbound pipeline; route the Service through Dapr and keep the app port pod-local | Phase 0 (needs the IdP's JWKS endpoint) | ⚠️ implementation complete; live authorization/bypass verification pending |
 | **3** | New route in `dws-admin`: stateless relay that forwards the `Authorization` header + body to `dws-controller` via `dws-admin`'s own local sidecar invoke call. No verification logic — `dws-admin` never inspects the token | Phase 2 | ❌ not started |
 | **4** | New `admin-gateway` nginx Deployment/Service/ConfigMap (chart-bundled, not an assumed cluster Ingress): answers CORS preflight, proxies the real request to `dws-admin`'s sidecar invoke path. Extend `dws-admin`'s Service with its sidecar port. Add `bearer`/role `Component`s + `Configuration` to `dws-admin`'s sidecar, scoped to this route only | Phase 3 | ❌ not started |
 | **5** | Wire the console's definition-submission UI to call the gateway with the bearer token attached; reads keep using the existing direct `dws-admin` path unchanged | Phases 1 and 4 | ❌ not started |
 | **6** | Guard reads: move `dws-admin`'s read routes onto the same gateway+sidecar+bearer path, retire the old direct/CORS-only route | Phase 5 | ❌ not started — deliberately deferred, tracked here so it isn't lost |
 | **7** | User management: an admin-only console screen to create users and assign one of a small set of built-in roles (e.g. `admin`/`operator`/`viewer`). New `dws-admin` route, reusing Phase 4's gateway + Dapr role check (only `admin`-role tokens may call it), which manages users through **Dex's own gRPC management API** — no user/password storage or hashing added to DWS's own database | Phases 0, 4 | ❌ not started — further-out, exploratory; see §4 for a real open risk before committing to this shape |
+| **8** | Make the bundled development IdP satisfy the browser client contract: adopt a released Dex version/configuration (or another in-chart IdP) with non-interactive `prompt=none` browser sessions and advertised RP-initiated logout; then verify token-expiry renewal, clean renewal failure, authenticated storage, logout, route restoration, and two-tab convergence | Phases 0, 1 | ❌ deferred — Dex 2.44.0 lacks the required browser-session and `end_session_endpoint` behavior; owns deferred checklist tasks 6.1, 6.2, 7.2, and 8.3 |
 
-### Current progress (2026-08-23)
+### Current progress (2026-08-24)
 
 - Phase 0 is complete.
 - Phase 1's console code, PKCE configuration, sign-in/identity/logout UI, SSR integration, unit
@@ -55,22 +58,23 @@ flowchart TD
   was blocked by CORS. The config now derives `http://localhost:3000` from the registered root
   redirect. The console also reports `Authentication unavailable` when OIDC initialization fails,
   while keeping unauthenticated reads available.
-- Phase 1 remains partial because the chart-pinned Dex 2.44.0 sends hidden-iframe `prompt=none`
-  requests to its interactive login form until `oidc-spa` times out, and discovery has no
-  `end_session_endpoint`. Silent renewal, clean renewal failure, authenticated storage inspection,
-  RP logout, and two-tab convergence therefore cannot be claimed. Dex tracks the missing native
+- Phase 1 is complete for the provider-agnostic console client. The live run also established that
+  chart-pinned Dex 2.44.0 is not a compliant acceptance provider: it sends hidden-iframe
+  `prompt=none` requests to its interactive login form until `oidc-spa` times out, and discovery has
+  no `end_session_endpoint`. Those provider-specific implementation and acceptance requirements now
+  belong to deferred Phase 8. They have **not** been marked verified. Dex tracks the missing native
   browser-session/RP-logout capability in
   [dexidp/dex#4560](https://github.com/dexidp/dex/issues/4560); no local-only logout fallback was
   accepted.
 - Phase 2's chart implementation and local render gates are landed. Its live Dapr/OIDC
   authorization and application-port bypass checks remain pending.
-- Phases 3–7 have not started.
+- Phases 3–7 have not started. Phase 8 is explicitly deferred until a released compatible IdP is
+  available or the chart deliberately adopts a different one.
 
-**Next up:** Phase 1 must be rerun with a released Dex version (or another compliant test IdP) that
-supports both `prompt=none` browser sessions and RP-initiated logout. The localhost port-forward
-used here is browser-only and cannot serve Phase 2 workloads; Phase 2 still needs its own
-cluster-reachable issuer probe. Phase 3 remains the next dependency-ordered implementation after
-Phase 2's live gate.
+**Next up:** Phase 2 still needs its own cluster-reachable issuer probe; the localhost port-forward
+used for Phase 1 browser evidence cannot serve workloads. Phase 3 remains the next
+dependency-ordered implementation after Phase 2's live gate. Phase 8 is later, independent work and
+does not block that sequence.
 
 ## 2a. Phase 0 detail — bootstrap admin user
 
@@ -103,6 +107,9 @@ anyone hand-editing `values.yaml` with a password:
 - **7 depends on 0 and 4, not on 1/2/3/5/6**: user management only needs an IdP to manage (Phase 0)
   and an existing Dapr-gated admin write path to reuse (Phase 4) — it doesn't touch `dws-controller`
   or reads at all, so it can be picked up any time after those two, independent of the rest.
+- **8 is deliberately deferred and independent**: Phase 1 established the generic browser-client
+  contract and exposed a limitation in the bundled development provider. Upgrading/replacing that
+  provider and rerunning its live acceptance suite should not block the Dapr write-path sequence.
 
 ## 4. Open items
 
@@ -111,7 +118,7 @@ anyone hand-editing `values.yaml` with a password:
   Dapr release.
 - Dex's `staticClients`/`staticPasswords` are a dev/quickstart shape — real deployments will swap
   in a connector (LDAP/SAML/upstream OIDC) or a different IdP entirely; nothing above should assume
-  Dex specifically beyond Phase 0's chart toggle.
+  Dex specifically beyond Phase 0's chart toggle. Phase 8 owns the bundled-provider decision.
 - `dws-admin`'s CORS module (`src/config/cors.ts`) becomes redundant for the write path once Phase
   4 lands (the gateway owns CORS there) — decide whether to leave it as-is for reads or trim it.
 - **Phase 7 real risk**: Dex's local/static-password connector has [known, still-open upstream gaps

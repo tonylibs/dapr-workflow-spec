@@ -26,14 +26,14 @@
 
 ## 6. Silent renew, cross-tab & resilience behavior
 
-- [ ] 6.1 **FAILED against the chart-installed Dex.** The browser emitted an Authorization Code +
+- [ ] 6.1 **DEFERRED TO ROADMAP PHASE 8 — failed against the chart-installed Dex.** The browser emitted an Authorization Code +
   PKCE request to `/auth` with `prompt=none`, `response_type=code`, client `dws-console`, root
   redirect `http://localhost:3000/`, and an S256 challenge. Dex 2.44.0 routed that hidden iframe
   through `/auth/local/login` instead of returning `login_required`; `oidc-spa` timed out after nine
   seconds. Because the same unsupported session check blocks initial restoration, neither an
   expiry renewal nor clean signed-out transition after the Dex session disappears can be genuinely
   exercised. (spec: session survives token expiry; silent renew fails cleanly)
-- [ ] 6.2 **BLOCKED after a live attempt.** The console cannot reach an interactive signed-out state
+- [ ] 6.2 **DEFERRED TO ROADMAP PHASE 8 — blocked after a live attempt.** The console cannot reach an interactive signed-out state
   against Dex 2.44.0: its initial hidden `prompt=none` restoration times out first. Two tabs therefore
   cannot both be authenticated, so logout/session-end convergence remains unverified. (spec:
   session state is consistent across tabs; design D7)
@@ -45,7 +45,7 @@
 ## 7. Verification: token-in-memory & IdP logout
 
 - [x] 7.1 Cover the token-handling invariants this code owns with Vitest (`src/lib/oidc-config.test.ts`): the auth state exposes no token/credential field in any variant, sign-out goes through the IdP (`logout({redirectTo:"home"})`) rather than only clearing local state, and config/claim-label resolution is correct. **Scope note:** asserting an access token is absent from `localStorage`/`sessionStorage` *while authenticated* is not unit-testable here — it needs a real login against a live IdP in a browser, and the repo has no DOM test environment. Keeping the token out of web storage is `oidc-spa`'s documented in-memory design (design D2); the runtime check belongs to the 8.3 smoke. (spec: access token in memory only; design D2)
-- [ ] 7.2 **FAILED against the chart-installed Dex.** Live discovery at
+- [ ] 7.2 **DEFERRED TO ROADMAP PHASE 8 — failed against the chart-installed Dex.** Live discovery at
   `http://localhost:5556/.well-known/openid-configuration` advertised `/auth`, `/token`, and `/keys`
   but no `end_session_endpoint`. The bundled chart pins Dex 2.44.0, whose released server has no
   native browser-session/RP-logout endpoint; that work is tracked upstream in
@@ -60,7 +60,7 @@
 - [x] 8.2 `helm lint charts/dws --set dex.enabled=true` passes. A rendered Dex config with issuer
   `http://localhost:5556` contains public client `dws-console`, no client secret, root redirect
   `http://localhost:3000/`, and browser CORS origin `http://localhost:3000`.
-- [ ] 8.3 **FAILED live before interactive sign-in.** Discovery and CORS succeed, but `oidc-spa`'s
+- [ ] 8.3 **DEFERRED TO ROADMAP PHASE 8 — failed live before interactive sign-in.** Discovery and CORS succeed, but `oidc-spa`'s
   initial hidden `prompt=none` request reaches Dex's login form and times out. The console never
   exposes its sign-in control, so successful sign-in, route restoration, identity display,
   authenticated web-storage inspection, expiry renewal, RP logout, and two-tab convergence cannot
@@ -85,7 +85,8 @@
 - The chart originally omitted Dex's `web.allowedOrigins`, so browser discovery failed CORS. The
   generated Dex config now derives the allowed origin from `dex.consoleRedirectURI`; a live request
   with `Origin: http://localhost:3000` returns `Access-Control-Allow-Origin: http://localhost:3000`.
-- Exact remaining blocker: released Dex 2.44.0 cannot answer browser-session `prompt=none` checks or
-  advertise RP-initiated logout. Until the chart can consume a released Dex version with both
-  behaviors (or a different compliant test IdP is used), tasks 6.1, 6.2, 7.2, and 8.3 stay open and
-  Phase 1 remains ⚠️ partial.
+- Deferred Phase 8 scope: released Dex 2.44.0 cannot answer browser-session `prompt=none` checks or
+  advertise RP-initiated logout. Phase 8 will adopt a released provider version with both behaviors
+  (or a different compliant in-chart IdP) and rerun tasks 6.1, 6.2, 7.2, and 8.3. These tasks remain
+  open and unverified, but no longer make the completed provider-agnostic Phase 1 implementation
+  partial.
