@@ -7,7 +7,7 @@ tags: [dws, dapr, kubernetes, workflows, roadmap]
 
 # OWS DSL feature roadmap
 
-The canonical source for this roadmap is `docs/roadmap.md`; this page summarizes it for OpenWiki navigation. Update `docs/roadmap.md` first, then this page.
+The canonical source for this roadmap is `docs/roadmaps/openworkflow-features.md`; this page summarizes it for OpenWiki navigation. Update that roadmap first, then this page.
 
 DWS interprets a subset of the [Open Workflow Spec DSL 1.0](https://github.com/open-workflow-specification/specification/blob/main/dsl.md) today. This page tracks what's implemented in [`dws-orchestrator`](../architecture/deployed-workflow.md) and `dws-controller`, and the phased order for closing the gap.
 
@@ -42,9 +42,9 @@ Source: `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/Interpreter
 | Catch error object | Done (Phase 2 slice) — `try` filters and recovery expressions receive `{type, status, instance, title, detail}` |
 | Standard error types | Done — `validation`, `communication`, `authorization`, `expression`, and `timeout` use the `https://serverlessworkflow.io/spec/1.0.0/errors/` URI catalogue; `runtime` remains a 500 catch-all, while authorization/expression are not yet produced automatically |
 | Timeouts (workflow/task/retry attempt) | Done — inline or named task and workflow deadlines use durable timers; retry `limit.attempt.duration` is a catchable timeout failure |
-| Errors as Problem Details (RFC 7807) | Not started — failures remain runtime error objects within `try` handling rather than an RFC 7807 response model |
-| Authentication (basic/bearer/oauth2) | Not started |
-| Secrets | Not started |
+| Errors as Problem Details (RFC 7807) | Done — Phase 3 is complete |
+| Authentication (basic/bearer/oauth2 client credentials) | Done — HTTP and OpenAPI endpoints accept inline or named policies; Basic/Bearer are applied by runners and OAuth calls use Dapr external endpoint middleware. See [deployed workflow lifecycle](deployed-workflow.md#protected-calls-and-secret-projection). |
+| Secrets | Done — `use.secrets` declares scalar Kubernetes Secret names, which are projected as `secretKeyRef` values without controller reads; `$secrets` is a DWS extension for `set` and `switch` and can leak material into workflow data. |
 | Catalogs / custom functions | Not started |
 | Extensions (`before`/`after` hooks) | Not started |
 | External resources | Not started |
@@ -57,36 +57,36 @@ Source: `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/Interpreter
 flowchart TD
   P0[Phase 0: Lifecycle events<br/>in flight] --> P8[Phase 8: dws-admin read model]
   P1[Phase 1: Data flow pipeline] --> P2[Phase 2: Core flow completeness<br/>try/catch/retry, raise, for done<br/>fork and general nested do remain]
-  P1 --> P3[Phase 3: Fault tolerance<br/>error catalogue and timeouts done<br/>Problem Details remain]
+  P1 --> P3[Phase 3: Fault tolerance done]
   P2 --> P3
-  P3 --> P4[Phase 4: Authentication + secrets]
+  P3 --> P4[Phase 4: Authentication and secrets done]
   P4 --> P5[Phase 5: Protocol expansion<br/>gRPC, AsyncAPI, A2A]
   P1 --> P6[Phase 6: Scheduling<br/>cron/every/after/on]
-  P4 --> P7[Phase 7: Catalogs + extensions]
+  P4 --> P7[Phase 7: Catalogs and extensions]
 ```
 
 Data flow (Phase 1) is the foundation: retry/catch, extensions, and error handling all read/write through `input`/`output`/`context`, so it must land before Phases 2–7 are worth building correctly.
 
 ## Phased roadmap
 
-| Phase | Scope | Components |
-|---|---|---|
-| 0 (in flight) | Finish lifecycle CloudEvents publishing | controller, orchestrator |
-| 1 | `input.from/schema`, `output.as/schema`, `export.as/schema`, validation faults | orchestrator |
-| 2 (in progress) | `try`/`catch`/`retry`, `raise`, and sequential `for` iteration complete; `fork` (parallel) and general nested `do` remain | orchestrator |
-| 3 (partial) | Standard error types and task/workflow/retry-attempt timeouts complete; RFC 7807 response modeling remains | orchestrator |
-| 4 | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi |
-| 5 | gRPC, AsyncAPI, A2A call protocols | new `dws-call-grpc`/`dws-call-asyncapi`/`dws-call-a2a` images |
-| 6 | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) |
-| 7 | Catalogs, custom functions, extensions (`before`/`after`), external resources | controller, orchestrator |
-| 8 | `dws-admin` consumes lifecycle events into read model | dws-admin |
+| Phase | Scope | Components | Status |
+|---|---|---|---|
+| 0 (in flight) | Finish lifecycle CloudEvents publishing | controller, orchestrator | In flight |
+| 1 | `input.from/schema`, `output.as/schema`, `export.as/schema`, validation faults | orchestrator | Not started |
+| 2 | `try`/`catch`/`retry`, `raise`, and sequential `for` iteration complete; `fork` (parallel) and general nested `do` remain | orchestrator | Done |
+| 3 | RFC 7807 error model, standard error types, and task/workflow timeouts | orchestrator | Done |
+| 4 | `basic`/`bearer`/OAuth2 client-credentials auth and scalar secret resolution | controller, orchestrator, call-http, call-openapi | Done; live OAuth path-isolation validation remains environment-blocked |
+| 5 | gRPC, AsyncAPI, A2A call protocols | new `dws-call-grpc`/`dws-call-asyncapi`/`dws-call-a2a` images | Not started |
+| 6 | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) | Not started |
+| 7 | Catalogs, custom functions, extensions (`before`/`after`), external resources | controller, orchestrator | Not started |
+| 8 | `dws-admin` consumes lifecycle events into read model | dws-admin | Done |
 
 Per [`CLAUDE.md`'s workflow routing](../../CLAUDE.md), each phase is a new capability and goes through `opsx`, not a direct PR.
 
 ## Rationale for ordering
 
 - **1 before 2/3**: retry/catch and error handling are meaningless without a real input/output/context pipeline to operate on.
-- **2 before 3**: `try`/`raise` define the fault surface that the implemented error catalogue and timeouts use; RFC 7807 response formatting remains the next Phase 3 concern.
+- **2 before 3**: `try`/`raise` define the fault surface that the implemented error catalogue and timeouts use; RFC 7807 response formatting is completed in Phase 3.
 - **4 before 5/7**: new protocols and catalogs both need auth to call real external services.
 - **6 is independent**: scheduling only touches the controller's trigger path, not the interpreter — can be pulled forward if needed.
 - **8 is last**: the read model is a pure consumer of Phase 0's event contract; no orchestrator/controller changes are required once events exist.

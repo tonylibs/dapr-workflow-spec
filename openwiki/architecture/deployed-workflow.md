@@ -55,6 +55,29 @@ Task names are the common deployment/runtime adapter:
 
 The schema-required `with.endpoint` on a call task is not used for routing. Changing task naming therefore affects both controller-created Knative service names and orchestrator invocation targets: remote activity dispatch and the retained OpenAPI HTTP path both derive the Dapr app ID from the kebab-cased task name. The controller recursively compiles deployable `call`/`run` tasks, and `emit`/`listen` bindings, in a `try` body and `catch.do`; nested tasks therefore receive the same resources as top-level tasks.
 
+### Protected calls and secret projection
+
+A definition may declare `use.secrets` as unique DNS-1123 Kubernetes Secret names. Each name maps to that Secret's `value` key; the controller records typed `secretKeyRef` environment values rather than reading or serializing plaintext. Kubernetes resolves missing Secret/key references when a workload starts. The controller projects only each step's required credentials and the orchestrator's declared secrets, then the orchestrator reads `SECRET_<NAME>` once at startup. It exposes those values to jq as `$secrets` in `set` and `switch` expressions (dot notation for identifier-like names and bracket notation for other valid names). This is a DWS extension and is deliberately hazardous: authors must not place its values in workflow data, emitted events, or logs. The related feature status and future protocol work are tracked in the [OWS DSL feature roadmap](roadmap.md).
+
+HTTP and OpenAPI endpoints can use inline or named `basic`, `bearer`, or OAuth2 `client_credentials` policies; credential fields must reference declared secrets. The controller rejects literals, undeclared references, absent named policies, and unsupported OAuth grants before deployment. Basic and Bearer runner configuration produces the outbound `Authorization` header. For OAuth, the controller groups calls that share an external host and canonical policy into version-scoped Dapr `HTTPEndpoint`, OAuth middleware `Component`, and `Configuration` resources, restricted to the requesting step app IDs and paths. The runners invoke the endpoint through their local Dapr sidecar; they neither fetch nor cache OAuth tokens.
+
+```mermaid
+sequenceDiagram
+  participant Controller
+  participant Cluster
+  participant Runner
+  participant Sidecar as Dapr sidecar
+  participant External as External service
+  Controller->>Cluster: project secretKeyRef into workload
+  Controller->>Cluster: create scoped OAuth endpoint resources
+  Runner->>Sidecar: invoke configured external endpoint
+  Sidecar->>External: send request with OAuth token
+```
+
+This sequence shows the OAuth path: Dapr owns token acquisition and external authorization, while the runner owns only request construction and sidecar invocation. Basic and Bearer calls instead attach their generated header directly.
+
+Source: `dws-controller/src/main/java/io/dws/controller/compile/WorkflowCompiler.java`, `dws-controller/src/main/java/io/dws/controller/k8s/StackSynthesizer.java`, `dws-orchestrator/src/main/java/io/dws/orchestrator/config/WorkflowRuntimeBootstrap.java`, `dws-call-http/internal/runner/runner.go`, and `dws-call-openapi/src/request.ts`. The live Dapr path-isolation probe exists but remains environment-blocked, so treat production verification of its narrow OAuth path filter as an operator/CI prerequisite.
+
 ### For iteration
 
 A `for` task evaluates `for.in` once through a replay-safe activity and requires its result to be a JSON array; a non-array result fails the named task. It runs `for.do` sequentially for each array element, passing each body's output data to the next iteration. `for.each` and `for.at` bind the current element and zero-based index as scope-local jq variables (defaulting to `item` and `index`), so they are visible in that iteration's body and optional `while` expression but do not escape the loop. `while` is re-evaluated before each body and stops iteration when jq evaluates it as falsy. An empty array leaves input data unchanged; `exit` finishes only the current body iteration, while `end` ends the instance. Tasks inside `for.do` are resolved from the pinned definition and report lifecycle events normally; a failure can therefore be handled by an enclosing `try` as described below. `for` itself creates no additional controller resource. This implemented control-flow capability is tracked in the [OWS DSL feature roadmap](roadmap.md).
