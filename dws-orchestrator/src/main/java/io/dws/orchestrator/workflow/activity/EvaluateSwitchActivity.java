@@ -38,7 +38,7 @@ public class EvaluateSwitchActivity implements WorkflowActivity {
     }
 
     JqEvaluator jq = WorkflowSupport.jq();
-    Map<String, JsonNode> scope = EvaluateSetActivity.scope(request.variables());
+    Map<String, JsonNode> scope = EvaluateSetActivity.scopeWithSecrets(request.variables());
     List<SwitchCase> cases =
         StreamEx.of(switchTask.getSwitch()).map(SwitchItem::getSwitchCase).toList();
 

@@ -50,6 +50,10 @@ The single orchestrator-specific convention is that a task's **name in kebab-cas
 
 `jq` expressions in `when`/`set` may be written wrapped as `${ .foo }` (DSL convention) or bare (`.foo`); evaluation is pure and replay-safe.
 
+For a workflow that declares `use.secrets`, DWS additionally binds the startup-projected values as
+`$secrets` in `set` and `switch` expressions. This is intentionally limited to the orchestrator
+process: do not copy secret values into workflow data, emitted events, step inputs, or logs.
+
 ---
 
 ## Definition format
