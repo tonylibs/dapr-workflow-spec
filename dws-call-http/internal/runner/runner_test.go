@@ -236,6 +236,7 @@ func TestBuildRequestAuthentication(t *testing.T) {
 			cfg: config.Config{
 				Endpoint: "https://inventory.example/orders/a%2Fb?existing=value",
 				Method:   "GET",
+				Headers:  map[string]string{"Authorization": "bypass-dapr"},
 				Query:    map[string]string{"region": "{region}"},
 				BodyMode: config.BodyNone,
 				Auth: config.Auth{

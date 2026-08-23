@@ -132,6 +132,9 @@ func (r *Runner) buildRequest(ctx context.Context, input map[string]any) (*http.
 		req.Header.Set("Authorization", "Basic "+credential)
 	case config.AuthBearer:
 		req.Header.Set("Authorization", "Bearer "+r.cfg.Auth.Token)
+	case config.AuthOAuth2:
+		// Dapr's OAuth middleware owns the external Authorization header.
+		req.Header.Del("Authorization")
 	}
 	return req, nil
 }
