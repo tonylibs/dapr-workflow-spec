@@ -153,6 +153,16 @@ which holds only the bcrypt hash consumed by Dex itself.
 {{- end }}
 
 {{/*
+Browser origin allowed to call Dex's discovery, token, and keys endpoints.
+The registered redirect URI is the console root, but CORS compares only the
+scheme and authority. Derive the origin here so the two values cannot drift.
+*/}}
+{{- define "dws.dex.consoleOrigin" -}}
+{{- $redirect := urlParse .Values.dex.consoleRedirectURI -}}
+{{- printf "%s://%s" (get $redirect "scheme") (get $redirect "host") -}}
+{{- end }}
+
+{{/*
 Bootstrap admin password: generated once at first install, never rotated on upgrade.
 - dex.adminUser.existingSecret set: read the password from that operator-supplied Secret/key
   instead of generating one.
@@ -197,7 +207,10 @@ see dws.dex.resolvePassword's memoization note.
 {{- $config := dict
   "issuer" $.Values.dex.issuer
   "storage" (dict "type" "memory")
-  "web" (dict "http" "0.0.0.0:5556")
+  "web" (dict
+    "http" "0.0.0.0:5556"
+    "allowedOrigins" (list (include "dws.dex.consoleOrigin" $))
+  )
   "enablePasswordDB" true
   "staticClients" (list
     (dict

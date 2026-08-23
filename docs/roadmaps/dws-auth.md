@@ -18,7 +18,7 @@ Ground rules decided during design, carried through every phase below:
 
 ```mermaid
 flowchart TD
-  P0["Phase 0: Dex ✅<br/>in-chart IdP, staticClients/staticPasswords"] --> P1["Phase 1: Console login<br/>PKCE, in-memory token"]
+  P0["Phase 0: Dex ✅<br/>in-chart IdP, staticClients/staticPasswords"] --> P1["Phase 1: Console login ⚠️<br/>implemented; Dex 2.44 lacks<br/>session check + RP logout"]
   P0 --> P2["Phase 2: dws-controller Dapr-gated<br/>sidecar + bearer/role middleware"]
   P2 --> P3["Phase 3: dws-admin write-relay<br/>stateless proxy to dws-controller"]
   P3 --> P4["Phase 4: Admin gateway<br/>nginx: CORS preflight + proxy to<br/>dws-admin's own sidecar invoke path"]
@@ -34,13 +34,43 @@ flowchart TD
 | Phase | Scope | Depends on | Status |
 |---|---|---|---|
 | **0** | Add Dex as an optional in-chart dependency (toggle like `postgresql.enabled`); `staticPasswords` for dev users, `staticClients` registers `dws-console` as a public PKCE client; auto-generate a bootstrap admin login (see §2a) | — | ✅ done |
-| **1** | React OIDC client (Authorization Code + PKCE), in-memory token, silent renew, logout | Phase 0 | ❌ not started |
-| **2** | Enable `dws-controller`'s Dapr sidecar (`dapr.io/enabled`/`app-id`/`app-port`); add `bearer` + optional role/Rego `Component`s and a `Configuration` wiring them to its inbound pipeline | Phase 0 (needs the IdP's JWKS endpoint) | ❌ not started |
+| **1** | React OIDC client (Authorization Code + PKCE), in-memory token, silent renew, logout | Phase 0 | ⚠️ partial — implementation merged in `ed1fdfc2`; live Docker Desktop validation found that chart-pinned Dex 2.44.0 cannot complete `prompt=none` or advertise RP logout |
+| **2** | Enable `dws-controller`'s Dapr sidecar (`dapr.io/enabled`/`app-id`/`app-port`); add a bearer `Component` and a `Configuration` wiring it to the inbound pipeline; route the Service through Dapr and keep the app port pod-local | Phase 0 (needs the IdP's JWKS endpoint) | ⚠️ implementation complete; live authorization/bypass verification pending |
 | **3** | New route in `dws-admin`: stateless relay that forwards the `Authorization` header + body to `dws-controller` via `dws-admin`'s own local sidecar invoke call. No verification logic — `dws-admin` never inspects the token | Phase 2 | ❌ not started |
 | **4** | New `admin-gateway` nginx Deployment/Service/ConfigMap (chart-bundled, not an assumed cluster Ingress): answers CORS preflight, proxies the real request to `dws-admin`'s sidecar invoke path. Extend `dws-admin`'s Service with its sidecar port. Add `bearer`/role `Component`s + `Configuration` to `dws-admin`'s sidecar, scoped to this route only | Phase 3 | ❌ not started |
 | **5** | Wire the console's definition-submission UI to call the gateway with the bearer token attached; reads keep using the existing direct `dws-admin` path unchanged | Phases 1 and 4 | ❌ not started |
 | **6** | Guard reads: move `dws-admin`'s read routes onto the same gateway+sidecar+bearer path, retire the old direct/CORS-only route | Phase 5 | ❌ not started — deliberately deferred, tracked here so it isn't lost |
 | **7** | User management: an admin-only console screen to create users and assign one of a small set of built-in roles (e.g. `admin`/`operator`/`viewer`). New `dws-admin` route, reusing Phase 4's gateway + Dapr role check (only `admin`-role tokens may call it), which manages users through **Dex's own gRPC management API** — no user/password storage or hashing added to DWS's own database | Phases 0, 4 | ❌ not started — further-out, exploratory; see §4 for a real open risk before committing to this shape |
+
+### Current progress (2026-08-23)
+
+- Phase 0 is complete.
+- Phase 1's console code, PKCE configuration, sign-in/identity/logout UI, SSR integration, unit
+  coverage, and root redirect are merged. Fresh gates are green: lint, typecheck, 57 tests, build,
+  Helm lint, and a rendered public-client/no-secret/root-redirect check.
+- A live Docker Desktop release (`dws-phase1` in namespace `dws-phase1`) used issuer
+  `http://localhost:5556`, console root `http://localhost:3000/`, and the Helm-NOTES bootstrap
+  credentials. Discovery, `/auth`, `/token`, `/keys`, PKCE S256, and browser CORS were verified.
+- The live run found and fixed a chart defect: Dex had no `web.allowedOrigins`, so browser discovery
+  was blocked by CORS. The config now derives `http://localhost:3000` from the registered root
+  redirect. The console also reports `Authentication unavailable` when OIDC initialization fails,
+  while keeping unauthenticated reads available.
+- Phase 1 remains partial because the chart-pinned Dex 2.44.0 sends hidden-iframe `prompt=none`
+  requests to its interactive login form until `oidc-spa` times out, and discovery has no
+  `end_session_endpoint`. Silent renewal, clean renewal failure, authenticated storage inspection,
+  RP logout, and two-tab convergence therefore cannot be claimed. Dex tracks the missing native
+  browser-session/RP-logout capability in
+  [dexidp/dex#4560](https://github.com/dexidp/dex/issues/4560); no local-only logout fallback was
+  accepted.
+- Phase 2's chart implementation and local render gates are landed. Its live Dapr/OIDC
+  authorization and application-port bypass checks remain pending.
+- Phases 3–7 have not started.
+
+**Next up:** Phase 1 must be rerun with a released Dex version (or another compliant test IdP) that
+supports both `prompt=none` browser sessions and RP-initiated logout. The localhost port-forward
+used here is browser-only and cannot serve Phase 2 workloads; Phase 2 still needs its own
+cluster-reachable issuer probe. Phase 3 remains the next dependency-ordered implementation after
+Phase 2's live gate.
 
 ## 2a. Phase 0 detail — bootstrap admin user
 
@@ -57,8 +87,8 @@ anyone hand-editing `values.yaml` with a password:
   already used for the Postgres/admin DB URL — never in `values.yaml` itself.
 - Default identity configurable (`dex.adminUser.email`, e.g. `admin@dws.local`); password is
   generated, never user-supplied by default.
-- Add `charts/dws/templates/NOTES.txt` (doesn't exist yet) to print the `kubectl get secret ...`
-  retrieval command after install/upgrade — the standard place Helm surfaces a generated credential.
+- `charts/dws/templates/NOTES.txt` prints the `kubectl get secret ...` email/password retrieval
+  commands after install/upgrade — the standard place Helm surfaces a generated credential.
 
 ## 3. Rationale for ordering
 
@@ -76,8 +106,9 @@ anyone hand-editing `values.yaml` with a password:
 
 ## 4. Open items
 
-- Exact Dapr role/Rego middleware type name — confirm against current `docs.dapr.io` middleware
-  reference before Phase 2/4 implementation (flagged during design, not yet verified).
+- Role/Rego middleware remains intentionally unused: no stable Dex/OIDC role claim has been proven.
+  Revisit only with a documented token claim and a Dapr middleware type verified against the target
+  Dapr release.
 - Dex's `staticClients`/`staticPasswords` are a dev/quickstart shape — real deployments will swap
   in a connector (LDAP/SAML/upstream OIDC) or a different IdP entirely; nothing above should assume
   Dex specifically beyond Phase 0's chart toggle.

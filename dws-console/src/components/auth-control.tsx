@@ -7,16 +7,25 @@ import { Button } from "./ui/button";
  *
  * Rendered by `AppLayout` so it appears on every screen without each route
  * wiring it up. Login is purely additive at this phase: nothing here gates a
- * route or a read, so when the IdP is unreachable this collapses to nothing and
- * the rest of the console carries on unchanged.
+ * route or a read, so when the IdP is unreachable the console reports that
+ * authentication is unavailable while the rest of the UI carries on unchanged.
  */
 export function AuthControl() {
 	const auth = useAuth();
 
-	// Both states are non-actionable, and a dead "Sign in" button that can only
-	// fail is worse than no button: render nothing.
-	if (auth.status === "initializing" || auth.status === "unavailable") {
+	if (auth.status === "initializing") {
 		return null;
+	}
+
+	if (auth.status === "unavailable") {
+		return (
+			<output
+				className="auth-identity"
+				title="The configured identity provider could not be initialized"
+			>
+				Authentication unavailable
+			</output>
+		);
 	}
 
 	if (auth.status === "signed-out") {
