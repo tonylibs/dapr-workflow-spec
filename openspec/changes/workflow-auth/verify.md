@@ -23,11 +23,10 @@
 
 - [ ] All tasks are checked.
 
-18/21 tasks are complete. The remaining tasks are execution prerequisites, not missing implementation.
+19/21 tasks are complete. The remaining tasks are live-cluster execution prerequisites, not missing implementation.
 
 | Task | Reason not complete | Blocks archive |
 |---|---|---|
-| 4.3 | Go is unavailable locally; `go vet ./...` and `go test ./...` could not run despite a package-install attempt. | Yes |
 | 6.2 | The mock-IdP path-filter probe requires Docker, Helm, and kind; Docker API access is denied and Helm/kind are unavailable. | Yes |
 | 6.3 | Depends on the two checks above. | Yes |
 
@@ -64,10 +63,10 @@ Fresh verification evidence:
 
 | Component | Command | Result |
 |---|---|---|
-| Controller | `mvnw.cmd -Dexec.skip=true test` | 97 tests, 0 failures/errors |
+| Controller | `mvnw.cmd -Dexec.skip=true test` | 99 tests, 0 failures/errors |
 | Orchestrator | `mvnw.cmd verify` | 152 tests, 0 failures/errors |
 | OpenAPI runner | `pnpm test`; `pnpm lint`; `pnpm build` | 95 tests passed; lint and build passed |
-| HTTP runner | `go vet ./...`; `go test ./...` | Not run: Go unavailable |
+| HTTP runner | `gofmt -l .`; `go vet ./...`; `go test ./...` | All passed using a temporary Go 1.26.4 toolchain |
 | Dapr probe | `scripts/verify-dapr-oauth-path-filter.sh` | Not run: Docker/Helm/kind unavailable |
 
 ---
@@ -85,7 +84,6 @@ The plan has no `[~]` deferred rows. The unchecked items above are explicit bloc
 | Manual / environment check | Automated coverage | Assessment | Real gap? |
 |---|---|---|---|
 | Live Dapr OAuth isolation probe | Generated manifest/synthesizer path-filter tests plus probe script static checks | Does not prove live middleware token injection/isolation | Yes — must run the disposable-cluster probe |
-| Go runner suite | Code review and committed unit tests only | Does not compile or execute Go in this environment | Yes — must run Go vet/test |
 
 ---
 
@@ -93,6 +91,6 @@ The plan has no `[~]` deferred rows. The unchecked items above are explicit bloc
 
 - [ ] PASS
 - [ ] PASS WITH WARNINGS
-- [x] FAIL — finish the Go and live Dapr validations, check tasks 4.3/6.2/6.3, then re-run verification.
+- [x] FAIL — finish the live Dapr validation, check tasks 6.2/6.3, then re-run verification.
 
-**Next step**: Provision a Go toolchain and a disposable Docker/Kubernetes environment with Helm and kind, run the documented commands, and re-run this verification. Archive and branch-finalization are intentionally blocked until then.
+**Next step**: Provision a disposable Docker/Kubernetes environment with Helm and kind, run the documented path-filter probe, and re-run this verification. Archive and branch-finalization are intentionally blocked until then.

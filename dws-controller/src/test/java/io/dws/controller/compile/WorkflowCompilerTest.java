@@ -47,10 +47,10 @@ class WorkflowCompilerTest {
             TaskKind.CALL_HTTP,
             "sw-call-http:1.0",
             Map.of(
-                "AUTH_TOKEN", new SecretKeyRef("API_TOKEN", "value"),
+                "AUTH_TOKEN", new SecretKeyRef("apitoken", "value"),
                 "ENDPOINT", new Literal("https://api.example.test")));
 
-    assertThat(step.env().get("AUTH_TOKEN")).isEqualTo(new SecretKeyRef("API_TOKEN", "value"));
+    assertThat(step.env().get("AUTH_TOKEN")).isEqualTo(new SecretKeyRef("apitoken", "value"));
     assertThat(step.env().get("ENDPOINT")).isEqualTo(new Literal("https://api.example.test"));
   }
 
@@ -65,11 +65,11 @@ class WorkflowCompilerTest {
           name: named-bearer
           version: '1.0.0'
         use:
-          secrets: [API_TOKEN]
+          secrets: [apitoken]
           authentications:
             accounts:
               bearer:
-                token: ${ $secrets.API_TOKEN }
+                token: ${ $secrets.apitoken }
         do:
           - getAccount:
               call: http
@@ -85,7 +85,40 @@ class WorkflowCompilerTest {
 
     assertThat(step(plan, "get-account").env())
         .containsEntry("AUTH_SCHEME", new Literal("bearer"))
-        .containsEntry("AUTH_TOKEN", new SecretKeyRef("API_TOKEN", "value"));
+        .containsEntry("AUTH_TOKEN", new SecretKeyRef("apitoken", "value"));
+  }
+
+  @Test
+  @DisplayName("DNS-1123 secret names use jq bracket notation when referenced by authentication")
+  void dns1123SecretNameCanUseJqBracketNotation() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: bearer-dns-name
+          version: '1.0.0'
+        use:
+          secrets: [api-token]
+          authentications:
+            accounts:
+              bearer:
+                token: '${ $secrets["api-token"] }'
+        do:
+          - getAccount:
+              call: http
+              with:
+                method: get
+                endpoint:
+                  uri: https://accounts.example.test/me
+                  authentication:
+                    use: accounts
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(step(plan, "get-account").env())
+        .containsEntry("AUTH_TOKEN", new SecretKeyRef("api-token", "value"));
   }
 
   @Test
@@ -99,7 +132,7 @@ class WorkflowCompilerTest {
           name: inline-basic
           version: '1.0.0'
         use:
-          secrets: [API_USER, API_PASSWORD]
+          secrets: [apiuser, apipassword]
         do:
           - listAccounts:
               call: openapi
@@ -109,8 +142,8 @@ class WorkflowCompilerTest {
                     uri: https://api.example.test/openapi.json
                     authentication:
                       basic:
-                        username: ${ $secrets.API_USER }
-                        password: ${ $secrets.API_PASSWORD }
+                        username: ${ $secrets.apiuser }
+                        password: ${ $secrets.apipassword }
                 operationId: listAccounts
         """;
 
@@ -118,8 +151,8 @@ class WorkflowCompilerTest {
 
     assertThat(step(plan, "list-accounts").env())
         .containsEntry("AUTH_SCHEME", new Literal("basic"))
-        .containsEntry("AUTH_USERNAME", new SecretKeyRef("API_USER", "value"))
-        .containsEntry("AUTH_PASSWORD", new SecretKeyRef("API_PASSWORD", "value"));
+        .containsEntry("AUTH_USERNAME", new SecretKeyRef("apiuser", "value"))
+        .containsEntry("AUTH_PASSWORD", new SecretKeyRef("apipassword", "value"));
   }
 
   @Test
@@ -233,7 +266,7 @@ class WorkflowCompilerTest {
           name: undeclared-secret
           version: '1.0.0'
         use:
-          secrets: [OTHER_TOKEN]
+          secrets: [othertoken]
         do:
           - getAccount:
               call: http
@@ -243,12 +276,12 @@ class WorkflowCompilerTest {
                   uri: https://api.example.test/v1/account
                   authentication:
                     bearer:
-                      token: ${ $secrets.API_TOKEN }
+                      token: ${ $secrets.apitoken }
         """;
 
     assertThatThrownBy(() -> compiler.compile(yaml))
         .isInstanceOf(CompilationException.class)
-        .hasMessageContaining("API_TOKEN")
+        .hasMessageContaining("apitoken")
         .hasMessageContaining("not declared");
   }
 
@@ -292,7 +325,7 @@ class WorkflowCompilerTest {
           name: duplicate-secret
           version: '1.0.0'
         use:
-          secrets: [API_TOKEN, API_TOKEN]
+          secrets: [apitoken, apitoken]
         do:
           - finish:
               set:
@@ -302,7 +335,30 @@ class WorkflowCompilerTest {
     assertThatThrownBy(() -> compiler.compile(yaml))
         .isInstanceOf(CompilationException.class)
         .hasMessageContaining("Duplicate secret declaration")
-        .hasMessageContaining("API_TOKEN");
+        .hasMessageContaining("apitoken");
+  }
+
+  @Test
+  @DisplayName("scalar secret declarations must be DNS-1123 Kubernetes Secret names")
+  void scalarSecretDeclarationMustBeDns1123Name() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: invalid-secret-name
+          version: '1.0.0'
+        use:
+          secrets: [API_TOKEN]
+        do:
+          - finish:
+              set:
+                done: true
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("DNS-1123");
   }
 
   @Test
@@ -316,7 +372,7 @@ class WorkflowCompilerTest {
           name: oauth-password
           version: '1.0.0'
         use:
-          secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET]
+          secrets: [oauthclientid, oauthclientsecret]
         do:
           - getAccount:
               call: http
@@ -329,8 +385,8 @@ class WorkflowCompilerTest {
                       authority: https://identity.example.test
                       grant: password
                       client:
-                        id: ${ $secrets.OAUTH_CLIENT_ID }
-                        secret: ${ $secrets.OAUTH_CLIENT_SECRET }
+                        id: ${ $secrets.oauthclientid }
+                        secret: ${ $secrets.oauthclientsecret }
         """;
 
     assertThatThrownBy(() -> compiler.compile(yaml))
@@ -378,15 +434,15 @@ class WorkflowCompilerTest {
           name: oauth-accounts
           version: '1.0.0'
         use:
-          secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET]
+          secrets: [oauthclientid, oauthclientsecret]
           authentications:
             accounts:
               oauth2:
                 authority: https://identity.example.test
                 grant: client_credentials
                 client:
-                  id: ${ $secrets.OAUTH_CLIENT_ID }
-                  secret: ${ $secrets.OAUTH_CLIENT_SECRET }
+                  id: ${ $secrets.oauthclientid }
+                  secret: ${ $secrets.oauthclientsecret }
                 endpoints:
                   token: /oauth/token
                 scopes: [accounts.read]
@@ -419,9 +475,9 @@ class WorkflowCompilerTest {
     assertThat(endpoint.middleware().tokenUrl())
         .isEqualTo("https://identity.example.test/oauth/token");
     assertThat(endpoint.middleware().clientId())
-        .isEqualTo(new SecretKeyRef("OAUTH_CLIENT_ID", "value"));
+        .isEqualTo(new SecretKeyRef("oauthclientid", "value"));
     assertThat(endpoint.middleware().clientSecret())
-        .isEqualTo(new SecretKeyRef("OAUTH_CLIENT_SECRET", "value"));
+        .isEqualTo(new SecretKeyRef("oauthclientsecret", "value"));
     assertThat(endpoint.middleware().scopes()).containsExactly("accounts.read");
     assertThat(plan.steps())
         .allSatisfy(
@@ -442,15 +498,15 @@ class WorkflowCompilerTest {
           name: canonical-oauth-scopes
           version: '1.0.0'
         use:
-          secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET]
+          secrets: [oauthclientid, oauthclientsecret]
           authentications:
             firstPolicy:
               oauth2:
                 authority: https://identity.example.test
                 grant: client_credentials
                 client:
-                  id: ${ $secrets.OAUTH_CLIENT_ID }
-                  secret: ${ $secrets.OAUTH_CLIENT_SECRET }
+                  id: ${ $secrets.oauthclientid }
+                  secret: ${ $secrets.oauthclientsecret }
                 endpoints:
                   token: /oauth/token
                 scopes: [accounts.write, accounts.read, accounts.read]
@@ -459,8 +515,8 @@ class WorkflowCompilerTest {
                 authority: https://identity.example.test
                 grant: client_credentials
                 client:
-                  id: ${ $secrets.OAUTH_CLIENT_ID }
-                  secret: ${ $secrets.OAUTH_CLIENT_SECRET }
+                  id: ${ $secrets.oauthclientid }
+                  secret: ${ $secrets.oauthclientsecret }
                 endpoints:
                   token: /oauth/token
                 scopes: [accounts.read, accounts.write]
@@ -507,11 +563,11 @@ class WorkflowCompilerTest {
           name: config-map-safe-auth
           version: '1.0.0'
         use:
-          secrets: [API_TOKEN]
+          secrets: [apitoken]
           authentications:
             accounts:
               bearer:
-                token: ${ $secrets.API_TOKEN }
+                token: ${ $secrets.apitoken }
         do:
           - getAccount:
               call: http
@@ -541,7 +597,7 @@ class WorkflowCompilerTest {
           name: safe-auth
           version: '1.0.0'
         use:
-          secrets: [API_USER, API_PASSWORD]
+          secrets: [apiuser, apipassword]
         do:
           - getAccount:
               call: http
@@ -551,8 +607,8 @@ class WorkflowCompilerTest {
                   uri: https://api.example.test/v1/account
                   authentication:
                     basic:
-                      username: ${ $secrets.API_USER }
-                      password: ${ $secrets.API_PASSWORD }
+                      username: ${ $secrets.apiuser }
+                      password: ${ $secrets.apipassword }
         """;
 
     DeploymentPlan plan = compiler.compile(yaml);
@@ -1193,15 +1249,15 @@ class WorkflowCompilerTest {
           name: oauth-scope-validation
           version: '1.0.0'
         use:
-          secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET]
+          secrets: [oauthclientid, oauthclientsecret]
           authentications:
             accounts:
               oauth2:
                 authority: https://identity.example.test
                 grant: client_credentials
                 client:
-                  id: ${ $secrets.OAUTH_CLIENT_ID }
-                  secret: ${ $secrets.OAUTH_CLIENT_SECRET }
+                  id: ${ $secrets.oauthclientid }
+                  secret: ${ $secrets.oauthclientsecret }
                 scopes: [%s]
         do:
           - getAccount:
@@ -1224,15 +1280,15 @@ class WorkflowCompilerTest {
           name: openapi-oauth-server
           version: '1.0.0'
         use:
-          secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET]
+          secrets: [oauthclientid, oauthclientsecret]
           authentications:
             accounts:
               oauth2:
                 authority: https://identity.example.test
                 grant: client_credentials
                 client:
-                  id: ${ $secrets.OAUTH_CLIENT_ID }
-                  secret: ${ $secrets.OAUTH_CLIENT_SECRET }
+                  id: ${ $secrets.oauthclientid }
+                  secret: ${ $secrets.oauthclientsecret }
                 scopes: [accounts.read]
         do:
           - listAccounts:

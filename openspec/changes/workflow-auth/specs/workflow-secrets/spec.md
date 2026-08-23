@@ -2,14 +2,20 @@
 
 ### Requirement: Workflow declarations identify scalar Kubernetes secrets
 
-The controller SHALL accept `use.secrets` as a list of unique logical secret names. Each declared
-name SHALL resolve to Kubernetes `secretKeyRef.name` of the same name and `secretKeyRef.key`
-`value`; the definition SHALL contain names only, never secret values or a configurable key map.
+The controller SHALL accept `use.secrets` as a list of unique DNS-1123 Kubernetes Secret names.
+Each declared name SHALL resolve to Kubernetes `secretKeyRef.name` of the same name and
+`secretKeyRef.key` `value`; the definition SHALL contain names only, never secret values or a
+configurable key map. The controller SHALL reject blank, duplicate, or non-DNS-1123 names before
+creating a deployment plan.
 
 #### Scenario: Declared scalar secret compiles to a reference
-- **WHEN** a workflow declares `use.secrets: [API_TOKEN]`
-- **THEN** its deployment plan contains a typed reference to Secret `API_TOKEN` key `value` and
+- **WHEN** a workflow declares `use.secrets: [apitoken]`
+- **THEN** its deployment plan contains a typed reference to Secret `apitoken` key `value` and
   contains no resolved Secret value
+
+#### Scenario: Invalid Kubernetes Secret name is rejected
+- **WHEN** a workflow declares `use.secrets: [API_TOKEN]`
+- **THEN** compilation fails with a DNS-1123 Secret-name validation error
 
 #### Scenario: Duplicate secret declaration is rejected
 - **WHEN** a workflow declares the same secret name more than once
@@ -34,16 +40,17 @@ its projected `SECRET_<NAME>` environment values once at startup.
 
 ### Requirement: Declared secrets are available to jq as a DWS extension
 
-The orchestrator SHALL bind declared scalar secret values under `$secrets.NAME` for jq evaluation.
+The orchestrator SHALL bind declared scalar secret values under `$secrets` for jq evaluation.
 DWS SHALL support that binding in `set` and `switch` expressions and SHALL document this as a
-DWS-specific extension that can expose secret material.
+DWS-specific extension that can expose secret material. Names that are jq identifiers can use
+`$secrets.NAME`; other DNS-1123 names SHALL use `$secrets["name-with-hyphen"]`.
 
 #### Scenario: Set expression resolves a declared secret
-- **WHEN** a `set` task evaluates an expression containing `$secrets.API_TOKEN`
-- **THEN** jq receives the startup-loaded value for `API_TOKEN`
+- **WHEN** a `set` task evaluates an expression containing `$secrets.apitoken`
+- **THEN** jq receives the startup-loaded value for `apitoken`
 
 #### Scenario: Switch expression resolves a declared secret
-- **WHEN** a `switch` condition evaluates an expression containing `$secrets.API_TOKEN`
+- **WHEN** a `switch` condition evaluates an expression containing `$secrets.apitoken`
 - **THEN** jq evaluates the condition with that value bound
 
 ### Requirement: Existing workflows remain secret-free by default

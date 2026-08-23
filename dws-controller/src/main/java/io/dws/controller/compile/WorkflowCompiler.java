@@ -76,7 +76,11 @@ public class WorkflowCompiler {
   private static final String DEFINITION_KEY = "definition";
   private static final String SECRET_KEY = "value";
   private static final Pattern SECRET_REFERENCE =
-      Pattern.compile("^\\$\\{\\s*\\$secrets\\.([A-Za-z0-9][A-Za-z0-9_.-]*)\\s*}$");
+      Pattern.compile(
+          "^\\$\\{\\s*\\$secrets(?:\\.([A-Za-z][A-Za-z0-9_]*)|\\[\"([a-z0-9](?:[-a-z0-9.]*[a-z0-9])?)\"\\])\\s*}$");
+  private static final Pattern DNS_1123_SUBDOMAIN =
+      Pattern.compile(
+          "^(?=.{1,253}$)[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*$");
   private static final Pattern OPENAPI_SERVER_VARIABLE = Pattern.compile("\\{([^{}]+)}");
   private static final Set<String> HTTP_METHODS =
       Set.of("get", "put", "post", "delete", "options", "head", "patch", "trace");
@@ -211,6 +215,9 @@ public class WorkflowCompiler {
       for (String secret : workflow.getUse().getSecrets()) {
         if (isBlank(secret)) {
           errors.add("Secret declarations must be non-empty scalar names");
+        } else if (!DNS_1123_SUBDOMAIN.matcher(secret).matches()) {
+          errors.add(
+              "Secret declaration '" + secret + "' must be a DNS-1123 Kubernetes Secret name");
         } else if (!secretNames.add(secret)) {
           errors.add("Duplicate secret declaration '" + secret + "'");
         }
@@ -782,9 +789,12 @@ public class WorkflowCompiler {
         expression == null ? SECRET_REFERENCE.matcher("") : SECRET_REFERENCE.matcher(expression);
     if (!matcher.matches()) {
       throw invalid(
-          taskName, field + " credential must reference a declared secret as ${ $secrets.NAME }");
+          taskName,
+          field
+              + " credential must reference a declared secret as ${ $secrets.NAME } or ${ "
+              + "$secrets[\"dns-name\"] }");
     }
-    String name = matcher.group(1);
+    String name = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
     if (!context.secrets().contains(name)) {
       throw invalid(taskName, field + " references secret '" + name + "' which is not declared");
     }

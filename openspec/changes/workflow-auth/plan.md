@@ -36,7 +36,7 @@
 - [ ] **Step 1: Write the failing model tests for literal and secret values**
 
 ```java
-assertThat(step.env().get("AUTH_TOKEN")).isEqualTo(new SecretKeyRef("API_TOKEN", "value"));
+assertThat(step.env().get("AUTH_TOKEN")).isEqualTo(new SecretKeyRef("apitoken", "value"));
 assertThat(step.env().get("ENDPOINT")).isEqualTo(new Literal("https://api.example.test"));
 ```
 
@@ -94,12 +94,12 @@ git commit -m "feat: add typed step environment values"
 
 ```yaml
 use:
-  secrets: [API_USER, API_PASSWORD]
+  secrets: [apiuser, apipassword]
   authentications:
     accounts:
       basic:
-        username: ${ $secrets.API_USER }
-        password: ${ $secrets.API_PASSWORD }
+        username: ${ $secrets.apiuser }
+        password: ${ $secrets.apipassword }
 ```
 
 Assert a named policy resolves, an inline policy resolves, and unknown policies, undeclared secret
@@ -155,7 +155,7 @@ git commit -m "feat: compile workflow auth policies"
 - [ ] **Step 1: Write failing synthesizer tests for secret projections**
 
 ```java
-assertThat(container.getEnv().get(0).getValueFrom().getSecretKeyRef().getName()).isEqualTo("API_TOKEN");
+assertThat(container.getEnv().get(0).getValueFrom().getSecretKeyRef().getName()).isEqualTo("apitoken");
 assertThat(container.getEnv().get(0).getValueFrom().getSecretKeyRef().getKey()).isEqualTo("value");
 ```
 
@@ -208,7 +208,7 @@ git commit -m "feat: synthesize workflow secret and oauth resources"
 - [ ] **Step 1: Write failing set and switch tests with a `$secrets` binding**
 
 ```java
-assertThat(EvaluateSetActivity.evaluate(setTask("value", "${ $secrets.API_TOKEN }"), data, Map.of()))
+assertThat(EvaluateSetActivity.evaluate(setTask("value", "${ $secrets.apitoken }"), data, Map.of()))
     .containsEntry("value", mapper.getNodeFactory().textNode("token"));
 ```
 

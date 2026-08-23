@@ -24,8 +24,10 @@ backing secret store nor a Kubernetes Secret data-key convention. Its basic-auth
 example can reference a logical secret, but storage shape remains runtime-owned.
 
 **Decision:** DWS adopts a scalar-secret convention. Every `use.secrets` entry
-`NAME` maps to Kubernetes `secretKeyRef { name: NAME, key: value }`, and is
-addressed as `$secrets.NAME`. Basic auth uses two declared scalar secrets (user
+`NAME` must be a DNS-1123 Kubernetes Secret name and maps to
+`secretKeyRef { name: NAME, key: value }`; it is addressed through `$secrets` (use jq bracket
+notation such as `$secrets["name-with-hyphen"]` when the name is not a jq identifier).
+Basic auth uses two declared scalar secrets (user
 and password); bearer auth uses one; OAuth2 client credentials use the declared
 client-id and client-secret names. This keeps the definition name-only and makes
 every mounted value explicit and auditable.
@@ -78,6 +80,8 @@ material.
 - `document.use.secrets` declares scalar secret names; auth policies are inline
   or reusable under `use.authentications`, and endpoint auth can inline a policy
   or reference one by name.
+- Scalar secret names use Kubernetes DNS-1123 syntax because they are emitted unchanged as
+  `secretKeyRef.name` values.
 - The controller resolves inline/named policies and emits typed secret-reference
   values. It never serializes credential values into `StepService`, ConfigMaps,
   or Dapr resource literals.

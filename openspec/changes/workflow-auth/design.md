@@ -32,9 +32,11 @@ OAuth middleware `pathFilter` is available.
 
 ### D1: Scalar Kubernetes Secret convention
 
-- **Choice:** A declared logical name `NAME` maps to
-  `secretKeyRef { name: NAME, key: value }` and is exposed as `$secrets.NAME`. Basic policies use
-  two scalar names, while bearer uses one and OAuth2 client credentials use two.
+- **Choice:** A declared DNS-1123 Secret name `NAME` maps to
+  `secretKeyRef { name: NAME, key: value }` and is exposed through `$secrets`. Basic policies use
+  two scalar names, while bearer uses one and OAuth2 client credentials use two. Use
+  `$secrets.NAME` for jq-identifier names and `$secrets["name-with-hyphen"]` otherwise. The
+  compiler rejects non-DNS-1123 names before synthesis.
 - **Rationale:** The DSL declares names, not a Kubernetes representation. A one-value convention
   is unambiguous, auditable, and lets each value be mounted via standard `secretKeyRef`.
 - **Alternatives considered:** Structured Secret payloads were rejected because they invent an

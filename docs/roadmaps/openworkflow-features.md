@@ -116,8 +116,10 @@ chart release.
 
 Before deploying a definition that declares `use.secrets`, an operator must create each referenced
 Kubernetes Secret in the workflow namespace. Each scalar logical secret maps to a Secret of the
-same name whose data key is **`value`**. Missing secret references prevent the affected workload
+same DNS-1123-compatible name whose data key is **`value`**. Missing secret references prevent the affected workload
 from starting; definitions and generated resource metadata never contain the secret values.
+Use jq dot notation for identifier-like names (for example `$secrets.apitoken`) and bracket
+notation for other valid DNS-1123 names (for example `$secrets["api-token"]`).
 
 To roll back an OAuth-enabled definition version, delete that version's deployed workflow stack.
 This deletes its version-scoped `HTTPEndpoint`, OAuth middleware `Component`, and Dapr

@@ -23,7 +23,7 @@ class WorkflowRuntimeBootstrapTest {
               name: secret-workflow
               version: '1.0.0'
             use:
-              secrets: [API_TOKEN, OPTIONAL]
+              secrets: [apitoken, OPTIONAL]
             do:
               - done:
                   set:
@@ -37,12 +37,12 @@ class WorkflowRuntimeBootstrapTest {
             mapper,
             name ->
                 switch (name) {
-                  case "SECRET_API_TOKEN" -> "token";
+                  case "SECRET_apitoken" -> "token";
                   case "SECRET_UNDECLARED" -> "must-not-be-read";
                   default -> null;
                 });
 
-    assertThat(secrets).containsOnlyKeys("API_TOKEN");
-    assertThat(secrets.get("API_TOKEN").textValue()).isEqualTo("token");
+    assertThat(secrets).containsOnlyKeys("apitoken");
+    assertThat(secrets.get("apitoken").textValue()).isEqualTo("token");
   }
 }

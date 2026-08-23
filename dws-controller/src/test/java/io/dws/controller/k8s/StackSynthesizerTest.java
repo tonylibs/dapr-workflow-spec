@@ -113,7 +113,7 @@ class StackSynthesizerTest {
   void knativeStepRendersTypedEnvironmentValues() {
     Map<String, io.dws.controller.model.EnvValue> env = new LinkedHashMap<>();
     env.put("AUTH_SCHEME", new Literal("bearer"));
-    env.put("AUTH_TOKEN", new SecretKeyRef("API_TOKEN", "value"));
+    env.put("AUTH_TOKEN", new SecretKeyRef("apitoken", "value"));
     StepService step =
         new StepService("call-api", TaskKind.CALL_HTTP, "ghcr.io/tonylibs/step:latest", env);
 
@@ -127,7 +127,7 @@ class StackSynthesizerTest {
                 "name",
                 "AUTH_TOKEN",
                 "valueFrom",
-                Map.of("secretKeyRef", Map.of("name", "API_TOKEN", "key", "value"))));
+                Map.of("secretKeyRef", Map.of("name", "apitoken", "key", "value"))));
   }
 
   @Test
@@ -135,7 +135,7 @@ class StackSynthesizerTest {
   void orchestratorRendersTypedEnvironmentValues() {
     Map<String, io.dws.controller.model.EnvValue> env = new LinkedHashMap<>();
     env.put("DEFINITION_KEY", new Literal("definition"));
-    env.put("SECRET_API_TOKEN", new SecretKeyRef("API_TOKEN", "value"));
+    env.put("SECRET_apitoken", new SecretKeyRef("apitoken", "value"));
     OrchestratorSpec orchestrator =
         new OrchestratorSpec(
             "order-orchestrator",
@@ -166,11 +166,11 @@ class StackSynthesizerTest {
             .getEnv();
 
     EnvVar literal = envVar(rendered, "DEFINITION_KEY");
-    EnvVar secret = envVar(rendered, "SECRET_API_TOKEN");
+    EnvVar secret = envVar(rendered, "SECRET_apitoken");
     assertThat(literal.getValue()).isEqualTo("definition");
     assertThat(literal.getValueFrom()).isNull();
     assertThat(secret.getValue()).isNull();
-    assertThat(secret.getValueFrom().getSecretKeyRef().getName()).isEqualTo("API_TOKEN");
+    assertThat(secret.getValueFrom().getSecretKeyRef().getName()).isEqualTo("apitoken");
     assertThat(secret.getValueFrom().getSecretKeyRef().getKey()).isEqualTo("value");
   }
 
@@ -191,15 +191,11 @@ class StackSynthesizerTest {
 
     assertThat(rendered)
         .extracting(EnvVar::getName)
-        .contains("SECRET_OAUTH_CLIENT_ID", "SECRET_OAUTH_CLIENT_SECRET");
+        .contains("SECRET_oauthclientid", "SECRET_oauthclientsecret");
+    assertThat(envVar(rendered, "SECRET_oauthclientid").getValueFrom().getSecretKeyRef().getName())
+        .isEqualTo("oauthclientid");
     assertThat(
-            envVar(rendered, "SECRET_OAUTH_CLIENT_ID").getValueFrom().getSecretKeyRef().getName())
-        .isEqualTo("OAUTH_CLIENT_ID");
-    assertThat(
-            envVar(rendered, "SECRET_OAUTH_CLIENT_SECRET")
-                .getValueFrom()
-                .getSecretKeyRef()
-                .getKey())
+            envVar(rendered, "SECRET_oauthclientsecret").getValueFrom().getSecretKeyRef().getKey())
         .isEqualTo("value");
   }
 
@@ -282,12 +278,12 @@ class StackSynthesizerTest {
                 "name",
                 "clientId",
                 "secretKeyRef",
-                Map.of("name", "OAUTH_CLIENT_ID", "key", "value")),
+                Map.of("name", "oauthclientid", "key", "value")),
             Map.of(
                 "name",
                 "clientSecret",
                 "secretKeyRef",
-                Map.of("name", "OAUTH_CLIENT_SECRET", "key", "value")),
+                Map.of("name", "oauthclientsecret", "key", "value")),
             Map.of("name", "scopes", "value", "accounts.read,accounts.write"),
             Map.of("name", "tokenURL", "value", "https://identity.example.test/oauth/token"),
             Map.of("name", "headerName", "value", "authorization"),
@@ -316,7 +312,7 @@ class StackSynthesizerTest {
 
     String serialized = Serialization.asJson(component);
     assertThat(serialized)
-        .contains("OAUTH_CLIENT_ID", "OAUTH_CLIENT_SECRET")
+        .contains("oauthclientid", "oauthclientsecret")
         .doesNotContain("correct-horse-battery-staple");
   }
 
@@ -421,15 +417,15 @@ class StackSynthesizerTest {
           name: oauth-resource-sharing
           version: '1.0.0'
         use:
-          secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET]
+          secrets: [oauthclientid, oauthclientsecret]
           authentications:
             accounts:
               oauth2:
                 authority: https://identity.example.test
                 grant: client_credentials
                 client:
-                  id: ${ $secrets.OAUTH_CLIENT_ID }
-                  secret: ${ $secrets.OAUTH_CLIENT_SECRET }
+                  id: ${ $secrets.oauthclientid }
+                  secret: ${ $secrets.oauthclientsecret }
                 endpoints:
                   token: /oauth/token
                 scopes: [accounts.write, accounts.read, accounts.read]
@@ -461,15 +457,15 @@ class StackSynthesizerTest {
           name: oauth-policy-split
           version: '1.0.0'
         use:
-          secrets: [OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET]
+          secrets: [oauthclientid, oauthclientsecret]
           authentications:
             reader:
               oauth2:
                 authority: https://identity.example.test
                 grant: client_credentials
                 client:
-                  id: ${ $secrets.OAUTH_CLIENT_ID }
-                  secret: ${ $secrets.OAUTH_CLIENT_SECRET }
+                  id: ${ $secrets.oauthclientid }
+                  secret: ${ $secrets.oauthclientsecret }
                 endpoints:
                   token: /oauth/token
                 scopes: [accounts.read]
@@ -478,8 +474,8 @@ class StackSynthesizerTest {
                 authority: https://identity.example.test
                 grant: client_credentials
                 client:
-                  id: ${ $secrets.OAUTH_CLIENT_ID }
-                  secret: ${ $secrets.OAUTH_CLIENT_SECRET }
+                  id: ${ $secrets.oauthclientid }
+                  secret: ${ $secrets.oauthclientsecret }
                   authentication: client_secret_basic
                 endpoints:
                   token: /oauth/token

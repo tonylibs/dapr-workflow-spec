@@ -23,7 +23,7 @@
 
 - [x] 4.1 Extend `dws-call-http` configuration with the normalized generated auth contract for none, basic, bearer, and OAuth2 sidecar endpoint routing while retaining existing no-auth behavior.
 - [x] 4.2 Update `dws-call-http` request construction to attach basic/bearer headers or invoke the configured OAuth Dapr endpoint without token handling in the runner.
-- [ ] 4.3 Add configuration and request tests for basic, bearer, OAuth sidecar URLs, and unauthenticated compatibility; run `go vet ./...` and `go test ./...` from `dws-call-http`. (Tests added; local Go toolchain unavailable for execution.)
+- [x] 4.3 Add configuration and request tests for basic, bearer, OAuth sidecar URLs, and unauthenticated compatibility; run `go vet ./...` and `go test ./...` from `dws-call-http`.
 
 ## 5. OpenAPI runner authentication
 

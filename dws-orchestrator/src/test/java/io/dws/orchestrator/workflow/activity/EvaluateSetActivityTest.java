@@ -29,13 +29,13 @@ class EvaluateSetActivityTest {
           name: secret-workflow
           version: '1.0.0'
         use:
-          secrets: [API_TOKEN]
+          secrets: [apitoken]
         do:
           - reveal:
               set:
-                value: '${ $secrets.API_TOKEN }'
+                value: '${ $secrets.apitoken }'
         """,
-        Map.of("API_TOKEN", mapper.getNodeFactory().textNode("token")));
+        Map.of("apitoken", mapper.getNodeFactory().textNode("token")));
 
     JsonNode result =
         EvaluateSetActivity.apply(
