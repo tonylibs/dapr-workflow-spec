@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -190,6 +191,102 @@ func TestRunRequestShape(t *testing.T) {
 	}
 	if got := captured.header.Get("X-Api-Key"); got != "secret" {
 		t.Fatalf("header: got %q, want secret", got)
+	}
+}
+
+func TestBuildRequestAuthentication(t *testing.T) {
+	tests := []struct {
+		name          string
+		cfg           config.Config
+		wantTarget    string
+		wantAuth      string
+		wantNoAuth    bool
+		wantHeader    string
+		wantHeaderVal string
+	}{
+		{
+			name: "basic auth overrides a configured authorization header",
+			cfg: config.Config{
+				Endpoint: "https://inventory.example/orders/{orderId}",
+				Method:   "GET",
+				Headers:  map[string]string{"Authorization": "configured-value"},
+				BodyMode: config.BodyNone,
+				Auth: config.Auth{
+					Scheme:   config.AuthBasic,
+					Username: "alice",
+					Password: "pw",
+				},
+			},
+			wantTarget: "https://inventory.example/orders/42",
+			wantAuth:   "Basic " + base64.StdEncoding.EncodeToString([]byte("alice:pw")),
+		},
+		{
+			name: "bearer auth attaches its token",
+			cfg: config.Config{
+				Endpoint: "https://inventory.example/orders/{orderId}",
+				Method:   "GET",
+				BodyMode: config.BodyNone,
+				Auth:     config.Auth{Scheme: config.AuthBearer, Token: "access-token"},
+			},
+			wantTarget: "https://inventory.example/orders/42",
+			wantAuth:   "Bearer access-token",
+		},
+		{
+			name: "oauth routes an escaped path and query through the local sidecar",
+			cfg: config.Config{
+				Endpoint: "https://inventory.example/orders/a%2Fb?existing=value",
+				Method:   "GET",
+				Query:    map[string]string{"region": "{region}"},
+				BodyMode: config.BodyNone,
+				Auth: config.Auth{
+					Scheme:       config.AuthOAuth2,
+					OAuthEndpoint: "workflow-oauth-inventory",
+					DaprHTTPPort:  "3600",
+				},
+			},
+			wantTarget: "http://localhost:3600/v1.0/invoke/workflow-oauth-inventory/method/orders/a%2Fb?existing=value&region=eu",
+			wantNoAuth: true,
+		},
+		{
+			name: "no auth retains the direct endpoint and configured header",
+			cfg: config.Config{
+				Endpoint: "https://inventory.example/orders/{orderId}",
+				Method:   "GET",
+				Headers:  map[string]string{"X-Api-Key": "key"},
+				BodyMode: config.BodyNone,
+			},
+			wantTarget:    "https://inventory.example/orders/42",
+			wantNoAuth:    true,
+			wantHeader:    "X-Api-Key",
+			wantHeaderVal: "key",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := New(tc.cfg)
+			req, err := r.buildRequest(context.Background(), map[string]any{"orderId": float64(42), "region": "eu"})
+			if err != nil {
+				t.Fatalf("build request: %v", err)
+			}
+			if got := req.URL.String(); got != tc.wantTarget {
+				t.Fatalf("target: got %q, want %q", got, tc.wantTarget)
+			}
+			if tc.wantHeader != "" {
+				if got := req.Header.Get(tc.wantHeader); got != tc.wantHeaderVal {
+					t.Fatalf("%s header: got %q, want %q", tc.wantHeader, got, tc.wantHeaderVal)
+				}
+			}
+			if tc.wantNoAuth {
+				if got := req.Header.Get("Authorization"); got != "" {
+					t.Fatalf("authorization: got %q, want no runner-attached authorization", got)
+				}
+				return
+			}
+			if got := req.Header.Get("Authorization"); got != tc.wantAuth {
+				t.Fatalf("authorization: got %q, want %q", got, tc.wantAuth)
+			}
+		})
 	}
 }
 
