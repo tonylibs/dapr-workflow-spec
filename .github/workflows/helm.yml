@@ -353,7 +353,9 @@ jobs:
     name: package & push (OCI)
     # Publish only on merge to the default branch — PRs verify but never push.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: verify
+    # A chart release must also have passed the live Dapr OAuth path-isolation probe. Without this
+    # dependency GitHub could publish after `verify` succeeded while the independent probe failed.
+    needs: [verify, integration-oauth-path-filter]
     runs-on: ubuntu-latest
     permissions:
       contents: read
