@@ -16,6 +16,7 @@ DWS (`dapr-workflow-spec`) is a config-driven workflow platform for Kubernetes. 
 - [Administrative read model](integrations/admin-read-model.md) explains how `dws-admin` turns that stream into a durable Postgres query view and read-only APIs.
 - [OWS DSL feature roadmap](architecture/roadmap.md) tracks DSL 1.0 task-type and cross-cutting feature coverage against the current implementation, phased into build order.
 - [Agent sandbox](architecture/agent-sandbox.md) explains the CI-validated development image, cluster-hosted session templates, and local Docker-backed alternative for persistent agent work.
+- [Console OIDC login](architecture/console-auth.md) explains the additive browser PKCE login, its Helm Dex configuration agreement, and the deferred bundled-provider acceptance gap.
 - [Helm chart packaging](architecture/helm-chart-roadmap.md) explains how `charts/dws` installs the controller and administrative read model, including its database and CI/release checks.
 
 The repository has four independently built components; run builds and tests from each component directory rather than from the repository root:
@@ -40,4 +41,4 @@ The GitHub Actions workflow at `.github/workflows/openwiki-update.yml` refreshes
 ## Backlog
 
 - **Step-runner internals** — `dws-call-http/`, `dws-call-openapi/`, and `dws-run/`: the platform-level task-to-step-service contract is documented, but individual runner request/response and configuration details remain deferred until a dedicated runtime page is needed.
-- **Administrative console detail** — `dws-console/`: the committed TanStack Start application now reads the `dws-admin` API and applies live instance SSE updates; its browser-side route, cache, and deployment details remain deferred. The server-side contract and its single-replica constraint are documented in the [administrative read model](integrations/admin-read-model.md).
+- **Administrative console detail** — `dws-console/`: its browser OIDC sign-in behavior and the Helm/Dex agreement are documented in [console OIDC login](architecture/console-auth.md), and it reads `dws-admin` with live instance SSE updates. Browser-side route, cache, and deployment details remain deferred; the server-side contract and its single-replica constraint are documented in the [administrative read model](integrations/admin-read-model.md).
