@@ -264,4 +264,3 @@ redis.enabled toggle — Redis follows dapr.enabled (see Chart.yaml).
 {{- print "redis-password" }}
 {{- end }}
 {{- end }}
-
