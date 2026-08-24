@@ -37,7 +37,7 @@ flowchart TD
 |---|---|---|---|
 | **0** | Add Dex as an optional in-chart dependency (toggle like `postgresql.enabled`); `staticPasswords` for dev users, `staticClients` registers `dws-console` as a public PKCE client; auto-generate a bootstrap admin login (see §2a) | — | ✅ done |
 | **1** | React OIDC client (Authorization Code + PKCE), in-memory token, silent-renew integration, logout integration, additive unauthenticated reads | Phase 0 | ✅ done — implementation merged in `ed1fdfc2`; local gates, chart contract checks, live discovery/CORS/PKCE request evidence, and failure-state handling are verified. Bundled-Dex interoperability acceptance moved to Phase 8 |
-| **2** | Enable `dws-controller`'s Dapr sidecar (`dapr.io/enabled`/`app-id`/`app-port`); add a bearer `Component` and a `Configuration` wiring it to the inbound pipeline; route the Service through Dapr and keep the app port pod-local | Phase 0 (needs the IdP's JWKS endpoint) | ⚠️ implementation complete; live authorization/bypass verification pending |
+| **2** | Enable `dws-controller`'s Dapr sidecar (`dapr.io/enabled`/`app-id`/`app-port`); add a bearer `Component` and a `Configuration` wiring it to the inbound pipeline; route the Service through Dapr and keep the app port pod-local | Phase 0 (needs the IdP's JWKS endpoint) | ❌ not started — verified against the repo 2026-08-24. Only `dapr.io/enabled`/`app-id` exist on `charts/dws/templates/controller/deployment.yaml`, and those came from unrelated Helm-packaging work (unconditional sidecar annotations), not this phase. No `app-port` annotation, no bearer `Component`, no `Configuration`, and `controller/service.yaml` still targets the app's container port directly — nothing routes through Dapr yet |
 | **3** | New route in `dws-admin`: stateless relay that forwards the `Authorization` header + body to `dws-controller` via `dws-admin`'s own local sidecar invoke call. No verification logic — `dws-admin` never inspects the token | Phase 2 | ❌ not started |
 | **4** | New `admin-gateway` nginx Deployment/Service/ConfigMap (chart-bundled, not an assumed cluster Ingress): answers CORS preflight, proxies the real request to `dws-admin`'s sidecar invoke path. Extend `dws-admin`'s Service with its sidecar port. Add `bearer`/role `Component`s + `Configuration` to `dws-admin`'s sidecar, scoped to this route only | Phase 3 | ❌ not started |
 | **5** | Wire the console's definition-submission UI to call the gateway with the bearer token attached; reads keep using the existing direct `dws-admin` path unchanged | Phases 1 and 4 | ❌ not started |
@@ -66,15 +66,18 @@ flowchart TD
   browser-session/RP-logout capability in
   [dexidp/dex#4560](https://github.com/dexidp/dex/issues/4560); no local-only logout fallback was
   accepted.
-- Phase 2's chart implementation and local render gates are landed. Its live Dapr/OIDC
-  authorization and application-port bypass checks remain pending.
+- **Correction (2026-08-24):** earlier revisions of this doc claimed Phase 2's chart implementation
+  was landed with only live verification pending. Re-checked directly against the repo (all
+  branches, not just `main`) and that's wrong — no commit ever added a bearer `Component` or a
+  `Configuration` anywhere under `charts/`. Phase 2 has not been started; see the table above.
 - Phases 3–7 have not started. Phase 8 is explicitly deferred until a released compatible IdP is
   available or the chart deliberately adopts a different one.
 
-**Next up:** Phase 2 still needs its own cluster-reachable issuer probe; the localhost port-forward
-used for Phase 1 browser evidence cannot serve workloads. Phase 3 remains the next
-dependency-ordered implementation after Phase 2's live gate. Phase 8 is later, independent work and
-does not block that sequence.
+**Next up:** Phase 2 itself needs to be built — a bearer `Component` + `Configuration` for
+`dws-controller`'s sidecar (pointed at the IdP's JWKS endpoint from Phase 0), the `app-port`
+annotation, and routing `controller/service.yaml` through the Dapr sidecar port instead of the
+container port directly. Only once that's real and cluster-verified does Phase 3 (the `dws-admin`
+relay route) become unblocked. Phase 8 is later, independent work and does not block that sequence.
 
 ## 2a. Phase 0 detail — bootstrap admin user
 

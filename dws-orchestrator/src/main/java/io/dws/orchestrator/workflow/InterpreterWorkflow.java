@@ -14,11 +14,12 @@ import io.dws.orchestrator.workflow.activity.*;
 import io.dws.orchestrator.workflow.adapter.TaskNaming;
 import io.serverlessworkflow.api.types.*;
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.function.Predicate;
+
 import one.util.streamex.StreamEx;
+
+import static java.util.function.Predicate.not;
 
 /**
  * The single, generic workflow. It interprets the pod's one immutable Open Workflow Specification
@@ -838,21 +839,17 @@ public class InterpreterWorkflow implements Workflow {
 
   /** Converts an Open Workflow Specification inline/ISO-8601 duration to a {@link Duration}. */
   private Duration durationOf(TimeoutAfter after) {
-    if (after == null) {
-      return Duration.ZERO;
-    }
-    DurationInline inline = after.getDurationInline();
-    if (inline != null) {
-      return Duration.ofDays(inline.getDays())
-          .plusHours(inline.getHours())
-          .plusMinutes(inline.getMinutes())
-          .plusSeconds(inline.getSeconds());
-    }
-    String literal =
-        after.getDurationExpression() != null
-            ? after.getDurationExpression()
-            : after.getDurationLiteral();
-    return (literal != null && !literal.isBlank()) ? Duration.parse(literal) : Duration.ZERO;
+    return Optional.ofNullable(after)
+            .flatMap(a -> Optional.ofNullable(a.getDurationInline())
+                    .map(il -> Duration.ofDays(il.getDays())
+                        .plusHours(il.getHours())
+                        .plusMinutes(il.getMinutes())
+                        .plusSeconds(il.getSeconds()))
+                    .or(() -> Optional.ofNullable(a.getDurationExpression())
+                            .or(() -> Optional.of(a.getDurationLiteral()))
+                            .filter(not(String::isBlank))
+                            .map(Duration::parse)))
+            .orElse(Duration.ZERO);
   }
 
   /**
@@ -860,18 +857,19 @@ public class InterpreterWorkflow implements Workflow {
    * overlay.
    */
   private JsonNode mergeObjects(JsonNode base, JsonNode overlay, ObjectMapper mapper) {
-    if (overlay == null || overlay.isNull()) {
-      return base;
-    }
-    if (base == null || !base.isObject() || !overlay.isObject()) {
-      return overlay;
-    }
-    ObjectNode merged = base.deepCopy();
-    java.util.Iterator<String> names = overlay.fieldNames();
-    while (names.hasNext()) {
-      String field = names.next();
-      merged.set(field, overlay.get(field));
-    }
-    return merged;
+    return Optional.ofNullable(overlay)
+            .filter(not(JsonNode::isNull))
+            .map(o -> Optional.ofNullable(base)
+                    .filter((b -> b.isObject() && overlay.isObject()))
+                    .map(b -> (ObjectNode) b.deepCopy())
+                    .map((ObjectNode merged) -> {
+                      StreamEx.of(overlay.fieldNames())
+                              .mapToEntry(overlay::get)
+                              .forKeyValue(merged::set);
+                      return merged;
+                    })
+                    .map(JsonNode.class::cast)
+                    .orElse(overlay))
+            .orElse(base);
   }
 }
