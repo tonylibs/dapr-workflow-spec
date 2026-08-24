@@ -115,8 +115,10 @@ dex:
   # This MUST be the console's root URL, not a /callback sub-path: the console's OIDC client
   # completes the Authorization Code + PKCE exchange in place on the app's own root URL and then
   # restores the route the operator started from, so that root URL is the only redirect URI it
-  # ever sends to Dex. The default matches the console's dev server (`pnpm dev` → port 3000);
-  # override it with the console's real origin for any deployed install.
+  # ever sends to Dex. Dex's browser CORS allowlist is derived from this URL's origin, keeping
+  # discovery/token/key requests aligned with the registered redirect. The default matches the
+  # console's dev server (`pnpm dev` → port 3000); override it with the console's real root URL for
+  # any deployed install.
   consoleRedirectURI: "http://localhost:3000/"
   adminUser:
     # Bootstrap admin identity. The password is generated at install time and never rotated on

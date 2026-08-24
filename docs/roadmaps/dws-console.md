@@ -38,7 +38,7 @@ flowchart TD
   P2 --> P25["Phase 2.5: Wire to live API ✅<br/>mock-data.ts → TanStack Query"]
   P25 --> P3["Phase 3: Live updates ✅<br/>dws-admin SSE push API<br/>+ console wired to it"]
   P25 --> P4["Phase 4: Definition submission<br/>public/unauthenticated for now<br/>see dws-console-submission.md"]
-  P25 --> P5["Phase 5: Auth<br/>ties to OWS Phase 4<br/>unblocked, not yet started"]
+  P25 --> P5["Phase 5: Auth ⚠️<br/>OIDC client done;<br/>Dapr write path pending"]
   P3 --> P6["Phase 6: Containerize ✅<br/>Dockerfile + CI"]
   P5 -.guards later, doesn't gate.-> P4
 ```
@@ -53,7 +53,7 @@ flowchart TD
 | **2.5** | Wire Phases 1–2 to the real API: replace `mock-data.ts` reads with TanStack Query calls against `dws-admin` | TanStack Query provider (done) | ✅ done — merged `497d7c8c` (2026-08-12), follow-up fix `d30c36f9` |
 | **3** | Live status updates on running instances, backend included: the `dws-admin` push API plus the console's consumption of it | Phase 2.5 (done) | ✅ done — SSE, on `dws-admin`'s existing read listener; both instance screens live-wired |
 | **4** | Submit new/updated definitions from the console (`POST` to `dws-controller`) | `dws-controller`'s existing compile endpoint + CORS story | ❌ not started — public/unauthenticated by design; detailed sequencing in [`dws-console-submission.md`](dws-console-submission.md), no dependency on Phase 5 |
-| **5** | Console-level auth (login, session, RBAC on write actions) | [OWS Phase 4 — auth/secrets](openworkflow-features.md) for backend parity | ❌ not started — unblocked, available in parallel with Phase 3/4; guards Phase 4's write path whenever it lands, doesn't gate it |
+| **5** | Console-level auth (login, session, RBAC on write actions) | [OWS Phase 4 — auth/secrets](openworkflow-features.md) for backend parity | ⚠️ partial — the provider-agnostic browser OIDC/PKCE client is done; the Dapr-gated write path remains. Bundled-IdP session/logout interoperability is separate, deferred auth-roadmap Phase 8. See [`dws-auth.md`](dws-auth.md) |
 | **6** | Dockerfile + CI workflow, publish `ghcr.io/tonylibs/dws-console` | Phases 3–5 substantially done | ✅ done — image + CI build/smoke-test/push; unblocks [Helm Phase 5](helm-packaging.md) |
 
 ## 4. Rationale for ordering
@@ -117,13 +117,15 @@ What exists in `dws-console/src/` today, checked directly against the repo (not 
 | Data fetching (Phase 2.5) | `lib/admin-client.ts`, `lib/admin-hooks.ts`, `lib/admin-adapters.ts` (+ `admin-adapters.test.ts`), `lib/admin-types.ts` | ✅ done. Typed fetch client (`VITE_DWS_ADMIN_URL`, `ApiError` with status), TanStack Query hooks (infinite queries for lists, plain queries for details, 4xx-no-retry), unit-tested DTO→view-model adapters. All four routes drive loading/empty/error/not-found state from live query status; `QueryClient` from `integrations/tanstack-query/root-provider.tsx` is now actually used. |
 | Mock data | `lib/mock-data.ts` | No longer a data source — only its type/constant exports (`TaskType`, `statusClass`, `INSTANCE_STATUSES`, etc.) are still imported. |
 | Definition submission (Phase 4) | — | No form/mutation code found; the only `POST` reference is copy text in an empty state. Definition graph view also still unwired (see §5). |
-| Auth (Phase 5) | — | Nothing found. |
+| Auth (Phase 5) | `components/auth-control.tsx` (+ `auth-control.test.tsx`), `lib/oidc.ts`, `lib/oidc-config.ts` (+ `oidc-config.test.ts`), `vite.config.ts`, `.env.example` | ⚠️ overall. The console client portion is done: OIDC Authorization Code + PKCE bootstrap, app-wide in-memory auth state, sign-in/identity/logout UI, SSR wiring, redirect config, and visible failure handling are merged. Phases 2–5 of the dedicated [`dws-auth.md`](dws-auth.md) write-path sequence remain; bundled-IdP live acceptance moved to its Phase 8. |
 | Containerization (Phase 6) | `Dockerfile`, `.dockerignore`, `server.js` | ✅ done. Multi-stage npm build; runtime stage runs `server.js` as non-root on `PORT` (3000). `server.js` exists because TanStack Start emits a `fetch` handler and static assets but no listening server — it serves `dist/client/` and falls through to SSR, and adds `/healthz`. `VITE_DWS_ADMIN_URL` is a build arg (Vite inlines it at build time). CI builds the image on every PR, smoke-tests the running container, and pushes only on merge to `main`. |
 
 **Bottom line**: Phases 0–3 and 6 are done — the console reads live cluster state end to end for
 workflows and instances, a running instance updates itself as `dws-admin` ingests its events (no
 polling, no manual refresh), and the app ships as a container image built and smoke-tested by CI.
-**Phases 4 (definition submission) and 5 (auth) are what remain**, and — per a deliberate call, see
-§4 — no longer gate each other: Phase 4 ships public/unauthenticated on its own timeline
-([`dws-console-submission.md`](dws-console-submission.md)), Phase 5 adds the guard whenever it's
-ready.
+**Phase 4 (definition submission) has not started; Phase 5 (auth) is partial**, and — per a
+deliberate call, see §4 — they no longer gate each other. Phase 4 ships public/unauthenticated on
+its own timeline ([`dws-console-submission.md`](dws-console-submission.md)); Phase 5 already has
+the completed browser OIDC client foundation, while its Dapr-gated write path remains. Bundled-IdP
+browser-session/RP-logout compatibility is documented as deferred Phase 8
+([`dws-auth.md`](dws-auth.md)).
