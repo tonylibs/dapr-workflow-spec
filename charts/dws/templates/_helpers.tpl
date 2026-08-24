@@ -90,6 +90,22 @@ app.kubernetes.io/component: admin
 {{- end }}
 
 {{/*
+Console fully qualified name.
+*/}}
+{{- define "dws.console.fullname" -}}
+{{- printf "%s-console" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Console selector labels — the common selector labels plus a component marker so the
+console Deployment/Service cannot match sibling components (controller, admin, postgres).
+*/}}
+{{- define "dws.console.selectorLabels" -}}
+{{ include "dws.selectorLabels" . }}
+app.kubernetes.io/component: console
+{{- end }}
+
+{{/*
 Postgres fully qualified name — used for the chart-owned DATABASE_URL Secret consumed by admin.
 */}}
 {{- define "dws.postgres.fullname" -}}

@@ -99,6 +99,40 @@ postgresql:
     networkPolicy:
       enabled: false
 
+# dws-console web UI. Disabled by default: enable per install once you have a plan for how the
+# browser will reach dws-admin (see the VITE_DWS_ADMIN_URL note below).
+#
+# VITE_DWS_ADMIN_URL is a Vite build arg — Vite inlines it into the client bundle at build time,
+# so the URL is baked into the image (see dws-console/Dockerfile). It is NOT a runtime env var:
+# setting it on this Deployment has no effect. The published ghcr.io/tonylibs/dws-console image
+# ships with the Dockerfile default `/dws-admin` (same-origin), which assumes an ingress in front
+# routes `/dws-admin/*` to the dws-admin Service. Operators needing a different admin URL must
+# rebuild the image today (`docker build --build-arg VITE_DWS_ADMIN_URL=https://admin.example .`);
+# a proper per-install knob (runtime-config shim served by server.js) is an open item on the
+# helm-packaging roadmap.
+console:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: ghcr.io/tonylibs/dws-console
+    tag: "1.0"
+    pullPolicy: IfNotPresent
+  service:
+    port: 80
+  # Optional ingress for the console. Off by default. When enabled, a single-rule Ingress routes
+  # the configured host/path to the console Service. This chart does not currently render an
+  # ingress that also fronts dws-admin at `/dws-admin` — the browser→admin routing needed by the
+  # baked default VITE_DWS_ADMIN_URL is left to the operator (either a second ingress rule they
+  # add themselves, or a rebuilt image pointing at admin's own URL). See the note above.
+  ingress:
+    enabled: false
+    className: ""
+    host: ""
+    path: /
+    pathType: Prefix
+    annotations: {}
+    tls: []
+
 # Dex, an optional in-chart IdP for dws-console (auth roadmap Phase 0, docs/roadmaps/dws-auth.md),
 # provided by the upstream dexidp/helm-charts "dex" chart as a conditional dependency (see
 # Chart.yaml). Off by default: no consumer wires up to it until a later phase. When enabled, this
