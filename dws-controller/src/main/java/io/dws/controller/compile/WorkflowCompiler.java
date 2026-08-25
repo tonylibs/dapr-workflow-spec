@@ -20,6 +20,7 @@ import io.serverlessworkflow.api.types.BasicAuthenticationPolicy;
 import io.serverlessworkflow.api.types.BasicAuthenticationProperties;
 import io.serverlessworkflow.api.types.BearerAuthenticationPolicy;
 import io.serverlessworkflow.api.types.BearerAuthenticationProperties;
+import io.serverlessworkflow.api.types.CallGRPC;
 import io.serverlessworkflow.api.types.CallHTTP;
 import io.serverlessworkflow.api.types.CallOpenAPI;
 import io.serverlessworkflow.api.types.CallTask;
@@ -30,6 +31,7 @@ import io.serverlessworkflow.api.types.EndpointConfiguration;
 import io.serverlessworkflow.api.types.EndpointUri;
 import io.serverlessworkflow.api.types.ForTask;
 import io.serverlessworkflow.api.types.ForkTask;
+import io.serverlessworkflow.api.types.GRPCArguments;
 import io.serverlessworkflow.api.types.HTTPArguments;
 import io.serverlessworkflow.api.types.InlineScript;
 import io.serverlessworkflow.api.types.OAuth2AuthenticationData;
@@ -49,6 +51,7 @@ import io.serverlessworkflow.api.types.Task;
 import io.serverlessworkflow.api.types.TaskItem;
 import io.serverlessworkflow.api.types.TryTask;
 import io.serverlessworkflow.api.types.UriTemplate;
+import io.serverlessworkflow.api.types.WithGRPCService;
 import io.serverlessworkflow.api.types.Workflow;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -291,6 +294,8 @@ public class WorkflowCompiler {
         steps.add(httpStep(taskName, call.getCallHTTP(), context));
       } else if (call != null && call.getCallOpenAPI() != null) {
         steps.add(openApiStep(taskName, call.getCallOpenAPI(), context));
+      } else if (call != null && call.getCallGRPC() != null) {
+        steps.add(grpcStep(taskName, call.getCallGRPC(), context));
       } else if (task.getRunTask() != null) {
         steps.add(runStep(taskName, task.getRunTask()));
       } else if (task.getEmitTask() != null) {
@@ -383,6 +388,49 @@ public class WorkflowCompiler {
       putIfPresent(env, "PARAMETERS", toJson(with.getParameters().getAdditionalProperties()));
     }
     return new StepService(Names.kebab(taskName), TaskKind.CALL_OPENAPI, images.callOpenapi(), env);
+  }
+
+  private StepService grpcStep(String taskName, CallGRPC call, CompileContext context) {
+    GRPCArguments with = call.getWith();
+    if (with == null) {
+      throw invalid(taskName, "grpc call requires 'with' arguments");
+    }
+    WithGRPCService service = with.getService();
+    if (service == null || isBlank(service.getHost()) || service.getPort() <= 0) {
+      throw invalid(taskName, "grpc call requires 'with.service' with a host and a positive port");
+    }
+    if (isBlank(service.getName())) {
+      throw invalid(taskName, "grpc call requires 'with.service.name' (the fully-qualified service)");
+    }
+    if (isBlank(with.getMethod())) {
+      throw invalid(taskName, "grpc call requires 'with.method'");
+    }
+
+    Map<String, EnvValue> env = new LinkedHashMap<>();
+    env.put("SERVICE_ADDR", new EnvValue.Literal(service.getHost() + ":" + service.getPort()));
+    // The runner's METHOD is the fully-qualified service plus method name; the DSL splits them
+    // across service.name and method. SERVICE_ADDR is the host:port, distinct from the descriptor.
+    env.put("METHOD", new EnvValue.Literal(service.getName() + "/" + with.getMethod()));
+
+    // Descriptor source: pin the fetched FileDescriptorSet by content hash for the runner to
+    // verify at boot, mirroring openApiStep's DOCUMENT_SHA256. When absent, the runner falls back
+    // to server reflection.
+    if (with.getProto() != null) {
+      String protoUrl = resolveEndpoint(with.getProto().getEndpoint());
+      putIfPresent(env, "PROTO_ENDPOINT", protoUrl);
+      if (protoUrl != null && !protoUrl.isBlank()) {
+        byte[] descriptor = documentFetcher.fetch(protoUrl);
+        putIfPresent(env, "PROTO_SHA256", SpecDigest.sha256Hex(descriptor));
+      }
+    }
+
+    applyAuth(env, resolveGrpcAuth(taskName, service, context));
+
+    if (call.getTimeout() != null) {
+      putIfPresent(env, "TIMEOUT", toJson(call.getTimeout()));
+    }
+
+    return new StepService(Names.kebab(taskName), TaskKind.CALL_GRPC, images.callGrpc(), env);
   }
 
   private StepService runStep(String taskName, RunTask run) {
@@ -679,7 +727,12 @@ public class WorkflowCompiler {
       ReferenceableAuthenticationPolicy reference,
       Supplier<String> oauthEndpoint,
       CompileContext context) {
+    return resolveAuthPolicy(taskName, oauthEndpoint, policyOf(taskName, reference, context), context);
+  }
 
+  /** Resolves an inline or named authentication policy reference to its policy union. */
+  private AuthenticationPolicyUnion policyOf(
+      String taskName, ReferenceableAuthenticationPolicy reference, CompileContext context) {
     AuthenticationPolicyUnion policy;
     if (reference.getAuthenticationPolicyReference() != null) {
       String name = reference.getAuthenticationPolicyReference().getUse();
@@ -693,7 +746,33 @@ public class WorkflowCompiler {
     if (policy == null) {
       throw invalid(taskName, "authentication policy is empty or unrecognized");
     }
-    return resolveAuthPolicy(taskName, oauthEndpoint, policy, context);
+    return policy;
+  }
+
+  /**
+   * Resolves a gRPC service's authentication to a runner env contract, supporting basic and bearer
+   * only. oauth2 is rejected: Dapr has no gRPC-invocation OAuth2 middleware equivalent (unlike the
+   * HTTP sidecar path used by call: http / call: openapi), and runner-managed OAuth2 is out of
+   * scope.
+   */
+  private ResolvedAuth resolveGrpcAuth(
+      String taskName, WithGRPCService service, CompileContext context) {
+    ReferenceableAuthenticationPolicy reference =
+        service == null ? null : service.getAuthentication();
+    if (reference == null) {
+      return ResolvedAuth.NONE;
+    }
+    AuthenticationPolicyUnion policy = policyOf(taskName, reference, context);
+    if (policy.getOAuth2AuthenticationPolicy() != null) {
+      throw invalid(taskName, "oauth2 authentication is not supported for gRPC calls");
+    }
+    return resolveAuthPolicy(
+        taskName,
+        () -> {
+          throw invalid(taskName, "oauth2 authentication is not supported for gRPC calls");
+        },
+        policy,
+        context);
   }
 
   private ResolvedAuth resolveAuthPolicy(

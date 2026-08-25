@@ -27,6 +27,8 @@ public interface DwsConfig {
 
     String callOpenapi();
 
+    String callGrpc();
+
     String runShell();
 
     String runScriptJs();
@@ -40,6 +42,7 @@ public interface DwsConfig {
     return new ImageCatalog(
         images().callHttp(),
         images().callOpenapi(),
+        images().callGrpc(),
         images().runShell(),
         images().runScriptJs(),
         images().runScriptPython(),
