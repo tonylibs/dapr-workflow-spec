@@ -1,0 +1,33 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "Inbound Service",
+    "version": "1.0.0"
+  },
+  "servers": {
+    "production": {
+      "host": "kafka.example.com:9092",
+      "protocol": "kafka"
+    }
+  },
+  "channels": {
+    "inbound": {
+      "address": "inbound",
+      "messages": {
+        "ping": {
+          "name": "Ping",
+          "payload": { "type": "object" }
+        }
+      }
+    }
+  },
+  "operations": {
+    "receivePing": {
+      "action": "receive",
+      "channel": { "$ref": "#/channels/inbound" },
+      "messages": [
+        { "$ref": "#/channels/inbound/messages/ping" }
+      ]
+    }
+  }
+}

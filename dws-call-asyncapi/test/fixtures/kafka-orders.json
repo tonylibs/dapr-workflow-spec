@@ -1,0 +1,42 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "Orders Service",
+    "version": "1.0.0"
+  },
+  "servers": {
+    "production": {
+      "host": "kafka.example.com:9092",
+      "protocol": "kafka"
+    }
+  },
+  "channels": {
+    "orders": {
+      "address": "orders",
+      "messages": {
+        "orderCreated": {
+          "name": "OrderCreated",
+          "payload": {
+            "type": "object",
+            "required": ["orderId", "amount"],
+            "properties": {
+              "orderId": { "type": "string" },
+              "amount": { "type": "number" },
+              "currency": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  },
+  "operations": {
+    "publishOrder": {
+      "action": "send",
+      "channel": { "$ref": "#/channels/orders" },
+      "messages": [
+        { "$ref": "#/channels/orders/messages/orderCreated" }
+      ]
+    }
+  }
+}
