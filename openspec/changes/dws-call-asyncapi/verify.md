@@ -21,15 +21,14 @@ dws-call-asyncapi (change) — valid
 
 - [ ] All tasks are checked.
 
-Runner tasks (1–5), controller/orchestrator implementation (6.1–6.3, 7.1), and CI (8.1) are
-complete. The remaining items are environment-blocked, not missing implementation:
+Runner tasks (1–5), controller/orchestrator implementation and build/test (6.1–6.4, 7.1–7.2), and
+CI (8.1) are complete — the Java builds could not run locally but **passed in CI** on the PR head
+`190d7a8` (all three workflows `success`). The only remaining items need live infra:
 
 | Task | Reason not complete | Blocks archive |
 |---|---|---|
-| 6.4 | `./mvnw test` (dws-controller) needs JDK 25 (only JDK 21 present) and a populated Maven cache (empty; offline). Compiler code is written and self-reviewed but not compiled here. | Yes |
-| 7.2 | `./mvnw verify` (dws-orchestrator) blocked for the same reason. | Yes |
 | 8.2 | Integration test needs a live Dapr sidecar + Kafka broker (Docker/Kafka/Dapr unavailable). | Yes |
-| 8.3 | Depends on the checks above. | Yes |
+| 8.3 | Depends on the live integration check above. | Yes |
 
 ---
 
@@ -50,11 +49,13 @@ complete. The remaining items are environment-blocked, not missing implementatio
 | `dws-call-asyncapi` | `pnpm lint` | Passed (exit 0) |
 | `dws-call-asyncapi` | `pnpm test` | **47 tests passed** across 6 files (config, document, operation, validator, binding, run) |
 | `dws-call-asyncapi` | `pnpm build` | Passed (`tsc -p tsconfig.json`, no errors) |
-| `dws-controller` | `./mvnw test` | **Not run** — JDK 25 required (JDK 21 present); Maven cache empty/offline |
-| `dws-orchestrator` | `./mvnw verify` | **Not run** — same JDK/cache constraint |
+| `dws-controller` | `./mvnw test` | **Not run locally** (JDK 21 vs required 25; offline Maven) — **CI green** on PR #63 head `190d7a8` (`dws-controller` run 42, `success`) |
+| `dws-orchestrator` | `./mvnw verify` | **Not run locally** (same constraint) — **CI green** on PR #63 head `190d7a8` (`dws-orchestrator` run 57, `success`) |
 | Integration | Dapr sidecar + Kafka binding | **Not run** — Docker/Kafka/Dapr unavailable |
 
 The runner was tested on Node 22 (CI uses Node 24); the only diff is an engines-version warning.
+The `dws-call-asyncapi` CI workflow (run 1, `success`) also validated lint/test/build and the
+Dockerfile on the PR head.
 
 ---
 
@@ -78,9 +79,9 @@ inspection against the existing code they mirror:
 - **Orchestrator** (`WorkflowErrors.VALIDATION_MARKER`): a one-line marker + guarded classify branch
   plus a `WorkflowErrorsTest` case; low risk.
 
-**Residual risk:** the exact return *type* of `AsyncApiArguments.getDocument()` is assumed to expose
-`getEndpoint()` (as the OpenAPI `document` does, sharing the `$defs/externalResource` `$ref`). A
-follow-up `./mvnw test` on JDK 25 is required to confirm.
+**Residual risk — now resolved by CI:** the assumption that `AsyncApiArguments.getDocument()` exposes
+`getEndpoint()` (and the other SDK getter names) held — the `dws-controller` and `dws-orchestrator`
+CI workflows compiled and passed on JDK 25 on the PR head. No follow-up compile is outstanding.
 
 ---
 
@@ -103,10 +104,10 @@ follow-up `./mvnw test` on JDK 25 is required to confirm.
 ## Overall Decision
 
 - [ ] PASS
-- [ ] PASS WITH WARNINGS
-- [x] FAIL — finish the JDK-25 controller/orchestrator builds and the live Dapr+Kafka integration
-  test, check tasks 6.4/7.2/8.2/8.3, then re-run verification.
+- [x] PASS WITH WARNINGS — all three CI workflows (runner, controller, orchestrator) are green on
+  the PR head and the PR is mergeable; the one gap is the live Dapr+Kafka integration test (8.2/8.3),
+  which no environment available here can run.
+- [ ] FAIL
 
-**Next step**: On a JDK 25 + populated Maven environment, run `./mvnw test` (dws-controller) and
-`./mvnw verify` (dws-orchestrator); provision Docker + Kafka + Dapr and run the integration test.
-Archive and branch-finalization are intentionally blocked until then.
+**Next step**: provision Docker + Kafka + Dapr and run the integration test (8.2), then check
+8.2/8.3. Archive is blocked only on that live check; the unit/compile surface is verified by CI.

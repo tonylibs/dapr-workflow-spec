@@ -48,17 +48,18 @@
 - [x] 6.3 Extend `StackSynthesizer` to render the version-scoped Dapr binding `Component` scoped to
   the step app-id, and wire it into `StackApplier`'s apply loop (label-GC'd like the OAuth
   Components).
-- [~] 6.4 Add compiler tests (supported protocol → binding step, unsupported rejection); update the
+- [x] 6.4 Add compiler tests (supported protocol → binding step, unsupported rejection); update the
   `ImageCatalog` constructors. `./mvnw test` from `dws-controller` is **environment-blocked** here
-  (JDK 21 present, project requires 25; empty Maven cache) — code written and self-reviewed but not
-  compiled. See `verify.md`.
+  (JDK 21 present, project requires 25; empty Maven cache), but the `dws-controller` CI workflow
+  compiled and passed on the PR head (run 42, conclusion `success`). See `verify.md`.
 
 ## 7. Orchestrator error classification
 
 - [x] 7.1 Add `VALIDATION_MARKER` to `WorkflowErrors.classify()` mapping to `ErrorKind.VALIDATION`,
   guarded before the step-communication check; add a `WorkflowErrorsTest` case.
-- [~] 7.2 `./mvnw verify` from `dws-orchestrator` is **environment-blocked** (JDK 21 vs required 25;
-  empty Maven cache). See `verify.md`.
+- [x] 7.2 `./mvnw verify` from `dws-orchestrator` is **environment-blocked** here (JDK 21 vs
+  required 25; empty Maven cache), but the `dws-orchestrator` CI workflow compiled and passed on the
+  PR head (run 57, conclusion `success`). See `verify.md`.
 
 ## 8. CI and integration
 
