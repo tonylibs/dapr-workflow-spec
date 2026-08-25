@@ -241,6 +241,58 @@ Redis subchart's own Service (<release>-redis-master:6379) and auto-created Secr
 .Values.redis.external.existingSecret / existingSecretKey instead. There is no
 redis.enabled toggle — Redis follows dapr.enabled (see Chart.yaml).
 */}}
+{{/*
+Auth (dws-console auth roadmap Phase 2) — resolve issuer, audience, and JWKS URL for the
+controller sidecar's bearer middleware. Two modes:
+  (a) auth.dex.enabled=true → derive from the in-chart Dex (issuer from dex.issuer, audience
+      from the dws-console static client id, JWKS URL from Dex's fixed /keys path).
+  (b) otherwise → use auth.issuer / auth.audience / auth.jwksURL directly.
+Each helper fails render with an explicit message when auth.enabled=true and no source is
+available for that field. jwksURL is optional (Dapr's bearer middleware discovers it from the
+issuer's OIDC discovery document when unset), so its helper returns an empty string when
+neither mode supplies one.
+*/}}
+{{- define "dws.auth.issuer" -}}
+{{- if .Values.auth.dex.enabled -}}
+{{- if not .Values.dex.enabled -}}
+{{- fail "auth.dex.enabled=true requires dex.enabled=true" -}}
+{{- end -}}
+{{- required "dex.issuer is required when auth.dex.enabled=true" .Values.dex.issuer -}}
+{{- else -}}
+{{- required "auth.issuer is required when auth.enabled=true (set auth.issuer, or set auth.dex.enabled=true with dex.enabled=true)" .Values.auth.issuer -}}
+{{- end -}}
+{{- end }}
+
+{{- define "dws.auth.audience" -}}
+{{- if .Values.auth.dex.enabled -}}
+{{- if not .Values.dex.enabled -}}
+{{- fail "auth.dex.enabled=true requires dex.enabled=true" -}}
+{{- end -}}
+{{- /* Dex issues tokens whose `aud` equals the client_id that requested them. The
+       dws-console static client is that client_id; the same token flows through
+       Phase 3's dws-admin relay to the controller unchanged. */ -}}
+dws-console
+{{- else -}}
+{{- required "auth.audience is required when auth.enabled=true (set auth.audience, or set auth.dex.enabled=true with dex.enabled=true)" .Values.auth.audience -}}
+{{- end -}}
+{{- end }}
+
+{{- define "dws.auth.jwksURL" -}}
+{{- if .Values.auth.dex.enabled -}}
+{{- printf "%s/keys" (trimSuffix "/" .Values.dex.issuer) -}}
+{{- else -}}
+{{- .Values.auth.jwksURL -}}
+{{- end -}}
+{{- end }}
+
+{{- define "dws.auth.componentName" -}}
+{{- printf "%s-auth" (include "dws.controller.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{- define "dws.auth.configName" -}}
+{{- printf "%s-config" (include "dws.controller.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
 {{- define "dws.redis.host" -}}
 {{- if .Values.redis.external.host }}
 {{- .Values.redis.external.host }}

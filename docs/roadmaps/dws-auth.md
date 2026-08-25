@@ -37,7 +37,7 @@ flowchart TD
 |---|---|---|---|
 | **0** | Add Dex as an optional in-chart dependency (toggle like `postgresql.enabled`); `staticPasswords` for dev users, `staticClients` registers `dws-console` as a public PKCE client; auto-generate a bootstrap admin login (see §2a) | — | ✅ done |
 | **1** | React OIDC client (Authorization Code + PKCE), in-memory token, silent-renew integration, logout integration, additive unauthenticated reads | Phase 0 | ✅ done — implementation merged in `ed1fdfc2`; local gates, chart contract checks, live discovery/CORS/PKCE request evidence, and failure-state handling are verified. Bundled-Dex interoperability acceptance moved to Phase 8 |
-| **2** | Enable `dws-controller`'s Dapr sidecar (`dapr.io/enabled`/`app-id`/`app-port`); add a bearer `Component` and a `Configuration` wiring it to the inbound pipeline; route the Service through Dapr and keep the app port pod-local | Phase 0 (needs the IdP's JWKS endpoint) | ⚠️ implementation complete; live authorization/bypass verification pending |
+| **2** | Enable `dws-controller`'s Dapr sidecar (`dapr.io/enabled`/`app-id`/`app-port`); add a bearer `Component` and a `Configuration` wiring it to the inbound pipeline; route the Service through Dapr and keep the app port pod-local | Phase 0 (needs the IdP's JWKS endpoint) | ✅ done — landed via `dws-console-auth-phase-2` (see `openspec/changes/dws-console-auth-phase-2/verify.md`); live Dapr + Dex authorization matrix (no-auth / valid / malformed / tampered-sig / wrong-aud / wrong-iss) all rejected before controller; Service-level bypass closed by sidecar front-port. Pod-IP:8080 residual documented for follow-up |
 | **3** | New route in `dws-admin`: stateless relay that forwards the `Authorization` header + body to `dws-controller` via `dws-admin`'s own local sidecar invoke call. No verification logic — `dws-admin` never inspects the token | Phase 2 | ❌ not started |
 | **4** | New `admin-gateway` nginx Deployment/Service/ConfigMap (chart-bundled, not an assumed cluster Ingress): answers CORS preflight, proxies the real request to `dws-admin`'s sidecar invoke path. Extend `dws-admin`'s Service with its sidecar port. Add `bearer`/role `Component`s + `Configuration` to `dws-admin`'s sidecar, scoped to this route only | Phase 3 | ❌ not started |
 | **5** | Wire the console's definition-submission UI to call the gateway with the bearer token attached; reads keep using the existing direct `dws-admin` path unchanged | Phases 1 and 4 | ❌ not started |
@@ -45,7 +45,7 @@ flowchart TD
 | **7** | User management: an admin-only console screen to create users and assign one of a small set of built-in roles (e.g. `admin`/`operator`/`viewer`). New `dws-admin` route, reusing Phase 4's gateway + Dapr role check (only `admin`-role tokens may call it), which manages users through **Dex's own gRPC management API** — no user/password storage or hashing added to DWS's own database | Phases 0, 4 | ❌ not started — further-out, exploratory; see §4 for a real open risk before committing to this shape |
 | **8** | Make the bundled development IdP satisfy the browser client contract: adopt a released Dex version/configuration (or another in-chart IdP) with non-interactive `prompt=none` browser sessions and advertised RP-initiated logout; then verify token-expiry renewal, clean renewal failure, authenticated storage, logout, route restoration, and two-tab convergence | Phases 0, 1 | ❌ deferred — Dex 2.44.0 lacks the required browser-session and `end_session_endpoint` behavior; owns deferred checklist tasks 6.1, 6.2, 7.2, and 8.3 |
 
-### Current progress (2026-08-24)
+### Current progress (2026-08-25)
 
 - Phase 0 is complete.
 - Phase 1's console code, PKCE configuration, sign-in/identity/logout UI, SSR integration, unit
@@ -66,15 +66,34 @@ flowchart TD
   browser-session/RP-logout capability in
   [dexidp/dex#4560](https://github.com/dexidp/dex/issues/4560); no local-only logout fallback was
   accepted.
-- Phase 2's chart implementation and local render gates are landed. Its live Dapr/OIDC
-  authorization and application-port bypass checks remain pending.
+- Phase 2 is complete. Change `dws-console-auth-phase-2`
+  (`openspec/changes/dws-console-auth-phase-2/`) landed: controller Deployment now carries
+  `dapr.io/app-port: "8080"` unconditionally and `dapr.io/config` when `auth.enabled=true`;
+  new `middleware.http.bearer` Component (scoped to the controller app-id) and Configuration
+  (`spec.appHttpPipeline.handlers`) render from `templates/controller/auth-*.yaml`; the
+  controller Kubernetes Service front-ports the Dapr sidecar's HTTP port (`3500`) when auth is
+  on, closing the Service-based bypass; new `auth.*` values contract supports both external
+  OIDC and derived-from-Dex mode. Local `helm lint` and rendered-output gates are green in both
+  modes. Live gates ran on a Docker Desktop cluster in namespace `dws-phase2` against in-chart
+  Dex 2.44.0: valid Dex-issued JWT reached the target via Dapr service invocation (200); no
+  `Authorization` header, malformed token, tampered signature, wrong-audience, and wrong-issuer
+  variants each returned 401 from the sidecar with no controller-container request-log entry;
+  kubelet liveness/readiness probes stayed Ready throughout. Full evidence including the auth
+  matrix, cluster context, sidecar loopback binding (`127.0.0.1:3500`), and the helm test
+  Job result is in the change's `verify.md`. One residual is captured for follow-up: direct
+  `POST <pod-ip>:8080` still bypasses the sidecar on CNIs without NetworkPolicy enforcement
+  (kindnet does not enforce; the target cluster in this run did not enforce either). Closing
+  that surface needs either a CNI-aware NetworkPolicy or binding the controller container to
+  `127.0.0.1:8080` — both out of scope for this chart-only phase and tracked separately.
 - Phases 3–7 have not started. Phase 8 is explicitly deferred until a released compatible IdP is
   available or the chart deliberately adopts a different one.
 
-**Next up:** Phase 2 still needs its own cluster-reachable issuer probe; the localhost port-forward
-used for Phase 1 browser evidence cannot serve workloads. Phase 3 remains the next
-dependency-ordered implementation after Phase 2's live gate. Phase 8 is later, independent work and
-does not block that sequence.
+**Next up:** Phase 3 (`dws-admin` stateless write-relay). The Phase 2 live gate is closed, so
+`dws-admin`'s relay route now has a Dapr-gated target to forward to. Phase 8 is later,
+independent work and does not block that sequence. Follow-up (not blocking): close the pod-IP
+direct-app-port bypass (either CNI-aware NetworkPolicy or `quarkus.http.host=127.0.0.1` on
+the controller) — the live run confirmed that surface is still reachable from other pods on
+NP-non-enforcing CNIs.
 
 ## 2a. Phase 0 detail — bootstrap admin user
 
@@ -113,6 +132,14 @@ anyone hand-editing `values.yaml` with a password:
 
 ## 4. Open items
 
+- **Pod-IP:8080 direct-app-port bypass** (surfaced by the Phase 2 live run). The Phase 2
+  Service front-port change closes Service-based bypass, but a pod-network peer that dials
+  `<controller-pod-ip>:8080` still reaches the app container directly (verified 200 from
+  another pod on kindnet). Two workable fixes: (a) CNI-aware NetworkPolicy denying
+  pod-network ingress to `8080` without breaking kubelet probes (varies by CNI), or (b) bind
+  the Quarkus HTTP server to `127.0.0.1:8080` (`quarkus.http.host=127.0.0.1`) so only daprd
+  in the same pod (via loopback) can reach it. Preference for (b) — CNI-independent, no
+  probe interaction. Owns a follow-up change; not blocking Phase 3.
 - Role/Rego middleware remains intentionally unused: no stable Dex/OIDC role claim has been proven.
   Revisit only with a documented token claim and a Dapr middleware type verified against the target
   Dapr release.

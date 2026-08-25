@@ -52,6 +52,33 @@ controller:
     run: sw-run:1.0
     orchestrator: ghcr.io/tonylibs/dws-orchestrator:latest
 
+# Dapr-native JWT authentication for the controller (dws-console auth roadmap Phase 2,
+# docs/roadmaps/dws-auth.md). Off by default so existing releases keep working; enabling
+# switches the controller Service to front the Dapr sidecar port (3500) so no caller can
+# bypass the middleware by hitting the app port directly.
+#
+# Two configuration modes:
+#
+#   (a) External OIDC (production shape):
+#       auth.enabled=true
+#       auth.issuer=https://idp.example.com          # OIDC discovery root
+#       auth.audience=dws-controller                 # `aud` claim the token must carry
+#       auth.jwksURL=https://idp.example.com/keys    # optional; discovered from issuer when unset
+#
+#   (b) In-chart Dex (dev/quickstart, requires dex.enabled=true):
+#       auth.enabled=true
+#       auth.dex.enabled=true
+#       # issuer / audience / jwksURL are derived from the Dex config; do not set them.
+#
+# Enabling auth.enabled without either (a) or (b) fails render with an explicit error.
+auth:
+  enabled: false
+  issuer: ""
+  audience: ""
+  jwksURL: ""
+  dex:
+    enabled: false
+
 # dws-admin read model service. Toggle the whole stack with admin.enabled.
 admin:
   enabled: true
