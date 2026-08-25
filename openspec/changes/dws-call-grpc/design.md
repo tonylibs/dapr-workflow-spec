@@ -61,6 +61,10 @@ for the evidence; this document records the resulting contracts.
   `FileDescriptorSet` (all transitive imports included). Raw `.proto` source is not
   accepted. Failure to fetch/parse/resolve is a startup error (process exits
   non-zero) — a misconfigured step never serves.
+- **DSL note:** the DSL 1.0 schema makes `with.proto` **required** on a
+  `call: grpc` task, so a controller-compiled step always carries `PROTO_ENDPOINT`.
+  Server reflection is therefore a runner-level capability for direct/standalone
+  deployment (and dev), not reachable through a controller-compiled definition.
 
 ### D3: Invocation — connect-go dynamic client
 
