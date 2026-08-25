@@ -1,0 +1,33 @@
+{{- /*
+  Bearer JWT middleware for the dws-controller sidecar (auth roadmap Phase 2).
+  Rendered only when auth.enabled=true. Scoped to the controller app-id so future sibling
+  sidecars (admin, orchestrator) do not accidentally inherit this middleware.
+
+  The paired Configuration in auth-configuration.yaml references this Component by name in
+  spec.appHttpPipeline.handlers, and the controller Pod's dapr.io/config annotation names
+  that Configuration — the three files must stay in sync.
+*/}}
+{{- if and .Values.controller.enabled .Values.auth.enabled }}
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: {{ include "dws.auth.componentName" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.controller.selectorLabels" . | nindent 4 }}
+spec:
+  type: middleware.http.bearer
+  version: v1
+  metadata:
+    - name: issuer
+      value: {{ include "dws.auth.issuer" . | quote }}
+    - name: audience
+      value: {{ include "dws.auth.audience" . | quote }}
+    {{- $jwks := include "dws.auth.jwksURL" . }}
+    {{- if $jwks }}
+    - name: jwksURL
+      value: {{ $jwks | quote }}
+    {{- end }}
+scopes:
+  - {{ include "dws.controller.fullname" . | quote }}
+{{- end }}

@@ -1,0 +1,19 @@
+{{- /*
+  Dapr Configuration that wires the controller's bearer middleware into the sidecar's inbound
+  HTTP pipeline. Rendered only when auth.enabled=true. Named consistently with
+  dws.auth.configName so the controller Pod's dapr.io/config annotation can name it.
+*/}}
+{{- if and .Values.controller.enabled .Values.auth.enabled }}
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: {{ include "dws.auth.configName" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.controller.selectorLabels" . | nindent 4 }}
+spec:
+  appHttpPipeline:
+    handlers:
+      - name: {{ include "dws.auth.componentName" . }}
+        type: middleware.http.bearer
+{{- end }}

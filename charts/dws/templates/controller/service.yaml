@@ -13,5 +13,13 @@ spec:
   ports:
     - name: http
       port: {{ .Values.controller.service.port }}
+      {{- if .Values.auth.enabled }}
+      # Phase 2 auth: front the Dapr sidecar's HTTP port (default 3500) so no caller can
+      # bypass the middleware pipeline by hitting the app port directly. Callers reaching
+      # this Service invoke through Dapr service invocation
+      # (/v1.0/invoke/<app-id>/method/...) and must carry a valid Bearer JWT.
+      targetPort: 3500
+      {{- else }}
       targetPort: http
+      {{- end }}
 {{- end }}

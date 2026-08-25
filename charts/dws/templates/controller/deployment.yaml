@@ -20,6 +20,10 @@ spec:
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: {{ include "dws.controller.fullname" . | quote }}
+        dapr.io/app-port: "8080"
+        {{- if .Values.auth.enabled }}
+        dapr.io/config: {{ include "dws.auth.configName" . | quote }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "dws.controller.fullname" . }}
       {{- if and .Values.dapr.enabled (not .Values.redis.external.host) }}

@@ -1,0 +1,79 @@
+{{- /*
+  Defense-in-depth Helm test (auth roadmap Phase 2): when auth.enabled=true, a Dapr service-
+  invocation call to dws-controller with no Authorization header MUST fail before it reaches
+  the controller container. The Dapr sidecar's bearer middleware rejects the request with 401
+  (see auth-component.yaml, auth-configuration.yaml).
+
+  Gated on auth.enabled=true — a release without auth has no middleware to assert.
+
+  Runs curl through this pod's OWN Dapr sidecar (dapr.io/enabled=true), which routes to the
+  target sidecar via gRPC service invocation. The target sidecar's inbound HTTP pipeline
+  applies the bearer middleware. A 200 or 403 here would mean the middleware is missing or
+  misconfigured; 401 is the required outcome.
+
+  IMPORTANT: hitting the target Service directly does NOT exercise the middleware — Dapr
+  binds its sidecar HTTP port to loopback (127.0.0.1:3500), so Service-level traffic
+  connection-refuses. The correct client path is always "invoke my own sidecar".
+
+  Kind is Job (not Pod) so a controller SA — not the caller's SA — creates the pod. The Dapr
+  sidecar injector's default admission policy accepts pods from a small allowlist of
+  controller SAs (job-controller, replicaset-controller, ...) and rejects direct pods from
+  user SAs.
+
+  The Job pod is outbound-only — no app container, no dapr.io/app-port annotation. daprd
+  starts without waiting on an app port, so curl runs immediately, exits, and the sidecar
+  is torn down by daprd's /shutdown API. Job then reaches Succeeded and `helm test`
+  returns quickly.
+*/}}
+{{- if and .Values.controller.enabled .Values.auth.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{ include "dws.controller.fullname" . }}-auth-negative-test"
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        {{- include "dws.labels" . | nindent 8 }}
+        app.kubernetes.io/component: controller
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "{{ include "dws.controller.fullname" . }}-auth-negative-test"
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: curl
+          image: curlimages/curl:8.11.1
+          command: ["sh", "-c"]
+          args:
+            - |
+              # Wait for the local sidecar to accept requests.
+              until curl -sSf http://localhost:3501/v1.0/healthz >/dev/null 2>&1; do
+                echo "waiting for local daprd" >&2
+                sleep 1
+              done
+              url="http://localhost:3500/v1.0/invoke/{{ include "dws.controller.fullname" . }}/method/api/test"
+              status=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$url" || echo "000")
+              echo "no-auth invoke status: $status"
+              rc=0
+              if [ "$status" = "401" ]; then
+                echo "PASS: bearer middleware rejected the unauthenticated request"
+              else
+                echo "FAIL: expected 401 from Dapr bearer middleware, got $status"
+                rc=1
+              fi
+              # Trigger sidecar exit so the Job pod terminates instead of running forever
+              # alongside daprd. daprd exits its process on /shutdown; the Pod then reaches
+              # Succeeded/Failed and `helm test` returns.
+              curl -sS -X POST http://localhost:3500/v1.0/shutdown >/dev/null 2>&1 || true
+              exit $rc
+{{- end }}
