@@ -35,8 +35,8 @@ Two different readiness axes get conflated below — worth separating:
 | Data flow (`input.from/schema`, `output.as/schema`, `export.as/schema`) | ❌ raw data passed through untransformed |
 | Errors as Problem Details (RFC 7807) + standard error types | ✅ |
 | Timeouts (workflow/task) | ✅ |
-| Authentication (basic/bearer/oauth2) | ❌ |
-| Secrets | ❌ |
+| Authentication (basic/bearer/oauth2) | ⚠️ implemented, blocked on live-cluster verification — see Phase 4 |
+| Secrets | ⚠️ implemented, blocked on live-cluster verification — see Phase 4 |
 | Catalogs / custom functions | ❌ |
 | Extensions (`before`/`after` hooks) | ❌ |
 | External resources | ❌ |
@@ -55,8 +55,8 @@ flowchart TD
   P2c --> P2d[Phase 2.4: fork parallel +<br/>generalize nested do ✅]
   P1 --> P3[Phase 3: Fault Tolerance<br/>Problem Details, timeouts ✅]
   P2d --> P3
-  P3 --> P4[Phase 4: Authentication + Secrets<br/>current]
-  P4 --> P5[Phase 5: Protocol Expansion<br/>gRPC, AsyncAPI, A2A]
+  P3 --> P4[Phase 4: Authentication + Secrets<br/>⚠️ impl done, verification blocked]
+  P4 --> P5[Phase 5: Protocol Expansion<br/>gRPC, AsyncAPI, A2A — AsyncAPI underway]
   P1 --> P6[Phase 6: Scheduling<br/>cron/every/after/on]
   P4 --> P7[Phase 7: Catalogs + Extensions]
 ```
@@ -72,7 +72,7 @@ Data flow is the foundation: retry/catch, extensions, and error handling all rea
 | **1** ✅ | `input.from/schema`, `output.as/schema`, `export.as/schema`, validation faults | orchestrator | done — `2026-07-27-data-flow-pipeline`, merged |
 | **2** ✅ | `try`/`catch`/`retry`, `raise`, `for`, `fork` (parallel), nested `do` | orchestrator, controller | done — `try-catch-retry`, `raise-task`, `for-task`, `fork-task` |
 | **3** ✅ | RFC 7807 error model, standard error types, task/workflow timeouts | orchestrator | complete |
-| **4** **(current)** | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi | opsx — new capability |
+| **4** ⚠️ | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi | opsx — `workflow-auth`, 19/21 tasks done, code committed; blocked on live-cluster verification (see §4b) |
 | **5** 🚧 | gRPC, AsyncAPI, A2A call protocols | new `dws-call-grpc`/`dws-call-asyncapi`/`dws-call-a2a` images | opsx — new components; AsyncAPI slice underway (`dws-call-asyncapi`) |
 | **6** | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) | opsx — new capability |
 | **7** | Catalogs, custom functions, extensions (`before`/`after`), external resources | controller, orchestrator | opsx — new capability |
@@ -85,10 +85,51 @@ introducing the scope-aware task-list runner (`runTaskList`) that every later sl
 
 | Slice | Scope | Status |
 |---|---|---|
-| 2.1 | `try`/`catch`/`retry`, the scope-aware runner (`runTaskList`), scope-local flow directives (`exit` vs `end`), depth guard, recursive task lookup and compile-time nesting into `try`/`catch.do` | ✅ done — `openspec/changes/try-catch-retry` (all tasks checked, code merged to `main`; **not yet run through `/opsx:archive`**) |
-| 2.2 | `raise` — explicit error construction/throw from a task, matched by the same `catch.errors.with`/`when` machinery slice 2.1 built | ✅ done — `openspec/changes/raise-task`; no controller change was needed, and `raise.error.status` is literal-only (the pinned SDK models no expression variant) |
-| 2.3 | `for` — currently recognized, throws `UnsupportedOperationException`; reuses `runTaskList` for the loop body the same way `try` does | ✅ done — `openspec/changes/for-task`; no controller change was needed, and `DefinitionLookup` gained the `for.do` recursion branch |
-| 2.4 | `fork` (parallel branches) + generalizing nested `do` to any task type that nests a list | ✅ done — `openspec/changes/fork-task`; each branch runs as its own Dapr child workflow instance (`ForkBranchWorkflow`), joined via `ctx.allOf` (`compete: false`) or raced via `ctx.anyOf` (`compete: true`); `WorkflowCompiler.walk()`/`collectTaskNames()` extended to both `fork` branches and `for.do` |
+| 2.1 | `try`/`catch`/`retry`, the scope-aware runner (`runTaskList`), scope-local flow directives (`exit` vs `end`), depth guard, recursive task lookup and compile-time nesting into `try`/`catch.do` | ✅ done — archived as `openspec/changes/archive/2026-08-19-try-catch-retry` |
+| 2.2 | `raise` — explicit error construction/throw from a task, matched by the same `catch.errors.with`/`when` machinery slice 2.1 built | ✅ done — archived as `openspec/changes/archive/2026-08-19-raise-task`; no controller change was needed, and `raise.error.status` is literal-only (the pinned SDK models no expression variant) |
+| 2.3 | `for` — currently recognized, throws `UnsupportedOperationException`; reuses `runTaskList` for the loop body the same way `try` does | ✅ done — archived as `openspec/changes/archive/2026-08-19-for-task`; no controller change was needed, and `DefinitionLookup` gained the `for.do` recursion branch |
+| 2.4 | `fork` (parallel branches) + generalizing nested `do` to any task type that nests a list | ✅ done — archived as `openspec/changes/archive/2026-08-19-fork-task`; each branch runs as its own Dapr child workflow instance (`ForkBranchWorkflow`), joined via `ctx.allOf` (`compete: false`) or raced via `ctx.anyOf` (`compete: true`); `WorkflowCompiler.walk()`/`collectTaskNames()` extended to both `fork` branches and `for.do` |
+
+## 4b. Phase 3 status
+
+`openspec/changes/ows-phase3-errors-timeouts`: all 7 task groups checked, including verification —
+`dws-orchestrator` full `mvn test` run green at **147/147**, `dws-controller` confirmed to need no
+change (timeouts never touch `WorkflowCompiler.walk()`), and the invented error-type-URI prefix
+grepped out of the codebase. RFC 7807 catalogue now lives at
+`https://serverlessworkflow.io/spec/1.0.0/errors/` with `AUTHORIZATION`/`EXPRESSION`/`TIMEOUT` added
+alongside `VALIDATION`/`COMMUNICATION`/`RUNTIME`. Task- and workflow-level timeouts race a
+`ForkBranchWorkflow`/`ScopeRunnerWorkflow` child instance against a Dapr timer via `ctx.anyOf`;
+retry per-attempt timeout (`limit.attempt.duration`) reuses the same `ScopeRunnerWorkflow` pattern.
+
+Implementation is complete and merged; the change folder has **not yet been run through
+`/opsx:archive`** (unlike Phase 2's slices, which all archived cleanly — see §4a). A sibling stub,
+`openspec/changes/workflow-error-format` (only a `.openspec.yaml`, no proposal/tasks/specs), appears
+to be an abandoned earlier attempt at the same scope, superseded by `ows-phase3-errors-timeouts` —
+worth deleting once confirmed, so it doesn't get mistaken for open work.
+
+## 4c. Phase 4 status
+
+`openspec/changes/workflow-auth`: **19/21 tasks done**, implementation code committed
+(`de42dd98..91f9b269`, 18 commits), and every component's own test suite is green:
+
+| Component | Command | Result |
+|---|---|---|
+| `dws-controller` | `mvnw test` | 99 tests, 0 failures |
+| `dws-orchestrator` | `mvnw verify` | 152 tests, 0 failures |
+| `dws-call-openapi` | `pnpm test` / `lint` / `build` | 95 tests + lint/build pass |
+| `dws-call-http` | `go vet` / `go test` | all pass |
+
+Delivered: scalar `use.secrets` → Kubernetes `secretKeyRef` projection (no plaintext in compiled
+plans/ConfigMaps), inline/named `basic`/`bearer`/OAuth2 `client_credentials` policies for `call:
+http`/`call: openapi`, version-scoped Dapr `HTTPEndpoint`/OAuth2-middleware `Component`/scoped
+`Configuration` synthesis, and the `$secrets` jq extension in `set`/`switch` (leakage-warned, per
+§5a).
+
+**Blocked** — tasks 6.2/6.3 need a disposable Docker/Helm/kind environment to run
+`scripts/verify-dapr-oauth-path-filter.sh`, proving the OAuth middleware only injects tokens on the
+intended filtered endpoint path and doesn't leak onto unrelated sidecar traffic. Every other check
+is static (synthesizer/compiler tests); this is the one live-cluster proof still outstanding, and it
+gates both archiving `workflow-auth` and starting Phase 5.
 
 ## 5. Rationale for ordering
 
