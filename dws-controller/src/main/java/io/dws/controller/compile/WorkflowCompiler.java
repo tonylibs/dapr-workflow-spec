@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import io.dws.controller.model.BindingComponent;
 import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.EnvValue;
 import io.dws.controller.model.ImageCatalog;
@@ -15,11 +16,13 @@ import io.dws.controller.model.TaskKind;
 import io.dws.controller.model.TopicBinding;
 import io.serverlessworkflow.api.WorkflowFormat;
 import io.serverlessworkflow.api.WorkflowReader;
+import io.serverlessworkflow.api.types.AsyncApiArguments;
 import io.serverlessworkflow.api.types.AuthenticationPolicyUnion;
 import io.serverlessworkflow.api.types.BasicAuthenticationPolicy;
 import io.serverlessworkflow.api.types.BasicAuthenticationProperties;
 import io.serverlessworkflow.api.types.BearerAuthenticationPolicy;
 import io.serverlessworkflow.api.types.BearerAuthenticationProperties;
+import io.serverlessworkflow.api.types.CallAsyncAPI;
 import io.serverlessworkflow.api.types.CallHTTP;
 import io.serverlessworkflow.api.types.CallOpenAPI;
 import io.serverlessworkflow.api.types.CallTask;
@@ -61,6 +64,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -142,7 +146,8 @@ public class WorkflowCompiler {
         steps,
         bindings,
         orchestrator,
-        context.oauthEndpoints());
+        context.oauthEndpoints(),
+        context.bindingComponents());
   }
 
   /** The public version string: {@code <workflow>@v<sha256-8>}. */
@@ -291,6 +296,8 @@ public class WorkflowCompiler {
         steps.add(httpStep(taskName, call.getCallHTTP(), context));
       } else if (call != null && call.getCallOpenAPI() != null) {
         steps.add(openApiStep(taskName, call.getCallOpenAPI(), context));
+      } else if (call != null && call.getCallAsyncAPI() != null) {
+        steps.add(asyncApiStep(taskName, call.getCallAsyncAPI(), context));
       } else if (task.getRunTask() != null) {
         steps.add(runStep(taskName, task.getRunTask()));
       } else if (task.getEmitTask() != null) {
@@ -384,6 +391,194 @@ public class WorkflowCompiler {
     }
     return new StepService(Names.kebab(taskName), TaskKind.CALL_OPENAPI, images.callOpenapi(), env);
   }
+
+  /**
+   * Compiles a {@code call: asyncapi} task. Does a <em>light</em> read of the fetched AsyncAPI
+   * document (first server protocol/host + the operation's channel address) to select a Dapr output
+   * binding type and register a version-scoped binding {@link BindingComponent}; the runner
+   * ({@code dws-call-asyncapi}) does the full parse and payload validation at runtime. Only
+   * outbound {@code send} operations are supported here — {@code subscription} (receive) belongs to
+   * a {@code listen} task. Unsupported broker protocols are rejected. Broker credentials, if any,
+   * are projected as {@code secretKeyRef} metadata reusing the Phase 4 {@code use.secrets} machinery.
+   */
+  private StepService asyncApiStep(String taskName, CallAsyncAPI call, CompileContext context) {
+    AsyncApiArguments with = call.getWith();
+    if (with == null) {
+      throw invalid(taskName, "asyncapi call has no 'with' arguments");
+    }
+    if (with.getSubscription() != null) {
+      throw invalid(
+          taskName, "asyncapi 'subscription' (receive) is not supported; use a listen task");
+    }
+    String documentUrl =
+        with.getDocument() != null ? resolveEndpoint(with.getDocument().getEndpoint()) : null;
+    if (isBlank(documentUrl)) {
+      throw invalid(taskName, "asyncapi call requires a static document endpoint");
+    }
+    String operationId = with.getOperation();
+    if (isBlank(operationId)) {
+      throw invalid(
+          taskName, "asyncapi call requires an 'operation' reference (AsyncAPI 3.0 operation id)");
+    }
+
+    byte[] document = documentFetcher.fetch(documentUrl);
+    JsonNode api = parseAsyncApiDocument(taskName, document);
+    AsyncApiServer server = firstAsyncApiServer(taskName, api);
+    BindingType binding = bindingTypeFor(taskName, server.protocol());
+    String address = asyncApiChannelAddress(taskName, api, operationId);
+
+    Map<String, EnvValue> metadata = new LinkedHashMap<>();
+    if (binding.hostKey() != null && !isBlank(server.host())) {
+      metadata.put(binding.hostKey(), new EnvValue.Literal(server.host()));
+    }
+    metadata.put(binding.destinationKey(), new EnvValue.Literal(address));
+    applyBrokerCredentials(taskName, with.getAuthentication(), binding, metadata, context);
+
+    String bindingName = context.registerBinding(taskName, binding.daprType(), metadata);
+
+    Map<String, EnvValue> env = new LinkedHashMap<>();
+    putIfPresent(env, "DOC_ENDPOINT", documentUrl);
+    putIfPresent(env, "DOC_SHA256", SpecDigest.sha256Hex(document));
+    putIfPresent(env, "OPERATION_ID", operationId);
+    putIfPresent(env, "BINDING_NAME", bindingName);
+    env.put("OPERATION", new EnvValue.Literal("create"));
+    return new StepService(
+        Names.kebab(taskName), TaskKind.CALL_ASYNCAPI, images.callAsyncapi(), env);
+  }
+
+  private void applyBrokerCredentials(
+      String taskName,
+      ReferenceableAuthenticationPolicy reference,
+      BindingType binding,
+      Map<String, EnvValue> metadata,
+      CompileContext context) {
+    if (reference == null) {
+      return;
+    }
+    AuthenticationPolicyUnion policy = resolvePolicy(taskName, reference, context);
+    BasicAuthenticationPolicy basic = policy.getBasicAuthenticationPolicy();
+    if (basic == null
+        || basic.getBasic() == null
+        || basic.getBasic().getBasicAuthenticationProperties() == null) {
+      throw invalid(
+          taskName, "asyncapi broker authentication supports only basic username/password");
+    }
+    if (binding.userKey() == null || binding.passwordKey() == null) {
+      throw invalid(
+          taskName,
+          "asyncapi broker authentication is not supported for this protocol in v1; pre-create the"
+              + " binding component's secret metadata instead");
+    }
+    BasicAuthenticationProperties properties = basic.getBasic().getBasicAuthenticationProperties();
+    metadata.put(
+        binding.userKey(), secretRef(taskName, "broker username", properties.getUsername(), context));
+    metadata.put(
+        binding.passwordKey(),
+        secretRef(taskName, "broker password", properties.getPassword(), context));
+  }
+
+  private static AuthenticationPolicyUnion resolvePolicy(
+      String taskName, ReferenceableAuthenticationPolicy reference, CompileContext context) {
+    AuthenticationPolicyUnion policy;
+    if (reference.getAuthenticationPolicyReference() != null) {
+      String name = reference.getAuthenticationPolicyReference().getUse();
+      policy = context.authentications().get(name);
+      if (policy == null) {
+        throw invalid(taskName, "authentication policy '" + name + "' is not declared");
+      }
+    } else {
+      policy = reference.getAuthenticationPolicy();
+    }
+    if (policy == null) {
+      throw invalid(taskName, "authentication policy is empty or unrecognized");
+    }
+    return policy;
+  }
+
+  private static BindingType bindingTypeFor(String taskName, String protocol) {
+    String p = protocol == null ? "" : protocol.toLowerCase(Locale.ROOT);
+    return switch (p) {
+      case "kafka" ->
+          new BindingType("bindings.kafka", "brokers", "publishTopic", "saslUsername", "saslPassword");
+      case "amqp" -> new BindingType("bindings.rabbitmq", "host", "queueName", null, null);
+      case "mqtt", "mqtt5" -> new BindingType("bindings.mqtt3", "url", "topic", "username", "password");
+      case "sqs" -> new BindingType("bindings.aws.sqs", null, "queueName", "accessKey", "secretKey");
+      case "googlepubsub" -> new BindingType("bindings.gcp.pubsub", null, "topic", null, null);
+      default ->
+          throw invalid(
+              taskName,
+              "AsyncAPI server protocol '"
+                  + protocol
+                  + "' has no supported Dapr binding (supported: kafka, amqp, mqtt, mqtt5, sqs,"
+                  + " googlepubsub)");
+    };
+  }
+
+  private static AsyncApiServer firstAsyncApiServer(String taskName, JsonNode api) {
+    JsonNode servers = api.get("servers");
+    if (servers == null || !servers.isObject() || servers.isEmpty()) {
+      throw invalid(taskName, "AsyncAPI document must declare at least one server");
+    }
+    JsonNode server = servers.properties().iterator().next().getValue();
+    String protocol = textValue(server.get("protocol"));
+    if (isBlank(protocol)) {
+      throw invalid(taskName, "AsyncAPI server must declare a protocol");
+    }
+    return new AsyncApiServer(protocol, textValue(server.get("host")));
+  }
+
+  private static String asyncApiChannelAddress(String taskName, JsonNode api, String operationId) {
+    JsonNode operations = api.get("operations");
+    JsonNode operation = operations == null ? null : operations.get(operationId);
+    if (operation == null || !operation.isObject()) {
+      throw invalid(taskName, "AsyncAPI operation '" + operationId + "' was not found");
+    }
+    String action = textValue(operation.get("action"));
+    if (!"send".equals(action)) {
+      throw invalid(taskName, "AsyncAPI operation '" + operationId + "' must have action 'send'");
+    }
+    JsonNode channelRef = operation.get("channel");
+    String ref = channelRef == null ? null : textValue(channelRef.get("$ref"));
+    JsonNode channel = resolveAsyncApiRef(taskName, api, ref);
+    String address = textValue(channel.get("address"));
+    if (isBlank(address)) {
+      throw invalid(taskName, "AsyncAPI channel for operation '" + operationId + "' has no address");
+    }
+    return address;
+  }
+
+  private static JsonNode resolveAsyncApiRef(String taskName, JsonNode api, String ref) {
+    if (ref == null || !ref.startsWith("#/")) {
+      throw invalid(taskName, "AsyncAPI operation channel must use an internal $ref");
+    }
+    JsonNode node = api;
+    for (String segment : ref.substring(2).split("/")) {
+      String token = segment.replace("~1", "/").replace("~0", "~");
+      node = node == null ? null : node.get(token);
+    }
+    if (node == null || !node.isObject()) {
+      throw invalid(taskName, "AsyncAPI reference '" + ref + "' does not resolve");
+    }
+    return node;
+  }
+
+  private static JsonNode parseAsyncApiDocument(String taskName, byte[] document) {
+    try {
+      String text = new String(document, StandardCharsets.UTF_8);
+      return detectFormat(text).mapper().readTree(document);
+    } catch (Exception e) {
+      throw invalid(taskName, "asyncapi call requires a parseable AsyncAPI document");
+    }
+  }
+
+  private record AsyncApiServer(String protocol, String host) {}
+
+  private record BindingType(
+      String daprType,
+      String hostKey,
+      String destinationKey,
+      String userKey,
+      String passwordKey) {}
 
   private StepService runStep(String taskName, RunTask run) {
     RunTaskConfigurationUnion cfg = run.getRun();
@@ -1010,6 +1205,7 @@ public class WorkflowCompiler {
     private final Set<String> secrets;
     private final Map<String, AuthenticationPolicyUnion> authentications;
     private final Map<OAuthKey, OAuthAccumulator> oauth = new LinkedHashMap<>();
+    private final List<BindingComponent> bindingComponents = new ArrayList<>();
 
     private CompileContext(
         String workflow,
@@ -1047,6 +1243,41 @@ public class WorkflowCompiler {
     private List<OAuthEndpoint> oauthEndpoints() {
       return oauth.values().stream().map(OAuthAccumulator::descriptor).toList();
     }
+
+    /**
+     * Registers one version-scoped Dapr binding Component for a {@code call: asyncapi} step and
+     * returns its name (the step's {@code BINDING_NAME}). The name is content-addressed over the
+     * binding type, requesting app-id, and metadata so re-posting an identical definition version
+     * yields a stable resource name that updates in place and is label-GC'd like every other
+     * version-scoped resource.
+     */
+    private String registerBinding(String taskName, String type, Map<String, EnvValue> metadata) {
+      String appId = Names.kebab(taskName);
+      String name = bindingName(workflow, versionId, type, appId, metadata);
+      bindingComponents.add(new BindingComponent(name, type, metadata, appId));
+      return name;
+    }
+
+    private List<BindingComponent> bindingComponents() {
+      return List.copyOf(bindingComponents);
+    }
+  }
+
+  private static String bindingName(
+      String workflow, String versionId, String type, String appId, Map<String, EnvValue> metadata) {
+    StringBuilder canonical = new StringBuilder(type).append('\n').append(appId);
+    new TreeMap<>(metadata)
+        .forEach((key, value) -> canonical.append('\n').append(key).append('=').append(describe(value)));
+    String hash =
+        SpecDigest.sha256Hex(canonical.toString().getBytes(StandardCharsets.UTF_8)).substring(0, 8);
+    return workflow + "-" + versionId + "-binding-" + hash;
+  }
+
+  private static String describe(EnvValue value) {
+    if (value instanceof EnvValue.SecretKeyRef secret) {
+      return "secret:" + secret.name() + "/" + secret.key();
+    }
+    return "lit:" + ((EnvValue.Literal) value).value();
   }
 
   private record EndpointTarget(String baseUrl, String path) {}

@@ -37,6 +37,19 @@ class WorkflowErrorsTest {
   }
 
   @Test
+  void stepPayloadValidationFailureIsAValidationError() {
+    // A step service (e.g. dws-call-asyncapi) rejects a request payload with a 400 whose body opens
+    // with `validation failed:`; the wrapping step message must classify as validation, not
+    // communication, so a catch.errors.with.type validation filter matches it.
+    String message =
+        "step 'publish-order' failed with status 400: validation failed: message payload failed"
+            + " schema validation";
+
+    assertThat(WorkflowErrors.classify(message)).isEqualTo(ErrorKind.VALIDATION);
+    assertThat(WorkflowErrors.statusOf(message, ErrorKind.VALIDATION)).isEqualTo(400);
+  }
+
+  @Test
   void activityUpstreamFailureIsACommunicationErrorLikeThe502HttpPath() {
     // The activity worker's upstream marker and the HTTP path's 502 are the same fault, so a catch
     // clause must see identical type/status/title regardless of which path produced the failure.

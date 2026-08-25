@@ -8,6 +8,7 @@ package io.dws.controller.model;
 public record ImageCatalog(
     String callHttp,
     String callOpenapi,
+    String callAsyncapi,
     String runShell,
     String runScriptJs,
     String runScriptPython,

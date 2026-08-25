@@ -4,6 +4,7 @@ package io.dws.controller.model;
 public enum TaskKind {
   CALL_HTTP,
   CALL_OPENAPI,
+  CALL_ASYNCAPI,
   RUN_SHELL,
   RUN_SCRIPT_JS,
   RUN_SCRIPT_PYTHON

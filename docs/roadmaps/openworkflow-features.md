@@ -13,7 +13,8 @@ Two different readiness axes get conflated below — worth separating:
 |---|---|---|
 | `call` (http) | ✅ | StepService via `dws-call-http` (built) |
 | `call` (openapi) | ✅ | StepService via `dws-call-openapi` (built) |
-| `call` (grpc/asyncapi/a2a) | ❌ | not started |
+| `call` (asyncapi) | 🚧 | Phase 5 slice underway — StepService via `dws-call-asyncapi` (Dapr output binding); controller `call: asyncapi` branch + binding Component synthesis (`openspec/changes/dws-call-asyncapi`) |
+| `call` (grpc/a2a) | ❌ | not started |
 | `run` (shell/script) | ✅ | StepService via `dws-run` (`dws-run-shell`/`dws-run-script-js`/`dws-run-script-python`); shipped in `2026-07-26-dws-run` |
 | `run` (container/workflow) | ❌ | rejected at compile time — no deployable image for either |
 | `switch` | ✅ | jq eval in a local in-process activity, no image needed |
@@ -72,7 +73,7 @@ Data flow is the foundation: retry/catch, extensions, and error handling all rea
 | **2** ✅ | `try`/`catch`/`retry`, `raise`, `for`, `fork` (parallel), nested `do` | orchestrator, controller | done — `try-catch-retry`, `raise-task`, `for-task`, `fork-task` |
 | **3** ✅ | RFC 7807 error model, standard error types, task/workflow timeouts | orchestrator | complete |
 | **4** **(current)** | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi | opsx — new capability |
-| **5** | gRPC, AsyncAPI, A2A call protocols | new `dws-call-grpc`/`dws-call-asyncapi`/`dws-call-a2a` images | opsx — new components |
+| **5** 🚧 | gRPC, AsyncAPI, A2A call protocols | new `dws-call-grpc`/`dws-call-asyncapi`/`dws-call-a2a` images | opsx — new components; AsyncAPI slice underway (`dws-call-asyncapi`) |
 | **6** | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) | opsx — new capability |
 | **7** | Catalogs, custom functions, extensions (`before`/`after`), external resources | controller, orchestrator | opsx — new capability |
 | **8** ✅ | `dws-admin` consumes lifecycle events into read model, exposes read API | dws-admin | done — Epics 2–3, merged |

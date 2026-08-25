@@ -16,6 +16,8 @@ import java.util.List;
  * @param bindings pub/sub topic bindings from emit/listen tasks
  * @param orchestrator the dedicated orchestrator Deployment for this version
  * @param oauthEndpoints canonical external-host/OAuth policy descriptors for Dapr synthesis
+ * @param bindingComponents version-scoped Dapr output-binding Components for {@code call: asyncapi}
+ *     steps
  */
 public record DeploymentPlan(
     String workflow,
@@ -26,15 +28,41 @@ public record DeploymentPlan(
     List<StepService> steps,
     List<TopicBinding> bindings,
     OrchestratorSpec orchestrator,
-    List<OAuthEndpoint> oauthEndpoints) {
+    List<OAuthEndpoint> oauthEndpoints,
+    List<BindingComponent> bindingComponents) {
 
   public DeploymentPlan {
     steps = List.copyOf(steps);
     bindings = List.copyOf(bindings);
     oauthEndpoints = List.copyOf(oauthEndpoints);
+    bindingComponents = List.copyOf(bindingComponents);
   }
 
-  /** Compatibility constructor for plans without OAuth resources. */
+  /** Compatibility constructor for plans with OAuth resources but no binding Components. */
+  public DeploymentPlan(
+      String workflow,
+      String versionId,
+      String version,
+      String definitionResource,
+      String specText,
+      List<StepService> steps,
+      List<TopicBinding> bindings,
+      OrchestratorSpec orchestrator,
+      List<OAuthEndpoint> oauthEndpoints) {
+    this(
+        workflow,
+        versionId,
+        version,
+        definitionResource,
+        specText,
+        steps,
+        bindings,
+        orchestrator,
+        oauthEndpoints,
+        List.of());
+  }
+
+  /** Compatibility constructor for plans without OAuth or binding resources. */
   public DeploymentPlan(
       String workflow,
       String versionId,
@@ -53,6 +81,7 @@ public record DeploymentPlan(
         steps,
         bindings,
         orchestrator,
+        List.of(),
         List.of());
   }
 }
