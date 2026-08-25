@@ -19,6 +19,7 @@ Only the long-running platform components are chart-managed:
 | `dws-call-http` / `dws-call-openapi` / `dws-run-*` | No | Same as above — controller stamps these out per workflow |
 | Dapr | Optional dependency | User-toggleable — see below |
 | Knative Serving | Optional dependency | User-toggleable — see below |
+| Dex (in-chart IdP for `dws-console` login) | Yes, optional — **done**, toggle `dex.enabled` (default `false`) | Landed via the separate [`dws-auth` roadmap](dws-auth.md) (Phase 0), not tracked as a phase here — noted because it now ships inside this chart. No DWS service consumes its tokens yet |
 
 ## User-facing install options
 
@@ -39,7 +40,7 @@ Both cluster-wide prerequisites are offered, not assumed:
 
 ```
 charts/dws/
-├── Chart.yaml                # dependencies: postgresql, dapr, redis (all conditional;
+├── Chart.yaml                # dependencies: postgresql, dapr, redis, dex (all conditional;
 │                             # redis follows dapr.enabled — no independent toggle)
 ├── values.yaml
 └── templates/
@@ -60,6 +61,9 @@ charts/dws/
     │                         # ghcr.io/tonylibs/dws-console, toggle: console.enabled
     │                         # (default false); ingress rule is console-only (see Phase 6
     │                         # follow-ups on the admin-URL story)
+    ├── dex/secrets.yaml      # done, dws-auth Phase 0 — chart-managed bootstrap-admin Secret
+    │                         # (generated password + bcrypt hash for Dex's staticPasswords),
+    │                         # toggle: dex.enabled (default false); see dws-auth.md
     ├── knative-install-job.yaml   # hook Job, toggle: knative.enabled (Phase 11)
     ├── dapr-ready-hook.yaml  # done, Phase 4 — post-install/upgrade Job, self-heals a missed
     │                         # Dapr sidecar injection on the admin Pod, toggle: dapr.enabled
@@ -80,7 +84,10 @@ via its Dapr sidecar and never receives Dapr-routed inbound traffic.
 
 ## Phased roadmap
 
-Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 2026-08-19.
+Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 2026-08-25 — Phase 6
+(console templates) flipped to ✅ and Phase 7's status note refreshed; the earlier same-day pass
+reconciled Dex, which landed in the chart via the separate `dws-auth` roadmap and wasn't
+reflected here before.
 
 | Phase | Status | Goal | Key tasks |
 |---|---|---|---|
@@ -99,6 +106,12 @@ Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 20
 
 ## Open items
 
+- **Dex landed but isn't a phase here.** `dex.enabled` (default `false`), the upstream `dexidp`
+  chart dependency, and the chart-managed bootstrap-admin Secret (`templates/dex/secrets.yaml`)
+  are done — tracked as Phase 0 of [`dws-auth.md`](dws-auth.md), which also covers the console
+  OIDC login (Phase 1, done) and the still-unstarted Dapr bearer-auth phases (2–7) that would let
+  any DWS service actually consume Dex's tokens. This roadmap only notes Dex's presence in the
+  chart layout/scope above; its own progress lives in `dws-auth.md`.
 - **Console admin-URL configurability (deferred, Phase 6 follow-up)**: `VITE_DWS_ADMIN_URL` is a Vite build arg — it is inlined into the client bundle at image-build time (see `dws-console/Dockerfile`), so it is *not* a runtime env var the chart can flip per install. The published `ghcr.io/tonylibs/dws-console` image ships with the default `/dws-admin` (same-origin), which assumes an ingress in front routes `/dws-admin/*` to the `dws-admin` Service. Operators needing a different admin URL currently have to rebuild the image (`docker build --build-arg VITE_DWS_ADMIN_URL=https://admin.example .`). A proper per-install knob needs a runtime-config shim — e.g. `dws-console/server.js` serving a small `/config.json` the SPA reads at boot instead of the baked-in `VITE_*`. Not started; the current chart's `console` values expose `image.{repository,tag,pullPolicy}` so operators can pin a rebuilt image in the meantime.
 - **Console ingress does not front `dws-admin`**: the Phase 6 ingress is a single rule for the console only. It does not add a `/dws-admin` rule that would satisfy the baked default `VITE_DWS_ADMIN_URL=/dws-admin` out of the box — operators wanting the same-origin story today must add that rule themselves (a second Ingress, or extend this one). Tied to the point above: the "chart owns a same-origin ingress convention" question is deferred until the runtime-config shim lands, so the chart doesn't lock in an ingress shape before the URL story is settled.
 - Built-in Postgres is dev/eval-grade (single replica, no backup) — production users should set `postgresql.enabled: false` and point `admin.database` at a managed instance. Same caveat will apply to the built-in Redis once it exists (`redis.enabled: false` for production, point at a managed instance).
