@@ -19,6 +19,7 @@ Only the long-running platform components are chart-managed:
 | `dws-call-http` / `dws-call-openapi` / `dws-run-*` | No | Same as above — controller stamps these out per workflow |
 | Dapr | Optional dependency | User-toggleable — see below |
 | Knative Serving | Optional dependency | User-toggleable — see below |
+| Dex (in-chart IdP for `dws-console` login) | Yes, optional — **done**, toggle `dex.enabled` (default `false`) | Landed via the separate [`dws-auth` roadmap](dws-auth.md) (Phase 0), not tracked as a phase here — noted because it now ships inside this chart. No DWS service consumes its tokens yet |
 
 ## User-facing install options
 
@@ -39,7 +40,7 @@ Both cluster-wide prerequisites are offered, not assumed:
 
 ```
 charts/dws/
-├── Chart.yaml                # dependencies: postgresql, dapr, redis (all conditional;
+├── Chart.yaml                # dependencies: postgresql, dapr, redis, dex (all conditional;
 │                             # redis follows dapr.enabled — no independent toggle)
 ├── values.yaml
 └── templates/
@@ -58,6 +59,9 @@ charts/dws/
     │                                    # toggle: dapr.enabled
     ├── console/              # empty — disabled by default; dws-console image now exists
     │                         # (unblocked), Deployment/Service/Ingress templates not started
+    ├── dex/secrets.yaml      # done, dws-auth Phase 0 — chart-managed bootstrap-admin Secret
+    │                         # (generated password + bcrypt hash for Dex's staticPasswords),
+    │                         # toggle: dex.enabled (default false); see dws-auth.md
     ├── knative-install-job.yaml   # hook Job, toggle: knative.enabled (Phase 11)
     ├── dapr-ready-hook.yaml  # done, Phase 4 — post-install/upgrade Job, self-heals a missed
     │                         # Dapr sidecar injection on the admin Pod, toggle: dapr.enabled
@@ -78,7 +82,9 @@ via its Dapr sidecar and never receives Dapr-routed inbound traffic.
 
 ## Phased roadmap
 
-Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 2026-08-19.
+Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 2026-08-24 — phases 0–11
+unchanged since 2026-08-19; this pass only reconciles Dex, which landed in the chart via the
+separate `dws-auth` roadmap and wasn't reflected here before.
 
 | Phase | Status | Goal | Key tasks |
 |---|---|---|---|
@@ -97,6 +103,12 @@ Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 20
 
 ## Open items
 
+- **Dex landed but isn't a phase here.** `dex.enabled` (default `false`), the upstream `dexidp`
+  chart dependency, and the chart-managed bootstrap-admin Secret (`templates/dex/secrets.yaml`)
+  are done — tracked as Phase 0 of [`dws-auth.md`](dws-auth.md), which also covers the console
+  OIDC login (Phase 1, done) and the still-unstarted Dapr bearer-auth phases (2–7) that would let
+  any DWS service actually consume Dex's tokens. This roadmap only notes Dex's presence in the
+  chart layout/scope above; its own progress lives in `dws-auth.md`.
 - `dws-console` now has a Dockerfile and a CI-built image (`ghcr.io/tonylibs/dws-console`, merged
   2026-08-17) — Phase 6 (and the ingress part of Phase 7) is unblocked; the `templates/console/`
   manifests and console `values.yaml` entries just haven't been written yet (see
