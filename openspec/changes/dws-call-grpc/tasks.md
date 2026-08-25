@@ -23,7 +23,7 @@
 
 - [x] 5.1 Add `TaskKind.CALL_GRPC`, extend `ImageCatalog` with `callGrpc`, and wire `dws.images.call-grpc` through `DwsConfig`/`application.yaml` and the image-catalog construction.
 - [x] 5.2 Add a `call.getCallGRPC()` branch to `WorkflowCompiler.walk()` producing a `CALL_GRPC` StepService (`SERVICE_ADDR`/`METHOD`/`OUTPUT`/`TIMEOUT`, `PROTO_ENDPOINT`+`PROTO_SHA256`), reusing existing basic/bearer auth resolution and rejecting oauth2 for grpc.
-- [ ] 5.3 Add `WorkflowCompilerTest` cases (grpc env, proto pinning, kebab app-id, basic/bearer reuse, oauth2 rejection); run `./mvnw test -Dtest=WorkflowCompilerTest` from `dws-controller`.
+- [x] 5.3 Add `WorkflowCompilerTest` cases (grpc env, proto pinning, kebab app-id, basic/bearer reuse, oauth2 rejection); run `./mvnw test -Dtest=WorkflowCompilerTest` from `dws-controller`. (Executed green in CI under JDK 25 — the `dws-controller` workflow on PR #62 head `1a914e7`.)
 
 ## 6. CI, roadmap, and verification
 

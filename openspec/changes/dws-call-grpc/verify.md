@@ -21,14 +21,11 @@ item validates strictly on its own.
 
 ## 2. Task Completion (`tasks.md`)
 
-- [ ] All tasks are checked.
+- [x] All tasks are checked.
 
-13/14 tasks are complete. The one unchecked task is a live-JDK execution
-prerequisite, not missing implementation.
-
-| Task | State | Blocks archive |
-|---|---|---|
-| 5.3 | The `WorkflowCompilerTest` grpc cases **are written**; running `./mvnw test` needs the project's JDK 25 toolchain (only JDK 21 is present here — the pre-existing `maven.compiler.release=25` mismatch documented in `dws-controller/CLAUDE.md`). The compiler + model packages were instead compiled cleanly against the real 7.26.0 SDK via standalone `javac` (see §5). | Yes — until run under JDK 25 in CI |
+14/14 tasks are complete. Task 5.3's `./mvnw test` could not run locally (JDK 21
+only, the pre-existing `maven.compiler.release=25` mismatch), but it executed
+**green in CI under JDK 25** — see §5.
 
 ---
 
@@ -69,8 +66,9 @@ Fresh verification evidence:
 | dws-call-grpc | `go test -race ./...` | pass — 3 packages (config, activity, runner), 13 test functions / 38 subtests, incl. integration tests against a real in-process gRPC server over h2c (both descriptor sources) |
 | dws-call-grpc | `go build -trimpath -ldflags="-s -w"` | pass |
 | dws-controller | standalone `javac` of `compile` + `model` packages vs real `serverlessworkflow` 7.26.0 SDK jars | pass — validates `CallGRPC`/`GRPCArguments`/`WithGRPCService` getters and the new grpc branch |
-| dws-controller | `./mvnw test -Dtest=WorkflowCompilerTest` | **Not run** — needs JDK 25 (only JDK 21 present; pre-existing project/env mismatch) |
-| dws-call-grpc image | `docker build` | **Not run** — Docker unavailable in this environment |
+| dws-controller | `./mvnw test` (incl. `WorkflowCompilerTest` grpc cases) under JDK 25 | **pass in CI** — `dws-controller` workflow on PR #62 head `1a914e7` (conclusion: success) |
+| dws-call-grpc | full Go gate + image build | **pass in CI** — `dws-call-grpc` workflow on PR #62 head `1a914e7` (conclusion: success) |
+| dws-call-grpc image | `docker build` | **pass in CI** — built in the `dws-call-grpc` workflow (validated on PR, pushed on merge) |
 
 Go toolchain note: the module targets Go 1.26.4; a temporary `GOTOOLCHAIN=auto`
 fetch of Go 1.26.4 provided the toolchain (system Go is 1.24.7). CI uses
@@ -91,21 +89,23 @@ JDK-version-blocked execution, not silently deferred dogfood.
 
 | Manual / environment check | Automated coverage | Assessment | Real gap? |
 |---|---|---|---|
-| `dws-controller` grpc compile + `WorkflowCompilerTest` | Test cases written; compiler compiles against the real SDK via standalone javac | Proves types/getters and branch shape; does not execute the JUnit assertions | Yes — must run `./mvnw test` under JDK 25 in CI |
-| Live-cluster deploy of a `call: grpc` step | Runner integration tests exercise the full call path against a real gRPC server in-process | Proves runner behavior end-to-end; does not prove Knative/Dapr wiring | Partial — deploy path covered by controller synth tests (run under JDK 25) |
-| Container image build | Dockerfile mirrors the proven `dws-call-http` build | Not built here (no Docker); CI builds it on every PR | Yes — CI validates the Dockerfile |
+| `dws-controller` grpc compile + `WorkflowCompilerTest` | JUnit cases executed green in CI under JDK 25 | Proves types/getters, branch shape, and the JUnit assertions | No — passed in CI |
+| Live-cluster deploy of a `call: grpc` step | Runner integration tests exercise the full call path against a real gRPC server in-process; controller synth tests run in CI | Proves runner behavior end-to-end and controller synthesis; does not prove a live Knative/Dapr round trip | Partial — a live-cluster smoke test remains future work, as for the sibling runners |
+| Container image build | Built green in the `dws-call-grpc` CI workflow | Validates the Dockerfile on every PR; pushed on merge | No — passed in CI |
 
 ---
 
 ## Overall Decision
 
-- [ ] PASS
-- [x] PASS WITH WARNINGS — the runner (`dws-call-grpc`) is fully implemented,
-  tested (unit + real-server integration), formatted, vetted, and builds. The
-  controller branch is implemented and compiles against the real SDK, but its
-  JUnit suite and the container image build could not execute in this environment
-  (JDK 25 and Docker unavailable).
+- [x] PASS — the runner (`dws-call-grpc`) is fully implemented, tested (unit +
+  real-server integration), formatted, vetted, and builds. The controller branch
+  is implemented, compiles against the real SDK, and its `WorkflowCompilerTest`
+  grpc cases pass under JDK 25 in CI. Both the `dws-call-grpc` and `dws-controller`
+  CI workflows completed green on PR #62 head `1a914e7`, including both image
+  builds.
+- [ ] PASS WITH WARNINGS
+- [ ] FAIL
 
-**Next step**: run `cd dws-controller && ./mvnw test -Dtest=WorkflowCompilerTest`
-under JDK 25 and build the `dws-call-grpc` image in CI (both run automatically on
-the PR), then re-run this verification and check task 5.3.
+**Next step**: ready to `/opsx:sync` the `grpc-call-step` delta spec and archive on
+merge. A live-cluster smoke deploy of a `call: grpc` step remains future work, as
+for the sibling runners.
