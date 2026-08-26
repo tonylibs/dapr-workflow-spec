@@ -30,6 +30,7 @@ class WorkflowCompilerTest {
           "sw-call-http:1.0",
           "sw-call-openapi:1.0",
           "sw-call-grpc:1.0",
+          "sw-call-asyncapi:1.0",
           "sw-run-shell:1.0",
           "sw-run-script-js:1.0",
           "sw-run-script-python:1.0",
@@ -1302,6 +1303,86 @@ class WorkflowCompilerTest {
                   use: accounts
         """
         .formatted(documentUrl);
+  }
+
+  @Test
+  @DisplayName("a call: asyncapi task compiles to a binding-backed step service")
+  void asyncApiCallCompilesToBindingStep() {
+    WorkflowCompiler asyncCompiler =
+        new WorkflowCompiler(IMAGES, ignored -> asyncApiDocument("kafka", "kafka.example.test:9092"));
+
+    DeploymentPlan plan = asyncCompiler.compile(asyncApiDefinition());
+
+    StepService step = step(plan, "publish-order");
+    assertThat(step.kind()).isEqualTo(TaskKind.CALL_ASYNCAPI);
+    assertThat(step.image()).isEqualTo("sw-call-asyncapi:1.0");
+    assertThat(literal(step, "DOC_ENDPOINT")).isEqualTo("https://api.example.test/asyncapi.json");
+    assertThat(literal(step, "OPERATION_ID")).isEqualTo("publishOrder");
+    assertThat(literal(step, "OPERATION")).isEqualTo("create");
+    assertThat(step.env()).containsKey("BINDING_NAME").containsKey("DOC_SHA256");
+
+    assertThat(plan.bindingComponents()).hasSize(1);
+    var binding = plan.bindingComponents().get(0);
+    assertThat(binding.type()).isEqualTo("bindings.kafka");
+    assertThat(binding.appId()).isEqualTo("publish-order");
+    assertThat(binding.name()).isEqualTo(literal(step, "BINDING_NAME"));
+    assertThat(binding.metadata())
+        .containsEntry("publishTopic", new Literal("orders"))
+        .containsEntry("brokers", new Literal("kafka.example.test:9092"));
+  }
+
+  @Test
+  @DisplayName("an unsupported AsyncAPI server protocol is rejected at compile time")
+  void asyncApiRejectsUnsupportedProtocol() {
+    WorkflowCompiler asyncCompiler =
+        new WorkflowCompiler(IMAGES, ignored -> asyncApiDocument("nats", "nats.example.test:4222"));
+
+    assertThatThrownBy(() -> asyncCompiler.compile(asyncApiDefinition()))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("no supported Dapr binding");
+  }
+
+  private static String asyncApiDefinition() {
+    return """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: orders
+          version: '1.0.0'
+        do:
+          - publishOrder:
+              call: asyncapi
+              with:
+                document:
+                  endpoint: https://api.example.test/asyncapi.json
+                operation: publishOrder
+                message: {}
+        """;
+  }
+
+  private static byte[] asyncApiDocument(String protocol, String host) {
+    return """
+        {
+          "asyncapi": "3.0.0",
+          "info": { "title": "Orders", "version": "1.0.0" },
+          "servers": { "production": { "host": "%s", "protocol": "%s" } },
+          "channels": {
+            "orders": {
+              "address": "orders",
+              "messages": { "orderCreated": { "payload": { "type": "object" } } }
+            }
+          },
+          "operations": {
+            "publishOrder": {
+              "action": "send",
+              "channel": { "$ref": "#/channels/orders" },
+              "messages": [ { "$ref": "#/channels/orders/messages/orderCreated" } ]
+            }
+          }
+        }
+        """
+        .formatted(host, protocol)
+        .getBytes(StandardCharsets.UTF_8);
   }
 
   private static byte[] openApiDocument(String serverUrl) {

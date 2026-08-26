@@ -30,6 +30,7 @@ import imports.io.dapr.WorkflowAccessPolicySpec;
 import imports.io.dapr.WorkflowAccessPolicySpecRules;
 import imports.io.dapr.WorkflowAccessPolicySpecRulesActivities;
 import imports.io.dapr.WorkflowAccessPolicySpecRulesCallers;
+import io.dws.controller.model.BindingComponent;
 import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.EnvValue;
 import io.dws.controller.model.OAuthEndpoint;
@@ -201,6 +202,53 @@ public class StackSynthesizer {
       resources.add(toDynamicResource(chart));
     }
     return resources;
+  }
+
+  /**
+   * One version-scoped Dapr output-binding Component per {@code call: asyncapi} step, scoped to the
+   * step's app-id. Broker connection and destination values are literal metadata; credentials are
+   * Kubernetes {@code secretKeyRef} metadata, so no plaintext credential is ever serialized here.
+   */
+  public List<GenericKubernetesResource> bindingComponents(DeploymentPlan plan, String namespace) {
+    List<GenericKubernetesResource> resources = new ArrayList<>(plan.bindingComponents().size());
+    for (BindingComponent binding : plan.bindingComponents()) {
+      Chart chart = Testing.chart();
+      new Component(
+          chart,
+          binding.name(),
+          ComponentProps.builder()
+              .metadata(
+                  ApiObjectMetadata.builder()
+                      .name(binding.name())
+                      .namespace(namespace)
+                      .labels(Labels.forPlan(plan))
+                      .build())
+              .scopes(List.of(binding.appId()))
+              .spec(
+                  ComponentSpec.builder()
+                      .type(binding.type())
+                      .version("v1")
+                      .metadata(bindingMetadata(binding))
+                      .build())
+              .build());
+      resources.add(toDynamicResource(chart));
+    }
+    return resources;
+  }
+
+  private static List<ComponentSpecMetadata> bindingMetadata(BindingComponent binding) {
+    List<ComponentSpecMetadata> metadata = new ArrayList<>(binding.metadata().size());
+    binding
+        .metadata()
+        .forEach(
+            (name, value) -> {
+              if (value instanceof EnvValue.SecretKeyRef secret) {
+                metadata.add(secretMetadata(name, secret));
+              } else {
+                metadata.add(valueMetadata(name, ((EnvValue.Literal) value).value()));
+              }
+            });
+    return metadata;
   }
 
   private static ApiObjectMetadata oauthMetadata(
@@ -389,11 +437,12 @@ public class StackSynthesizer {
 
   /**
    * True for steps the orchestrator invokes as a multi-app Dapr Workflow activity — every kind but
-   * {@code CALL_OPENAPI}, whose Node image stays on HTTP service invocation. The single source of
-   * truth for the activity-vs-HTTP split, shared by {@link #minScale} and the access-policy synth.
+   * the Node runners ({@code CALL_OPENAPI} and {@code CALL_ASYNCAPI}), which stay on HTTP service
+   * invocation. The single source of truth for the activity-vs-HTTP split, shared by {@link
+   * #minScale} and the access-policy synth.
    */
   private static boolean isActivityInvoked(TaskKind kind) {
-    return kind != TaskKind.CALL_OPENAPI;
+    return kind != TaskKind.CALL_OPENAPI && kind != TaskKind.CALL_ASYNCAPI;
   }
 
   private static List<ServiceSpecTemplateSpecContainersEnv> knativeEnv(Map<String, EnvValue> env) {

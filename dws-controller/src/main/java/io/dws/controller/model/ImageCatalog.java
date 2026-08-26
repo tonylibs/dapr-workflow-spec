@@ -9,6 +9,7 @@ public record ImageCatalog(
     String callHttp,
     String callOpenapi,
     String callGrpc,
+    String callAsyncapi,
     String runShell,
     String runScriptJs,
     String runScriptPython,

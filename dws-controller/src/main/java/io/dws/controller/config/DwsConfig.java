@@ -29,6 +29,8 @@ public interface DwsConfig {
 
     String callGrpc();
 
+    String callAsyncapi();
+
     String runShell();
 
     String runScriptJs();
@@ -43,6 +45,7 @@ public interface DwsConfig {
         images().callHttp(),
         images().callOpenapi(),
         images().callGrpc(),
+        images().callAsyncapi(),
         images().runShell(),
         images().runScriptJs(),
         images().runScriptPython(),

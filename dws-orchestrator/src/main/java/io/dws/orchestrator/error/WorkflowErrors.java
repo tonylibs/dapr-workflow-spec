@@ -56,6 +56,17 @@ public final class WorkflowErrors {
   private static final String CONFIG_MARKER = "config failure:";
 
   /**
+   * Marker a step service folds into a payload-validation failure (a {@code 400} whose body opens
+   * with {@code validation failed:}, as {@code dws-call-asyncapi}'s payload validator emits).
+   * Checked before the {@link #STEP_MARKER} communication classification so a schema-rejected
+   * request is a {@link ErrorKind#VALIDATION} error a {@code catch.errors.with.type} filter can
+   * match, rather than being lumped in with transport/communication faults. Placed after the
+   * data-flow check because a data-flow schema fault ({@link #DATA_FLOW_MARKER}) already classifies
+   * as validation and must keep attributing itself to the data-flow phase.
+   */
+  private static final String VALIDATION_MARKER = "validation failed:";
+
+  /**
    * Prefix {@link RaisedErrorException} folds its resolved error object's JSON behind. Matched as a
    * <em>prefix</em>, not a substring, so an error whose {@code detail} happens to quote another
    * failure's text is still recognised as raised rather than reclassified from its own payload.
@@ -71,6 +82,12 @@ public final class WorkflowErrors {
       return ErrorKind.TIMEOUT;
     }
     if (message.contains(DATA_FLOW_MARKER)) {
+      return ErrorKind.VALIDATION;
+    }
+    // A step-service payload-validation failure carries this marker; classify it as validation
+    // before the STEP_MARKER communication check below, which would otherwise treat the wrapping
+    // `step '…' failed with status 400: …` message as a communication fault.
+    if (message.contains(VALIDATION_MARKER)) {
       return ErrorKind.VALIDATION;
     }
     // A config-failure activity message also opens with `step '…'`, so it must be caught before the

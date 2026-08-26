@@ -1,0 +1,72 @@
+# Example Knative Service for a single `call: asyncapi` step.
+#
+# This manifest configures the `publish-order` step: it resolves the AsyncAPI
+# `publishOrder` send operation and dispatches its message through the Dapr
+# output binding named by BINDING_NAME. Every asyncapi call step deploys this
+# same image and differs only in the env block and the Dapr app-id (the task
+# name). The referenced binding Component (orders-binding here) is synthesized
+# per workflow version by dws-controller.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: publish-order
+  labels:
+    dws.io/step-type: call-asyncapi
+    dws.io/task: publish-order
+spec:
+  template:
+    metadata:
+      annotations:
+        # Scale to zero when idle; scale up on invocation. Raise minScale to 1
+        # (or higher) to keep warm replicas and avoid cold starts for hot steps.
+        autoscaling.knative.dev/minScale: "0"
+        # Dapr sidecar injection. app-id is derived from the task name so the
+        # orchestrator can invoke this step via Dapr service invocation.
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "publish-order"
+        dapr.io/app-port: "8080"
+    spec:
+      containers:
+        - image: registry.io/dws/dws-call-asyncapi:1.0
+          ports:
+            - name: http1
+              containerPort: 8080
+          env:
+            - name: TASK
+              value: "publish-order"
+            # AsyncAPI document location (http|https|file) and its pinned digest.
+            - name: DOC_ENDPOINT
+              value: "https://example.com/asyncapi.json"
+            - name: DOC_SHA256
+              value: "0000000000000000000000000000000000000000000000000000000000000000"
+            - name: OPERATION_ID
+              value: "publishOrder"
+            # Dapr output-binding component the sidecar dispatches through.
+            - name: BINDING_NAME
+              value: "orders-binding"
+            # Optional knobs (defaults shown for reference):
+            # - name: OPERATION
+            #   value: "create"          # Dapr binding operation verb
+            # - name: PAYLOAD
+            #   value: "."               # jq expression building the message payload
+            # - name: METADATA
+            #   value: '{"partitionKey":"..."}'
+            # - name: OUTPUT
+            #   value: "replace"         # replace | merge
+            # - name: TIMEOUT
+            #   value: "30s"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"

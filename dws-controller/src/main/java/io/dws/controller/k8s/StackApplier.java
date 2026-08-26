@@ -82,6 +82,9 @@ public class StackApplier {
           synthesizer.oauthConfigurations(plan, namespace)) {
         applyDynamic(ResourceContexts.DAPR_CONFIGURATION, configuration);
       }
+      for (GenericKubernetesResource binding : synthesizer.bindingComponents(plan, namespace)) {
+        applyDynamic(ResourceContexts.DAPR_COMPONENT, binding);
+      }
       for (GenericKubernetesResource service : synthesizer.knativeServices(plan, namespace)) {
         applyDynamic(ResourceContexts.KNATIVE_SERVICE, service);
       }

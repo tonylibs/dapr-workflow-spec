@@ -37,6 +37,7 @@ class StackSynthesizerTest {
           "sw-call-http:1.0",
           "sw-call-openapi:1.0",
           "sw-call-grpc:1.0",
+          "sw-call-asyncapi:1.0",
           "sw-run-shell:1.0",
           "sw-run-script-js:1.0",
           "sw-run-script-python:1.0",

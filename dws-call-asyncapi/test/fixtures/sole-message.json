@@ -1,0 +1,36 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "Notifications Service",
+    "version": "1.0.0"
+  },
+  "servers": {
+    "production": {
+      "host": "amqp.example.com:5672",
+      "protocol": "amqp"
+    }
+  },
+  "channels": {
+    "notifications": {
+      "address": "notifications",
+      "messages": {
+        "notify": {
+          "name": "Notify",
+          "payload": {
+            "type": "object",
+            "required": ["text"],
+            "properties": {
+              "text": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "operations": {
+    "sendNotification": {
+      "action": "send",
+      "channel": { "$ref": "#/channels/notifications" }
+    }
+  }
+}
