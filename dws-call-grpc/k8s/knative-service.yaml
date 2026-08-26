@@ -1,0 +1,72 @@
+# Example Knative Service for a single `call: grpc` step.
+#
+# This manifest configures the `greet-user` step: a unary gRPC call to a Greeter
+# service. Every gRPC call step deploys this same image and differs only in the
+# env block and the Dapr app-id (which is the task name).
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: greet-user
+  labels:
+    dws.io/step-type: call-grpc
+    dws.io/task: greet-user
+spec:
+  template:
+    metadata:
+      annotations:
+        # Scale to zero when idle; scale up on invocation.
+        autoscaling.knative.dev/minScale: "0"
+        # Dapr sidecar injection. app-id is derived from the task name so the
+        # orchestrator can invoke this step via Dapr service invocation.
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "greet-user"
+        dapr.io/app-port: "8080"
+    spec:
+      containers:
+        - image: registry.io/dws/dws-call-grpc:1.0
+          ports:
+            - name: http1
+              containerPort: 8080
+          env:
+            - name: TASK
+              value: "greet-user"
+            # Target gRPC server host:port.
+            - name: SERVICE_ADDR
+              value: "greeter-svc:50051"
+            # Fully-qualified method: package.Service/Method.
+            - name: METHOD
+              value: "greeter.Greeter/SayHello"
+            # Optional knobs (defaults shown for reference):
+            # Descriptor source — a serialized FileDescriptorSet URL. When unset,
+            # the runner resolves the method via the target's server reflection.
+            # - name: PROTO_ENDPOINT
+            #   value: "https://config-store/greeter.binpb"
+            # - name: PROTO_SHA256
+            #   value: "<sha256 hex of the descriptor set>"
+            # - name: TLS
+            #   value: "false"          # false => h2c plaintext (in-cluster default)
+            # - name: INSECURE_SKIP_VERIFY
+            #   value: "false"          # only applies when TLS=true
+            # - name: OUTPUT
+            #   value: "replace"        # replace | merge
+            # - name: TIMEOUT
+            #   value: "30s"
+            # Auth (basic/bearer values are injected from Kubernetes Secrets by the
+            # controller; oauth2 is not supported for gRPC):
+            # - name: AUTH_SCHEME
+            #   value: "none"           # none | basic | bearer
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"

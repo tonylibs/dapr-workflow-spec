@@ -34,6 +34,7 @@ public final class Labels {
     return switch (kind) {
       case CALL_HTTP -> "call-http";
       case CALL_OPENAPI -> "call-openapi";
+      case CALL_GRPC -> "call-grpc";
       case CALL_ASYNCAPI -> "call-asyncapi";
       case RUN_SHELL -> "run-shell";
       case RUN_SCRIPT_JS -> "run-script-js";

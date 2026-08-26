@@ -8,6 +8,7 @@ dws:
   images:
     call-http: ghcr.io/tonylibs/dws-call-http:latest
     call-openapi: ghcr.io/tonylibs/dws-call-openapi:latest
+    call-grpc: ghcr.io/tonylibs/dws-call-grpc:latest
     call-asyncapi: ghcr.io/tonylibs/dws-call-asyncapi:latest
     run-shell: ghcr.io/tonylibs/dws-run-shell:latest
     run-script-js: ghcr.io/tonylibs/dws-run-script-js:latest

@@ -29,6 +29,7 @@ class WorkflowCompilerTest {
       new ImageCatalog(
           "sw-call-http:1.0",
           "sw-call-openapi:1.0",
+          "sw-call-grpc:1.0",
           "sw-call-asyncapi:1.0",
           "sw-run-shell:1.0",
           "sw-run-script-js:1.0",
@@ -1402,6 +1403,118 @@ class WorkflowCompilerTest {
         """
         .formatted(serverUrl)
         .getBytes(StandardCharsets.UTF_8);
+  }
+
+  @Test
+  @DisplayName("a grpc call compiles to a CALL_GRPC step service with address, method, and pinned proto")
+  void grpcCallCompilesToStepService() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: grpc-basic
+          version: '1.0.0'
+        do:
+          - greetUser:
+              call: grpc
+              with:
+                proto:
+                  endpoint:
+                    uri: https://config.example.test/greeter.binpb
+                service:
+                  name: greeter.Greeter
+                  host: greeter-svc
+                  port: 50051
+                method: SayHello
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+    StepService grpc = step(plan, "greet-user");
+
+    assertThat(grpc.kind()).isEqualTo(TaskKind.CALL_GRPC);
+    assertThat(grpc.image()).isEqualTo("sw-call-grpc:1.0");
+    assertThat(grpc.env())
+        .containsEntry("SERVICE_ADDR", new Literal("greeter-svc:50051"))
+        .containsEntry("METHOD", new Literal("greeter.Greeter/SayHello"))
+        .containsEntry(
+            "PROTO_ENDPOINT", new Literal("https://config.example.test/greeter.binpb"))
+        .containsEntry("PROTO_SHA256", new Literal(SpecDigest.sha256Hex(OPENAPI_DOC)));
+  }
+
+  @Test
+  @DisplayName("a grpc service bearer policy reuses the declared scalar secret reference")
+  void grpcServiceBearerAuthReused() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: grpc-bearer
+          version: '1.0.0'
+        use:
+          secrets: [apitoken]
+        do:
+          - greetUser:
+              call: grpc
+              with:
+                proto:
+                  endpoint:
+                    uri: https://config.example.test/greeter.binpb
+                service:
+                  name: greeter.Greeter
+                  host: greeter-svc
+                  port: 50051
+                  authentication:
+                    bearer:
+                      token: ${ $secrets.apitoken }
+                method: SayHello
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(step(plan, "greet-user").env())
+        .containsEntry("AUTH_SCHEME", new Literal("bearer"))
+        .containsEntry("AUTH_TOKEN", new SecretKeyRef("apitoken", "value"));
+  }
+
+  @Test
+  @DisplayName("a grpc call rejects an oauth2 authentication policy")
+  void grpcOauth2Rejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: grpc-oauth
+          version: '1.0.0'
+        use:
+          secrets: [oauthclientid, oauthclientsecret]
+        do:
+          - greetUser:
+              call: grpc
+              with:
+                proto:
+                  endpoint:
+                    uri: https://config.example.test/greeter.binpb
+                service:
+                  name: greeter.Greeter
+                  host: greeter-svc
+                  port: 50051
+                  authentication:
+                    oauth2:
+                      authority: https://identity.example.test
+                      grant: client_credentials
+                      client:
+                        id: ${ $secrets.oauthclientid }
+                        secret: ${ $secrets.oauthclientsecret }
+                      scopes: [greeter.read]
+                method: SayHello
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("oauth2 authentication is not supported for gRPC calls");
   }
 
   private static StepService step(DeploymentPlan plan, String name) {

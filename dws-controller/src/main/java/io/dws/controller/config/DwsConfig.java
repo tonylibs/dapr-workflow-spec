@@ -27,6 +27,8 @@ public interface DwsConfig {
 
     String callOpenapi();
 
+    String callGrpc();
+
     String callAsyncapi();
 
     String runShell();
@@ -42,6 +44,7 @@ public interface DwsConfig {
     return new ImageCatalog(
         images().callHttp(),
         images().callOpenapi(),
+        images().callGrpc(),
         images().callAsyncapi(),
         images().runShell(),
         images().runScriptJs(),
