@@ -22,6 +22,9 @@ spec:
         dapr.io/enabled: "true"
         dapr.io/app-id: {{ include "dws.admin.fullname" . | quote }}
         dapr.io/app-port: "3001"
+        {{- if .Values.auth.enabled }}
+        dapr.io/config: {{ include "dws.admin.auth.configName" . | quote }}
+        {{- end }}
       {{- end }}
     spec:
       {{- with .Values.imagePullSecrets }}

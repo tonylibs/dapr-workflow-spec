@@ -9,7 +9,10 @@ import { corsOptions } from './config/cors';
 import { runMigrations } from './store/run-migrations';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: the compile/submit relay to dws-controller forwards the request
+  // body verbatim (YAML or JSON) — Nest's JSON parser would drop YAML and
+  // re-serialise JSON, changing the content-hashed version on the far side.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   const config = app.get(ConfigService<AppConfig, true>);
 
   // Reject unknown query params, coerce typed ones (e.g. `limit` from its

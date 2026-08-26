@@ -18,6 +18,10 @@ export interface AppConfig {
     appPort: string;
     daprHost?: string;
     daprPort?: string;
+    // Dapr app-id the compile/submit relay invokes on this pod's sidecar. In
+    // cluster this is `<release>-controller`; it must match the app-id the
+    // controller Pod carries via `dapr.io/app-id`.
+    controllerAppId: string;
   };
 }
 
@@ -43,6 +47,7 @@ export default function configuration(): AppConfig {
       appPort: env.DAPR_APP_PORT ?? '3001',
       daprHost: env.DAPR_HOST,
       daprPort: env.DAPR_HTTP_PORT,
+      controllerAppId: env.DAPR_CONTROLLER_APP_ID ?? 'dws-controller',
     },
   };
 }

@@ -301,12 +301,62 @@ dws-console
 {{- end -}}
 {{- end }}
 
+{{/*
+Controller-scoped auth resource names (auth roadmap Phase 2). Reserved for the
+`dws-controller` sidecar's bearer Component/Configuration — the plain names predate the
+admin equivalents below, kept as-is so Phase 2 templates need no rename.
+*/}}
 {{- define "dws.auth.componentName" -}}
 {{- printf "%s-auth" (include "dws.controller.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end }}
 
 {{- define "dws.auth.configName" -}}
 {{- printf "%s-config" (include "dws.controller.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{/*
+Admin-scoped auth resource names (auth roadmap Phase 4). Named fully qualified
+(dws.admin.auth.*) to avoid confusion with the controller-scoped plain names above — a
+future reader editing `dws.auth.componentName` should not accidentally touch admin.
+*/}}
+{{- define "dws.admin.auth.componentName" -}}
+{{- printf "%s-auth" (include "dws.admin.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{- define "dws.admin.auth.configName" -}}
+{{- printf "%s-config" (include "dws.admin.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{/*
+Admin gateway (auth roadmap Phase 4) — chart-bundled nginx reverse proxy fronting the
+dws-admin Dapr sidecar's invoke path. Names/selectors mirror the controller/admin helpers.
+*/}}
+{{- define "dws.adminGateway.fullname" -}}
+{{- printf "%s-admin-gateway" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{- define "dws.adminGateway.selectorLabels" -}}
+{{ include "dws.selectorLabels" . }}
+app.kubernetes.io/component: admin-gateway
+{{- end }}
+
+{{/*
+Validate the admin gateway values before rendering any gateway object. Fail-fast on an
+empty corsOrigins or a wildcard entry: browsers reject `Access-Control-Allow-Origin: *`
+on credentialed requests, and every request through this gateway carries a bearer token
+under the roadmap, so a wildcard would break at runtime rather than at render.
+*/}}
+{{- define "dws.adminGateway.validate" -}}
+{{- if .Values.adminGateway.enabled -}}
+{{- if not .Values.adminGateway.corsOrigins -}}
+{{- fail "adminGateway.enabled=true requires adminGateway.corsOrigins to be a non-empty list of explicit browser origins (e.g. https://console.example.com)" -}}
+{{- end -}}
+{{- range .Values.adminGateway.corsOrigins -}}
+{{- if eq . "*" -}}
+{{- fail "adminGateway.corsOrigins may not contain \"*\": a wildcard Access-Control-Allow-Origin cannot combine with a credentialed cross-origin write path — list each console origin explicitly" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- end }}
 
 {{- define "dws.redis.host" -}}

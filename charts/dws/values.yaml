@@ -79,6 +79,31 @@ auth:
   dex:
     enabled: false
 
+# admin-gateway (auth roadmap Phase 4, docs/roadmaps/dws-auth.md): a chart-bundled nginx
+# reverse proxy that lets dws-console reach dws-admin's Phase 3 write-relay from a browser.
+# Answers the CORS preflight for the console origin locally, then forwards the real request
+# to dws-admin's Dapr sidecar invoke path so the sidecar's bearer middleware (see auth.enabled
+# above) verifies the token before dws-admin's app code ever sees it. Ships inside charts/dws;
+# NOT an assumed cluster Ingress. Off by default so `helm upgrade` is a topological no-op
+# unless the operator opts in.
+adminGateway:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: nginx
+    tag: "1.29-alpine"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+  # Browser origins allowed to call the write relay through this gateway. MUST be a non-empty
+  # list of explicit scheme+host+optional-port strings when adminGateway.enabled=true; wildcards
+  # ("*") are rejected at render time (a credentialed cross-origin write cannot combine with a
+  # wildcard Access-Control-Allow-Origin). Example:
+  #   corsOrigins:
+  #     - https://console.example.com
+  corsOrigins: []
+
 # dws-admin read model service. Toggle the whole stack with admin.enabled.
 admin:
   enabled: true

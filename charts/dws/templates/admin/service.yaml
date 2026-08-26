@@ -14,4 +14,14 @@ spec:
     - name: http
       port: {{ .Values.admin.service.port }}
       targetPort: http
+    {{- if .Values.auth.enabled }}
+    # Phase 4 auth: front-port the Dapr sidecar's HTTP port (default 3500) so the
+    # admin-gateway (and any in-cluster caller) reaches the Phase 3 write-relay via
+    # Dapr service invocation, which forces the bearer middleware to run. The app-port
+    # (3000) above stays exposed unconditionally — read routes are intentionally
+    # left alone (Phase 6 owns moving them onto the gated path).
+    - name: dapr-http
+      port: 3500
+      targetPort: 3500
+    {{- end }}
 {{- end }}
