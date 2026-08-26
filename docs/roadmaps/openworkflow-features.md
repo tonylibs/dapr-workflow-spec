@@ -14,8 +14,8 @@ Two different readiness axes get conflated below — worth separating:
 | `call` (http) | ✅ | StepService via `dws-call-http` (built) |
 | `call` (openapi) | ✅ | StepService via `dws-call-openapi` (built) |
 | `call` (grpc) | ✅ | StepService via `dws-call-grpc` (built); shipped in `dws-call-grpc` (Phase 5 slice 1) |
-| `call` (asyncapi) | 🚧 | Phase 5 slice underway — StepService via `dws-call-asyncapi` (Dapr output binding); controller `call: asyncapi` branch + binding Component synthesis (`openspec/changes/dws-call-asyncapi`) |
-| `call` (a2a) | ❌ | not started |
+| `call` (asyncapi) | 🚧 | Phase 5 slice 2 underway — StepService via `dws-call-asyncapi` (Dapr output binding); controller `call: asyncapi` branch + binding Component synthesis (`openspec/changes/dws-call-asyncapi`) |
+| `call` (a2a) | ❌ | not started — split into its own **Phase 5.5**, deferred until after AsyncAPI (see §4d) |
 | `run` (shell/script) | ✅ | StepService via `dws-run` (`dws-run-shell`/`dws-run-script-js`/`dws-run-script-python`); shipped in `2026-07-26-dws-run` |
 | `run` (container/workflow) | ❌ | rejected at compile time — no deployable image for either |
 | `switch` | ✅ | jq eval in a local in-process activity, no image needed |
@@ -57,7 +57,8 @@ flowchart TD
   P1 --> P3[Phase 3: Fault Tolerance<br/>Problem Details, timeouts ✅]
   P2d --> P3
   P3 --> P4[Phase 4: Authentication + Secrets<br/>⚠️ impl done, verification blocked]
-  P4 --> P5[Phase 5: Protocol Expansion<br/>gRPC ✅, AsyncAPI 🚧, A2A<br/>current]
+  P4 --> P5[Phase 5: Protocol Expansion<br/>gRPC ✅, AsyncAPI 🚧<br/>current]
+  P5 --> P55[Phase 5.5: A2A protocol<br/>deferred — later]
   P1 --> P6[Phase 6: Scheduling<br/>cron/every/after/on]
   P4 --> P7[Phase 7: Catalogs + Extensions]
 ```
@@ -74,7 +75,8 @@ Data flow is the foundation: retry/catch, extensions, and error handling all rea
 | **2** ✅ | `try`/`catch`/`retry`, `raise`, `for`, `fork` (parallel), nested `do` | orchestrator, controller | done — `try-catch-retry`, `raise-task`, `for-task`, `fork-task` |
 | **3** ✅ | RFC 7807 error model, standard error types, task/workflow timeouts | orchestrator | complete |
 | **4** ⚠️ | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi | opsx — `workflow-auth`, 19/21 tasks done, code committed; blocked on live-cluster verification (see §4b) |
-| **5** (current) | gRPC ✅, AsyncAPI 🚧, A2A call protocols | new `dws-call-grpc` ✅ /`dws-call-asyncapi`/`dws-call-a2a` images | opsx — new components; slice 1 (`dws-call-grpc`) done, AsyncAPI slice underway (`dws-call-asyncapi`) |
+| **5** (current) | gRPC ✅, AsyncAPI call protocols | new `dws-call-grpc` ✅ /`dws-call-asyncapi` images | opsx — new components; slice 1 (`dws-call-grpc`) done, slice 2 (`dws-call-asyncapi`) underway |
+| **5.5** (deferred) | A2A (Agent2Agent) call protocol | new `dws-call-a2a` image | split out of Phase 5 — see §4d for why |
 | **6** | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) | opsx — new capability |
 | **7** | Catalogs, custom functions, extensions (`before`/`after`), external resources | controller, orchestrator | opsx — new capability |
 | **8** ✅ | `dws-admin` consumes lifecycle events into read model, exposes read API | dws-admin | done — Epics 2–3, merged |
@@ -131,6 +133,36 @@ http`/`call: openapi`, version-scoped Dapr `HTTPEndpoint`/OAuth2-middleware `Com
 intended filtered endpoint path and doesn't leak onto unrelated sidecar traffic. Every other check
 is static (synthesizer/compiler tests); this is the one live-cluster proof still outstanding, and it
 gates both archiving `workflow-auth` and starting Phase 5.
+
+## 4d. Phase 5 slice 2 design (AsyncAPI) and the A2A split
+
+`dws-call-asyncapi` design, worked through ahead of an opsx brainstorm.md:
+
+- **Building block: Dapr output bindings, not pub/sub.** `call` is a single outbound dispatch
+  (`action: send` only — the receive/subscribe side belongs to `listen`, out of scope), which is
+  what a Dapr *binding* models directly. Coverage is narrower than pub/sub (no NATS/Pulsar/Solace
+  binding components exist), so v1 targets Kafka/RabbitMQ/MQTT/SQS/GCP Pub/Sub — the protocols with
+  a `bindings.*` component — and falls back to `pubsub.*` later for the rest if needed.
+- **Stack: TypeScript/Node, mirroring `dws-call-openapi` file-for-file.** `message.payload`'s JSON
+  Schema is the same dialect `dws-call-openapi/src/openapi/validator.ts` already validates
+  `requestBody` against with `ajv`/`ajv-formats` — direct reuse, not a new validation approach.
+  `@asyncapi/parser` (official, npm) is the AsyncAPI-side counterpart to
+  `@readme/openapi-parser`/`swagger-client`. The runner fetches+parses the AsyncAPI document itself
+  at boot (`DOC_ENDPOINT` + a `DOC_SHA256` integrity pin from the controller) exactly like
+  `dws-call-openapi/src/openapi/document.ts` does — the controller does NOT pre-resolve the schema.
+- **Controller still needs a light compile-time read** of `servers.*.protocol`/`host` only (not the
+  full document) to pick the `bindings.*` component type and synthesize a version-scoped Dapr
+  `Component`, secret-backed via Phase 4's `use.secrets`/`secretKeyRef` machinery — the one piece
+  that can't be deferred to runtime the way schema validation can, since it's a Kubernetes resource.
+- **Validation failures must classify as `ErrorKind.VALIDATION`**, not fall through to a generic
+  runner failure, so `catch.errors.with.type` filtering works on them the same as any Phase 3
+  validation fault — needs a new marker in `WorkflowErrors.classify()`.
+
+**A2A was split into Phase 5.5** rather than built alongside gRPC/AsyncAPI in Phase 5: it got none of
+the design work above — no building-block analysis, no stack decision, no open-questions list — and
+its shape is genuinely different (agent task/artifact lifecycle, not a single request/response or
+publish), so bundling it in would have meant starting Phase 5.5's design from zero mid-Phase-5 rather
+than after AsyncAPI ships. Revisit once `dws-call-asyncapi` is done.
 
 ## 5. Rationale for ordering
 
