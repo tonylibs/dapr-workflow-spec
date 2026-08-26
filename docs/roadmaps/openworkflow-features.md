@@ -13,7 +13,8 @@ Two different readiness axes get conflated below — worth separating:
 |---|---|---|
 | `call` (http) | ✅ | StepService via `dws-call-http` (built) |
 | `call` (openapi) | ✅ | StepService via `dws-call-openapi` (built) |
-| `call` (grpc/asyncapi/a2a) | ❌ | not started |
+| `call` (grpc) | ✅ | StepService via `dws-call-grpc` (built); shipped in `dws-call-grpc` (Phase 5 slice 1) |
+| `call` (asyncapi/a2a) | ❌ | not started |
 | `run` (shell/script) | ✅ | StepService via `dws-run` (`dws-run-shell`/`dws-run-script-js`/`dws-run-script-python`); shipped in `2026-07-26-dws-run` |
 | `run` (container/workflow) | ❌ | rejected at compile time — no deployable image for either |
 | `switch` | ✅ | jq eval in a local in-process activity, no image needed |
@@ -55,7 +56,7 @@ flowchart TD
   P1 --> P3[Phase 3: Fault Tolerance<br/>Problem Details, timeouts ✅]
   P2d --> P3
   P3 --> P4[Phase 4: Authentication + Secrets<br/>⚠️ impl done, verification blocked]
-  P4 --> P5[Phase 5: Protocol Expansion<br/>gRPC, AsyncAPI, A2A — next]
+  P4 --> P5[Phase 5: Protocol Expansion<br/>gRPC ✅, AsyncAPI, A2A<br/>current]
   P1 --> P6[Phase 6: Scheduling<br/>cron/every/after/on]
   P4 --> P7[Phase 7: Catalogs + Extensions]
 ```
@@ -72,7 +73,7 @@ Data flow is the foundation: retry/catch, extensions, and error handling all rea
 | **2** ✅ | `try`/`catch`/`retry`, `raise`, `for`, `fork` (parallel), nested `do` | orchestrator, controller | done — `try-catch-retry`, `raise-task`, `for-task`, `fork-task` |
 | **3** ✅ | RFC 7807 error model, standard error types, task/workflow timeouts | orchestrator | complete |
 | **4** ⚠️ | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi | opsx — `workflow-auth`, 19/21 tasks done, code committed; blocked on live-cluster verification (see §4b) |
-| **5** | gRPC, AsyncAPI, A2A call protocols | new `dws-call-grpc`/`dws-call-asyncapi`/`dws-call-a2a` images | opsx — new components |
+| **5** (current) | gRPC ✅, AsyncAPI, A2A call protocols | new `dws-call-grpc` ✅ /`dws-call-asyncapi`/`dws-call-a2a` images | opsx — new components; slice 1 (`dws-call-grpc`) done |
 | **6** | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) | opsx — new capability |
 | **7** | Catalogs, custom functions, extensions (`before`/`after`), external resources | controller, orchestrator | opsx — new capability |
 | **8** ✅ | `dws-admin` consumes lifecycle events into read model, exposes read API | dws-admin | done — Epics 2–3, merged |
