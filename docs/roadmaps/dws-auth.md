@@ -29,6 +29,8 @@ flowchart TD
   P4 --> P7
   P1 -. deferred .-> P8["Phase 8: Bundled IdP interoperability<br/>Dex browser sessions, silent renew,<br/>RP logout + two-tab acceptance"]
   P0 -. upgrade or replace .-> P8
+  P3 -. deferred .-> P9["Phase 9: dws-admin content/version CMS<br/>draft/active/archived lifecycle +<br/>version history (deliberately deferred)"]
+  P7 -.informs.-> P9
 ```
 
 ## 2. Phased roadmap
@@ -38,12 +40,13 @@ flowchart TD
 | **0** | Add Dex as an optional in-chart dependency (toggle like `postgresql.enabled`); `staticPasswords` for dev users, `staticClients` registers `dws-console` as a public PKCE client; auto-generate a bootstrap admin login (see §2a) | — | ✅ done |
 | **1** | React OIDC client (Authorization Code + PKCE), in-memory token, silent-renew integration, logout integration, additive unauthenticated reads | Phase 0 | ✅ done — implementation merged in `ed1fdfc2`; local gates, chart contract checks, live discovery/CORS/PKCE request evidence, and failure-state handling are verified. Bundled-Dex interoperability acceptance moved to Phase 8 |
 | **2** | Enable `dws-controller`'s Dapr sidecar (`dapr.io/enabled`/`app-id`/`app-port`); add a bearer `Component` and a `Configuration` wiring it to the inbound pipeline; route the Service through Dapr and keep the app port pod-local | Phase 0 (needs the IdP's JWKS endpoint) | ✅ done — landed via `dws-console-auth-phase-2` (see `openspec/changes/dws-console-auth-phase-2/verify.md`); live Dapr + Dex authorization matrix (no-auth / valid / malformed / tampered-sig / wrong-aud / wrong-iss) all rejected before controller; Service-level bypass closed by sidecar front-port. Pod-IP:8080 residual documented for follow-up |
-| **3** | New route in `dws-admin`: stateless relay that forwards the `Authorization` header + body to `dws-controller` via `dws-admin`'s own local sidecar invoke call. No verification logic — `dws-admin` never inspects the token | Phase 2 | ✅ done — `POST /workflows` on `dws-admin` (new `controller-relay` module) forwards `Authorization` header and raw body verbatim to `http://<sidecar>/v1.0/invoke/<controller-app-id>/method/workflows` (dryRun query preserved); Nest's raw-body mode keeps YAML/JSON bytes untouched so the controller's content-hashed version is stable across the relay. No token parsing anywhere in `dws-admin`. New env var `DAPR_CONTROLLER_APP_ID` (defaults to `dws-controller`) |
+| **3** | New route in `dws-admin`: stateless relay that forwards the `Authorization` header + body to `dws-controller` via `dws-admin`'s own local sidecar invoke call. No verification logic — `dws-admin` never inspects the token. Kept intentionally minimal: no draft/version/state modeling here — that's scoped separately as Phase 9 | Phase 2 | ✅ done — `POST /workflows` on `dws-admin` (new `controller-relay` module) forwards `Authorization` header and raw body verbatim to `http://<sidecar>/v1.0/invoke/<controller-app-id>/method/workflows` (dryRun query preserved); Nest's raw-body mode keeps YAML/JSON bytes untouched so the controller's content-hashed version is stable across the relay. No token parsing anywhere in `dws-admin`. New env var `DAPR_CONTROLLER_APP_ID` (defaults to `dws-controller`) |
 | **4** | New `admin-gateway` nginx Deployment/Service/ConfigMap (chart-bundled, not an assumed cluster Ingress): answers CORS preflight, proxies the real request to `dws-admin`'s sidecar invoke path. Extend `dws-admin`'s Service with its sidecar port. Add `bearer`/role `Component`s + `Configuration` to `dws-admin`'s sidecar, scoped to this route only | Phase 3 | ❌ not started |
 | **5** | Wire the console's definition-submission UI to call the gateway with the bearer token attached; reads keep using the existing direct `dws-admin` path unchanged | Phases 1 and 4 | ❌ not started |
 | **6** | Guard reads: move `dws-admin`'s read routes onto the same gateway+sidecar+bearer path, retire the old direct/CORS-only route | Phase 5 | ❌ not started — deliberately deferred, tracked here so it isn't lost |
 | **7** | User management: an admin-only console screen to create users and assign one of a small set of built-in roles (e.g. `admin`/`operator`/`viewer`). New `dws-admin` route, reusing Phase 4's gateway + Dapr role check (only `admin`-role tokens may call it), which manages users through **Dex's own gRPC management API** — no user/password storage or hashing added to DWS's own database | Phases 0, 4 | ❌ not started — further-out, exploratory; see §4 for a real open risk before committing to this shape |
 | **8** | Make the bundled development IdP satisfy the browser client contract: adopt a released Dex version/configuration (or another in-chart IdP) with non-interactive `prompt=none` browser sessions and advertised RP-initiated logout; then verify token-expiry renewal, clean renewal failure, authenticated storage, logout, route restoration, and two-tab convergence | Phases 0, 1 | ❌ deferred — Dex 2.44.0 lacks the required browser-session and `end_session_endpoint` behavior; owns deferred checklist tasks 6.1, 6.2, 7.2, and 8.3 |
+| **9** | Content/version management (CMS layer) in `dws-admin`: own the workflow draft → active → archived lifecycle and version history as `dws-admin`'s own authored data, not a projection of controller events. Controller-reported deployment status (`applied`/`failed`/`drained`/`collected`) becomes a nested, controller-owned status on whichever version is `active` — never a competing lifecycle. Foundation for later per-user read/edit permissions on content (extends Phase 7's role model) | Phase 3 | ❌ not started — deliberately deferred; scoped down 2026-08-26 so Phase 3 ships as a plain stateless forward first |
 
 ### Current progress (2026-08-26)
 
@@ -146,6 +149,10 @@ anyone hand-editing `values.yaml` with a password:
 - **8 is deliberately deferred and independent**: Phase 1 established the generic browser-client
   contract and exposed a limitation in the bundled development provider. Upgrading/replacing that
   provider and rerunning its live acceptance suite should not block the Dapr write-path sequence.
+- **9 depends on Phase 3 but is deliberately deferred past it**: the relay must exist before
+  there's anything to promote a draft *to*, but owning content/version/state is a separable concern
+  from the auth transport itself — ship the plain forward first, add lifecycle/version modeling
+  once real write traffic is flowing through it. Not on the critical path to Phases 4–8.
 
 ## 4. Open items
 
@@ -174,3 +181,13 @@ anyone hand-editing `values.yaml` with a password:
   built-in role" as a literal Dex group. A fallback (e.g. a small role-lookup table in `dws-admin`'s
   own DB, keyed by subject, consulted alongside — not instead of — Dapr's role check) may end up
   being necessary; this needs a short spike at the start of Phase 7, not an assumption baked in now.
+- **Phase 9 design note (recorded 2026-08-26)**: model this as two orthogonal axes, not one merged
+  enum — `dws-admin`-owned lifecycle intent (`draft` → `active` → `archived`) and
+  `dws-controller`-reported deployment status (`applied`/`failed`/`drained`/`collected`, already
+  present as `deployments.status`) nested under whichever version is `active`. Don't collapse them:
+  `active` + `failed` is a distinct, alarm-worthy combination, not equivalent to `active` +
+  `applied`, and deployment status keeps updating on a version for a while after it's marked
+  `archived` (draining/GC). Version numbers (v1, v2, ...) should be `dws-admin`-derived/assigned,
+  not a replacement for the controller's content-hash version id. Per-user permissions on content
+  are a further layer on top of Phase 7's coarse admin/operator/viewer role model, not solved by
+  Phase 7 alone — separate scope.
