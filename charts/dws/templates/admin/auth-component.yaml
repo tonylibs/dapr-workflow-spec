@@ -1,0 +1,34 @@
+{{- /*
+  Bearer JWT middleware for the dws-admin sidecar (auth roadmap Phase 4).
+  Mirrors templates/controller/auth-component.yaml exactly — same values plumbing,
+  same Dex-derived fallback — but scoped to the dws-admin app-id so it only gates
+  Phase 3's write-relay path and not the controller.
+
+  The paired Configuration in auth-configuration.yaml references this Component by
+  name in spec.appHttpPipeline.handlers, and the admin Pod's dapr.io/config
+  annotation names that Configuration — the three files must stay in sync.
+*/}}
+{{- if and .Values.admin.enabled .Values.auth.enabled }}
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: {{ include "dws.admin.auth.componentName" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.admin.selectorLabels" . | nindent 4 }}
+spec:
+  type: middleware.http.bearer
+  version: v1
+  metadata:
+    - name: issuer
+      value: {{ include "dws.auth.issuer" . | quote }}
+    - name: audience
+      value: {{ include "dws.auth.audience" . | quote }}
+    {{- $jwks := include "dws.auth.jwksURL" . }}
+    {{- if $jwks }}
+    - name: jwksURL
+      value: {{ $jwks | quote }}
+    {{- end }}
+scopes:
+  - {{ include "dws.admin.fullname" . | quote }}
+{{- end }}

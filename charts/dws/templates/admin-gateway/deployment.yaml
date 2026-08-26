@@ -1,0 +1,49 @@
+{{- include "dws.adminGateway.validate" . -}}
+{{- if .Values.adminGateway.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dws.adminGateway.fullname" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: admin-gateway
+spec:
+  replicas: {{ .Values.adminGateway.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "dws.adminGateway.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dws.labels" . | nindent 8 }}
+        app.kubernetes.io/component: admin-gateway
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: nginx
+          image: "{{ .Values.adminGateway.image.repository }}:{{ .Values.adminGateway.image.tag }}"
+          imagePullPolicy: {{ .Values.adminGateway.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+          volumeMounts:
+            - name: site-config
+              mountPath: /etc/nginx/conf.d
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+      volumes:
+        - name: site-config
+          configMap:
+            name: {{ include "dws.adminGateway.fullname" . }}
+{{- end }}

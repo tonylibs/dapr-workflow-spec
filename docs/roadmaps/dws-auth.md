@@ -41,7 +41,7 @@ flowchart TD
 | **1** | React OIDC client (Authorization Code + PKCE), in-memory token, silent-renew integration, logout integration, additive unauthenticated reads | Phase 0 | ✅ done — implementation merged in `ed1fdfc2`; local gates, chart contract checks, live discovery/CORS/PKCE request evidence, and failure-state handling are verified. Bundled-Dex interoperability acceptance moved to Phase 8 |
 | **2** | Enable `dws-controller`'s Dapr sidecar (`dapr.io/enabled`/`app-id`/`app-port`); add a bearer `Component` and a `Configuration` wiring it to the inbound pipeline; route the Service through Dapr and keep the app port pod-local | Phase 0 (needs the IdP's JWKS endpoint) | ✅ done — landed via `dws-console-auth-phase-2` (see `openspec/changes/dws-console-auth-phase-2/verify.md`); live Dapr + Dex authorization matrix (no-auth / valid / malformed / tampered-sig / wrong-aud / wrong-iss) all rejected before controller; Service-level bypass closed by sidecar front-port. Pod-IP:8080 residual documented for follow-up |
 | **3** | New route in `dws-admin`: stateless relay that forwards the `Authorization` header + body to `dws-controller` via `dws-admin`'s own local sidecar invoke call. No verification logic — `dws-admin` never inspects the token. Kept intentionally minimal: no draft/version/state modeling here — that's scoped separately as Phase 9 | Phase 2 | ✅ done — `POST /workflows` on `dws-admin` (new `controller-relay` module) forwards `Authorization` header and raw body verbatim to `http://<sidecar>/v1.0/invoke/<controller-app-id>/method/workflows` (dryRun query preserved); Nest's raw-body mode keeps YAML/JSON bytes untouched so the controller's content-hashed version is stable across the relay. No token parsing anywhere in `dws-admin`. New env var `DAPR_CONTROLLER_APP_ID` (defaults to `dws-controller`) |
-| **4** | New `admin-gateway` nginx Deployment/Service/ConfigMap (chart-bundled, not an assumed cluster Ingress): answers CORS preflight, proxies the real request to `dws-admin`'s sidecar invoke path. Extend `dws-admin`'s Service with its sidecar port. Add `bearer`/role `Component`s + `Configuration` to `dws-admin`'s sidecar, scoped to this route only | Phase 3 | ❌ not started |
+| **4** | New `admin-gateway` nginx Deployment/Service/ConfigMap (chart-bundled, not an assumed cluster Ingress): answers CORS preflight, proxies the real request to `dws-admin`'s sidecar invoke path. Extend `dws-admin`'s Service with its sidecar port. Add `bearer`/role `Component`s + `Configuration` to `dws-admin`'s sidecar, scoped to this route only | Phase 3 | 🟡 chart-side landed, live acceptance pending — proposal `dws-console-auth-phase-4` implemented; local `helm lint`/`helm template` gates green (see below). Live matrix on a Docker Desktop cluster still owed |
 | **5** | Wire the console's definition-submission UI to call the gateway with the bearer token attached; reads keep using the existing direct `dws-admin` path unchanged | Phases 1 and 4 | ❌ not started |
 | **6** | Guard reads: move `dws-admin`'s read routes onto the same gateway+sidecar+bearer path, retire the old direct/CORS-only route | Phase 5 | ❌ not started — deliberately deferred, tracked here so it isn't lost |
 | **7** | User management: an admin-only console screen to create users and assign one of a small set of built-in roles (e.g. `admin`/`operator`/`viewer`). New `dws-admin` route, reusing Phase 4's gateway + Dapr role check (only `admin`-role tokens may call it), which manages users through **Dex's own gRPC management API** — no user/password storage or hashing added to DWS's own database | Phases 0, 4 | ❌ not started — further-out, exploratory; see §4 for a real open risk before committing to this shape |
@@ -103,12 +103,38 @@ flowchart TD
   hits `/v1.0/invoke/.../method/workflows`, never the controller's own port),
   no-Authorization pass-through, and `dryRun` query propagation; the existing 47 tests still
   pass; `pnpm lint` and `pnpm build` both green.
-- Phases 4–7 have not started. Phase 8 is explicitly deferred until a released compatible IdP is
-  available or the chart deliberately adopts a different one.
+- Phase 4's chart-side implementation is landed via `dws-console-auth-phase-4`
+  (`openspec/changes/dws-console-auth-phase-4/`). New `templates/admin-gateway/` directory
+  ships an nginx `Deployment` + `Service` + `ConfigMap`; the ConfigMap's `default.conf`
+  gates by `adminGateway.corsOrigins`, terminates the browser CORS preflight with `204`
+  locally, and `proxy_pass`es everything else to
+  `http://<admin fullname>.<ns>.svc.cluster.local:3500/v1.0/invoke/<admin fullname>/method/workflows`
+  — the Dapr service-invocation URL that forces the sidecar's bearer middleware to run.
+  `templates/admin/service.yaml` now front-ports the sidecar's `3500` when
+  `auth.enabled=true` (mirroring the Phase 2 controller Service change); the admin pod
+  carries `dapr.io/config: <admin fullname>-config` in the same condition; new
+  `templates/admin/auth-component.yaml` + `auth-configuration.yaml` mirror the Phase 2
+  controller templates exactly and reuse the `auth.*` values contract verbatim so a token
+  minted for the console is accepted by both sidecars. Off-by-default: with
+  `adminGateway.enabled=false` (default) `helm upgrade` renders no gateway objects. Local
+  gates all green: `helm lint` defaults / auth-on / gateway-on all pass; `helm template`
+  defaults renders zero gateway/admin-auth objects; `helm template` with `auth.enabled=true`
+  renders the admin `-auth` Component + `-config` Configuration, the `dapr.io/config`
+  annotation on the admin pod, and the admin Service's second port (`dapr-http` → 3500);
+  `helm template` with `adminGateway.enabled=true` + `corsOrigins` renders the three
+  gateway objects and the ConfigMap contains the `Access-Control-Allow-Origin`,
+  `Access-Control-Allow-Methods "POST, OPTIONS"`, `Access-Control-Allow-Headers
+  "Authorization, Content-Type"`, `return 204` (preflight), and `proxy_pass` blocks;
+  render-time guards fail with explicit messages when `corsOrigins` is empty or contains
+  `"*"`. Live acceptance matrix (OPTIONS preflight, valid Dex-issued JWT end-to-end
+  through gateway → admin sidecar → admin app → admin sidecar → controller sidecar, and
+  the auth failure matrix mirroring Phase 2) is still owed on a Docker Desktop cluster and
+  will land in the change's `verify.md`.
+- Phases 5–7 have not started. Phase 8 is explicitly deferred until a released compatible
+  IdP is available or the chart deliberately adopts a different one.
 
-**Next up:** Phase 4 (`admin-gateway` nginx + `dws-admin` sidecar exposure + bearer middleware
-scoped to this route). Phase 3's relay route now exists and needs a CORS-aware ingress that
-routes the browser preflight/actual through `dws-admin`'s sidecar. Follow-ups (not blocking):
+**Next up:** Phase 4 live acceptance on a Docker Desktop cluster (namespace `dws-phase4`),
+then Phase 5 (console write UI wired to the new gateway origin). Follow-ups (not blocking):
 add the `DAPR_CONTROLLER_APP_ID` env var to `dws-admin`'s chart Deployment (currently the
 default `dws-controller` works only for a release named `dws`); close the pod-IP
 direct-app-port bypass on the controller (either CNI-aware NetworkPolicy or

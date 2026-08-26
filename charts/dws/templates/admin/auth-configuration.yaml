@@ -1,0 +1,20 @@
+{{- /*
+  Dapr Configuration that wires the admin's bearer middleware into the sidecar's inbound
+  HTTP pipeline (auth roadmap Phase 4). Rendered only when auth.enabled=true. Named
+  consistently with dws.admin.auth.configName so the admin Pod's dapr.io/config annotation
+  can name it.
+*/}}
+{{- if and .Values.admin.enabled .Values.auth.enabled }}
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: {{ include "dws.admin.auth.configName" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.admin.selectorLabels" . | nindent 4 }}
+spec:
+  appHttpPipeline:
+    handlers:
+      - name: {{ include "dws.admin.auth.componentName" . }}
+        type: middleware.http.bearer
+{{- end }}
