@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
 	createColumnHelper,
 	tableFeatures,
@@ -84,10 +84,15 @@ function WorkflowList() {
 							One row per workflow name — its latest version and status.
 						</p>
 					</div>
-					<label className="search">
-						<Search />
-						<input placeholder="filter by name…" />
-					</label>
+					<div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+						<label className="search">
+							<Search />
+							<input placeholder="filter by name…" />
+						</label>
+						<Link to="/workflows/new" className="btn-sm primary">
+							New definition
+						</Link>
+					</div>
 				</div>
 
 				{isError && (

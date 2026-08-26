@@ -56,6 +56,57 @@ export class ApiError extends Error {
 	}
 }
 
+/** Controller apply outcome, returned verbatim through dws-admin's write relay. */
+export interface ApplyResult {
+	workflow: string;
+	versionId: string;
+	version: string;
+	created: boolean;
+}
+
+/** The controller's current flat validation response; source locations are not available yet. */
+export type DefinitionSubmission =
+	| { kind: "applied"; result: ApplyResult }
+	| { kind: "validation-error"; errors: string[] };
+
+/**
+ * POSTs raw DSL source to dws-admin's controller relay.
+ *
+ * The relay preserves the bytes and forwards this bearer token to the
+ * controller-side Dapr middleware; the browser never calls dws-controller.
+ */
+export async function submitDefinition(
+	definition: string,
+	accessToken: string,
+): Promise<DefinitionSubmission> {
+	const response = await fetch(adminUrl("/workflows?dryRun=false"), {
+		method: "POST",
+		headers: {
+			Accept: "application/json",
+			Authorization: `Bearer ${accessToken}`,
+			"Content-Type": "application/yaml",
+		},
+		body: definition,
+	});
+
+	if (response.status === 400) {
+		const payload = (await response.json()) as { errors?: unknown };
+		if (Array.isArray(payload.errors) && payload.errors.every((error) => typeof error === "string")) {
+			return { kind: "validation-error", errors: payload.errors };
+		}
+		throw new ApiError(400, "POST /workflows failed: invalid validation response");
+	}
+
+	if (!response.ok) {
+		throw new ApiError(
+			response.status,
+			`POST /workflows failed: ${response.status} ${response.statusText}`,
+		);
+	}
+
+	return { kind: "applied", result: (await response.json()) as ApplyResult };
+}
+
 /** Query-string values a read endpoint accepts. `undefined` entries are omitted. */
 type QueryParams = Record<string, string | number | undefined>;
 

@@ -14,6 +14,7 @@ import { Route as InstancesIndexRouteImport } from './routes/instances/index'
 import { Route as InstancesIdRouteImport } from './routes/instances/$id'
 import { Route as WorkflowsIndexRouteImport } from './routes/workflows/index'
 import { Route as WorkflowsNameRouteImport } from './routes/workflows/$name'
+import { Route as WorkflowsNewRouteImport } from './routes/workflows/new'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,11 +41,17 @@ const WorkflowsNameRoute = WorkflowsNameRouteImport.update({
   path: '/workflows/$name',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorkflowsNewRoute = WorkflowsNewRouteImport.update({
+  id: '/workflows/new',
+  path: '/workflows/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/instances/$id': typeof InstancesIdRoute
   '/workflows/$name': typeof WorkflowsNameRoute
+  '/workflows/new': typeof WorkflowsNewRoute
   '/instances/': typeof InstancesIndexRoute
   '/workflows/': typeof WorkflowsIndexRoute
 }
@@ -52,6 +59,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/instances/$id': typeof InstancesIdRoute
   '/workflows/$name': typeof WorkflowsNameRoute
+  '/workflows/new': typeof WorkflowsNewRoute
   '/instances': typeof InstancesIndexRoute
   '/workflows': typeof WorkflowsIndexRoute
 }
@@ -60,20 +68,33 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/instances/$id': typeof InstancesIdRoute
   '/workflows/$name': typeof WorkflowsNameRoute
+  '/workflows/new': typeof WorkflowsNewRoute
   '/instances/': typeof InstancesIndexRoute
   '/workflows/': typeof WorkflowsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/instances/$id' | '/workflows/$name' | '/instances/' | '/workflows/'
+    | '/'
+    | '/instances/$id'
+    | '/workflows/$name'
+    | '/workflows/new'
+    | '/instances/'
+    | '/workflows/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/instances/$id' | '/workflows/$name' | '/instances' | '/workflows'
+  to:
+    | '/'
+    | '/instances/$id'
+    | '/workflows/$name'
+    | '/workflows/new'
+    | '/instances'
+    | '/workflows'
   id:
     | '__root__'
     | '/'
     | '/instances/$id'
     | '/workflows/$name'
+    | '/workflows/new'
     | '/instances/'
     | '/workflows/'
   fileRoutesById: FileRoutesById
@@ -82,6 +103,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   InstancesIdRoute: typeof InstancesIdRoute
   WorkflowsNameRoute: typeof WorkflowsNameRoute
+  WorkflowsNewRoute: typeof WorkflowsNewRoute
   InstancesIndexRoute: typeof InstancesIndexRoute
   WorkflowsIndexRoute: typeof WorkflowsIndexRoute
 }
@@ -123,6 +145,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkflowsNameRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/workflows/new': {
+      id: '/workflows/new'
+      path: '/workflows/new'
+      fullPath: '/workflows/new'
+      preLoaderRoute: typeof WorkflowsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -130,9 +159,19 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   InstancesIdRoute: InstancesIdRoute,
   WorkflowsNameRoute: WorkflowsNameRoute,
+  WorkflowsNewRoute: WorkflowsNewRoute,
   InstancesIndexRoute: InstancesIndexRoute,
   WorkflowsIndexRoute: WorkflowsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
