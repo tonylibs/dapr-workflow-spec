@@ -7,7 +7,7 @@ tags: [dws, console, oidc, authentication, dex]
 
 # Console OIDC login
 
-`dws-console` now provides an optional, browser-side identity experience: it authenticates operators through OIDC Authorization Code + PKCE, shows the signed-in identity in the shared top bar, and offers sign-out. This is **Phase 1** of `docs/roadmaps/dws-auth.md`; it does not guard routes, attach a token to any request, or change the console's existing unauthenticated reads from the [administrative read model](../integrations/admin-read-model.md). That separation keeps the already-shipped query UI usable when the identity provider is unavailable. The completed Phase 2 chart work can validate that same token at the controller, as documented in [Helm chart packaging](helm-chart-roadmap.md#controller-bearer-middleware), but no console write path consumes it yet.
+`dws-console` provides an optional, browser-side identity experience: it authenticates operators through OIDC Authorization Code + PKCE, shows the signed-in identity in the shared top bar, and offers sign-out. Its catalog and instance reads remain unauthenticated, so an unavailable provider does not block the existing [administrative read model](../integrations/admin-read-model.md). The new-definition screen is the exception: it requires a signed-in operator and supplies the memory-only access token to the administrative relay, which forwards it to the controller's Dapr bearer middleware described in [Helm chart packaging](helm-chart-roadmap.md#controller-bearer-middleware).
 
 ## Browser client behavior
 
@@ -37,7 +37,7 @@ sequenceDiagram
   Console->>Provider: RP-initiated logout
 ```
 
-The browser session changes console identity presentation only. The controller's enabled Dapr middleware can now validate a token, but the console must still preserve the ownership boundary in the [auth roadmap](../../docs/roadmaps/dws-auth.md): it calls `dws-admin`, and the future `dws-admin` relay—not the browser—will reach the controller through its own Dapr sidecar. The relay/gateway and console submission phases have not landed.
+The browser session gates submission but not read navigation. On `/workflows/new`, a nonempty YAML or JSON draft becomes submittable only after sign-in; the console posts the source as `application/yaml` to `dws-admin`'s `POST /workflows?dryRun=false` relay with `Authorization: Bearer <access token>`. The editor does not parse or reformat the draft when its syntax-highlighting selector changes. It reports controller validation errors as a list, distinguishes an already-applied version from a newly applied one, and reports an expired session separately from relay reachability. This preserves the ownership boundary in the [auth roadmap](../../docs/roadmaps/dws-auth.md): the browser never calls the controller directly; the [administrative read model](../integrations/admin-read-model.md#controller-submission-relay) invokes it through its own Dapr sidecar.
 
 ## Configuration and deployment agreement
 
@@ -62,5 +62,5 @@ For changes in this area:
 - Keep tokens in the OIDC library's memory-only state; do not add browser persistence or expose token fields from `useAuth`.
 - Preserve additive failure behavior: an unreachable/misconfigured provider must not prevent console read pages from rendering.
 - Keep the root redirect agreement synchronized across `dws-console/src/lib/oidc.ts`, `dws-console/.env.example`, and `charts/dws/values.yaml`; use a real deployed console origin outside local development.
-- A future write UI must send the bearer token only to its `dws-admin` gateway path, never directly to the controller. It must not claim direct pod-IP access to controller port `8080` is protected: that residual network path remains deferred in the [chart middleware guidance](helm-chart-roadmap.md#controller-bearer-middleware).
+- The definition editor must send the bearer token only to its `dws-admin` gateway path, never directly to the controller. It must not claim direct pod-IP access to controller port `8080` is protected: that residual network path remains deferred in the [chart middleware guidance](helm-chart-roadmap.md#controller-bearer-middleware).
 - In `dws-console/`, run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`. The console CI also checks generated routes and smoke-tests the built container's health and SSR workflow route (`.github/workflows/dws-console.yml`).
