@@ -359,6 +359,43 @@ under the roadmap, so a wildcard would break at runtime rather than at render.
 {{- end -}}
 {{- end }}
 
+{{/*
+Resolve a Deployment container's resources by deep-merging the chart default with
+the component override. This lets an operator override one request or limit without
+repeating the rest of the common resource policy.
+*/}}
+{{- define "dws.component.resources" -}}
+{{- $defaults := default dict .root.Values.defaults.resources -}}
+{{- $component := default dict .component.resources -}}
+{{- toYaml (mergeOverwrite (deepCopy $defaults) $component) -}}
+{{- end }}
+
+{{/*
+Render common pod scheduling settings. nodeSelector and affinity are deep-merged;
+tolerations are a list, so a component's non-empty list replaces the common list.
+*/}}
+{{- define "dws.component.scheduling" -}}
+{{- $defaults := default dict .root.Values.defaults -}}
+{{- $component := default dict .component -}}
+{{- $nodeSelector := mergeOverwrite (deepCopy (default dict $defaults.nodeSelector)) (default dict $component.nodeSelector) -}}
+{{- $affinity := mergeOverwrite (deepCopy (default dict $defaults.affinity)) (default dict $component.affinity) -}}
+{{- if $nodeSelector }}
+nodeSelector:
+  {{- toYaml $nodeSelector | nindent 2 }}
+{{- end }}
+{{- if $component.tolerations }}
+tolerations:
+  {{- toYaml $component.tolerations | nindent 2 }}
+{{- else if $defaults.tolerations }}
+tolerations:
+  {{- toYaml $defaults.tolerations | nindent 2 }}
+{{- end }}
+{{- if $affinity }}
+affinity:
+  {{- toYaml $affinity | nindent 2 }}
+{{- end }}
+{{- end }}
+
 {{- define "dws.redis.host" -}}
 {{- if .Values.redis.external.host }}
 {{- .Values.redis.external.host }}

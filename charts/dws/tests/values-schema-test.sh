@@ -6,6 +6,10 @@ rendered="$(mktemp)"
 trap 'rm -f "$rendered"' EXIT
 
 helm template dws "$chart_dir" \
+  --api-versions dapr.io/v1alpha1 \
+  --set dapr.enabled=false \
+  --set postgresql.enabled=false \
+  --set admin.database.url=postgres://dws:dws@postgres.example.test:5432/dws \
   --set console.enabled=true \
   --set adminGateway.enabled=true \
   --set adminGateway.corsOrigins[0]=https://console.example.test \
@@ -23,6 +27,6 @@ helm template dws "$chart_dir" \
 deployments="$(grep -c '^kind: Deployment$' "$rendered")"
 test "$deployments" -eq 4
 
-for value in 'cpu: 125m' 'memory: 192Mi' 'memory: 384Mi' 'workload: dws' 'key: reserved'; do
-  test "$(grep -c "^            $value$" "$rendered")" -eq 4
+for value in 'cpu: 125m' 'memory: 192Mi' 'memory: 384Mi' 'workload: dws' '- key: reserved' 'operator: In'; do
+  test "$(grep -Ec "^[[:space:]]*$value$" "$rendered")" -eq 4
 done
