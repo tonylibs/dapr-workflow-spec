@@ -85,6 +85,34 @@ describe("submitDefinition", () => {
 		});
 	});
 
+	it("rejects a 400 whose body is not a well-formed error list, quoting the payload", async () => {
+		globalThis.fetch = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ message: "Definition is invalid" }), {
+					status: 400,
+				}),
+			);
+
+		await expect(submitDefinition("invalid", "oidc-token")).rejects.toMatchObject({
+			status: 400,
+			message: expect.stringContaining("Definition is invalid"),
+		});
+	});
+
+	it("rejects an apply result that does not match the controller's shape", async () => {
+		globalThis.fetch = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ workflow: "order" }), { status: 200 }),
+			);
+
+		await expect(submitDefinition("document: {}", "oidc-token")).rejects.toMatchObject({
+			status: 200,
+			message: expect.stringContaining("unexpected apply result"),
+		});
+	});
+
 	it("rejects non-validation failures with the response status", async () => {
 		globalThis.fetch = vi
 			.fn()

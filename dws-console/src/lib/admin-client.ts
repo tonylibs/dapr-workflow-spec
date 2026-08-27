@@ -6,6 +6,7 @@
  * calls live in `admin-hooks.ts`; DTO translation lives in `admin-adapters.ts`.
  */
 
+import { z } from "zod";
 import type {
 	DeploymentDto,
 	InstanceDetailDto,
@@ -56,13 +57,20 @@ export class ApiError extends Error {
 	}
 }
 
-/** Controller apply outcome, returned verbatim through dws-admin's write relay. */
-export interface ApplyResult {
-	workflow: string;
-	versionId: string;
-	version: string;
-	created: boolean;
-}
+/**
+ * Controller apply outcome, returned verbatim through dws-admin's write relay.
+ *
+ * Parsed rather than cast: a silent shape drift in the controller would
+ * otherwise reach the success banner as "Applied undefined (undefined)."
+ */
+const applyResultSchema = z.object({
+	workflow: z.string(),
+	versionId: z.string(),
+	version: z.string(),
+	created: z.boolean(),
+});
+
+export type ApplyResult = z.infer<typeof applyResultSchema>;
 
 /** The controller's current flat validation response; source locations are not available yet. */
 export type DefinitionSubmission =
@@ -78,6 +86,7 @@ export type DefinitionSubmission =
 export async function submitDefinition(
 	definition: string,
 	accessToken: string,
+	signal?: AbortSignal,
 ): Promise<DefinitionSubmission> {
 	const response = await fetch(adminUrl("/workflows?dryRun=false"), {
 		method: "POST",
@@ -87,6 +96,7 @@ export async function submitDefinition(
 			"Content-Type": "application/yaml",
 		},
 		body: definition,
+		signal,
 	});
 
 	if (response.status === 400) {
@@ -94,7 +104,12 @@ export async function submitDefinition(
 		if (Array.isArray(payload.errors) && payload.errors.every((error) => typeof error === "string")) {
 			return { kind: "validation-error", errors: payload.errors };
 		}
-		throw new ApiError(400, "POST /workflows failed: invalid validation response");
+		// Carry the body: without it an operator hitting this invariant break has
+		// nothing to report but the generic message.
+		throw new ApiError(
+			400,
+			`POST /workflows failed: invalid validation response: ${summarize(payload)}`,
+		);
 	}
 
 	if (!response.ok) {
@@ -104,7 +119,24 @@ export async function submitDefinition(
 		);
 	}
 
-	return { kind: "applied", result: (await response.json()) as ApplyResult };
+	const parsed = applyResultSchema.safeParse(await response.json());
+	if (!parsed.success) {
+		throw new ApiError(
+			response.status,
+			`POST /workflows failed: unexpected apply result: ${parsed.error.message}`,
+		);
+	}
+
+	return { kind: "applied", result: parsed.data };
+}
+
+/** Longest server payload echoed into an `ApiError` message. */
+const MAX_PAYLOAD_CHARS = 200;
+
+/** Serializes an unexpected payload for an error message, truncated so a huge body stays readable. */
+function summarize(payload: unknown): string {
+	const text = JSON.stringify(payload) ?? String(payload);
+	return text.length > MAX_PAYLOAD_CHARS ? `${text.slice(0, MAX_PAYLOAD_CHARS)}…` : text;
 }
 
 /** Query-string values a read endpoint accepts. `undefined` entries are omitted. */

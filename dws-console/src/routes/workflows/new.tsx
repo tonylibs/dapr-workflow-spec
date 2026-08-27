@@ -37,6 +37,17 @@ const editorTheme = EditorView.theme({
 	},
 });
 
+/**
+ * Names the editable region for assistive tech.
+ *
+ * An `aria-label` prop on `<CodeMirror>` lands on the outer wrapper div; the
+ * element that actually takes focus is the contentEditable inside, reachable
+ * only through `contentAttributes`.
+ */
+const editorLabel = EditorView.contentAttributes.of({
+	"aria-label": "Workflow definition",
+});
+
 function DefinitionEditor() {
 	const oidc = useOidc();
 	const [definition, setDefinition] = useState("");
@@ -44,8 +55,11 @@ function DefinitionEditor() {
 	const [outcome, setOutcome] = useState<DefinitionSubmission | undefined>();
 	const [requestError, setRequestError] = useState<string | undefined>();
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	// Only the highlighting extension follows the format selector — the buffer is
+	// never rewritten on toggle, so flipping YAML/JSON cannot mangle a draft
+	// (design D3). Do not reformat here.
 	const extensions = useMemo(
-		() => [format === "yaml" ? yaml() : json(), editorTheme],
+		() => [format === "yaml" ? yaml() : json(), editorTheme, editorLabel],
 		[format],
 	);
 
@@ -55,10 +69,18 @@ function DefinitionEditor() {
 		setOutcome(undefined);
 		setRequestError(undefined);
 		try {
-			const authenticatedOidc = await getOidc({ assert: "user logged in" });
-			setOutcome(
-				await submitDefinition(definition, await authenticatedOidc.getAccessToken()),
-			);
+			// Getting the token is reported on its own: the login assertion fails
+			// when the session lapsed between the enable-check and here, which is a
+			// sign-in problem, not the transport failure the outer catch names.
+			let accessToken: string;
+			try {
+				const authenticated = await getOidc({ assert: "user logged in" });
+				accessToken = await authenticated.getAccessToken();
+			} catch {
+				setRequestError("Your session has expired. Sign in again to submit.");
+				return;
+			}
+			setOutcome(await submitDefinition(definition, accessToken));
 		} catch (error) {
 			setRequestError(
 				error instanceof ApiError ? error.message : "Could not reach dws-admin.",
@@ -112,14 +134,13 @@ function DefinitionEditor() {
 					height="480px"
 					extensions={extensions}
 					onChange={setDefinition}
-					aria-label="Workflow definition"
 				/>
 				{outcome?.kind === "applied" && (
-					<output className="banner" style={{ display: "block" }}>
+					<Banner variant="success" role="status">
 						{outcome.result.created
-							? `Applied ${outcome.result.workflow} (${outcome.result.version}).`
-							: `${outcome.result.workflow} (${outcome.result.version}) is already applied.`}
-					</output>
+							? `Applied ${outcome.result.versionId}.`
+							: `${outcome.result.versionId} is already applied.`}
+					</Banner>
 				)}
 				{outcome?.kind === "validation-error" && (
 					<Banner>
