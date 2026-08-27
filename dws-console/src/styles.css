@@ -509,6 +509,11 @@ table.tbl tbody tr.clickable:hover {
   border-color: color-mix(in srgb, var(--color-accent) 32%, transparent);
   color: var(--color-accent-800);
 }
+.banner.success {
+  background: var(--color-accent-2-100);
+  border-color: color-mix(in srgb, var(--color-accent-2-600) 32%, transparent);
+  color: var(--color-accent-2-800);
+}
 .banner .banner-action {
   margin-left: auto;
 }

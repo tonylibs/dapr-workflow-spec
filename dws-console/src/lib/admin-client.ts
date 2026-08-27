@@ -6,6 +6,7 @@
  * calls live in `admin-hooks.ts`; DTO translation lives in `admin-adapters.ts`.
  */
 
+import { z } from "zod";
 import type {
 	DeploymentDto,
 	InstanceDetailDto,
@@ -54,6 +55,88 @@ export class ApiError extends Error {
 		this.name = "ApiError";
 		this.status = status;
 	}
+}
+
+/**
+ * Controller apply outcome, returned verbatim through dws-admin's write relay.
+ *
+ * Parsed rather than cast: a silent shape drift in the controller would
+ * otherwise reach the success banner as "Applied undefined (undefined)."
+ */
+const applyResultSchema = z.object({
+	workflow: z.string(),
+	versionId: z.string(),
+	version: z.string(),
+	created: z.boolean(),
+});
+
+export type ApplyResult = z.infer<typeof applyResultSchema>;
+
+/** The controller's current flat validation response; source locations are not available yet. */
+export type DefinitionSubmission =
+	| { kind: "applied"; result: ApplyResult }
+	| { kind: "validation-error"; errors: string[] };
+
+/**
+ * POSTs raw DSL source to dws-admin's controller relay.
+ *
+ * The relay preserves the bytes and forwards this bearer token to the
+ * controller-side Dapr middleware; the browser never calls dws-controller.
+ */
+export async function submitDefinition(
+	definition: string,
+	accessToken: string,
+	signal?: AbortSignal,
+): Promise<DefinitionSubmission> {
+	const response = await fetch(adminUrl("/workflows?dryRun=false"), {
+		method: "POST",
+		headers: {
+			Accept: "application/json",
+			Authorization: `Bearer ${accessToken}`,
+			"Content-Type": "application/yaml",
+		},
+		body: definition,
+		signal,
+	});
+
+	if (response.status === 400) {
+		const payload = (await response.json()) as { errors?: unknown };
+		if (Array.isArray(payload.errors) && payload.errors.every((error) => typeof error === "string")) {
+			return { kind: "validation-error", errors: payload.errors };
+		}
+		// Carry the body: without it an operator hitting this invariant break has
+		// nothing to report but the generic message.
+		throw new ApiError(
+			400,
+			`POST /workflows failed: invalid validation response: ${summarize(payload)}`,
+		);
+	}
+
+	if (!response.ok) {
+		throw new ApiError(
+			response.status,
+			`POST /workflows failed: ${response.status} ${response.statusText}`,
+		);
+	}
+
+	const parsed = applyResultSchema.safeParse(await response.json());
+	if (!parsed.success) {
+		throw new ApiError(
+			response.status,
+			`POST /workflows failed: unexpected apply result: ${parsed.error.message}`,
+		);
+	}
+
+	return { kind: "applied", result: parsed.data };
+}
+
+/** Longest server payload echoed into an `ApiError` message. */
+const MAX_PAYLOAD_CHARS = 200;
+
+/** Serializes an unexpected payload for an error message, truncated so a huge body stays readable. */
+function summarize(payload: unknown): string {
+	const text = JSON.stringify(payload) ?? String(payload);
+	return text.length > MAX_PAYLOAD_CHARS ? `${text.slice(0, MAX_PAYLOAD_CHARS)}…` : text;
 }
 
 /** Query-string values a read endpoint accepts. `undefined` entries are omitted. */

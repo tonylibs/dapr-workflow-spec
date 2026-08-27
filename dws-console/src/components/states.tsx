@@ -1,5 +1,5 @@
 import { Inbox } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
 /** The four render states each list/detail screen can demonstrate. */
 export type ViewState = "data" | "loading" | "empty" | "error";
@@ -24,18 +24,28 @@ export function EmptyState({
 	);
 }
 
-/** Inline error banner (400 bad filter / limit) shown above a table. */
+/**
+ * Inline banner shown above a table or below a form.
+ *
+ * Defaults to the error skin (400 bad filter / limit); `warn` and `success`
+ * carry their own tint so an operator can tell the three outcomes apart at a
+ * glance.
+ */
 export function Banner({
 	variant = "error",
 	children,
 	action,
+	...rest
 }: {
-	variant?: "error" | "warn";
+	variant?: "error" | "warn" | "success";
 	children: ReactNode;
 	action?: ReactNode;
-}) {
+} & Omit<ComponentPropsWithoutRef<"div">, "children">) {
 	return (
-		<div className={`banner${variant === "warn" ? " warn" : ""}`}>
+		<div
+			className={`banner${variant === "error" ? "" : ` ${variant}`}`}
+			{...rest}
+		>
 			<span>{children}</span>
 			{action && <span className="banner-action">{action}</span>}
 		</div>

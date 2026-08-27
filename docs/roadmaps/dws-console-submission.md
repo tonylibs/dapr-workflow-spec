@@ -2,12 +2,9 @@
 
 Splits out of [`dws-console.md`](dws-console.md)'s Phase 4 (definition submission) — the
 console-side authoring surface: how an operator gets a DSL 1.0 definition into `dws-controller`,
-previews what it will compile to, and (eventually) edits it visually. This doc owns the
-**client-side architecture and UX** and deliberately does **not** depend on
-[`dws-auth.md`](dws-auth.md): every phase below assumes the write path is public — the console
-calls `dws-controller`'s `POST /workflows` directly, over CORS, unauthenticated. Auth is a guard
-added on top later, not a prerequisite for building this. See §5 for what that retrofit is
-expected to cost.
+previews what it will compile to, and (eventually) edits it visually. This doc owns the **client-side architecture and UX**. Definition submission uses the authenticated
+`dws-admin` write relay from [`dws-auth.md`](dws-auth.md) Phase 3: the console attaches its OIDC
+bearer token and never calls `dws-controller` directly.
 
 ## 1. What already exists
 
@@ -23,10 +20,8 @@ expected to cost.
 - `dws-console/src/components/definition-graph.tsx` — a fully hardcoded, hand-positioned SVG of one
   example workflow; not wired to any real definition. Its own comment: "a live version would swap
   this for `@xyflow/react`."
-- No YAML parser, no code-editor dependency, and no `dws-controller`-facing client in the console
-  today — `admin-client.ts` only talks to `dws-admin`. `dws-controller` has no CORS configuration
-  either; a browser calling it directly needs that added first (Phase 1's real prerequisite, not
-  auth).
+- `dws-console` has no local YAML parser. Its definition editor uses a CodeMirror 6 raw text buffer
+  with YAML/JSON syntax highlighting and sends the unmodified buffer to the `dws-admin` relay.
 - DSL structural shapes, confirmed against `dws-controller`/`dws-orchestrator` test fixtures
   (`order.yaml`, `try-order.yaml`): `switch` branches are **jump edges** (`then: <taskName>`,
   referencing a sibling task elsewhere in the flat `do` list) — a natural flowchart edge. `try`,
@@ -50,7 +45,7 @@ flowchart TD
 
 | Phase | Sub-feature | Depends on | Status |
 |---|---|---|---|
-| **1** | **Definition editor** — write or paste a DSL 1.0 definition and submit it to the cluster | `dws-controller` CORS for the console origin (public, unauthenticated) | ❌ not started |
+| **1** | **Definition editor** — write or paste a DSL 1.0 definition and submit it to the cluster | dws-auth Phase 1 OIDC client + Phase 3 `dws-admin` write relay | ✅ done — `dws-console-definition-editor` |
 | **2** | **Validation preview** — see what a definition will deploy, and why it's invalid, before committing it | Phase 1 | ❌ not started |
 | **3** | **File import** — load a definition from a local `.yaml`/`.yml`/`.json` file instead of typing it | Phase 1 | ❌ not started |
 | **4** | **Workflow diagram** — see the task graph a definition describes, laid out automatically | Phase 1 | ❌ not started |
@@ -72,8 +67,9 @@ flowchart TD
 
 ## 5. Open items
 
-- **Editor library**: Monaco vs. CodeMirror not decided — affects bundle size and how far
-  DSL-aware autocomplete/inline diagnostics can go later.
+- **Editor library**: CodeMirror 6 is selected for the raw-buffer editor; Monaco is intentionally
+  excluded to keep the initial authoring surface lightweight. Later autocomplete/diagnostics remain
+  a separate decision.
 - **Canvas layout persistence**: the DSL has no position/layout field. Undecided whether Phase 5
   always re-runs auto-layout on load (arrangement is never saved) or the console invents its own
   UI-hint extension to persist manual arrangement — needs a decision before Phase 5 starts, not
@@ -89,17 +85,9 @@ flowchart TD
 - **Error precision**: the flat `errors[]` string list has no line/path mapping until
   [OWS Phase 3](openworkflow-features.md#phased-roadmap) ships an RFC 7807 model — until then the
   editor can show the message list but can't highlight the offending line.
-- **Auth will likely replace this transport, not just guard it**: `dws-auth.md`'s ground rules keep
-  `dws-controller` "purely internal, reached only by `dws-admin`, server-to-server" — a direct,
-  CORS-open browser→`dws-controller` path (what this roadmap builds) conflicts with that. When
-  `dws-auth.md` lands, expect the direct call built here to be swapped for its
-  gateway→`dws-admin`-relay path, not wrapped with a bearer check in place. Worth resolving before
-  Phase 1 ships if that rework cost matters; not a reason to block on it now, per the ask that
-  started this doc.
-- Public, unauthenticated `POST /workflows` also means **anyone who can reach the console can
-  deploy or overwrite any workflow** until the auth retrofit lands — acceptable for internal/dev
-  clusters, worth an explicit call-out (e.g. a banner, or restricting the Ingress) if this ships
-  anywhere less trusted in the meantime.
+- **Gateway rollout remains separate**: Phase 1 calls the Phase 3 relay directly using the console's
+  bearer token. The Phase 4 gateway can later become the browser-facing route without changing
+  editor semantics.
 
 ## Status legend
 
