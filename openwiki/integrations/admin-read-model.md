@@ -7,7 +7,7 @@ tags: [dws, admin, postgres, dapr, events, observability]
 
 # DWS administrative read model
 
-`dws-admin` is the read-model, query, and live-instance-update service for platform activity. It consumes the advisory stream described in [DWS lifecycle events](lifecycle-events.md), projects deployment and execution facts into Postgres, serves workflow and instance queries, and pushes newly ingested instance changes to connected browsers. It does not control the workflow lifecycle: the controller and orchestrator remain the sources of deployment and runtime truth described in [deployed workflow architecture](../architecture/deployed-workflow.md).
+`dws-admin` is the read-model, query, live-instance-update, and controller-submission relay service for platform activity. It consumes the advisory stream described in [DWS lifecycle events](lifecycle-events.md), projects deployment and execution facts into Postgres, serves workflow and instance queries, pushes newly ingested instance changes to connected browsers, and relays authenticated definition submissions to the controller. It does not own workflow lifecycle decisions: the controller and orchestrator remain the sources of deployment and runtime truth described in [deployed workflow architecture](../architecture/deployed-workflow.md).
 
 ## Ingestion and projections
 
@@ -56,9 +56,32 @@ It also exposes two server-sent-event streams on the Nest read-API listener: `GE
 
 The streams are fed only after the ingestion transaction commits and suppress events for duplicate task inserts or status changes rejected by the terminal-state ratchet. Fan-out uses one in-process RxJS subject, so live delivery is correct only for a single `dws-admin` replica; horizontally scaling this component requires a cross-replica delivery mechanism. The committed console uses `EventSource` to patch its TanStack Query caches for a running detail view and already loaded instance-list rows, refetching on reconnect because the streams have no replay.
 
-Workflow and instance lookups return 404 when the corresponding projection is absent. The service does not write definitions, apply deployments, start instances, or deliver task commands. Because its input is the best-effort lifecycle stream, the database is an operational view rather than a replacement for the controller's Kubernetes state or Dapr's workflow state.
+Workflow and instance lookups return 404 when the corresponding projection is absent. The service does not start instances or deliver task commands. Because its input is the best-effort lifecycle stream, the database is an operational view rather than a replacement for the controller's Kubernetes state or Dapr's workflow state.
 
-`DaprServer` receives pub/sub callbacks separately from Nest's HTTP application. In local development, the Nest port defaults to `3000` while the Dapr callback port defaults to `3001`; the Dapr sidecar must target the latter. Both the publisher and the subscriber therefore depend on the same Dapr component/topic installation documented in [lifecycle events](lifecycle-events.md#transport-and-delivery-boundary).
+## Controller submission relay
+
+`POST /workflows` is an internal, undocumented write relay used by the authenticated [console OIDC login](../architecture/console-auth.md). It accepts the caller's `Authorization` and `Content-Type` headers plus the raw body, then invokes `POST /workflows` on `DAPR_CONTROLLER_APP_ID` (default `dws-controller`) through this pod's local Dapr HTTP sidecar. `dryRun=true` is the only forwarded query flag. The relay does not parse the bearer token, validate DSL, or transform YAML/JSON: it returns the controller's status, content type, and response bytes unchanged. Consequently, controller validation errors and idempotent apply results remain controller-owned semantics.
+
+```mermaid
+sequenceDiagram
+  participant Browser as Console browser
+  participant Admin as DWS admin relay
+  participant AdminDapr as Admin Dapr sidecar
+  participant ControllerDapr as Controller Dapr sidecar
+  participant Controller as DWS controller
+
+  Browser->>Admin: POST definition with bearer token
+  Admin->>AdminDapr: Invoke controller app ID
+  AdminDapr->>ControllerDapr: Dapr service invocation
+  ControllerDapr->>Controller: POST workflows with bearer token
+  Controller-->>ControllerDapr: Apply result or validation error
+  ControllerDapr-->>AdminDapr: Controller response
+  AdminDapr-->>Admin: Controller response
+  Admin-->>Browser: Status headers and body unchanged
+```
+This is the authenticated browser-to-controller path; Dapr middleware validates the forwarded token on the controller side, while the relay preserves the separation between the browser and controller.
+
+`DaprServer` receives pub/sub callbacks separately from Nest's HTTP application. In local development, the Nest port defaults to `3000` while the Dapr callback port defaults to `3001`; the Dapr sidecar must target the latter. Both the publisher and the subscriber therefore depend on the same Dapr component/topic installation documented in [lifecycle events](lifecycle-events.md#transport-and-delivery-boundary). The relay uses the same sidecar's HTTP port (`DAPR_HTTP_PORT`, default `3500`) and host (`DAPR_HOST`, default loopback), but is independent of pub/sub delivery.
 
 ## Change and verification guide
 
