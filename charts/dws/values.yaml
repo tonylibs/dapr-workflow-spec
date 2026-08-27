@@ -12,6 +12,22 @@ global:
   security:
     allowInsecureImages: true
 
+# Defaults for every chart-owned Deployment (controller, admin, admin-gateway, and console).
+# Component `resources`, `nodeSelector`, and `affinity` maps deep-merge with these defaults;
+# a non-empty component `tolerations` list replaces defaults.tolerations. Override only the
+# settings that differ for a component. PostgreSQL is an upstream StatefulSet subchart, so its
+# equivalent fields remain under postgresql.primary rather than this template helper.
+defaults:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
 # Dapr control plane, provided by the upstream dapr/dapr chart as a conditional dependency
 # (see Chart.yaml). When true (the default), the chart installs Dapr as part of the release
 # and the admin Deployment's dapr.io/* annotations and DAPR_* env vars render. When false, no
@@ -35,6 +51,8 @@ dapr:
       pullPolicy: IfNotPresent
 
 # dws-controller control plane (Phase 2). Toggle the whole stack with controller.enabled.
+# The controller does not expose an Ingress: it only makes outbound Dapr calls and has no
+# browser-facing API. Its ClusterIP Service remains available for in-cluster clients.
 controller:
   enabled: true
   replicaCount: 1
@@ -44,6 +62,10 @@ controller:
     pullPolicy: IfNotPresent
   service:
     port: 80
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
   # Step-image references the controller stamps into per-workflow resources
   # (rendered as DWS_IMAGES_* env vars on the controller container).
   images:
@@ -96,6 +118,10 @@ adminGateway:
   service:
     type: ClusterIP
     port: 80
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
   # Browser origins allowed to call the write relay through this gateway. MUST be a non-empty
   # list of explicit scheme+host+optional-port strings when adminGateway.enabled=true; wildcards
   # ("*") are rejected at render time (a credentialed cross-origin write cannot combine with a
@@ -114,6 +140,12 @@ admin:
     pullPolicy: IfNotPresent
   service:
     port: 3000
+  # No admin.ingress block is rendered yet. The runtime-config shim must first let each
+  # console install select its admin URL; until then, operators own any same-origin route.
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
   # Database connection. When postgresql.enabled is true (default), DATABASE_URL is
   # resolved automatically from the in-chart Postgres — leave these unset. Set one of
   # the two below only when postgresql.enabled is false (external/managed database):
@@ -145,6 +177,17 @@ postgresql:
     password: dws
     database: dws_admin
   primary:
+    # PostgreSQL is a StatefulSet from the upstream subchart, not a chart-owned Deployment.
+    # Keep its scheduling shape aligned with defaults above; it cannot use the parent helper.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
     persistence:
       size: 1Gi
     # kind/dev clusters: skip the default-on NetworkPolicy so admin can reach Postgres freely.
@@ -171,11 +214,15 @@ console:
     pullPolicy: IfNotPresent
   service:
     port: 80
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
   # Optional ingress for the console. Off by default. When enabled, a single-rule Ingress routes
-  # the configured host/path to the console Service. This chart does not currently render an
-  # ingress that also fronts dws-admin at `/dws-admin` — the browser→admin routing needed by the
-  # baked default VITE_DWS_ADMIN_URL is left to the operator (either a second ingress rule they
-  # add themselves, or a rebuilt image pointing at admin's own URL). See the note above.
+  # the configured host/path to the console Service. This chart intentionally does not own a
+  # combined console+admin Ingress or an admin.ingress block until dws-console's runtime-config
+  # shim (/config.json) lets each installation choose its admin URL. The baked `/dws-admin`
+  # default therefore remains operator-owned today (a second rule or a rebuilt console image).
   ingress:
     enabled: false
     className: ""

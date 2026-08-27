@@ -51,6 +51,9 @@ jobs:
       - name: Lint
         run: helm lint ${{ env.CHART_DIR }}
 
+      - name: Template shared values schema
+        run: bash ${{ env.CHART_DIR }}/tests/values-schema-test.sh ${{ env.CHART_DIR }}
+
       - name: Template (default values)
         run: helm template dws ${{ env.CHART_DIR }} > /tmp/render-default.yaml
 
