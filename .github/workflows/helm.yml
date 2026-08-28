@@ -361,11 +361,15 @@ jobs:
     needs: [verify, integration-oauth-path-filter]
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Need Chart.yaml's previous committed state (HEAD^) to detect a version
+          # bump below — a normal depth-1 checkout doesn't have it.
+          fetch-depth: 2
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
@@ -385,3 +389,38 @@ jobs:
           chart_pkg=$(ls /tmp/chart/*.tgz)
           echo "Pushing $chart_pkg to oci://${{ env.OCI_REGISTRY }}"
           helm push "$chart_pkg" "oci://${{ env.OCI_REGISTRY }}"
+
+      - name: Detect chart version bump
+        # A GitHub Release only targets the chart, not every component image — it
+        # marks "this Chart.yaml version is now published", not every merge to
+        # main. Compare Chart.yaml's version field against its previous committed
+        # state; only a real bump (e.g. 0.1.0 -> 1.0.0) should cut a release.
+        id: chart_version
+        run: |
+          new_version=$(grep -m1 '^version:' ${{ env.CHART_DIR }}/Chart.yaml | awk '{print $2}')
+          old_version=$(git show HEAD^:${{ env.CHART_DIR }}/Chart.yaml 2>/dev/null | grep -m1 '^version:' | awk '{print $2}' || echo "")
+          echo "new=$new_version" >> "$GITHUB_OUTPUT"
+          if [ "$new_version" != "$old_version" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tag and create GitHub Release
+        if: steps.chart_version.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="v${{ steps.chart_version.outputs.new }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null 2>&1; then
+            echo "::notice::$tag already exists on origin — skipping release creation"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$tag"
+          git push origin "$tag"
+          chart_pkg=$(ls /tmp/chart/*.tgz)
+          gh release create "$tag" "$chart_pkg" \
+            --title "dws chart $tag" \
+            --generate-notes
