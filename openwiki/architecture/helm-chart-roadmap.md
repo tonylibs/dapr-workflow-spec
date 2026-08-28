@@ -7,7 +7,7 @@ tags: [dws, helm, kubernetes, controller, admin, postgresql, dapr, redis, dex, a
 
 # Helm chart packaging
 
-`charts/dws` is the DWS application chart. It packages the persistent control-plane services—the `dws-controller` API and the `dws-admin` [administrative read model](../integrations/admin-read-model.md)—plus conditional infrastructure dependencies, rather than the per-workflow runtime. The controller continues to create the pinned orchestrator and step services for each submitted definition; that lifecycle is described in [deployed workflow lifecycle](deployed-workflow.md).
+`charts/dws` is the DWS application chart. It packages the persistent control-plane services—the `dws-controller` API and the `dws-admin` [administrative read model](../integrations/admin-read-model.md)—plus optional `dws-console` and `admin-gateway` workloads and conditional infrastructure dependencies, rather than the per-workflow runtime. The controller continues to create the pinned orchestrator and step services for each submitted definition; that lifecycle is described in [deployed workflow lifecycle](deployed-workflow.md).
 
 The chart defaults to one controller replica, one admin replica, an in-chart standalone PostgreSQL instance, Dapr and its Redis backing services. It installs into the Helm release namespace unless `namespaceOverride` is set. Dex is available as a disabled-by-default optional in-chart identity provider. When the separate `auth.enabled` controller setting is enabled, the chart can derive the controller's JWT-validation settings from Dex; otherwise Dex only supports the optional browser login described in [console OIDC login](console-auth.md). The current chart metadata and values live in `charts/dws/Chart.yaml` and `charts/dws/values.yaml`.
 
@@ -21,7 +21,13 @@ The chart defaults to one controller replica, one admin replica, an in-chart sta
 | `dapr.enabled` | `true` | Conditional Dapr control plane and its Redis-backed components. Disable only when a Dapr installation already exists in the cluster; the chart preflight validates that prerequisite. |
 | `dex.enabled` | `false` | Conditional upstream Dex dependency. It registers `dws-console` as a public PKCE client and seeds one bootstrap administrator. With `auth.enabled=true` and `auth.dex.enabled=true`, it also provides the controller middleware's issuer, audience, and JWKS URL. |
 | `auth.enabled` | `false` | Opt-in Dapr bearer middleware for inbound controller traffic. Requires either external `auth.issuer` and `auth.audience` (with optional `auth.jwksURL`) or the enabled in-chart Dex mode. |
+| `console.enabled` | `false` | Optional console Deployment, Service, and console-only Ingress. Its browser login is described in [console OIDC login](console-auth.md). |
+| `adminGateway.enabled` | `false` | Optional nginx reverse proxy for browser-to-admin write-relay traffic. It requires a non-empty `adminGateway.corsOrigins` list of explicit origins and rejects `*`. |
 | `imagePullSecrets` | `[]` | Pull credentials attached to component pods that use private registries. |
+
+### Deployment defaults and overrides
+
+`defaults.resources`, `defaults.nodeSelector`, `defaults.tolerations`, and `defaults.affinity` establish a chart-wide baseline for the chart-owned controller, admin, admin gateway, and console Deployments. Each component has matching `resources`, `nodeSelector`, `tolerations`, and `affinity` fields. Resources, node selectors, and affinity are deep-merged, so an override can change one nested value without restating the baseline; a non-empty component tolerations list replaces the defaults list. PostgreSQL is an upstream StatefulSet rather than a chart-owned Deployment, so configure the corresponding scheduling and resource settings under `postgresql.primary` instead. `imagePullSecrets` remains chart-wide.
 
 The controller Role permits only the resources it reconciles: definition ConfigMaps, orchestrator Deployments, Knative Services, and Dapr components. Knative Serving and Dapr CRDs/control planes are therefore cluster prerequisites for actual workflow deployment; they are **not** installed by this chart. A server-side Helm dry run can validate the controller's core/RBAC/app manifests without those CRDs, but a running controller requires them when it applies workflow stacks.
 
