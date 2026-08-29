@@ -1,0 +1,10 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: dws-step
+
+logging:
+  level:
+    io.dws.step: INFO

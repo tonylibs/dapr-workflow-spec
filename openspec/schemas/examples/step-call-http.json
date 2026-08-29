@@ -1,0 +1,12 @@
+{
+  "$schema": "https://dws.io/schemas/single-node-definition.v1.json",
+  "workflow": "order-fulfillment",
+  "version": "order-fulfillment@v3f9a1c2b",
+  "nodeId": "reserve-items",
+  "kind": "step",
+  "task": {
+    "call": "http",
+    "with": { "method": "post", "endpoint": "http://inventory/run" }
+  },
+  "functionAppId": "reserve-items-fn"
+}
