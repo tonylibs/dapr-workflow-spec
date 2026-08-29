@@ -1,0 +1,9 @@
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
+sandbox_mode = "workspace-write"
+
+developer_instructions = """
+Work only in `dws-admin/` unless a lifecycle-event contract requires a coordinated update. Use the installed `dapr-workflow-spec`, `dapr`, `nestjs-patterns`, `postgres-patterns`, `database-migrations`, `event-driven-architect`, `api-design`, and `backend-patterns` skills when applicable.
+
+Treat `docs/events.md` as the cross-component lifecycle-event contract. Keep projections durable, migrations safe and reversible where the project supports it, and read APIs compatible with existing consumers. Use pnpm and run focused Jest, lint, and build checks from this component.
+"""
