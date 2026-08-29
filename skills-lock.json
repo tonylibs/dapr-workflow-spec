@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "skills": {
+    "dapr": {
+      "source": "membranedev/application-skills",
+      "sourceType": "github",
+      "skillPath": "skills/dapr/SKILL.md",
+      "computedHash": "db54702d167bc8a523cd0de714ff76ad136087ef9cf200e4871effd313e2de0b"
+    },
+    "dotnet-backend-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/dotnet-contribution/skills/dotnet-backend-patterns/SKILL.md",
+      "computedHash": "624af9f8faea713dadaa51fc2f2040a4b365b4e083b9b9f82d7e9df1f627ea79"
+    },
+    "dotnet-best-practices": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/dotnet-best-practices/SKILL.md",
+      "computedHash": "9ef94db7f06c167d544369817e5a4415eeb7886dcff0d47026837a1aada260e3"
+    },
+    "dotnet-design-pattern-review": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/dotnet-design-pattern-review/SKILL.md",
+      "computedHash": "0b2b93ae1950e075045546dcf8d5a0971eea77abc5707916c99033c334accf69"
+    },
+    "event-driven-architect": {
+      "source": "patricio0312rev/skills",
+      "sourceType": "github",
+      "skillPath": "backend/event-driven-architect/SKILL.md",
+      "computedHash": "93f5ff4ae967cc7641d68fd0cb7d4e07438cb33b7d4b14179ba059449eda457f"
+    },
+    "find-skills": {
+      "source": "vercel-labs/skills",
+      "sourceType": "github",
+      "skillPath": "skills/find-skills/SKILL.md",
+      "computedHash": "b146008599c31057cef1c145774cea5d5afb30e8f43fa802e47a4b461419aaaf"
+    },
+    "frontend-design": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "skillPath": "skills/frontend-design/SKILL.md",
+      "computedHash": "93f53fd1c0352d3d7ec17b8f73d7351bf76f4821e55d123c9d2abc2c53ba48e4"
+    },
+    "helm-chart-scaffolding": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/kubernetes-operations/skills/helm-chart-scaffolding/SKILL.md",
+      "computedHash": "b1d32f4512f1fc5748d6f8bcfb6af4fb685281c182df3471535f2328a8214a3c"
+    },
+    "java-add-graalvm-native-image-support": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/java-add-graalvm-native-image-support/SKILL.md",
+      "computedHash": "81dbd0ee073c906db0fa9f7942b610e5b12b977757bc880dc282a5150e705fcf"
+    },
+    "java-springboot": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/java-springboot/SKILL.md",
+      "computedHash": "f1b9c6b1277178fc33e5a612761c1cd1cf6ab5f946d05d69d52026d142c0a0c1"
+    },
+    "knative": {
+      "source": "julianobarbosa/claude-code-skills",
+      "sourceType": "github",
+      "skillPath": "skills/knative/SKILL.md",
+      "computedHash": "01b002e372ff1383ed874e0a33d144748d8a4699691dfe2a1dfff396d330bdb1"
+    },
+    "kubernetes-patterns": {
+      "source": "affaan-m/ecc",
+      "sourceType": "github",
+      "skillPath": "skills/kubernetes-patterns/SKILL.md",
+      "computedHash": "6fd59a4251b58b5c38edd9727affbed1fb808b9d88b5f7fb2745eae45ec4973f"
+    },
+    "nestjs-patterns": {
+      "source": "affaan-m/ecc",
+      "sourceType": "github",
+      "skillPath": "skills/nestjs-patterns/SKILL.md",
+      "computedHash": "838807825d825b067786a83ad714872139cb53123acf6cf11335fd23f8f75c4e"
+    },
+    "quarkus-patterns": {
+      "source": "affaan-m/ecc",
+      "sourceType": "github",
+      "skillPath": "skills/quarkus-patterns/SKILL.md",
+      "computedHash": "e3a53e06dd7d464e14afd70a8787ed295c306fc345348a928249888c8ca8286d"
+    },
+    "tanstack-form": {
+      "source": "tanstack-skills/tanstack-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/tanstack-form/skills/tanstack-form/SKILL.md",
+      "computedHash": "6d00fa22960ef5c45d14906f8f05d91870de658effb8c76bacc69d60a1000098"
+    },
+    "tanstack-query": {
+      "source": "tanstack-skills/tanstack-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/tanstack-query/skills/tanstack-query/SKILL.md",
+      "computedHash": "bfe2977e92667b84efeb4b12e5c3010807934aab2f7ac2b059241cd3da2a3e6e"
+    },
+    "tanstack-query-best-practices": {
+      "source": "deckardger/tanstack-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/tanstack-query/SKILL.md",
+      "computedHash": "addf4358803d7746f7fe0475a3370d835775217e00dd5fc7bbd8a7d6c53d81e5"
+    },
+    "tanstack-router": {
+      "source": "tanstack-skills/tanstack-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/tanstack-router/skills/tanstack-router/SKILL.md",
+      "computedHash": "6aba9066ca12bf6bb6eebec9c58f5d4e33b6b06e2b11bf263f5b7a5c18edc389"
+    },
+    "tanstack-start": {
+      "source": "tanstack-skills/tanstack-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/tanstack-start/skills/tanstack-start/SKILL.md",
+      "computedHash": "31690f8eb3a24feb093bfd14d673f0519078cdcd297f79fc2bbb584b4daa4db1"
+    },
+    "tanstack-table": {
+      "source": "tanstack-skills/tanstack-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/tanstack-table/skills/tanstack-table/SKILL.md",
+      "computedHash": "5527e42e541ac26fc1157e49d58c399b95e44eb276ef3caa7576ab138558d593"
+    }
+  }
+}
