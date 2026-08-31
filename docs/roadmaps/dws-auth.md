@@ -22,8 +22,8 @@ flowchart TD
   P0 --> P2["Phase 2: dws-controller Dapr-gated<br/>sidecar + bearer/role middleware"]
   P2 --> P3["Phase 3: dws-admin write-relay<br/>stateless proxy to dws-controller"]
   P3 --> P4["Phase 4: Admin gateway<br/>nginx: CORS preflight + proxy to<br/>dws-admin's own sidecar invoke path"]
-  P1 --> P5["Phase 5: Console write UI<br/>submit definitions end-to-end"]
-  P4 --> P5
+  P1 --> P5["Phase 5: Console write UI<br/>submit definitions through dws-admin"]
+  P3 --> P5
   P5 --> P6["Phase 6: Guard reads too<br/>(deferred, separate phase)"]
   P0 --> P7["Phase 7: User management<br/>admin creates users, assigns built-in role<br/>(further-out, exploratory)"]
   P4 --> P7
@@ -42,13 +42,13 @@ flowchart TD
 | **2** | Enable `dws-controller`'s Dapr sidecar (`dapr.io/enabled`/`app-id`/`app-port`); add a bearer `Component` and a `Configuration` wiring it to the inbound pipeline; route the Service through Dapr and keep the app port pod-local | Phase 0 (needs the IdP's JWKS endpoint) | ✅ done — landed via `dws-console-auth-phase-2` (see `openspec/changes/dws-console-auth-phase-2/verify.md`); live Dapr + Dex authorization matrix (no-auth / valid / malformed / tampered-sig / wrong-aud / wrong-iss) all rejected before controller; Service-level bypass closed by sidecar front-port. Pod-IP:8080 residual documented for follow-up |
 | **3** | New route in `dws-admin`: stateless relay that forwards the `Authorization` header + body to `dws-controller` via `dws-admin`'s own local sidecar invoke call. No verification logic — `dws-admin` never inspects the token. Kept intentionally minimal: no draft/version/state modeling here — that's scoped separately as Phase 9 | Phase 2 | ✅ done — `POST /workflows` on `dws-admin` (new `controller-relay` module) forwards `Authorization` header and raw body verbatim to `http://<sidecar>/v1.0/invoke/<controller-app-id>/method/workflows` (dryRun query preserved); Nest's raw-body mode keeps YAML/JSON bytes untouched so the controller's content-hashed version is stable across the relay. No token parsing anywhere in `dws-admin`. New env var `DAPR_CONTROLLER_APP_ID` (defaults to `dws-controller`) |
 | **4** | New `admin-gateway` nginx Deployment/Service/ConfigMap (chart-bundled, not an assumed cluster Ingress): answers CORS preflight, proxies the real request to `dws-admin`'s sidecar invoke path. Extend `dws-admin`'s Service with its sidecar port. Add `bearer`/role `Component`s + `Configuration` to `dws-admin`'s sidecar, scoped to this route only | Phase 3 | 🟡 chart-side landed, live acceptance pending — proposal `dws-console-auth-phase-4` implemented; local `helm lint`/`helm template` gates green (see below). Live matrix on a Docker Desktop cluster still owed |
-| **5** | Wire the console's definition-submission UI to call the gateway with the bearer token attached; reads keep using the existing direct `dws-admin` path unchanged | Phases 1 and 4 | ❌ not started |
-| **6** | Guard reads: move `dws-admin`'s read routes onto the same gateway+sidecar+bearer path, retire the old direct/CORS-only route | Phase 5 | ❌ not started — deliberately deferred, tracked here so it isn't lost |
+| **5** | Console definition-submission UI calls the Phase 3 `dws-admin` relay directly with the bearer token attached; reads keep using the existing direct `dws-admin` path unchanged | Phases 1 and 3 | ✅ done — live Docker Desktop acceptance passed on 2026-08-31; direct relay is the permanent Phase 5 routing decision |
+| **6** | Guard reads: add an authenticated read path without changing Phase 5's direct `dws-admin` write relay transport | Phase 5 | ❌ not started — deliberately deferred, tracked here so it isn't lost |
 | **7** | User management: an admin-only console screen to create users and assign one of a small set of built-in roles (e.g. `admin`/`operator`/`viewer`). New `dws-admin` route, reusing Phase 4's gateway + Dapr role check (only `admin`-role tokens may call it), which manages users through **Dex's own gRPC management API** — no user/password storage or hashing added to DWS's own database | Phases 0, 4 | ❌ not started — further-out, exploratory; see §4 for a real open risk before committing to this shape |
 | **8** | Make the bundled development IdP satisfy the browser client contract: adopt a released Dex version/configuration (or another in-chart IdP) with non-interactive `prompt=none` browser sessions and advertised RP-initiated logout; then verify token-expiry renewal, clean renewal failure, authenticated storage, logout, route restoration, and two-tab convergence | Phases 0, 1 | ❌ deferred — Dex 2.44.0 lacks the required browser-session and `end_session_endpoint` behavior; owns deferred checklist tasks 6.1, 6.2, 7.2, and 8.3 |
 | **9** | Content/version management (CMS layer) in `dws-admin`: own the workflow draft → active → archived lifecycle and version history as `dws-admin`'s own authored data, not a projection of controller events. Controller-reported deployment status (`applied`/`failed`/`drained`/`collected`) becomes a nested, controller-owned status on whichever version is `active` — never a competing lifecycle. Foundation for later per-user read/edit permissions on content (extends Phase 7's role model) | Phase 3 | ❌ not started — deliberately deferred; scoped down 2026-08-26 so Phase 3 ships as a plain stateless forward first |
 
-### Current progress (2026-08-26)
+### Current progress (2026-08-31)
 
 - Phase 0 is complete.
 - Phase 1's console code, PKCE configuration, sign-in/identity/logout UI, SSR integration, unit
@@ -130,11 +130,25 @@ flowchart TD
   through gateway → admin sidecar → admin app → admin sidecar → controller sidecar, and
   the auth failure matrix mirroring Phase 2) is still owed on a Docker Desktop cluster and
   will land in the change's `verify.md`.
-- Phases 5–7 have not started. Phase 8 is explicitly deferred until a released compatible
-  IdP is available or the chart deliberately adopts a different one.
+- Phase 5 is complete. Live acceptance ran on Docker Desktop in `dws-phase5` against a console
+  built with `VITE_DWS_ADMIN_URL=http://localhost:3001` and Dex issuer
+  `http://host.docker.internal:5556`; the bootstrap admin completed Dex login and submitted a
+  valid YAML definition through the shipped direct `dws-console -> dws-admin -> controller`
+  relay. The console rendered the new `ApplyResult` success (`201`), the idempotent success
+  (`200`, `created: false`), controller `400 errors[]` validation feedback, and a deliberately
+  invalidated-token `401` request failure. The controller created the corresponding definition
+  ConfigMap and orchestrator Deployment. Acceptance also fixed the console image's missing
+  `VITE_OIDC_*` build arguments, external-Dapr admin sidecar injection/controller app-id chart
+  wiring, and YAML raw-body forwarding in the Phase 3 relay.
+- **Routing decision (2026-08-31):** Phase 5 permanently uses the shipped direct
+  `dws-console -> dws-admin POST /workflows` route. The controller sidecar remains the bearer
+  gate for this flow. Phase 4 is not a Phase 5 dependency and its gateway remains relevant to
+  Phase 7's user-management write surface; its separate live matrix is still pending.
+- Phase 6 has not started. Phase 7 has not started. Phase 8 is explicitly deferred until a
+  released compatible IdP is available or the chart deliberately adopts a different one.
 
-**Next up:** Phase 4 live acceptance on a Docker Desktop cluster (namespace `dws-phase4`),
-then Phase 5 (console write UI wired to the new gateway origin). Follow-ups (not blocking):
+**Next up:** Phase 4 live acceptance for its Phase 7 user-management gateway use case. Follow-ups
+(not blocking):
 add the `DAPR_CONTROLLER_APP_ID` env var to `dws-admin`'s chart Deployment (currently the
 default `dws-controller` works only for a release named `dws`); close the pod-IP
 direct-app-port bypass on the controller (either CNI-aware NetworkPolicy or
@@ -166,7 +180,8 @@ anyone hand-editing `values.yaml` with a password:
   real writes to it — never let the relay exist ahead of the thing it's relaying to.
 - **3 before 4**: the gateway's only job is getting traffic to the relay route safely; build the
   route first so there's something real to point it at.
-- **4 before 5**: don't wire the write UI to a CORS/preflight path that doesn't work yet.
+- **3 before 5**: the shipped write UI targets the Phase 3 relay directly; controller-side Dapr
+  bearer verification protects the relay's downstream write.
 - **6 last, and separate**: reads are lower-risk and already shipped unauthenticated — folding them
   in early would block writes on a change that isn't urgent. Revisit once 0–5 are stable.
 - **7 depends on 0 and 4, not on 1/2/3/5/6**: user management only needs an IdP to manage (Phase 0)

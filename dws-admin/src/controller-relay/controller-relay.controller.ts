@@ -6,6 +6,7 @@ import { ControllerRelayService } from './controller-relay.service';
 // avoids pulling in @types/express just to name two callbacks.
 interface RawRequest {
   rawBody?: Buffer;
+  body?: unknown;
 }
 interface RawResponse {
   status(code: number): RawResponse;
@@ -33,7 +34,7 @@ export class ControllerRelayController {
     // rawBody preserves the exact bytes the client sent — the controller
     // accepts YAML *or* JSON on the same endpoint (Consumes WILDCARD), so
     // Nest's JSON body parser would drop YAML and re-serialise JSON.
-    const body = req.rawBody ?? Buffer.alloc(0);
+    const body = req.rawBody ?? (Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0));
     const relayed = await this.relay.relayDeploy(authorization, contentType, body, dryRun === 'true');
     if (relayed.contentType) {
       res.setHeader('content-type', relayed.contentType);

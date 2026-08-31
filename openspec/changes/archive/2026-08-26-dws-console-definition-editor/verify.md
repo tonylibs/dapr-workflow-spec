@@ -42,15 +42,49 @@ non-400 relay failure.
 openspec validate dws-console-definition-editor --strict  # valid
 ```
 
-## End-to-end boundary
+## Live acceptance (2026-08-31)
 
-No deployed browser-to-relay environment was available locally. The console call targets the
-documented Phase 3 `dws-admin` relay contract (`POST /workflows`), which has already been
-unit-verified in that component. A deployment acceptance run must configure
-`VITE_DWS_ADMIN_URL`, sign in through the target OIDC provider, and submit a valid definition
-through the reachable relay.
+**Result: passed for the shipped direct console -> `dws-admin` Phase 3 relay path.**
+
+Docker Desktop context `docker-desktop` ran Helm release `dws` in namespace `dws-phase5` with
+`auth.enabled=true`, `dex.enabled=true`, `auth.dex.enabled=true`, and
+`adminGateway.enabled=false`. The cluster's existing Dapr control plane was reused
+(`dapr.enabled=false`); an isolated password-protected Redis fixture backed the chart Components.
+The console was built locally with `VITE_DWS_ADMIN_URL=http://localhost:3001`,
+`VITE_OIDC_ISSUER_URI=http://host.docker.internal:5556`, `VITE_OIDC_CLIENT_ID=dws-console`, and
+`VITE_OIDC_SCOPES="profile email"`. Dex, console, and direct admin Service were port-forwarded at
+ports 5556, 3000, and 3001 respectively.
+
+| Scenario | Result |
+| --- | --- |
+| Bootstrap-admin sign-in | Passed: Dex local-password login and consent completed; `/workflows/new` displayed **Sign out** and enabled submission. |
+| Valid DSL 1.0 YAML | Passed: authenticated browser `POST /workflows?dryRun=false` returned `201`; the editor rendered `Applied vf080e0d8.` and controller created ConfigMap `dws-def-phase5-live-editor-vf080e0d8` plus Deployment `phase5-live-editor-vf080e0d8`. |
+| Identical re-submit | Passed: returned `200` with `created: false`; the editor rendered `vf080e0d8 is already applied.` as success. |
+| Invalid definition | Passed: returned `400`; the controller `errors[]` entries were rendered individually as validation feedback, including the YAML parse-location details. |
+| Invalidated bearer token | Passed: temporarily changed the controller bearer middleware audience, which made the still-authenticated browser token invalid. The live request returned `401` and the editor rendered `POST /workflows failed: 401 Unauthorized`; the failure was not swallowed. The middleware audience was restored immediately afterward. |
+
+The browser capture also confirmed the direct cross-origin preflight: `OPTIONS` returned `204`
+with `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Headers: authorization,content-type`,
+and `Access-Control-Allow-Methods: GET,HEAD,OPTIONS`; the real request carried the bearer token
+and `Content-Type: application/yaml`.
+
+The run uncovered and corrected three deployment-path defects:
+
+- The console Docker image did not expose `VITE_OIDC_*` build arguments, so a locally deployed
+  console could not be configured for Dex.
+- In externally managed-Dapr mode, the chart did not inject `dws-admin` even when
+  `auth.enabled=true`, and it did not set `DAPR_CONTROLLER_APP_ID` from the chart controller
+  fullname.
+- Nest's built-in raw-body capture does not parse `application/yaml`; the relay therefore
+  forwarded an empty definition. It now uses an explicit YAML raw parser and forwards that buffer
+  verbatim.
+
+**Routing decision:** retain the shipped direct `dws-console -> dws-admin POST /workflows` path
+permanently for Phase 5. The controller's Dapr sidecar remains the bearer enforcement point for
+this relay. Phase 4's optional gateway is not a prerequisite for definition editing; it remains
+reserved for the later user-management write surface (Phase 7) unless a future requirements change
+explicitly needs its stricter browser-origin gateway.
 
 ## Assessment
 
-No critical or warning issues found. The implementation meets the change requirements and is ready
-to archive.
+The implementation and deployed acceptance meet the change requirements for the direct relay path.

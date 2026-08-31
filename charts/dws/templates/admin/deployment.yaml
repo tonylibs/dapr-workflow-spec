@@ -17,7 +17,7 @@ spec:
       labels:
         {{- include "dws.labels" . | nindent 8 }}
         app.kubernetes.io/component: admin
-      {{- if .Values.dapr.enabled }}
+      {{- if or .Values.dapr.enabled .Values.auth.enabled }}
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: {{ include "dws.admin.fullname" . | quote }}
@@ -100,13 +100,15 @@ spec:
                   {{- end }}
             - name: RUN_MIGRATIONS_ON_BOOT
               value: "true"
-            {{- if .Values.dapr.enabled }}
+            {{- if or .Values.dapr.enabled .Values.auth.enabled }}
             - name: DAPR_PUBSUB_NAME
               value: {{ .Values.admin.pubsub.name | quote }}
             - name: DAPR_PUBSUB_TOPIC
               value: {{ .Values.admin.pubsub.topic | quote }}
             - name: DAPR_APP_PORT
               value: "3001"
+            - name: DAPR_CONTROLLER_APP_ID
+              value: {{ include "dws.controller.fullname" . | quote }}
             {{- end }}
           livenessProbe:
             httpGet:
