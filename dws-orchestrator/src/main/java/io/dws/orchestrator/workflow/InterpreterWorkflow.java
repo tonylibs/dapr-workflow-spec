@@ -1,5 +1,7 @@
 package io.dws.orchestrator.workflow;
 
+import static java.util.function.Predicate.not;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -15,11 +17,7 @@ import io.dws.orchestrator.workflow.adapter.TaskNaming;
 import io.serverlessworkflow.api.types.*;
 import java.time.Duration;
 import java.util.*;
-import java.util.function.Predicate;
-
 import one.util.streamex.StreamEx;
-
-import static java.util.function.Predicate.not;
 
 /**
  * The single, generic workflow. It interprets the pod's one immutable Open Workflow Specification
@@ -840,16 +838,22 @@ public class InterpreterWorkflow implements Workflow {
   /** Converts an Open Workflow Specification inline/ISO-8601 duration to a {@link Duration}. */
   private Duration durationOf(TimeoutAfter after) {
     return Optional.ofNullable(after)
-            .flatMap(a -> Optional.ofNullable(a.getDurationInline())
-                    .map(il -> Duration.ofDays(il.getDays())
-                        .plusHours(il.getHours())
-                        .plusMinutes(il.getMinutes())
-                        .plusSeconds(il.getSeconds()))
-                    .or(() -> Optional.ofNullable(a.getDurationExpression())
-                            .or(() -> Optional.of(a.getDurationLiteral()))
-                            .filter(not(String::isBlank))
-                            .map(Duration::parse)))
-            .orElse(Duration.ZERO);
+        .flatMap(
+            a ->
+                Optional.ofNullable(a.getDurationInline())
+                    .map(
+                        il ->
+                            Duration.ofDays(il.getDays())
+                                .plusHours(il.getHours())
+                                .plusMinutes(il.getMinutes())
+                                .plusSeconds(il.getSeconds()))
+                    .or(
+                        () ->
+                            Optional.ofNullable(a.getDurationExpression())
+                                .or(() -> Optional.of(a.getDurationLiteral()))
+                                .filter(not(String::isBlank))
+                                .map(Duration::parse)))
+        .orElse(Duration.ZERO);
   }
 
   /**
@@ -858,18 +862,21 @@ public class InterpreterWorkflow implements Workflow {
    */
   private JsonNode mergeObjects(JsonNode base, JsonNode overlay, ObjectMapper mapper) {
     return Optional.ofNullable(overlay)
-            .filter(not(JsonNode::isNull))
-            .map(o -> Optional.ofNullable(base)
+        .filter(not(JsonNode::isNull))
+        .map(
+            o ->
+                Optional.ofNullable(base)
                     .filter((b -> b.isObject() && overlay.isObject()))
                     .map(b -> (ObjectNode) b.deepCopy())
-                    .map((ObjectNode merged) -> {
-                      StreamEx.of(overlay.fieldNames())
+                    .map(
+                        (ObjectNode merged) -> {
+                          StreamEx.of(overlay.fieldNames())
                               .mapToEntry(overlay::get)
                               .forKeyValue(merged::set);
-                      return merged;
-                    })
+                          return merged;
+                        })
                     .map(JsonNode.class::cast)
                     .orElse(overlay))
-            .orElse(base);
+        .orElse(base);
   }
 }

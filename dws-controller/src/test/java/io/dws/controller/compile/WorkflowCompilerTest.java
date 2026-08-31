@@ -1309,7 +1309,8 @@ class WorkflowCompilerTest {
   @DisplayName("a call: asyncapi task compiles to a binding-backed step service")
   void asyncApiCallCompilesToBindingStep() {
     WorkflowCompiler asyncCompiler =
-        new WorkflowCompiler(IMAGES, ignored -> asyncApiDocument("kafka", "kafka.example.test:9092"));
+        new WorkflowCompiler(
+            IMAGES, ignored -> asyncApiDocument("kafka", "kafka.example.test:9092"));
 
     DeploymentPlan plan = asyncCompiler.compile(asyncApiDefinition());
 
@@ -1406,7 +1407,8 @@ class WorkflowCompilerTest {
   }
 
   @Test
-  @DisplayName("a grpc call compiles to a CALL_GRPC step service with address, method, and pinned proto")
+  @DisplayName(
+      "a grpc call compiles to a CALL_GRPC step service with address, method, and pinned proto")
   void grpcCallCompilesToStepService() {
     String yaml =
         """
@@ -1437,8 +1439,7 @@ class WorkflowCompilerTest {
     assertThat(grpc.env())
         .containsEntry("SERVICE_ADDR", new Literal("greeter-svc:50051"))
         .containsEntry("METHOD", new Literal("greeter.Greeter/SayHello"))
-        .containsEntry(
-            "PROTO_ENDPOINT", new Literal("https://config.example.test/greeter.binpb"))
+        .containsEntry("PROTO_ENDPOINT", new Literal("https://config.example.test/greeter.binpb"))
         .containsEntry("PROTO_SHA256", new Literal(SpecDigest.sha256Hex(OPENAPI_DOC)));
   }
 

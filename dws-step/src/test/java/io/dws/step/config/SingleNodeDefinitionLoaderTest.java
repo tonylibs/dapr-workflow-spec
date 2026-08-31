@@ -46,6 +46,14 @@ class SingleNodeDefinitionLoaderTest {
   }
 
   @Test
+  void resolvesSwitchTaskKindWhenNonKindFieldComesFirst() throws IOException {
+    SingleNodeDefinition definition = load(write("switch.json", switchStepDefinition()));
+
+    assertThat(definition.taskKind()).isEqualTo("switch");
+    assertThat(definition.functionAppId()).isNull();
+  }
+
+  @Test
   void rejectsMalformedJson() throws IOException {
     assertThatThrownBy(() -> load(write("malformed.json", "{not json")))
         .isInstanceOf(DefinitionLoadException.class)
@@ -93,6 +101,14 @@ class SingleNodeDefinitionLoaderTest {
     return """
         {"workflow":"order","version":"order@v1","nodeId":"reserve-items","kind":"step",
          "task":{"call":"http"}}
+        """;
+  }
+
+  private String switchStepDefinition() {
+    return """
+        {"workflow":"order","version":"order@v1","nodeId":"route-order","kind":"step",
+         "task":{"cases":[{"when":"${ .priority }","then":"priority-lane"}],
+         "default":"standard-lane","switch":"jsonpath"}}
         """;
   }
 }

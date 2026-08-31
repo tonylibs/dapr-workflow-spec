@@ -400,11 +400,11 @@ public class WorkflowCompiler {
   /**
    * Compiles a {@code call: asyncapi} task. Does a <em>light</em> read of the fetched AsyncAPI
    * document (first server protocol/host + the operation's channel address) to select a Dapr output
-   * binding type and register a version-scoped binding {@link BindingComponent}; the runner
-   * ({@code dws-call-asyncapi}) does the full parse and payload validation at runtime. Only
-   * outbound {@code send} operations are supported here — {@code subscription} (receive) belongs to
-   * a {@code listen} task. Unsupported broker protocols are rejected. Broker credentials, if any,
-   * are projected as {@code secretKeyRef} metadata reusing the Phase 4 {@code use.secrets} machinery.
+   * binding type and register a version-scoped binding {@link BindingComponent}; the runner ({@code
+   * dws-call-asyncapi}) does the full parse and payload validation at runtime. Only outbound {@code
+   * send} operations are supported here — {@code subscription} (receive) belongs to a {@code
+   * listen} task. Unsupported broker protocols are rejected. Broker credentials, if any, are
+   * projected as {@code secretKeyRef} metadata reusing the Phase 4 {@code use.secrets} machinery.
    */
   private StepService asyncApiStep(String taskName, CallAsyncAPI call, CompileContext context) {
     AsyncApiArguments with = call.getWith();
@@ -476,7 +476,8 @@ public class WorkflowCompiler {
     }
     BasicAuthenticationProperties properties = basic.getBasic().getBasicAuthenticationProperties();
     metadata.put(
-        binding.userKey(), secretRef(taskName, "broker username", properties.getUsername(), context));
+        binding.userKey(),
+        secretRef(taskName, "broker username", properties.getUsername(), context));
     metadata.put(
         binding.passwordKey(),
         secretRef(taskName, "broker password", properties.getPassword(), context));
@@ -504,10 +505,13 @@ public class WorkflowCompiler {
     String p = protocol == null ? "" : protocol.toLowerCase(Locale.ROOT);
     return switch (p) {
       case "kafka" ->
-          new BindingType("bindings.kafka", "brokers", "publishTopic", "saslUsername", "saslPassword");
+          new BindingType(
+              "bindings.kafka", "brokers", "publishTopic", "saslUsername", "saslPassword");
       case "amqp" -> new BindingType("bindings.rabbitmq", "host", "queueName", null, null);
-      case "mqtt", "mqtt5" -> new BindingType("bindings.mqtt3", "url", "topic", "username", "password");
-      case "sqs" -> new BindingType("bindings.aws.sqs", null, "queueName", "accessKey", "secretKey");
+      case "mqtt", "mqtt5" ->
+          new BindingType("bindings.mqtt3", "url", "topic", "username", "password");
+      case "sqs" ->
+          new BindingType("bindings.aws.sqs", null, "queueName", "accessKey", "secretKey");
       case "googlepubsub" -> new BindingType("bindings.gcp.pubsub", null, "topic", null, null);
       default ->
           throw invalid(
@@ -547,7 +551,8 @@ public class WorkflowCompiler {
     JsonNode channel = resolveAsyncApiRef(taskName, api, ref);
     String address = textValue(channel.get("address"));
     if (isBlank(address)) {
-      throw invalid(taskName, "AsyncAPI channel for operation '" + operationId + "' has no address");
+      throw invalid(
+          taskName, "AsyncAPI channel for operation '" + operationId + "' has no address");
     }
     return address;
   }
@@ -579,11 +584,7 @@ public class WorkflowCompiler {
   private record AsyncApiServer(String protocol, String host) {}
 
   private record BindingType(
-      String daprType,
-      String hostKey,
-      String destinationKey,
-      String userKey,
-      String passwordKey) {}
+      String daprType, String hostKey, String destinationKey, String userKey, String passwordKey) {}
 
   private StepService grpcStep(String taskName, CallGRPC call, CompileContext context) {
     GRPCArguments with = call.getWith();
@@ -595,7 +596,8 @@ public class WorkflowCompiler {
       throw invalid(taskName, "grpc call requires 'with.service' with a host and a positive port");
     }
     if (isBlank(service.getName())) {
-      throw invalid(taskName, "grpc call requires 'with.service.name' (the fully-qualified service)");
+      throw invalid(
+          taskName, "grpc call requires 'with.service.name' (the fully-qualified service)");
     }
     if (isBlank(with.getMethod())) {
       throw invalid(taskName, "grpc call requires 'with.method'");
@@ -627,6 +629,7 @@ public class WorkflowCompiler {
 
     return new StepService(Names.kebab(taskName), TaskKind.CALL_GRPC, images.callGrpc(), env);
   }
+
   private StepService runStep(String taskName, RunTask run) {
     RunTaskConfigurationUnion cfg = run.getRun();
     if (cfg == null) {
@@ -921,7 +924,8 @@ public class WorkflowCompiler {
       ReferenceableAuthenticationPolicy reference,
       Supplier<String> oauthEndpoint,
       CompileContext context) {
-    return resolveAuthPolicy(taskName, oauthEndpoint, policyOf(taskName, reference, context), context);
+    return resolveAuthPolicy(
+        taskName, oauthEndpoint, policyOf(taskName, reference, context), context);
   }
 
   /** Resolves an inline or named authentication policy reference to its policy union. */
@@ -1342,10 +1346,15 @@ public class WorkflowCompiler {
   }
 
   private static String bindingName(
-      String workflow, String versionId, String type, String appId, Map<String, EnvValue> metadata) {
+      String workflow,
+      String versionId,
+      String type,
+      String appId,
+      Map<String, EnvValue> metadata) {
     StringBuilder canonical = new StringBuilder(type).append('\n').append(appId);
     new TreeMap<>(metadata)
-        .forEach((key, value) -> canonical.append('\n').append(key).append('=').append(describe(value)));
+        .forEach(
+            (key, value) -> canonical.append('\n').append(key).append('=').append(describe(value)));
     String hash =
         SpecDigest.sha256Hex(canonical.toString().getBytes(StandardCharsets.UTF_8)).substring(0, 8);
     return workflow + "-" + versionId + "-binding-" + hash;
