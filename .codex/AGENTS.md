@@ -18,6 +18,15 @@ The generated baseline enables GitHub, Context7, Exa, Memory, Playwright, and Se
 - Explorer: read-only evidence gathering
 - Reviewer: correctness, security, and regression review
 - Docs researcher: API and release-note verification
+- Orchestrator: routes DWS work to the component-owning specialist
+- Quarkus developer: `dws-controller/`
+- Java Spring developer: `dws-orchestrator/`, `dws-step/`
+- Go developer: `dws-call-http/`, `dws-call-grpc/`, `dws-run/`
+- Node.js developer: `dws-call-openapi/`, `dws-call-asyncapi/`
+- .NET developer: `dws-flow/`
+- NestJS developer: `dws-admin/`
+- Frontend developer: `dws-console/`
+- Platform deployment developer: Helm, Kubernetes, Docker, and image-build CI
 
 ## Workflow Files
 

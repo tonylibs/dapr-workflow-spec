@@ -1,4 +1,8 @@
-```markdown
+---
+name: dapr-workflow-spec
+description: Development patterns and conventions for dapr-workflow-spec
+---
+
 # dapr-workflow-spec Development Patterns
 
 > Auto-generated skill from repository analysis

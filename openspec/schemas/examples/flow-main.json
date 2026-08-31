@@ -1,0 +1,16 @@
+{
+  "$schema": "https://dws.io/schemas/single-node-definition.v1.json",
+  "workflow": "order-fulfillment",
+  "version": "order-fulfillment@v3f9a1c2b",
+  "nodeId": "order-fulfillment-main",
+  "kind": "flow",
+  "scope": "main",
+  "tasks": [
+    { "reserveItems": { "call": "http" } },
+    { "validateOrder": { "set": { "validated": true } } }
+  ],
+  "children": {
+    "reserveItems": "reserve-items",
+    "validateOrder": "validate-order"
+  }
+}

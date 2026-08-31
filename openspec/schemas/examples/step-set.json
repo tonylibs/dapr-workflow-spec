@@ -1,0 +1,10 @@
+{
+  "$schema": "https://dws.io/schemas/single-node-definition.v1.json",
+  "workflow": "order-fulfillment",
+  "version": "order-fulfillment@v3f9a1c2b",
+  "nodeId": "validate-order",
+  "kind": "step",
+  "task": {
+    "set": { "validated": true }
+  }
+}

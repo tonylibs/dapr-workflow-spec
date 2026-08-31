@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://dws.io/schemas/single-node-definition.v1.json",
+  "title": "DWS single-node definition",
+  "description": "A pinned definition for exactly one Workflow Runtime v2 node. Runtimes additionally enforce that functionAppId is present if and only if task.call or task.run is present.",
+  "oneOf": [
+    { "$ref": "#/definitions/flow" },
+    { "$ref": "#/definitions/step" }
+  ],
+  "definitions": {
+    "envelope": {
+      "type": "object",
+      "properties": {
+        "workflow": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "nodeId": {
+          "type": "string",
+          "description": "A DNS-1123 label and the Dapr app ID for this node.",
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+          "maxLength": 63
+        },
+        "kind": { "enum": ["flow", "step"] }
+      },
+      "required": ["workflow", "version", "nodeId", "kind"]
+    },
+    "flow": {
+      "allOf": [
+        { "$ref": "#/definitions/envelope" },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "flow" },
+            "scope": { "enum": ["main", "for", "try", "catch", "forkBranch"] },
+            "tasks": {
+              "type": "array",
+              "items": { "type": "object", "minProperties": 1 }
+            },
+            "children": {
+              "type": "object",
+              "additionalProperties": { "type": "string", "minLength": 1 }
+            },
+            "catch": { "type": "string", "minLength": 1 }
+          },
+          "required": ["scope", "tasks", "children"]
+        }
+      ]
+    },
+    "step": {
+      "allOf": [
+        { "$ref": "#/definitions/envelope" },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "step" },
+            "task": { "type": "object", "minProperties": 1 },
+            "functionAppId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Required by each runtime exactly when task.call or task.run is set; JSON Schema cannot express that DSL-specific rule without duplicating the task schema."
+            }
+          },
+          "required": ["task"]
+        }
+      ]
+    }
+  }
+}

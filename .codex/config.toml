@@ -48,6 +48,46 @@ config_file = "agents/explorer.toml"
 description = "PR reviewer focused on correctness, security, and missing tests."
 config_file = "agents/reviewer.toml"
 
+[agents.code_reviewer]
+description = "Read-only DWS code reviewer with Superpowers verification and architecture-review guidance."
+config_file = "agents/code-reviewer.toml"
+
 [agents.docs_researcher]
 description = "Documentation specialist that verifies APIs, framework behavior, and release notes."
 config_file = "agents/docs-researcher.toml"
+
+[agents.orchestrator]
+description = "Routes DWS work to the specialist role that owns the affected component or deployment surface."
+config_file = "agents/orchestrator.toml"
+
+[agents.quarkus_developer]
+description = "Implements and reviews the Quarkus controller that compiles workflow definitions into Kubernetes, Dapr, and Knative resources."
+config_file = "agents/quarkus-developer.toml"
+
+[agents.java_spring_developer]
+description = "Implements and reviews the DWS Java Spring Boot workflow orchestrator and generic step activity host."
+config_file = "agents/java-spring-developer.toml"
+
+[agents.go_developer]
+description = "Implements and reviews the DWS Go step services for HTTP, gRPC, shell, and inline script workflow tasks."
+config_file = "agents/go-developer.toml"
+
+[agents.nodejs_developer]
+description = "Implements and reviews the TypeScript Fastify DWS step services for OpenAPI and AsyncAPI workflow tasks."
+config_file = "agents/nodejs-developer.toml"
+
+[agents.dotnet_developer]
+description = "Implements and reviews the .NET Dapr Workflow component."
+config_file = "agents/dotnet-developer.toml"
+
+[agents.nestjs_developer]
+description = "Implements and reviews the NestJS and PostgreSQL lifecycle-event projection and administrative query API."
+config_file = "agents/nestjs-developer.toml"
+
+[agents.frontend_developer]
+description = "Implements and reviews the React, TanStack Start, and Vite administrative console for DWS."
+config_file = "agents/frontend-developer.toml"
+
+[agents.platform_deployment_developer]
+description = "Implements and reviews DWS Helm charts, Kubernetes deployment configuration, and component Dockerfiles."
+config_file = "agents/platform-deployment-developer.toml"

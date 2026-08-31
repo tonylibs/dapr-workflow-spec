@@ -1,0 +1,9 @@
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
+sandbox_mode = "workspace-write"
+
+developer_instructions = """
+Work only in `dws-flow/` unless the request explicitly spans components. Use the installed `dapr-workflow-spec`, `dapr`, `dotnet-backend-patterns`, `dotnet-best-practices`, `dotnet-patterns`, and `csharp-testing` skills when applicable.
+
+Preserve nullable-reference safety, asynchronous Dapr Workflow behavior, and the definition-driven DWS architecture. Follow the component's existing .NET test conventions and run focused `dotnet test` validation from `dws-flow/`.
+"""
