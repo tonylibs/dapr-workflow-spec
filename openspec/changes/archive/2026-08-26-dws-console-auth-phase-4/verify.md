@@ -4,10 +4,11 @@ Change: `dws-console-auth-phase-4` (auth roadmap Phase 4).
 
 ## Status
 
-Chart-side implementation and local `helm lint` / `helm template` gates are green.
-**Live acceptance matrix (§Live acceptance below) is not yet run** — it needs a Docker
-Desktop cluster (or equivalent) with the `dapr` and `dex` subcharts installed. Update
-this file with the live evidence when that run completes.
+Chart-side implementation and local gates are green. The Docker Desktop live matrix ran on
+2026-09-01 and passed preflight, negative auth, unchanged reads, cleanup, and disabled-gateway
+checks. The valid-token chain remains **blocked** by `dws-admin`'s dual-listener contract:
+the sidecar can target either Nest's relay on 3000 or the Dapr subscription server on 3001,
+but it has only one `app-port`. Phase 4 must resolve that multiplexing problem before completion.
 
 ## Local chart gates (run from `charts/dws/`)
 
@@ -114,8 +115,9 @@ Confirms:
 - The nginx site config carries the exact `Access-Control-*` response headers required by
   the browser preflight, terminates OPTIONS with `204`, and `proxy_pass`es non-OPTIONS
   requests to the Dapr service-invocation URL (`/v1.0/invoke/<admin fullname>/method/workflows`).
-- The `$is_args$args` suffix preserves the `dryRun` (and any other) query parameter
-  verbatim to the controller.
+- nginx's static `proxy_pass` preserves the incoming `dryRun` (and any other) query parameter
+  verbatim. Keeping the upstream static is important: appending `$is_args$args` made nginx
+  require a runtime DNS resolver and returned 502 in the first live run.
 
 ### `helm template` — render-time validation
 
@@ -135,35 +137,57 @@ Error: execution error at (dws/templates/admin-gateway/service.yaml:1:4):
 Both failure modes surface with an explicit, actionable message at render time — matching
 the specs' behaviour contract in `helm-admin-gateway`.
 
-## Live acceptance (owed)
+## Live acceptance (Docker Desktop, 2026-09-01)
 
-Not yet run. The following matrix mirrors Phase 2's `verify.md` and needs a live Docker
-Desktop cluster (namespace `dws-phase4`) with Dex, Dapr, and the `dws-admin`/`dws-controller`
-images available. Steps:
+Cluster: `docker-desktop`, Kubernetes v1.34.1, Dapr 1.18.2. Namespace/release:
+`dws-phase4`. Dex used its local password connector only as a test fixture; valid and
+wrong-audience tokens were minted by separate public clients, and the wrong-issuer token came
+from the independently configured Phase 2 Dex release.
 
-1. `helm install dws-phase4 charts/dws -n dws-phase4 --create-namespace`
-   with `auth.enabled=true`, `auth.dex.enabled=true`, `dex.enabled=true`,
-   `adminGateway.enabled=true`, and `adminGateway.corsOrigins={https://console.example.com}`.
-2. `OPTIONS <gateway>/workflows` from an allowed origin → 204 with the CORS headers and
-   no request in the `dws-admin` container's access log.
-3. `POST <gateway>/workflows` with a valid Dex-issued JWT → 200/201 from `dws-controller`
-   via gateway → admin sidecar → admin app → admin sidecar → controller sidecar →
-   controller app.
-4. Auth failure matrix: no-Auth / malformed / tampered-sig / wrong-aud / wrong-iss each
-   return 401 from the admin sidecar, no request in the `dws-admin` container's access
-   log.
-5. Reads on the direct admin Service on `3000` (`GET /workflows`, `GET /instances`, SSE)
-   still work unauthenticated — Phase 6 territory, verified unchanged here.
-6. `helm uninstall` cleans up; a subsequent `helm install` with
-   `adminGateway.enabled=false` renders zero gateway objects.
+| Check | Actual | Result |
+|---|---:|---|
+| Allowed-origin OPTIONS | 204; explicit origin, `POST, OPTIONS`, requested headers, credentials | PASS |
+| Disallowed-origin OPTIONS | 403 | PASS |
+| No authorization | 401 | PASS |
+| Malformed token | 401 | PASS |
+| Tampered signature (middle signature character changed) | 401 | PASS |
+| Wrong audience | 401 | PASS |
+| Wrong issuer | 401 | PASS |
+| Direct `GET /workflows` | 200 | PASS |
+| Direct `GET /instances` | 200 | PASS |
+| Direct `GET /instances/events` | 200, `text/event-stream` | PASS |
+| Uninstall, then gateway-disabled reinstall | zero gateway objects; core Deployments Ready | PASS |
+| Valid JWT with chart app-port 3001 | 404 `Cannot POST /workflows` | **BLOCKED** |
+
+Two nginx defects surfaced and are fixed in the working tree with a containerized regression
+test (`charts/dws/tests/admin-gateway-cors-test.sh`):
+
+1. The upstream admin listener adds `Access-Control-Allow-Origin: *`; nginx also added the
+   explicit credentialed origin, producing two browser-invalid values. The gateway now hides
+   upstream CORS origin/credentials headers before adding its own.
+2. `$is_args$args` made `proxy_pass` dynamic, so nginx returned 502 with `no resolver defined`.
+   The static upstream form resolves through Kubernetes DNS and natively preserves the query.
+   A live `dryRun=true` request under the temporary port-3000 fixture returned 200 and created
+   zero workflow resources.
+
+### Blocking dual-listener finding
+
+`dws-admin` runs two HTTP servers:
+
+- Nest on port 3000 owns `POST /workflows` and all read/SSE routes.
+- `@dbc-tech/nest-dapr` on port 3001 owns Dapr subscription callbacks.
+
+The chart sets `dapr.io/app-port: "3001"`, so a valid gateway invocation passes bearer
+middleware and is delivered to the subscription server, which correctly reports that it has no
+`POST /workflows`. Temporarily patching the annotation to 3000 makes the full chain return 200,
+proving gateway → admin sidecar → relay → controller sidecar → controller, but that patch would
+redirect pub/sub callbacks away from their server and is therefore not a valid implementation.
+Phase 4 needs an explicit single-port multiplexer or an equivalent architecture decision.
 
 ## Residuals (not blocking this change)
 
-- **DAPR_CONTROLLER_APP_ID chart wiring for `dws-admin`.** The Phase 3 relay defaults its
-  target app-id to `dws-controller`. This works only for a release named `dws`; every other
-  release name breaks the relay. `templates/admin/deployment.yaml` should set
-  `DAPR_CONTROLLER_APP_ID: {{ include "dws.controller.fullname" . }}` in the container
-  `env`. Tracked as a follow-up; not this phase's scope.
+- **DAPR_CONTROLLER_APP_ID is now wired.** The live non-default release rendered
+  `DAPR_CONTROLLER_APP_ID=dws-phase4-controller`; this earlier residual is closed.
 - **Pod-IP:8080 direct-app-port bypass on `dws-controller`.** Carried over from Phase 2's
   `verify.md`. Unrelated to Phase 4 (the admin sidecar's app port is `3001`, unchanged),
   but the equivalent hole exists in principle — direct `POST <admin-pod-ip>:3000/workflows`

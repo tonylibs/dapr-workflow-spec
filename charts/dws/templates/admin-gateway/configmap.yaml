@@ -81,10 +81,19 @@ data:
         proxy_set_header Authorization $http_authorization;
         proxy_set_header Content-Type $http_content_type;
         # Also expose the CORS headers on the proxied response so the browser
-        # accepts it. `always` includes them on non-2xx (e.g. sidecar 401).
+        # accepts it. dws-admin's direct read listener emits its own permissive
+        # CORS header; suppress upstream CORS values so this credentialed gateway
+        # response has exactly one, explicit origin. `always` includes the
+        # gateway-owned headers on non-2xx (e.g. sidecar 401).
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Credentials;
         add_header Access-Control-Allow-Origin $dws_allowed_origin always;
         add_header Access-Control-Allow-Credentials "true" always;
-        proxy_pass http://{{ include "dws.admin.fullname" . }}.{{ include "dws.namespace" . }}.svc.cluster.local:3500/v1.0/invoke/{{ include "dws.admin.fullname" . }}/method/workflows$is_args$args;
+        # With a static upstream, nginx resolves the Service through Kubernetes
+        # DNS at startup and preserves the incoming query string automatically.
+        # Do not append $is_args$args here: any variable in proxy_pass switches
+        # nginx to runtime DNS resolution and requires an explicit resolver.
+        proxy_pass http://{{ include "dws.admin.fullname" . }}.{{ include "dws.namespace" . }}.svc.cluster.local:3500/v1.0/invoke/{{ include "dws.admin.fullname" . }}/method/workflows;
       }
 
       # Anything else on this listener is not part of the write path — do not

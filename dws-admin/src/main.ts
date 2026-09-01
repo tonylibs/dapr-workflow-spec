@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { raw } from 'express';
 import { AppModule } from './app.module';
 import type { AppConfig } from './config/configuration';
 import { corsOptions } from './config/cors';
@@ -14,6 +15,10 @@ async function bootstrap() {
   // re-serialise JSON, changing the content-hashed version on the far side.
   const app = await NestFactory.create(AppModule, { rawBody: true });
   const config = app.get(ConfigService<AppConfig, true>);
+
+  // Nest captures raw JSON when rawBody is enabled, but it has no built-in parser
+  // for YAML. Parse it as bytes so the controller relay can preserve it verbatim.
+  app.use(raw({ type: ['application/yaml', 'application/x-yaml', 'text/yaml'] }));
 
   // Reject unknown query params, coerce typed ones (e.g. `limit` from its
   // query-string form), and 400 on out-of-range values.

@@ -29,9 +29,8 @@ defaults:
   affinity: {}
 
 # Dapr control plane, provided by the upstream dapr/dapr chart as a conditional dependency
-# (see Chart.yaml). When true (the default), the chart installs Dapr as part of the release
-# and the admin Deployment's dapr.io/* annotations and DAPR_* env vars render. When false, no
-# Dapr control-plane resources are installed by this chart and a preflight check fails
+# (see Chart.yaml). When true (the default), the chart installs Dapr as part of the release.
+# When false, no Dapr control-plane resources are installed by this chart and a preflight check fails
 # install/upgrade unless Dapr CRDs are already present in the cluster (i.e. Dapr is managed
 # externally).
 dapr:
@@ -197,14 +196,16 @@ postgresql:
 # dws-console web UI. Disabled by default: enable per install once you have a plan for how the
 # browser will reach dws-admin (see the VITE_DWS_ADMIN_URL note below).
 #
-# VITE_DWS_ADMIN_URL is a Vite build arg — Vite inlines it into the client bundle at build time,
-# so the URL is baked into the image (see dws-console/Dockerfile). It is NOT a runtime env var:
-# setting it on this Deployment has no effect. The published ghcr.io/tonylibs/dws-console image
-# ships with the Dockerfile default `/dws-admin` (same-origin), which assumes an ingress in front
-# routes `/dws-admin/*` to the dws-admin Service. Operators needing a different admin URL must
-# rebuild the image today (`docker build --build-arg VITE_DWS_ADMIN_URL=https://admin.example .`);
-# a proper per-install knob (runtime-config shim served by server.js) is an open item on the
-# helm-packaging roadmap.
+# VITE_DWS_ADMIN_URL and VITE_OIDC_* are Vite build args — Vite inlines them into the client bundle
+# at build time, so their values are baked into the image (see dws-console/Dockerfile). They are NOT
+# runtime environment variables: setting them on this Deployment has no effect. The published
+# ghcr.io/tonylibs/dws-console image ships with the Dockerfile default `/dws-admin` and unset OIDC
+# settings, which assume an ingress in front routes `/dws-admin/*` to the dws-admin Service.
+# Operators needing split origins or in-chart Dex must rebuild the image, for example:
+# `docker build --build-arg VITE_DWS_ADMIN_URL=https://admin.example
+# --build-arg VITE_OIDC_ISSUER_URI=https://dex.example --build-arg VITE_OIDC_CLIENT_ID=dws-console .`
+# A proper per-install runtime-config shim served by server.js is an open item on the helm-packaging
+# roadmap.
 console:
   enabled: false
   replicaCount: 1

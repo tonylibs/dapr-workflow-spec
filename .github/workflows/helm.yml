@@ -54,6 +54,9 @@ jobs:
       - name: Template shared values schema
         run: bash ${{ env.CHART_DIR }}/tests/values-schema-test.sh ${{ env.CHART_DIR }}
 
+      - name: Verify admin gateway owns credentialed CORS headers
+        run: bash ${{ env.CHART_DIR }}/tests/admin-gateway-cors-test.sh ${{ env.CHART_DIR }}
+
       - name: Template (default values)
         run: helm template dws ${{ env.CHART_DIR }} > /tmp/render-default.yaml
 
