@@ -12,7 +12,9 @@ Ground rules decided during design, carried through every phase below:
   optional role/Rego middleware) on each sidecar that needs to gate something.
 - `dws-console` only ever calls `dws-admin`. `dws-controller` is purely internal, reached only by
   `dws-admin`, server-to-server, through `dws-admin`'s own sidecar.
-- Reads stay unauthenticated for now — guarding them is a deliberately separate later phase (6).
+- Reads stay unauthenticated for now — guarding them was originally a deliberately separate
+  later phase (6); as of 2026-09-01 that work is folded into a redesigned Phase 4 instead of
+  a standalone phase (see §2b).
 
 ## 1. Phase dependency graph
 
@@ -21,10 +23,11 @@ flowchart TD
   P0["Phase 0: Dex ✅<br/>in-chart IdP, staticClients/staticPasswords"] --> P1["Phase 1: Console login ✅<br/>OIDC/PKCE client,<br/>in-memory auth state"]
   P0 --> P2["Phase 2: dws-controller Dapr-gated<br/>sidecar + bearer/role middleware"]
   P2 --> P3["Phase 3: dws-admin write-relay<br/>stateless proxy to dws-controller"]
-  P3 --> P4["Phase 4: Admin gateway<br/>nginx: CORS preflight + proxy to<br/>dws-admin's own sidecar invoke path"]
-  P1 --> P5["Phase 5: Console write UI<br/>submit definitions through dws-admin"]
+  P3 --> P4["Phase 4 REDESIGNED 2026-09-01: Kubernetes Gateway API<br/>APISIX GatewayClass fronts console + admin,<br/>dws-admin purely internal (reads + writes)"]
+  P1 --> P5["Phase 5: Console write UI ✅<br/>submit definitions through dws-admin"]
   P3 --> P5
-  P5 --> P6["Phase 6: Guard reads too<br/>(deferred, separate phase)"]
+  P5 --> P6["Phase 6: Guard reads<br/>folded into redesigned Phase 4 — no separate work item"]
+  P4 --> P6
   P0 --> P7["Phase 7: User management<br/>admin creates users, assigns built-in role<br/>(further-out, exploratory)"]
   P4 --> P7
   P1 -. deferred .-> P8["Phase 8: Bundled IdP interoperability<br/>Dex browser sessions, silent renew,<br/>RP logout + two-tab acceptance"]
@@ -41,9 +44,9 @@ flowchart TD
 | **1** | React OIDC client (Authorization Code + PKCE), in-memory token, silent-renew integration, logout integration, additive unauthenticated reads | Phase 0 | ✅ done — implementation merged in `ed1fdfc2`; local gates, chart contract checks, live discovery/CORS/PKCE request evidence, and failure-state handling are verified. Bundled-Dex interoperability acceptance moved to Phase 8 |
 | **2** | Enable `dws-controller`'s Dapr sidecar (`dapr.io/enabled`/`app-id`/`app-port`); add a bearer `Component` and a `Configuration` wiring it to the inbound pipeline; route the Service through Dapr and keep the app port pod-local | Phase 0 (needs the IdP's JWKS endpoint) | ✅ done — landed via `dws-console-auth-phase-2` (see `openspec/changes/dws-console-auth-phase-2/verify.md`); live Dapr + Dex authorization matrix (no-auth / valid / malformed / tampered-sig / wrong-aud / wrong-iss) all rejected before controller; Service-level bypass closed by sidecar front-port. Pod-IP:8080 residual documented for follow-up |
 | **3** | New route in `dws-admin`: stateless relay that forwards the `Authorization` header + body to `dws-controller` via `dws-admin`'s own local sidecar invoke call. No verification logic — `dws-admin` never inspects the token. Kept intentionally minimal: no draft/version/state modeling here — that's scoped separately as Phase 9 | Phase 2 | ✅ done — `POST /workflows` on `dws-admin` (new `controller-relay` module) forwards `Authorization` header and raw body verbatim to `http://<sidecar>/v1.0/invoke/<controller-app-id>/method/workflows` (dryRun query preserved); Nest's raw-body mode keeps YAML/JSON bytes untouched so the controller's content-hashed version is stable across the relay. No token parsing anywhere in `dws-admin`. New env var `DAPR_CONTROLLER_APP_ID` (defaults to `dws-controller`) |
-| **4** | New `admin-gateway` nginx Deployment/Service/ConfigMap (chart-bundled, not an assumed cluster Ingress): answers CORS preflight, proxies the real request to `dws-admin`'s sidecar invoke path. Extend `dws-admin`'s Service with its sidecar port. Add `bearer`/role `Component`s + `Configuration` to `dws-admin`'s sidecar, scoped to this route only | Phase 3 | 🟡 live matrix mostly green, one architecture blocker — preflight, all negative-token cases, direct reads/SSE, cleanup, and disabled-gateway reinstall pass. A valid token reaches the sidecar but is invoked on the Dapr subscription listener (3001), not Nest's relay (3000). Resolve the dual-listener/single-app-port contract before completion; evidence in the archived change's `verify.md` |
+| **4** | **Redesigned 2026-09-01, refined 2026-09-01 (see §2b)**: front both `dws-console` and `dws-admin` with a Kubernetes **Gateway API** (`Gateway` + `HTTPRoute`), implemented by **Apache APISIX** as the `GatewayClass` controller, bundled as an optional chart dependency (`apisix.enabled`, same pattern as `dex`/`dapr`/`postgresql`). Covers reads *and* writes, not just the write relay, and replaces `dws-console`'s existing plain `Ingress` too, not just adds an admin front door. `dws-admin` becomes purely internal, reached only via its Dapr sidecar's bearer-gated invoke path, exactly as `dws-controller` is reached only through `dws-admin` today. Supersedes both the bundled `admin-gateway` nginx approach and `templates/console/ingress.yaml` | Phase 3 | 🟡 redesign + technology decided, not implemented — the original nginx implementation (`dws-console-auth-phase-4`) is superseded; its partial live-matrix evidence and the blocking dual-listener finding are kept as historical record in the archived change's `verify.md`. Three prerequisites, independent of one another: (a) resolve `dws-admin`'s single-app-port/dual-listener conflict, (b) verify SSE survives a Dapr service-invocation hop — untested so far, (c) Gateway API CRDs must be present before APISIX's controller functions, mirroring the existing Dapr CRD preflight-check precedent |
 | **5** | Console definition-submission UI calls the Phase 3 `dws-admin` relay directly with the bearer token attached; reads keep using the existing direct `dws-admin` path unchanged | Phases 1 and 3 | ✅ done — live Docker Desktop acceptance passed on 2026-08-31; direct relay is the permanent Phase 5 routing decision |
-| **6** | Guard reads: add an authenticated read path without changing Phase 5's direct `dws-admin` write relay transport | Phase 5 | ❌ not started — deliberately deferred, tracked here so it isn't lost |
+| **6** | **Folded into the redesigned Phase 4 (2026-09-01, see §2b)**: the admin-ingress redesign fronts reads and writes alike, so guarding reads is no longer a separate later phase — it ships as part of Phase 4's implementation | Phase 4 (redesigned) | ❌ not started — no separate work item; tracked here only so the original scope isn't lost if the redesign changes again |
 | **7** | User management: an admin-only console screen to create users and assign one of a small set of built-in roles (e.g. `admin`/`operator`/`viewer`). New `dws-admin` route, reusing Phase 4's gateway + Dapr role check (only `admin`-role tokens may call it), which manages users through **Dex's own gRPC management API** — no user/password storage or hashing added to DWS's own database | Phases 0, 4 | ❌ not started — further-out, exploratory; see §4 for a real open risk before committing to this shape |
 | **8** | Make the bundled development IdP satisfy the browser client contract: adopt a released Dex version/configuration (or another in-chart IdP) with non-interactive `prompt=none` browser sessions and advertised RP-initiated logout; then verify token-expiry renewal, clean renewal failure, authenticated storage, logout, route restoration, and two-tab convergence | Phases 0, 1 | ❌ deferred — Dex 2.44.0 lacks the required browser-session and `end_session_endpoint` behavior; owns deferred checklist tasks 6.1, 6.2, 7.2, and 8.3 |
 | **9** | Content/version management (CMS layer) in `dws-admin`: own the workflow draft → active → archived lifecycle and version history as `dws-admin`'s own authored data, not a projection of controller events. Controller-reported deployment status (`applied`/`failed`/`drained`/`collected`) becomes a nested, controller-owned status on whichever version is `active` — never a competing lifecycle. Foundation for later per-user read/edit permissions on content (extends Phase 7's role model) | Phase 3 | ❌ not started — deliberately deferred; scoped down 2026-08-26 so Phase 3 ships as a plain stateless forward first |
@@ -147,13 +150,27 @@ flowchart TD
   wiring, and YAML raw-body forwarding in the Phase 3 relay.
 - **Routing decision (2026-08-31):** Phase 5 permanently uses the shipped direct
   `dws-console -> dws-admin POST /workflows` route. The controller sidecar remains the bearer
-  gate for this flow. Phase 4 is not a Phase 5 dependency and its gateway remains relevant to
-  Phase 7's user-management write surface; its separate live matrix is still pending.
-- Phase 6 has not started. Phase 7 has not started. Phase 8 is explicitly deferred until a
-  released compatible IdP is available or the chart deliberately adopts a different one.
+  gate for this flow.
+- **Phase 4 redesigned (2026-09-01), Phase 6 folded in — see §2b.** The shipped
+  `admin-gateway` nginx is superseded by a Kubernetes Gateway API deployment (`Gateway` +
+  `HTTPRoute`, implemented by Apache APISIX as the `GatewayClass` controller) fronting
+  `dws-console` and `dws-admin` alike, covering reads and writes, so `dws-admin` never faces
+  client requests directly (same relationship `dws-controller` has with `dws-admin`). Phase 6
+  no longer exists as a separate later phase. Both console and admin move onto the same
+  `Gateway` (true same-origin, not just CORS-permitted), and APISIX ships as an optional chart
+  dependency (`apisix.enabled`) matching the existing Dex/Dapr/Postgres/Redis pattern rather
+  than assuming it's pre-installed. Three prerequisites are still open and block implementation:
+  `dws-admin`'s single-app-port/dual-listener conflict, an unverified assumption that SSE
+  survives a Dapr service-invocation hop, and Gateway API CRDs being present before APISIX's
+  controller functions. No implementation yet; no formal openspec proposal drafted.
+- Phase 7 has not started — it still depends on the (redesigned) Phase 4 write surface. Phase 8
+  is explicitly deferred until a released compatible IdP is available or the chart deliberately
+  adopts a different one.
 
-**Next up:** resolve Phase 4's admin dual-listener/single-Dapr-app-port contract, then rerun the
-valid-token leg. Follow-ups (not blocking):
+**Next up:** resolve `dws-admin`'s dual-listener/single-Dapr-app-port conflict and spike whether
+SSE survives a Dapr service-invocation hop — both block the redesigned Phase 4/6 regardless of
+gateway choice (§2b) — then draft a formal openspec proposal for it (superseding
+`dws-console-auth-phase-4`). Follow-ups (not blocking):
 add the `DAPR_CONTROLLER_APP_ID` env var to `dws-admin`'s chart Deployment (currently the
 default `dws-controller` works only for a release named `dws`); close the pod-IP
 direct-app-port bypass on the controller (either CNI-aware NetworkPolicy or
@@ -178,6 +195,79 @@ anyone hand-editing `values.yaml` with a password:
 - `charts/dws/templates/NOTES.txt` prints the `kubectl get secret ...` email/password retrieval
   commands after install/upgrade — the standard place Helm surfaces a generated credential.
 
+## 2b. Phase 4 redesign (2026-09-01, refined 2026-09-01) — Kubernetes Gateway API via APISIX, `dws-admin` purely internal
+
+**Context.** The shipped `admin-gateway` (bundled nginx, `dws-console-auth-phase-4`) only ever
+fronted the write route (`POST /workflows`) and left reads on the original direct,
+unauthenticated `dws-admin` Service — that split is why Phase 6 existed as a separate later
+phase. Its live acceptance run (2026-09-01) passed preflight, the full negative-token matrix,
+direct reads/SSE, cleanup, and disabled-gateway reinstall, but hit one real blocker: `dws-admin`
+runs two HTTP listeners in one pod (Nest on `3000` owns reads/SSE/the write relay;
+`@dbc-tech/nest-dapr`'s own server on `3001` owns Dapr pub/sub subscription callbacks), and a
+Dapr sidecar accepts only one `app-port`. The chart correctly points it at `3001` (breaking that
+would silently stop the read model and SSE feed from receiving `dws.events`), so a
+sidecar-routed, bearer-verified request never reaches `POST /workflows` — full findings in the
+archived change's `verify.md`.
+
+**Decision.** `dws-admin` should not face client requests at all — the same relationship
+`dws-controller` already has with `dws-admin`. A single front door fronts both `dws-console` and
+`dws-admin`'s API, and it fronts **reads and writes alike**, not just the write relay. Its backend
+for admin traffic still targets `dws-admin`'s sidecar-fronted Service port so the Dapr bearer
+middleware actually runs — the gateway alone doesn't verify anything, Dapr does. This is why
+Phase 6 (§2, above) is folded into this redesign rather than kept separate: one front door, one
+gate, for every route.
+
+**Refinement (2026-09-01).** The front door is the Kubernetes **Gateway API** (`Gateway` +
+`HTTPRoute` resources, not plain `Ingress`), with **Apache APISIX** as the `GatewayClass`
+controller implementation. Scope is **both** `dws-console` and `dws-admin` on the same `Gateway`
+— not admin alone — so browser calls to both are genuinely same-origin (one host, one
+`Gateway`), not merely CORS-permitted across two origins. This supersedes
+`templates/console/ingress.yaml` as well as the bundled `admin-gateway` nginx: `dws-console`'s
+existing plain `Ingress` goes away in favor of an `HTTPRoute` on the shared `Gateway`, not a
+second, parallel front door. APISIX ships as an **optional chart dependency**
+(`charts/dws/Chart.yaml`, `condition: apisix.enabled`), matching the existing
+`postgresql`/`dapr`/`dex`/`redis` pattern, rather than assuming an APISIX/Gateway API controller
+is already installed in-cluster.
+
+This also corrects a mistake in the original Phase 4 `design.md`, which chose a bundled nginx
+*"because nothing else assumes an external ingress controller."* `dws-console` has assumed one
+(`templates/console/ingress.yaml`, a plain `networking.k8s.io/v1 Ingress`) since before this
+roadmap existed — the bespoke nginx solved a problem the chart already had a working, consistent
+answer for. Side benefits of switching: with console and admin on one `Gateway` host, the
+browser's API calls become same-origin, removing CORS handling (and `adminGateway.corsOrigins`,
+and the bundled nginx image) from the picture entirely rather than merely terminating the
+preflight; and `dws-admin`'s `src/config/cors.ts` module (flagged as a cleanup item since Phase
+4's original design) becomes fully unnecessary rather than just redundant.
+
+**Three prerequisites, independent of one another and of the gateway technology choice:**
+
+1. `dws-admin`'s single-app-port/dual-listener conflict (above) must be resolved before *any*
+   sidecar-routed request — read or write — can reach it. Options raised but not decided: merge
+   the pub/sub callback route into Nest's own HTTP server (dropping `@dbc-tech/nest-dapr`'s
+   separate-server model, since Dapr's programmatic-subscription contract is just an HTTP route
+   Dapr POSTs to — nothing requires a dedicated server); or split `dws-admin` into two Dapr
+   app-ids (one for the API surface, one for pub/sub ingestion), each with its own sidecar and
+   app-port. Dapr's *streaming* subscriptions would sidestep the conflict entirely (no HTTP
+   route needed at all), but they aren't documented as supported in the Node.js SDK today.
+2. SSE (`GET /instances/:id/events`) has never been proven to survive a Dapr service-invocation
+   hop — every SSE pass to date (including the 2026-09-01 run) used the direct, unauthenticated
+   Service path deliberately, since reads weren't yet gated. Needs an early spike before this
+   redesign is built out, not an assumption.
+3. Gateway API CRDs (`Gateway`, `HTTPRoute`, `GatewayClass`, etc.) must already exist in-cluster
+   before APISIX's controller can reconcile anything — the same class of precondition
+   `charts/dws/Chart.yaml`'s Dapr dependency already documents (a preflight check that fails
+   install/upgrade if the expected CRDs aren't present when `apisix.enabled=false` but the
+   chart is pointed at an external APISIX). Also: migrating `dws-console` off its existing
+   `console.ingress` onto the shared `Gateway` is itself a breaking change for any install
+   already running with `console.ingress.enabled=true` — needs a documented migration path,
+   not a silent behavior change.
+
+**Status.** Redesign direction and gateway technology (Kubernetes Gateway API via APISIX, both
+console + admin, bundled as an optional chart dependency) are both recorded here; no
+implementation and no formal openspec proposal yet. The shipped `admin-gateway` nginx chart
+objects (`templates/admin-gateway/`) and `templates/console/ingress.yaml` remain in the chart
+as-is for now — this section documents intent to supersede them, not a code change.
+
 ## 3. Rationale for ordering
 
 - **0 before 1/2**: nothing can validate or issue a token without an IdP to point at.
@@ -187,8 +277,11 @@ anyone hand-editing `values.yaml` with a password:
   route first so there's something real to point it at.
 - **3 before 5**: the shipped write UI targets the Phase 3 relay directly; controller-side Dapr
   bearer verification protects the relay's downstream write.
-- **6 last, and separate**: reads are lower-risk and already shipped unauthenticated — folding them
-  in early would block writes on a change that isn't urgent. Revisit once 0–5 are stable.
+- **6 last, and separate — superseded 2026-09-01**: reads were originally lower-risk and
+  already shipped unauthenticated, so folding them in early would have blocked writes on a
+  change that wasn't urgent. That rationale no longer holds once Phase 4 is redesigned as a
+  single Ingress fronting every route (§2b) — guarding reads stops being a separate phase and
+  ships as part of that redesign instead.
 - **7 depends on 0 and 4, not on 1/2/3/5/6**: user management only needs an IdP to manage (Phase 0)
   and an existing Dapr-gated admin write path to reuse (Phase 4) — it doesn't touch `dws-controller`
   or reads at all, so it can be picked up any time after those two, independent of the rest.
@@ -216,8 +309,16 @@ anyone hand-editing `values.yaml` with a password:
 - Dex's `staticClients`/`staticPasswords` are a dev/quickstart shape — real deployments will swap
   in a connector (LDAP/SAML/upstream OIDC) or a different IdP entirely; nothing above should assume
   Dex specifically beyond Phase 0's chart toggle. Phase 8 owns the bundled-provider decision.
-- `dws-admin`'s CORS module (`src/config/cors.ts`) becomes redundant for the write path once Phase
-  4 lands (the gateway owns CORS there) — decide whether to leave it as-is for reads or trim it.
+- `dws-admin`'s CORS module (`src/config/cors.ts`) becomes fully unnecessary, not just
+  redundant, once the redesigned Phase 4 lands (§2b): a shared Gateway origin means no
+  cross-origin request exists for the browser to make in the first place. Trim it then, not
+  before.
+- **`console.ingress` deprecation path (added 2026-09-01)**: once the shared Gateway API +
+  APISIX front door lands, `charts/dws/values.yaml`'s existing `console.ingress.*` block and
+  `templates/console/ingress.yaml` become redundant with the new `Gateway`/`HTTPRoute`. Needs a
+  documented migration for any install already running `console.ingress.enabled=true` — not
+  just silent removal — plus a decision on how long (if at all) the old Ingress path stays
+  available behind its own toggle during the transition.
 - **Phase 7 real risk**: Dex's local/static-password connector has [known, still-open upstream gaps
   around attaching a `groups` claim per user](https://github.com/dexidp/dex/issues/1080) (also
   [#3958](https://github.com/dexidp/dex/issues/3958)) — dynamic user *creation* is well-supported
