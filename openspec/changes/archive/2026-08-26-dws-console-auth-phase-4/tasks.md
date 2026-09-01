@@ -36,13 +36,13 @@
 
 ## 6. Live acceptance (mirrors Phase 2's verify.md)
 
-- [ ] 6.1 `helm install dws-phase4 charts/dws -n dws-phase4 --create-namespace` against a local Docker Desktop cluster with `auth.enabled=true` (Dex-derived mode) and `adminGateway.enabled=true` with the console origin in `corsOrigins`. Wait for admin + admin-gateway + controller Pods Ready.
-- [ ] 6.2 OPTIONS preflight from the console origin (`curl -X OPTIONS -H 'Origin: https://console.example.com' -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: authorization,content-type' <gateway-url>/workflows -i`) returns 204 with the expected CORS response headers, and no request reaches the `dws-admin` container's access log.
-- [ ] 6.3 With a valid Dex-issued JWT, `POST <gateway-url>/workflows` with a minimal DSL 1.0 definition reaches `dws-controller` and creates the expected resources — end-to-end trace: gateway → admin sidecar (bearer OK) → admin app (relay) → admin sidecar (client invoke) → controller sidecar (bearer OK) → controller app.
-- [ ] 6.4 No-`Authorization` request to `POST <gateway-url>/workflows` returns 401 from the admin sidecar; no matching request in the admin container's access log.
-- [ ] 6.5 Malformed token, tampered-signature token, wrong-`aud` token, and wrong-`iss` token each return 401 from the admin sidecar; no matching request in the admin container's access log.
-- [ ] 6.6 Existing reads (`GET /workflows`, `GET /instances`, `/instances/events` SSE) still work against the direct admin Service on port 3000 with no token attached (Phase 6 territory, verified as unchanged here).
-- [ ] 6.7 `helm uninstall dws-phase4 -n dws-phase4` cleans up all Phase 4 objects; `helm install` again with `adminGateway.enabled=false` renders no gateway objects (topological no-op).
+- [x] 6.1 `helm install dws-phase4 charts/dws -n dws-phase4 --create-namespace` against a local Docker Desktop cluster with `auth.enabled=true` (Dex-derived mode) and `adminGateway.enabled=true` with the console origin in `corsOrigins`. Admin + admin-gateway + controller Pods all reached Ready on 2026-09-01.
+- [x] 6.2 OPTIONS preflight from the console origin returned 204 with the expected explicit-origin, methods, headers, and credentials response headers; a disallowed origin returned 403. nginx handled both locally and no request reached `dws-admin`.
+- [ ] 6.3 **Blocked by the admin dual-listener contract.** With the chart-rendered `dapr.io/app-port: "3001"`, a valid JWT passes the admin sidecar but Dapr invokes the separate `@dbc-tech/nest-dapr` server, which has no `POST /workflows`, so the result is 404 `Cannot POST /workflows`. A temporary live patch to app-port `3000` proves the rest of the chain (200 idempotent apply; `dryRun=true` creates zero resources), but cannot ship because pub/sub callbacks are served on 3001. See `verify.md`.
+- [x] 6.4 No-`Authorization` request returned 401 from the admin sidecar with exactly one credentialed CORS origin.
+- [x] 6.5 Malformed token, a middle-signature-byte tamper, a separately minted wrong-`aud` token, and a token minted by the Phase 2 Dex issuer each returned 401 from the admin sidecar.
+- [x] 6.6 Existing reads (`GET /workflows`, `GET /instances`, `/instances/events` SSE) returned 200 against the direct admin Service on port 3000 with no token attached (`text/event-stream` for SSE).
+- [x] 6.7 `helm uninstall dws-phase4 -n dws-phase4` removed the Phase 4 chart objects; reinstall with `adminGateway.enabled=false` completed Ready with zero gateway Deployments, Services, or ConfigMaps. Test-created `phase4accept` resources were removed separately by their exact `dws.io/workflow` label.
 
 ## 7. Verify + capture evidence
 
