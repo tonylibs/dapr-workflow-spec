@@ -207,15 +207,15 @@ jobs:
           kubectl get component dws-definitions -n "$NS"
           kubectl get component dws-actor-statestore -n "$NS"
 
-          echo "--- admin daprd subscription registration ---"
-          # daprd logs at info: "app is subscribed to the following topics:
-          # [[dws.events]] through pubsub=pubsub" — proves the pubsub Component
-          # initialized AND the app's Subscription config was accepted.
+          echo "--- admin subscription registration and pubsub initialization ---"
+          # Dapr 1.18 does not emit a subscription-registration log line. Verify
+          # the app's registration and the sidecar's pubsub Component separately.
+          kubectl logs -n "$NS" -l app.kubernetes.io/component=admin -c admin --tail=500 \
+            | grep -F '[Topic = dws.events] Registered Subscription with routes: default' \
+            || { echo "::error::admin never registered the dws.events subscription"; exit 1; }
           kubectl logs -n "$NS" -l app.kubernetes.io/component=admin -c daprd --tail=500 \
-            | tee /tmp/admin-daprd.log \
-            | grep -F 'subscribed to the following topics: [[dws.events]]' \
-            | grep -F 'pubsub=pubsub' \
-            || { echo "::error::admin daprd never registered the dws.events subscription on the pubsub Component"; exit 1; }
+            | grep -F 'Component loaded: pubsub (pubsub.redis/v1)' \
+            || { echo "::error::admin daprd never loaded the pubsub Component"; exit 1; }
 
           echo "--- publish real events via admin's daprd sidecar ---"
           # daprd's HTTP API (port 3500) binds to 127.0.0.1 / [::1] only for
@@ -251,7 +251,7 @@ jobs:
           publish "$INST_ID" "io.dws.instance.started"   "dws-orchestrator/order" \
             "{\"instanceId\":\"inst-e2e\",\"workflow\":\"order\",\"version\":\"vpubsube2e\",\"appId\":\"order\",\"startedAt\":\"$NOW\"}"
 
-          echo "pubsub e2e confirmed: components present, admin daprd subscribed to dws.events, both real lifecycle events accepted by pubsub Component"
+          echo "pubsub e2e confirmed: components present, admin subscribed to dws.events, and both real lifecycle events were accepted by pubsub Component"
 
       - name: Debug pod state on failure
         if: failure()
