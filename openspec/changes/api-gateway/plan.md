@@ -50,7 +50,7 @@
 - Consumes: `DwsEventsSubscriber.onMessage(message: CloudEventV1<unknown> | string): Promise<void>` behavior and configured `dapr.pubsubName`/`dapr.topic`.
 - Produces: `DaprSubscriptionController.listSubscriptions(): Subscription[]` and `deliver(transport: DaprTransportEvent): Promise<{status: 'SUCCESS'}>` on Nest port 3000.
 
-- [ ] **Step 1: Remove the decorator from the domain processor and write the failing discovery test**
+- [x] **Step 1: Remove the decorator from the domain processor and write the failing discovery test**
 
   Rename `onMessage` to `process`, update the SSE integration test caller, and remove the
   `@DaprPubSub` import/decorator. In the new spec, construct a Nest testing module with a mocked subscriber and assert:
@@ -68,13 +68,13 @@
     ]);
   ```
 
-- [ ] **Step 2: Run the focused spec and verify the route is missing**
+- [x] **Step 2: Run the focused spec and verify the route is missing**
 
   Run: `pnpm test -- dapr-subscription.controller.spec.ts`
 
   Expected: FAIL with 404 for `/dapr/subscribe` or missing controller/module symbols.
 
-- [ ] **Step 3: Implement typed discovery and delivery routes**
+- [x] **Step 3: Implement typed discovery and delivery routes**
 
   Add narrow transport/subscription types and a thin controller:
 
@@ -111,7 +111,7 @@
   Register the controller in `DaprEventsModule`; keep all database/idempotency work in
   `DwsEventsSubscriber`.
 
-- [ ] **Step 4: Add acknowledgement tests and make them pass**
+- [x] **Step 4: Add acknowledgement tests and make them pass**
 
   Cover a valid transport envelope, an unknown inner type, a malformed inner event (the existing
   processor logs/drops it), and a mocked database failure. Assert the first three return 201/2xx
@@ -148,32 +148,32 @@
 - Consumes: Task 1's Nest routes.
 - Produces: one process listener at `PORT=3000`; no `DAPR_APP_PORT` or port 3001 contract.
 
-- [ ] **Step 1: Write/adjust configuration tests to reject the old shape**
+- [x] **Step 1: Write/adjust configuration tests to reject the old shape**
 
   Update test fixtures so `AppConfig.dapr` contains `pubsubName`, `topic`, Dapr sidecar host/port,
   and controller app-id, but no `serverHost` or `appPort`. Add a source assertion that bootstrap
   contains no `enableCors` call.
 
-- [ ] **Step 2: Run the focused tests and verify old imports/config fail**
+- [x] **Step 2: Run the focused tests and verify old imports/config fail**
 
   Run: `pnpm test -- configuration cors controller-relay event`
 
   Expected: FAIL until `DaprModule`, CORS, and dual-port fields are removed.
 
-- [ ] **Step 3: Remove the SDK server and CORS code minimally**
+- [x] **Step 3: Remove the SDK server and CORS code minimally**
 
   Remove `@dbc-tech/nest-dapr`; remove `DaprModule` imports; remove `corsOrigins`, `serverHost`, and
   `appPort` from `AppConfig`; remove `app.enableCors(...)`; keep `@dapr/dapr` only if a remaining
   runtime import exists after `rg -n "@dapr/dapr" src` (otherwise remove it too). Run `pnpm install`
   to update the lockfile.
 
-- [ ] **Step 4: Update runtime packaging and documentation**
+- [x] **Step 4: Update runtime packaging and documentation**
 
   Make `Dockerfile` expose only 3000, delete `DAPR_APP_PORT=3001` from `.env.example`, change the
   local command to `dapr run --app-id dws-admin --app-port 3000 ...`, and document same-origin
   Gateway/local Vite proxy behavior instead of browser CORS.
 
-- [ ] **Step 5: Run the full dws-admin gate and commit**
+- [x] **Step 5: Run the full dws-admin gate and commit**
 
   Run: `pnpm lint && pnpm test && pnpm build`
 
@@ -183,6 +183,10 @@
   git add dws-admin
   git commit -m "refactor: consolidate admin on one listener"
   ```
+
+  Ran `pnpm lint && pnpm test && pnpm build` (all pass) and the `rg` check above (only the
+  intentional negative-assertion strings in `configuration.spec.ts` remain). Commit intentionally
+  not run — the task runner for this change did not perform git commits.
 
 ### Task 3: Centralize authenticated admin JSON requests in dws-console
 
@@ -199,7 +203,7 @@
 - Produces: `getAccessToken(): Promise<string>` and `adminFetch(path, init?, signal?): Promise<Response>`.
 - Consumes: `getOidc({ assert: 'user logged in' })` from `oidc-spa`.
 
-- [ ] **Step 1: Write failing token-acquisition and request-header tests**
+- [x] **Step 1: Write failing token-acquisition and request-header tests**
 
   Mock `#/lib/oidc` and assert two sequential reads call `getAccessToken` twice and send the two
   returned tokens:
@@ -214,13 +218,13 @@
 
   Also assert `submitDefinition` no longer accepts a token argument and still preserves YAML bytes.
 
-- [ ] **Step 2: Run the client test and verify reads are anonymous**
+- [x] **Step 2: Run the client test and verify reads are anonymous**
 
   Run: `pnpm vitest run src/lib/admin-client.test.ts`
 
   Expected: FAIL because GET headers contain only `Accept` and submission still accepts a caller token.
 
-- [ ] **Step 3: Implement the OIDC boundary and authenticated fetch**
+- [x] **Step 3: Implement the OIDC boundary and authenticated fetch**
 
   In `oidc.ts` export:
 
@@ -244,13 +248,13 @@
 
   Preserve caller `Accept`/`Content-Type`, raw bodies, abort signals, and response parsing.
 
-- [ ] **Step 4: Gate TanStack queries on signed-in state and handle 401**
+- [x] **Step 4: Gate TanStack queries on signed-in state and handle 401**
 
   Add `useOidc()` to the hooks boundary, pass `enabled: oidc.isUserLoggedIn === true` to every admin
   query, and change `retryUnlessClientError` so every 4xx including 401 returns false. Routes use
   the existing auth banner/layout to show sign-in/session expiry; do not add tokens to query keys.
 
-- [ ] **Step 5: Run focused tests and commit**
+- [x] **Step 5: Run focused tests and commit**
 
   Run: `pnpm vitest run src/lib/admin-client.test.ts src/lib/oidc-config.test.ts`
 
@@ -273,7 +277,7 @@
 - Consumes: Task 3's `getAccessToken()` and `adminUrl()`.
 - Produces: unchanged `LiveSubscription { close(): void }`, backed by Fetch/ReadableStream.
 
-- [ ] **Step 1: Add a failing SSE stream fixture test**
+- [x] **Step 1: Add a failing SSE stream fixture test**
 
   Stub fetch with a `ReadableStream<Uint8Array>` that emits:
 
@@ -289,13 +293,13 @@
   Assert the request has `Accept: text/event-stream` and `Authorization: Bearer token-1`, named
   callbacks receive parsed JSON, and `close()` aborts the request.
 
-- [ ] **Step 2: Run the focused test and verify EventSource cannot satisfy it**
+- [x] **Step 2: Run the focused test and verify EventSource cannot satisfy it**
 
   Run: `pnpm vitest run src/lib/admin-client.test.ts`
 
   Expected: FAIL because the existing code constructs `EventSource` and cannot set headers.
 
-- [ ] **Step 3: Implement a focused fetch SSE parser**
+- [x] **Step 3: Implement a focused fetch SSE parser**
 
   Use `TextDecoderStream` when available and a small line-buffer parser that accumulates `event:`
   and multi-line `data:` fields until a blank line, then dispatches JSON to the existing listener
@@ -303,13 +307,13 @@
   Treat HTTP 401 as terminal, retry network/5xx closure with bounded backoff, and call `onOpen` on
   each successful response before reading frames.
 
-- [ ] **Step 4: Add reconnect, renewal, and terminal-close tests**
+- [x] **Step 4: Add reconnect, renewal, and terminal-close tests**
 
   Make the first fetch reject after one event, the second use `token-2`, and assert `onOpen` fires
   twice so existing hooks invalidate queries on reconnect. Assert terminal instance handling calls
   `close()` and prevents a third fetch. Assert 401 causes no anonymous retry.
 
-- [ ] **Step 5: Run console gates and commit**
+- [x] **Step 5: Run console gates and commit**
 
   Run: `pnpm lint && pnpm test && pnpm typecheck && pnpm build`
 
@@ -336,7 +340,7 @@
 - Produces: `apisix.enabled`, bundled chart 2.16.0, and `dws.preflight.apiGateway`.
 - Consumes: Helm `.Capabilities.APIVersions` and Task 6's `apiGateway.enabled` value shape.
 
-- [ ] **Step 1: Add failing dependency and preflight assertions**
+- [x] **Step 1: Add failing dependency and preflight assertions**
 
   Extend shell tests to require `Chart.yaml` contains:
 
@@ -350,13 +354,13 @@
   Add negative renders for missing `gateway.networking.k8s.io/v1` and
   `apisix.apache.org/v1alpha1` when gateway is enabled with external APISIX.
 
-- [ ] **Step 2: Run tests and verify the dependency/value is absent**
+- [x] **Step 2: Run tests and verify the dependency/value is absent**
 
   Run from `charts/dws`: `bash tests/values-schema-test.sh`
 
   Expected: FAIL on missing APISIX fields/preflight helper.
 
-- [ ] **Step 3: Add dependency, defaults, and bundled child configuration**
+- [x] **Step 3: Add dependency, defaults, and bundled child configuration**
 
   Add the dependency and default:
 
@@ -377,13 +381,13 @@
   Keep upstream values overridable. Run `helm dependency update .` and verify the lock/archive
   version and digest before staging them.
 
-- [ ] **Step 4: Implement external-only preflight**
+- [x] **Step 4: Implement external-only preflight**
 
   Define `dws.preflight.apiGateway` so it checks both API groups only when
   `and .Values.apiGateway.enabled (not .Values.apisix.enabled)`. Include explicit remediation in
   each `fail` message. Include it from `preflight.yaml` beside the Dapr check.
 
-- [ ] **Step 5: Verify default, bundled, and external dependency modes and commit**
+- [x] **Step 5: Verify default, bundled, and external dependency modes and commit**
 
   Run:
 
@@ -417,13 +421,13 @@
 - Consumes: `apiGateway.enabled`, `createGatewayClass`, `gatewayClassName`, `hostname`, `tls`, and
   `external.gatewayProxyName` values.
 
-- [ ] **Step 1: Write failing value/validation cases**
+- [x] **Step 1: Write failing value/validation cases**
 
   Add cases that reject gateway mode when auth/admin/console is disabled, reject external mode
   without an existing GatewayProxy name, and reject `console.ingress.enabled=true` with a message
   naming `apiGateway.enabled`, APISIX, hostname/TLS, and OIDC redirect migration.
 
-- [ ] **Step 2: Add the explicit value contract**
+- [x] **Step 2: Add the explicit value contract**
 
   Add:
 
@@ -444,7 +448,7 @@
   Document that `gatewayClassName` defaults to a release-qualified class when creation is enabled,
   while external operators can set an existing class/proxy.
 
-- [ ] **Step 3: Implement release-safe helpers**
+- [x] **Step 3: Implement release-safe helpers**
 
   Mirror APISIX 2.16.0's fullname algorithm so the parent can reference its admin Service:
 
@@ -464,7 +468,7 @@
   namespaced Gateway helpers, and a validation helper invoked unconditionally by the gateway
   templates/preflight surface.
 
-- [ ] **Step 4: Run value validation tests and commit**
+- [x] **Step 4: Run value validation tests and commit**
 
   Run: `bash tests/values-schema-test.sh`
 
@@ -489,12 +493,12 @@
 - Consumes: Task 6 helpers and existing `dws.admin.fullname`/`dws.console.fullname`.
 - Produces: one shared listener and `/dws-admin`/`/` routes.
 
-- [ ] **Step 1: Write failing structural render assertions**
+- [x] **Step 1: Write failing structural render assertions**
 
   Render a valid bundled configuration and assert one GatewayClass, GatewayProxy, Gateway, and two
   HTTPRoutes; assert both routes reference the same Gateway and no resource renders when disabled.
 
-- [ ] **Step 2: Add GatewayClass and bundled GatewayProxy**
+- [x] **Step 2: Add GatewayClass and bundled GatewayProxy**
 
   The class uses `spec.controllerName` from values. In bundled mode, create a namespaced
   `apisix.apache.org/v1alpha1 GatewayProxy` whose ControlPlane Service is
@@ -502,14 +506,14 @@
   APISIX admin credential. In external mode, create no proxy and reference
   `apiGateway.external.gatewayProxyName`.
 
-- [ ] **Step 3: Add the shared Gateway listener**
+- [x] **Step 3: Add the shared Gateway listener**
 
   Render `gateway.networking.k8s.io/v1`, use the resolved class name, and set
   `infrastructure.parametersRef` to the resolved GatewayProxy. Render HTTP port 80 by default; if
   TLS is enabled, render HTTPS port 443, `mode: Terminate`, and the configured Secret reference.
   Apply `hostname` only when non-empty.
 
-- [ ] **Step 4: Add exact admin and console HTTPRoutes**
+- [x] **Step 4: Add exact admin and console HTTPRoutes**
 
   Admin route rule:
 
@@ -530,7 +534,7 @@
   Console route matches `/` and targets the console Service. Use the same parentRef section,
   namespace, and hostname on both.
 
-- [ ] **Step 5: Run render assertions and commit**
+- [x] **Step 5: Run render assertions and commit**
 
   Run: `bash tests/api-gateway-render-test.sh`
 
@@ -560,24 +564,24 @@
 - Consumes: Task 1's one-listener app and Task 7's admin backendRef.
 - Produces: `dapr.io/app-port: "3000"` and sidecar-only Service target 3500 in gateway mode.
 
-- [ ] **Step 1: Add failing topology and legacy-removal assertions**
+- [x] **Step 1: Add failing topology and legacy-removal assertions**
 
   Assert gateway mode has no container port 3001, no `DAPR_APP_PORT`, exactly one admin Service
   port targeting 3500, no targetPort 3000, no nginx image/ConfigMap/Deployment, and no Ingress.
 
-- [ ] **Step 2: Update Deployment and Service**
+- [x] **Step 2: Update Deployment and Service**
 
   Set `dapr.io/app-port: "3000"`; remove `dapr-app-port`/3001 and `DAPR_APP_PORT`. In gateway mode,
   make the existing Service's single port target 3500. Outside gateway mode, keep its existing
   `targetPort: http` migration behavior. Keep liveness/readiness on the container's `http` port.
 
-- [ ] **Step 3: Delete legacy templates and values**
+- [x] **Step 3: Delete legacy templates and values**
 
   Delete `templates/admin-gateway/`, `adminGateway.*`, related helpers/comments/tests, and the
   console Ingress template. Keep only the `console.ingress.enabled` deprecation trap/values needed
   to catch old persisted Helm values; remove class/annotation rendering logic.
 
-- [ ] **Step 4: Run chart regression tests and commit**
+- [x] **Step 4: Run chart regression tests and commit**
 
   Run:
 
@@ -609,20 +613,20 @@
 - Consumes: all prior tasks.
 - Produces: operator migration/rollback instructions and evidence for every non-live acceptance gate.
 
-- [ ] **Step 1: Write exact upgrade and rollback guidance**
+- [x] **Step 1: Write exact upgrade and rollback guidance**
 
   Document the mapping `console.ingress.host` → `apiGateway.hostname`, old TLS Secret →
   `apiGateway.tls.certificateName`, removal of Ingress class/annotations, bundled versus external
   APISIX choice, required auth/admin/console flags, shared-origin Dex redirect URI, and coordinated
   rollback to the prior chart/admin/console images.
 
-- [ ] **Step 2: Update component and roadmap source documentation**
+- [x] **Step 2: Update component and roadmap source documentation**
 
   Describe Nest port 3000 as the sole Dapr app port, `/dws-admin` as the shared public prefix, all
   admin traffic as bearer-authenticated, and SSE live proof as deferred. Do not hand-edit generated
   OpenWiki pages.
 
-- [ ] **Step 3: Run component gates**
+- [x] **Step 3: Run component gates**
 
   Run:
 
@@ -633,14 +637,14 @@
 
   Expected: all commands pass.
 
-- [ ] **Step 4: Run all chart modes**
+- [x] **Step 4: Run all chart modes**
 
   From `charts/dws`, run default lint/template, bundled gateway mode with valid auth values, and
   external mode with both API versions supplied. Run both shell test scripts. Confirm bundled mode
   renders APISIX/controller/Gateway resources, external mode renders routes but no APISIX workloads,
   and defaults render neither.
 
-- [ ] **Step 5: Validate OpenSpec and audit the archive boundary**
+- [x] **Step 5: Validate OpenSpec and audit the archive boundary**
 
   Run from repository root:
 
@@ -651,7 +655,7 @@
 
   Expected: strict validation passes and the archive diff is empty.
 
-- [ ] **Step 6: Capture evidence without overstating SSE**
+- [x] **Step 6: Capture evidence without overstating SSE**
 
   Write `verify.md` with exact commands/results, static and request-level coverage, APISIX/Gateway
   render evidence, and a later live recipe covering valid/invalid tokens, reads/writes, event
