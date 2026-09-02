@@ -111,10 +111,22 @@ auth:
 # subchart (https://github.com/apache/apisix-helm-chart/tree/apisix-2.16.0/charts/apisix) — the
 # nested ingress-controller block configures that subchart's own bundled apisix-ingress-controller
 # child the same way.
+#
+# IMPORTANT for migrating an EXISTING release: apisix.enabled=true only self-bootstraps its CRDs
+# and bundled etcd on a brand-new `helm install`; flipping it on via `helm upgrade` on a release
+# that never had it deadlocks (see the apiGateway comment block below for why, and
+# charts/dws/README.md#upgrading-from-a-pre-gateway-release for the verified recipe).
 apisix:
   enabled: false
   service:
     type: ClusterIP
+    # The upstream apisix subchart's own default (externalTrafficPolicy: Cluster) is only valid
+    # for NodePort/LoadBalancer Services; left at that default alongside type: ClusterIP above,
+    # a real API server rejects the rendered Service outright ("may only be set for
+    # externally-accessible services") — this was never caught by helm lint/template (which
+    # don't run Kubernetes' apimachinery validation) and only surfaces on a live install. Clear
+    # it here so a plain `apisix.enabled=true` bundled install actually deploys.
+    externalTrafficPolicy: ""
   # apisix-ingress-controller is APISIX's own conditional child dependency (Gateway API
   # reconciliation). Keep it enabled whenever apisix.enabled=true — DWS's Gateway/HTTPRoute
   # objects have no controller to reconcile them otherwise.
@@ -143,6 +155,17 @@ apisix:
 #       an existing GatewayProxy managed outside this chart; a render-time preflight check
 #       requires Gateway API v1 and APISIX apisix.apache.org/v1alpha1 CRDs to already be present
 #       (see templates/_preflight.tpl).
+#
+# MIGRATING AN EXISTING RELEASE (verified live, see charts/dws/README.md#upgrading-from-a-pre-
+# gateway-release and scripts/verify-console-ingress-migration.sh): mode (a), bundled APISIX,
+# can ONLY be turned on via a brand-new `helm install`. Enabling apisix.enabled=true via
+# `helm upgrade` on a release that never had it before deadlocks on the bundled Bitnami-etcd
+# sub-chart's `pre-upgrade` hook — that hook requires a JWT Secret that only the main manifest
+# sync (which never runs, because the hook blocks first) would create, and Helm never re-applies
+# a subchart's crds/ directory on upgrade in the first place. This never surfaces in
+# `helm template`/`helm lint`, only on a real cluster. For an EXISTING release migrating off
+# console.ingress.enabled=true, use mode (b) instead: install APISIX as its own separate Helm
+# release first, then point apiGateway.external.gatewayProxyName at a GatewayProxy bound to it.
 apiGateway:
   enabled: false
   # Whether this chart creates the (cluster-scoped) GatewayClass. Set to false and provide

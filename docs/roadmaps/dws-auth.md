@@ -260,7 +260,15 @@ preflight; and `dws-admin`'s `src/config/cors.ts` module (flagged as a cleanup i
    chart is pointed at an external APISIX). Also: migrating `dws-console` off its existing
    `console.ingress` onto the shared `Gateway` is itself a breaking change for any install
    already running with `console.ingress.enabled=true` — needs a documented migration path,
-   not a silent behavior change.
+   not a silent behavior change. **Closed (2026-09-03)**: this migration path is now
+   documented in [`charts/dws/README.md`](../../charts/dws/README.md#upgrading-from-a-pre-gateway-release)
+   and rehearsed against a live cluster by
+   [`scripts/verify-console-ingress-migration.sh`](../../scripts/verify-console-ingress-migration.sh),
+   which also surfaced a real gap not visible from `helm template`/`helm lint` alone: bundled
+   APISIX (`apisix.enabled=true`) can only be turned on via a fresh `helm install`, not via
+   `helm upgrade` on an existing release (it deadlocks on the bundled etcd sub-chart's
+   `pre-upgrade` hook) — an existing release must migrate through external APISIX mode instead.
+   `helm rollback` to the pre-migration revision was verified to work cleanly.
 
 **Status.** Redesign direction and gateway technology (Kubernetes Gateway API via APISIX, both
 console + admin, bundled as an optional chart dependency) are recorded here and, as of
