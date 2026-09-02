@@ -78,8 +78,8 @@ Owning component: `charts/dws` (`templates/admin/auth-configuration.yaml`).
 
 ### Requirement: Bearer middleware verifies tokens before the dws-admin app runs
 
-At runtime, when `auth.enabled=true`, an inbound request reaching the `dws-admin` sidecar via
-Dapr service invocation SHALL be rejected by the sidecar with `401` (or `403` for role
+At runtime when `auth.enabled=true`, the sidecar SHALL reject an inbound request that reaches
+`dws-admin` via Dapr service invocation with `401` (or `403` for role
 failures, if a role middleware is present) when the request carries no `Authorization` header,
 a malformed token, a token with a tampered signature, a wrong `aud`, or a wrong `iss`. In each
 of those cases the `dws-admin` application container SHALL NOT observe the request in its own

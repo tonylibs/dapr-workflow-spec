@@ -28,6 +28,14 @@ Services, persistence, and credentials Secret.
 The `postgresql` values SHALL configure standalone architecture, image selection, credentials,
 and primary persistence size. Default credentials SHALL be `dws`/`dws`/`dws_admin`.
 
+#### Scenario: Default values configure a standalone PostgreSQL
+
+- **WHEN** `helm template charts/dws` is run with default values
+- **THEN** the `postgresql` subchart renders in `standalone` architecture from the
+  `bitnamilegacy/postgresql` image
+- **AND** primary persistence is sized `1Gi`
+- **AND** the credentials are `dws` / `dws` / `dws_admin`
+
 ### Requirement: Admin receives a connection DSN
 
 When PostgreSQL is enabled, `templates/postgres/secret.yaml` SHALL render a chart-owned

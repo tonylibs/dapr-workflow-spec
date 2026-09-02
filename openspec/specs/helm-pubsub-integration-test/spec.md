@@ -9,8 +9,8 @@ rather than only asserting that the chart renders and installs it.
 
 ### Requirement: CI proves the pubsub Component is Ready and delivers messages
 
-The Helm workflow's `integration` job (or a comparable leg) SHALL, after a real install with
-`dapr.enabled=true`, confirm the deployed `pubsub` Component reports a Ready state in-cluster and
+The Helm workflow's `integration` job (or a comparable leg) SHALL confirm, after a real install
+with `dapr.enabled=true`, that the deployed `pubsub` Component reports a Ready state in-cluster and
 that a message published to topic `dws.events` is delivered to a subscriber. A full
 controller/orchestrator/admin round-trip is not required — a minimal publisher/subscriber
 sufficient to prove delivery satisfies this requirement.
@@ -33,9 +33,9 @@ Owning component: `.github/workflows/helm.yml`.
 
 ### Requirement: The dapr-disabled CI leg is unaffected
 
-The existing `dapr.enabled=false` CI leg (`integration-dapr-preinstalled`), which does not
-install the admin/controller workload stack, SHALL NOT be required to run the pubsub delivery
-assertion.
+The existing `dapr.enabled=false` CI leg (`integration-dapr-preinstalled`) SHALL NOT be required
+to run the pubsub delivery assertion, since it does not install the admin/controller workload
+stack.
 
 Owning component: `.github/workflows/helm.yml`.
 

@@ -44,13 +44,13 @@ Owning component: `charts/dws` (`values.yaml`).
 
 ### Requirement: Dapr Components resolve a Redis connection whether built-in or external
 
-When `redis.external.host` is unset, the chart's Dapr Redis Components (`pubsub`,
-`dws-definitions`, actor state store) SHALL resolve their `redisHost`/`redisPassword` from the
-in-chart Bitnami Redis subchart's own Service and Secret. When `redis.external.host` is set, they
-SHALL resolve those values from that external Redis host and `redis.external.existingSecret`/
-`existingSecretKey` instead, mirroring how `admin.database.url`/`existingSecret` supports an
-external Postgres — independent of whether the in-chart Bitnami Redis subchart also installed
-(it still installs whenever `dapr.enabled` is true, per the requirement above).
+The chart's Dapr Redis Components (`pubsub`, `dws-definitions`, actor state store) SHALL resolve
+their `redisHost`/`redisPassword` from the in-chart Bitnami Redis subchart's own Service and Secret
+when `redis.external.host` is unset. When `redis.external.host` is set, they SHALL resolve those
+values from that external Redis host and `redis.external.existingSecret`/`existingSecretKey`
+instead, mirroring how `admin.database.url`/`existingSecret` supports an external Postgres —
+independent of whether the in-chart Bitnami Redis subchart also installed (it still installs
+whenever `dapr.enabled` is true, per the requirement above).
 
 Owning component: `charts/dws` (`_helpers.tpl`, Dapr `Component` templates).
 

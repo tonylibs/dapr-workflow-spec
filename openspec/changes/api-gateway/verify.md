@@ -279,8 +279,49 @@ through the Gateway is **not supported by any evidence yet**.
 §4 and §5 remains outstanding. Before archiving:
 
 1. Run the §4 bearer matrix and the SSE end-to-end check against a real cluster;
-2. Clear the six pre-existing spec-lint items listed in §1 (otherwise `validate --all` stays invalid);
-3. Review the unintended TanStack patch bumps in the `dws-console` lockfile.
+2. ~~Clear the six pre-existing spec-lint items listed in §1.~~ **Done for five of six** — see §6.
+   Only `ows-phase3-errors-timeouts` remains, deliberately untouched (another team's active change);
+3. ~~Review the unintended TanStack patch bumps in the `dws-console` lockfile.~~ **Resolved — accepted
+   as-is.** Reverting the lockfile would be pointless: `dws-console/package.json` pins all three
+   packages at `"latest"` (`@tanstack/react-query`, `@tanstack/react-query-devtools`,
+   `@tanstack/react-router-ssr-query`), so the next `pnpm install` re-resolves to newest and
+   re-applies the same bump. The observed drift is patch-only — `5.102.3` → `5.102.8`,
+   `1.167.1` → `1.167.2`, `router-core 1.171.15` → `1.171.27` — and is green through lint, test,
+   typecheck, and build. The underlying issue is the `"latest"` specifiers themselves, which make
+   every install non-reproducible; that is a repo-wide dependency-policy question predating this
+   change, and pinning exact versions should be its own change rather than a drive-by edit here.
+
+---
+
+## 6. Follow-up: Pre-existing Spec-Lint Debt Cleared
+
+Five of the six items from §1 are fixed; `openspec validate --all` now reports
+`total=44 invalid=1`.
+
+**Root cause**: the validator inspects only the **first line** of a requirement's text for a
+`SHALL`/`MUST` keyword, not the whole paragraph. Every failing requirement already expressed a
+normative rule — the keyword simply sat on line 2 or later after wrapping. Fixes moved the keyword
+onto the first line without changing what any requirement means.
+
+| Spec | Fix |
+|---|---|
+| `helm-admin-auth-middleware` | Reordered the opening clause of "Bearer middleware verifies tokens…" so `SHALL` leads |
+| `helm-pubsub-integration-test` | Reordered both requirements' opening clauses |
+| `helm-redis-dependency` | Reordered "Dapr Components resolve a Redis connection…" |
+| `run-step-execution` | Reordered "Spawn failures are retryable" |
+| `helm-postgres-deployment` | Added the missing scenario to "Bitnami configuration is values-driven", grounded in the actual `postgresql` values block (standalone, `bitnamilegacy/postgresql`, 1Gi persistence, `dws`/`dws`/`dws_admin`) |
+
+**Deliberately not fixed**: `openspec/changes/ows-phase3-errors-timeouts/` is another team's active
+in-flight change, not an archived spec. Editing someone else's unmerged change without their input
+is out of scope; its two `ADDED` requirements missing SHALL/MUST are theirs to resolve.
+
+**Review note**: an initial automated pass over these files also reflowed requirements that were not
+failing, collapsed wrapped text into >110-character lines, and dropped two meaningful fragments —
+"(or a comparable leg)" from the pubsub CI requirement, and "SHALL NOT **be required to run**" was
+weakened to "SHALL NOT require". Those regressions were reverted; wording now matches the originals
+except where the keyword had to move.
+
+---
 
 **Notes**:
 
