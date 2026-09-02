@@ -20,8 +20,6 @@
     "db:migrate": "tsx src/store/migrate.ts"
   },
   "dependencies": {
-    "@dapr/dapr": "^3.18.0",
-    "@dbc-tech/nest-dapr": "^0.8.0",
     "@knaadh/nestjs-drizzle-postgres": "^1.2.0",
     "@nestjs/common": "^11.1.28",
     "@nestjs/config": "^4.0.4",

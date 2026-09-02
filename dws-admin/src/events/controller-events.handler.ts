@@ -16,9 +16,9 @@ const HANDLED_TYPES: readonly string[] = [
 
 /**
  * Processes dws-controller's definition/deployment events into the read
- * model. Not itself a @DaprPubSub target — see DwsEventsSubscriber, which
- * owns the single subscription to the shared dws.events topic (Dapr's SDK
- * rejects two separate subscriptions to the same pubsub+topic pair) and
+ * model. Not itself a Dapr subscription target — see DwsEventsSubscriber,
+ * which owns the single subscription to the shared dws.events topic (Dapr's
+ * SDK rejects two separate subscriptions to the same pubsub+topic pair) and
  * dispatches here for controller-originated event types.
  */
 @Injectable()

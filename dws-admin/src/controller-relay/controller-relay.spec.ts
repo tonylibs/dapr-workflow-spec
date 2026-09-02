@@ -25,11 +25,9 @@ function makeService(overrides: Partial<AppConfig['dapr']> = {}): { service: Con
     port: 3000,
     databaseUrl: 'postgres://ignored',
     runMigrationsOnBoot: false,
-    corsOrigins: [],
     dapr: {
       pubsubName: 'pubsub',
       topic: 'dws.events',
-      appPort: '3001',
       daprHost: '127.0.0.1',
       daprPort: '3500',
       controllerAppId: 'dws-controller',

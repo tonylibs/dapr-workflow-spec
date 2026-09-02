@@ -3,7 +3,7 @@ import type { CloudEventV1 } from 'cloudevents';
 
 /**
  * Two-level shape per docs/events.md: Dapr wraps the published bytes in its own
- * transport CloudEvent; the `@DaprPubSub` handler receives that transport
+ * transport CloudEvent; `DaprSubscriptionController` receives that transport
  * envelope's `data`, which is *our* documented envelope — itself a CloudEvent.
  * This module decodes that inner CloudEvent with the CloudEvents JS SDK
  * (`cloudevents`), so spec conformance (`specversion`, `source`, `type`, an
@@ -26,11 +26,10 @@ export class InvalidEventEnvelopeError extends Error {
 }
 
 export function decodeEventEnvelope<T = unknown>(raw: CloudEventV1<T> | string | unknown): DwsEvent<T> {
-  // @dapr/dapr's pubsub callback type documents the payload as "typically
-  // string or object" (verified against the installed package's
-  // DaprPubSubCallback.type.d.ts) — parse a raw JSON string defensively,
-  // even though `datacontenttype: application/json` normally means the Dapr
-  // HTTP server has already parsed it by the time it reaches @DaprPubSub.
+  // Dapr's pubsub delivery documents the transport `data` payload as
+  // "typically string or object" — parse a raw JSON string defensively, even
+  // though `datacontenttype: application/json` normally means the body has
+  // already been parsed by the time it reaches the controller.
   let value = raw;
   if (typeof value === 'string') {
     try {
