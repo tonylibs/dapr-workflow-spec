@@ -45,6 +45,14 @@ appVersion: "1.18.0"
 # at all when Dapr is disabled. To point the Components at an external Redis instead,
 # set redis.external.host (see values.yaml); the built-in subchart still installs
 # alongside — a documented trade-off.
+#
+# Apache APISIX, the optional Gateway API data plane + ingress controller fronting the
+# shared console/admin Gateway (auth roadmap §2b), is provided by the upstream Apache
+# apisix-helm-chart, pulled in as a conditional dependency the same way. It installs only
+# when apisix.enabled is true (default false — this chart never assumes a platform-wide
+# APISIX install); set apiGateway.enabled=true with apisix.enabled=false to target an
+# externally managed APISIX/Gateway API controller instead (a preflight check then fails
+# install/upgrade if the required Gateway API/APISIX CRDs aren't already present).
 dependencies:
   - name: postgresql
     version: 16.7.27
@@ -62,3 +70,7 @@ dependencies:
     version: 28.0.6
     repository: oci://registry-1.docker.io/bitnamicharts
     condition: dapr.enabled
+  - name: apisix
+    version: 2.16.0
+    repository: https://apache.github.io/apisix-helm-chart
+    condition: apisix.enabled

@@ -328,34 +328,117 @@ future reader editing `dws.auth.componentName` should not accidentally touch adm
 {{- end }}
 
 {{/*
-Admin gateway (auth roadmap Phase 4) — chart-bundled nginx reverse proxy fronting the
-dws-admin Dapr sidecar's invoke path. Names/selectors mirror the controller/admin helpers.
+APISIX fully qualified name — mirrors the pinned apache/apisix-helm-chart 2.16.0's own
+"apisix.fullname" algorithm exactly (see charts/apisix's templates/_helpers.tpl) so the parent
+chart can deterministically reference the bundled subchart's admin Service
+(<this>-admin:9180) from the DWS-owned GatewayProxy without depending on `lookup`.
 */}}
-{{- define "dws.adminGateway.fullname" -}}
-{{- printf "%s-admin-gateway" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- define "dws.apisix.fullname" -}}
+{{- if .Values.apisix.fullnameOverride -}}
+{{- .Values.apisix.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- $name := default "apisix" .Values.apisix.nameOverride -}}
+{{- if contains $name .Release.Name -}}{{ .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else -}}{{ printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Shared API Gateway (auth roadmap §2b) — release/namespace-qualified names for the DWS-owned
+GatewayClass (cluster-scoped, so it must not collide across releases/namespaces), Gateway, and
+GatewayProxy. See values.yaml's apiGateway.* block for the operator-facing contract.
+*/}}
+{{- define "dws.apiGateway.fullname" -}}
+{{- printf "%s-gateway" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end }}
 
-{{- define "dws.adminGateway.selectorLabels" -}}
+{{- define "dws.apiGateway.selectorLabels" -}}
 {{ include "dws.selectorLabels" . }}
-app.kubernetes.io/component: admin-gateway
+app.kubernetes.io/component: api-gateway
 {{- end }}
 
 {{/*
-Validate the admin gateway values before rendering any gateway object. Fail-fast on an
-empty corsOrigins or a wildcard entry: browsers reject `Access-Control-Allow-Origin: *`
-on credentialed requests, and every request through this gateway carries a bearer token
-under the roadmap, so a wildcard would break at runtime rather than at render.
+GatewayClass name. Cluster-scoped, so a bare release-fullname is not enough to avoid collisions
+between releases in different namespaces — fold the namespace in too. When the operator supplies
+an explicit apiGateway.gatewayClassName (required whenever createGatewayClass=false, to attach to
+an existing operator-owned class), use it verbatim instead.
 */}}
-{{- define "dws.adminGateway.validate" -}}
-{{- if .Values.adminGateway.enabled -}}
-{{- if not .Values.adminGateway.corsOrigins -}}
-{{- fail "adminGateway.enabled=true requires adminGateway.corsOrigins to be a non-empty list of explicit browser origins (e.g. https://console.example.com)" -}}
+{{- define "dws.apiGateway.className" -}}
+{{- if .Values.apiGateway.gatewayClassName -}}
+{{- .Values.apiGateway.gatewayClassName -}}
+{{- else -}}
+{{- printf "%s-%s-apisix" (include "dws.namespace" .) (include "dws.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
-{{- range .Values.adminGateway.corsOrigins -}}
-{{- if eq . "*" -}}
-{{- fail "adminGateway.corsOrigins may not contain \"*\": a wildcard Access-Control-Allow-Origin cannot combine with a credentialed cross-origin write path — list each console origin explicitly" -}}
+{{- end }}
+
+{{/*
+Namespaced Gateway name — the one shared listener console and admin HTTPRoutes attach to.
+*/}}
+{{- define "dws.apiGateway.gatewayName" -}}
+{{- include "dws.apiGateway.fullname" . -}}
+{{- end }}
+
+{{/*
+GatewayProxy name the Gateway's infrastructure.parametersRef binds to.
+  - Bundled mode (apisix.enabled=true): this chart creates its own release-qualified
+    GatewayProxy (templates/api-gateway/gatewayproxy.yaml) bound to the bundled APISIX admin API.
+  - External mode (apisix.enabled=false): apiGateway.external.gatewayProxyName MUST already name
+    an existing, externally managed GatewayProxy in the release namespace.
+*/}}
+{{- define "dws.apiGateway.gatewayProxyName" -}}
+{{- if .Values.apisix.enabled -}}
+{{- printf "%s-proxy" (include "dws.apiGateway.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- required "apiGateway.external.gatewayProxyName is required when apiGateway.enabled=true and apisix.enabled=false: name an existing externally managed APISIX GatewayProxy in the release namespace" .Values.apiGateway.external.gatewayProxyName -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Validate the shared API Gateway's security/workload prerequisites and value shape before
+rendering any Gateway API object. Called unconditionally from templates/preflight.yaml so a
+misconfigured apiGateway fails render even if no api-gateway/*.yaml template happens to be the
+first one Helm evaluates.
+*/}}
+{{- define "dws.apiGateway.validate" -}}
+{{- if .Values.apiGateway.enabled -}}
+{{- if not .Values.auth.enabled -}}
+{{- fail "apiGateway.enabled=true requires auth.enabled=true: the shared admin HTTPRoute only forwards traffic that the Dapr sidecar's bearer middleware has already verified — without auth.enabled, admin requests would reach dws-admin ungated." -}}
+{{- end -}}
+{{- if not .Values.admin.enabled -}}
+{{- fail "apiGateway.enabled=true requires admin.enabled=true: the Gateway's admin HTTPRoute has no dws-admin Service to target." -}}
+{{- end -}}
+{{- if not .Values.console.enabled -}}
+{{- fail "apiGateway.enabled=true requires console.enabled=true: the Gateway's console HTTPRoute has no dws-console Service to target." -}}
+{{- end -}}
+{{- if not .Values.apiGateway.createGatewayClass -}}
+{{- if not .Values.apiGateway.gatewayClassName -}}
+{{- fail "apiGateway.createGatewayClass=false requires apiGateway.gatewayClassName naming an existing, operator-owned GatewayClass" -}}
 {{- end -}}
 {{- end -}}
+{{- if not .Values.apisix.enabled -}}
+{{- if not .Values.apiGateway.external.gatewayProxyName -}}
+{{- fail "apiGateway.enabled=true with apisix.enabled=false requires apiGateway.external.gatewayProxyName naming an existing, externally managed APISIX GatewayProxy in the release namespace. Either set that value or set apisix.enabled=true to let this chart create its own." -}}
+{{- end -}}
+{{- end -}}
+{{- if .Values.apiGateway.tls.enabled -}}
+{{- if not .Values.apiGateway.tls.certificateName -}}
+{{- fail "apiGateway.tls.enabled=true requires apiGateway.tls.certificateName naming an existing TLS Secret in the release namespace" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Deprecation trap for the removed console Ingress template (auth roadmap §2b). A prior
+install's persisted console.ingress.enabled=true value must not be silently ignored now that
+templates/console/ingress.yaml no longer exists — fail render/upgrade with explicit migration
+steps onto the shared apiGateway front door instead. Called unconditionally from
+templates/preflight.yaml, independent of apiGateway.enabled, so the trap fires even before the
+operator has opted into the replacement.
+*/}}
+{{- define "dws.console.legacyIngress.validate" -}}
+{{- if .Values.console.ingress.enabled -}}
+{{- fail "console.ingress.enabled=true is no longer supported: the chart-owned console Ingress template was removed in favor of the shared Gateway API front door. Migrate by: (1) setting apiGateway.enabled=true (also requires auth.enabled=true, admin.enabled=true, console.enabled=true) and either apisix.enabled=true for a bundled APISIX or apiGateway.external.gatewayProxyName for an externally managed APISIX/Gateway API controller; (2) moving the old Ingress host to apiGateway.hostname and its TLS Secret to apiGateway.tls.enabled=true / apiGateway.tls.certificateName; (3) dropping the old console.ingress.className/annotations, which have no Gateway API equivalent; (4) updating the OIDC redirect URI (dex.consoleRedirectURI, or your external IdP client's registered redirect) to the new shared Gateway origin; then setting console.ingress.enabled=false." -}}
 {{- end -}}
 {{- end }}
 

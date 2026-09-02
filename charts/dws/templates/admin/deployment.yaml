@@ -21,7 +21,7 @@ spec:
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: {{ include "dws.admin.fullname" . | quote }}
-        dapr.io/app-port: "3001"
+        dapr.io/app-port: "3000"
         {{- if .Values.auth.enabled }}
         dapr.io/config: {{ include "dws.admin.auth.configName" . | quote }}
         {{- end }}
@@ -82,8 +82,6 @@ spec:
           ports:
             - name: http
               containerPort: 3000
-            - name: dapr-app-port
-              containerPort: 3001
           env:
             - name: DATABASE_URL
               valueFrom:
@@ -105,8 +103,6 @@ spec:
               value: {{ .Values.admin.pubsub.name | quote }}
             - name: DAPR_PUBSUB_TOPIC
               value: {{ .Values.admin.pubsub.topic | quote }}
-            - name: DAPR_APP_PORT
-              value: "3001"
             - name: DAPR_CONTROLLER_APP_ID
               value: {{ include "dws.controller.fullname" . | quote }}
             {{- end }}

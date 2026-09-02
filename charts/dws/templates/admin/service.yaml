@@ -11,17 +11,29 @@ spec:
   selector:
     {{- include "dws.admin.selectorLabels" . | nindent 4 }}
   ports:
+    {{- if .Values.apiGateway.enabled }}
+    # Secured API Gateway mode (auth roadmap section 2b): expose ONLY the Dapr sidecar's HTTP
+    # port. Every browser-facing admin request - reads, writes, OpenAPI docs, and SSE - reaches
+    # dws-admin exclusively through Dapr service invocation, which forces the sidecar's bearer
+    # middleware to run before the app ever sees the request. The Nest app port (3000) remains a
+    # container/probe-only port (see deployment.yaml) and is intentionally NOT Service-addressable
+    # here - a parallel port targeting it would recreate the authentication bypass this mode
+    # removes.
+    - name: http
+      port: {{ .Values.admin.service.port }}
+      targetPort: 3500
+    {{- else }}
     - name: http
       port: {{ .Values.admin.service.port }}
       targetPort: http
     {{- if .Values.auth.enabled }}
-    # Phase 4 auth: front-port the Dapr sidecar's HTTP port (default 3500) so the
-    # admin-gateway (and any in-cluster caller) reaches the Phase 3 write-relay via
-    # Dapr service invocation, which forces the bearer middleware to run. The app-port
-    # (3000) above stays exposed unconditionally — read routes are intentionally
-    # left alone (Phase 6 owns moving them onto the gated path).
+    # Migration-window behavior (auth.enabled=true, apiGateway.enabled=false): front-port the
+    # Dapr sidecar's HTTP port so an in-cluster caller can reach the write-relay via Dapr service
+    # invocation while the app port above stays reachable too. Superseded by the sidecar-only
+    # port above once apiGateway.enabled=true replaces this Service topology entirely.
     - name: dapr-http
       port: 3500
       targetPort: 3500
+    {{- end }}
     {{- end }}
 {{- end }}

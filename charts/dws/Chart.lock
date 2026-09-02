@@ -11,5 +11,8 @@ dependencies:
 - name: redis
   repository: oci://registry-1.docker.io/bitnamicharts
   version: 28.0.6
-digest: sha256:db58b0b9f2f233d58bbe10044c0ff1eaff2ad7a26b9c87315d81ee5f9bee251d
-generated: "2026-08-23T17:50:08.5121503+07:00"
+- name: apisix
+  repository: https://apache.github.io/apisix-helm-chart
+  version: 2.16.0
+digest: sha256:d87e612e2dffe8b940772a8b785f12dd7d6dba1a2e8329b10955276a7d7394b3
+generated: "2026-09-02T11:13:36.1048862+07:00"
