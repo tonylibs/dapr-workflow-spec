@@ -355,13 +355,50 @@ jobs:
       - name: Verify OAuth endpoint path isolation
         run: bash ./scripts/verify-dapr-oauth-path-filter.sh
 
+  integration-gateway-sse:
+    name: live SSE over Gateway/APISIX/Dapr invoke (auth roadmap §2b/§2c)
+    runs-on: ubuntu-latest
+    needs: verify
+    # Closes the deferred live-verification item in openspec/changes/api-gateway/verify.md
+    # section 5: proves an SSE stream actually survives Gateway -> APISIX -> Dapr service
+    # invocation -> Nest, with Dapr's bearer middleware as the sole JWT verifier, end to end,
+    # plus the bundled-mode bearer matrix and console/admin route precedence. Builds
+    # dws-admin/dws-console from THIS checkout (not a published image) so the run exercises this
+    # branch's own application code, not whatever tag happens to be on ghcr.io.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+
+      - name: Install Dapr control plane
+        # scripts/verify-gateway-sse-path.sh deliberately never installs its own Dapr control
+        # plane (dapr.enabled=false throughout, to avoid a second cluster-scoped
+        # sidecar-injector webhook) -- install one here instead, exactly as it expects.
+        run: |
+          helm repo add dapr https://dapr.github.io/helm-charts/ --force-update
+          helm repo update dapr
+          helm upgrade --install dapr dapr/dapr \
+            --namespace dapr-system --create-namespace \
+            --version "${{ env.DAPR_VERSION }}" --wait --timeout 5m
+
+      - name: Verify live Gateway -> APISIX -> Dapr invoke -> Nest SSE path
+        run: bash ./scripts/verify-gateway-sse-path.sh
+
   release:
     name: package & push (OCI)
     # Publish only on merge to the default branch — PRs verify but never push.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    # A chart release must also have passed the live Dapr OAuth path-isolation probe. Without this
-    # dependency GitHub could publish after `verify` succeeded while the independent probe failed.
-    needs: [verify, integration-oauth-path-filter]
+    # A chart release must also have passed the live Dapr OAuth path-isolation probe and the
+    # live Gateway/APISIX/Dapr-invoke SSE probe. Without this dependency GitHub could publish
+    # after `verify` succeeded while either independent live probe failed.
+    needs: [verify, integration-oauth-path-filter, integration-gateway-sse]
     runs-on: ubuntu-latest
     permissions:
       contents: write

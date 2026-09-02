@@ -337,12 +337,13 @@ separate work.
   legacy resource (`admin-gateway`, `Ingress`, container port `3001`, `DAPR_APP_PORT`) in every
   rendered mode. `helm lint`, `helm template` (default/bundled/external), and both test scripts
   all pass as of 2026-09-02.
-- **Explicitly deferred, not claimed complete here:** live SSE-over-Dapr/APISIX behavior (the
-  route carries no buffering filter by construction, but has not been exercised against a running
-  APISIX + Dapr sidecar), and the app-side `dws-admin` one-app-port consolidation /
-  `dws-console` bearer-authenticated transport (Tasks 1–2 of the same `api-gateway` change,
-  application code outside `charts/dws`) — the Gateway route this section adds assumes both once
-  the gateway is actually turned on.
+- **Live SSE-over-Dapr/APISIX behavior — resolved 2026-09-02, see §2d.** This entry previously read
+  "explicitly deferred, not claimed complete here" (the route carries no buffering filter by
+  construction, but had not been exercised against a running APISIX + Dapr sidecar). It has since
+  been exercised live: SSE survives the Gateway → APISIX → Dapr-invoke hop without buffering. §2d
+  also records one real defect the same live run found: Dapr's own internal subscription
+  discovery/delivery is bearer-gated too, contradicting spec `helm-admin-auth-middleware`'s
+  pubsub-stays-internal requirement — not yet fixed, tracked in §4.
 - **Rollback ordering.** Because the Service topology, the admin route's Dapr-invoke rewrite, and
   the (separately tracked) app-side one-port consolidation are coordinated, rolling back requires
   restoring the previous chart version and application images together: disable
@@ -350,6 +351,47 @@ separate work.
   values with the prior chart version, and confirm event ingestion before re-exposing the old
   paths. No data migration is required — workflow definitions and the read-model schema are
   unaffected by this change.
+
+## 2d. Live SSE-over-Gateway/APISIX/Dapr-invoke verification (2026-09-02)
+
+Closes the deferred item recorded above and in `openspec/changes/api-gateway/verify.md` §5: does
+an SSE stream actually survive Gateway → APISIX → Dapr service invocation → Nest, with Dapr's
+bearer middleware as the sole JWT verifier? New script `scripts/verify-gateway-sse-path.sh`
+(pattern mirrors `scripts/verify-dapr-oauth-path-filter.sh`: disposable `dws-gw-e2e*`-prefixed
+namespace, `set -euo pipefail`, idempotent pre-clean + `trap cleanup EXIT`) provisions bundled
+gateway mode from THIS working tree's `dws-admin`/`dws-console` images (not a published tag) and
+asserts the live matrix. Full command evidence, exit codes, and per-scenario results are in
+`verify.md` §5; summary:
+
+- **3 of 4 required scenarios pass live**, including the specific one this item was deferred
+  over: a valid-bearer SSE subscription on `/dws-admin/instances/events` delivered a named
+  `event: instance` frame 778ms after connecting, observed while the connection was still open
+  (closed 5000ms later by the test client, not the server) — proving the response is not
+  buffered/batched until close, through the real Gateway → APISIX → Dapr-invoke → Nest hop. Valid
+  bearer reads and the missing/tampered-bearer 401 matrix also passed, with the enforcement point
+  confirmed as Dapr (not APISIX) via a direct-to-sidecar bypass that reproduces the identical
+  401/200 behavior with APISIX entirely out of the request path.
+- **1 of 4 does not pass**: Dapr's own internal `GET /dapr/subscribe` discovery call is rejected
+  401 by the same bearer `Configuration` (`spec.appHttpPipeline` gates every inbound sidecar→app
+  call, not just externally-originated ones). This means once `auth.enabled=true`, no subscription
+  is ever registered and `dws.events` messages never reach `dws-admin` through the normal pubsub
+  API — contradicting spec `helm-admin-auth-middleware`'s requirement that pubsub
+  discovery/delivery stay reachable without a bearer token. Dapr's built-in
+  `middleware.http.bearer` has no path-exemption field, so there is no values-only fix; this is a
+  real, tracked open item (§4), not resolved by this pass.
+- **Two chart defects that blocked ANY live bundled-gateway install were found and fixed**, neither
+  visible to `helm lint`/`helm template`: `apisix.service.externalTrafficPolicy: Cluster` is
+  invalid on a `ClusterIP` Service (API-server-rejected, not template-rejected) — cleared in
+  `values.yaml`; and Dapr's app-facing HTTP API binding to loopback only by default meant no
+  Service (including the Gateway's own route) could ever reach the admin sidecar — fixed by adding
+  `dapr.io/sidecar-listen-addresses: "[::],0.0.0.0"` to the admin pod whenever `auth.enabled=true`
+  in `templates/admin/deployment.yaml`. The second defect is the same loopback-binding behavior
+  the pubsub e2e CI job already worked around a different way (see that job's own comment in
+  `.github/workflows/helm.yml`) — it had just never been diagnosed as a Service-reachability chart
+  defect before this run. `dws-controller`'s deployment has the identical pattern without the fix;
+  see the follow-up item in §4.
+- Wired into CI as job `integration-gateway-sse` in `.github/workflows/helm.yml`, gating the
+  `release` job the same way `integration-oauth-path-filter` already does.
 
 ## 3. Rationale for ordering
 
@@ -378,6 +420,35 @@ separate work.
 
 ## 4. Open items
 
+- **`dapr.io/sidecar-listen-addresses` missing on `dws-controller`, same defect as the admin fix in
+  §2d** (surfaced 2026-09-02 by the api-gateway live SSE run). `charts/dws/templates/admin/deployment.yaml`
+  now sets `dapr.io/sidecar-listen-addresses: "[::],0.0.0.0"` whenever `auth.enabled=true`, because
+  Dapr's app-facing HTTP API binds to loopback only by default and no Service can otherwise reach
+  it. `templates/controller/deployment.yaml` has the identical `dapr.io/config`-when-`auth.enabled`
+  pattern (from the archived `dws-console-auth-phase-2` change) and the identical
+  Service-front-porting-3500 shape, without this annotation. **Confirmed live and currently broken**
+  on the very cluster this roadmap's Phase 2 entry describes as having passed a live matrix: a
+  disposable, non-destructive probe pod against the already-deployed `dws-phase2` release's
+  `dws-controller` Service (`targetPort: 3500`, no `dapr.io/sidecar-listen-addresses` set) got
+  `curl: (7) Failed to connect ... Could not connect to server` — the Service is unreachable today.
+  (Phase 2's original live pass most likely predates a Dapr version where this loopback-only
+  default took effect in this cluster, or used pod-exec rather than the Service; either way, the
+  Service path does not work now.) Needs the same one-line chart fix; not done here because
+  `dws-controller`'s deployment template is out of scope for the api-gateway change. Owns a
+  follow-up change.
+- **Dapr's bearer middleware gates its own internal pubsub subscription discovery/delivery**
+  (surfaced 2026-09-02 by the api-gateway live SSE run, `verify.md` §5.4). `spec.appHttpPipeline`
+  applies to every inbound sidecar→app call, including Dapr's own unauthenticated
+  `GET /dapr/subscribe` discovery — daprd logs `app returned http status code 401 from
+  subscription endpoint` and never registers a subscription once `auth.enabled=true`. This affects
+  both `dws-admin` (this roadmap's admin auth) and, by the same pattern, `dws-controller`, if it
+  ever gains a pubsub subscription of its own. Dapr's built-in `middleware.http.bearer` has no
+  path-exemption field, so there is no values-only fix. Needs a design decision (e.g. an
+  unauthenticated path/app-port carved out of the gated pipeline specifically for Dapr's own
+  discovery/delivery calls) before `auth.enabled=true` + `apiGateway.enabled=true` can be
+  considered safe to run with real pubsub traffic. Not blocking the gateway routing/SSE-transport
+  proof itself (§2d), which used a directly-authenticated delivery call to isolate the two
+  concerns.
 - **Pod-IP:8080 direct-app-port bypass** (surfaced by the Phase 2 live run). The Phase 2
   Service front-port change closes Service-based bypass, but a pod-network peer that dials
   `<controller-pod-ip>:8080` still reaches the app container directly (verified 200 from

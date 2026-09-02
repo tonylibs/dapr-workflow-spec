@@ -4,9 +4,11 @@
 > Any failing check must be corrected in the corresponding artifact, then verify re-run.
 
 **Change**: `api-gateway`
-**Verified at**: `2026-09-02`
+**Verified at**: `2026-09-02` (§1–§4, §6); **§5 live verification added** `2026-09-02` in a
+follow-up session against a real `docker-desktop` cluster
 **Verifier**: Claude Code (orchestrator session + three scoped subagents: `nestjs-developer`,
-`frontend-developer`, `platform-deployment-developer`)
+`frontend-developer`, `platform-deployment-developer`; §5 verified by a separate Claude Code
+session)
 
 ---
 
@@ -247,38 +249,177 @@ kubectl exec deploy/dws-admin -c daprd -- \
 
 | Scenario (spec) | Expectation | Status |
 |---|---|---|
-| Missing Authorization header on read | 401, Nest never observes it | Pending live run |
-| Valid bearer reaches read and write | Both forwarded to Nest:3000 | Pending live run |
-| Invalid token does not reach SSE route | 401, no SSE subscription in Nest | Pending live run |
-| Pubsub callback remains internal | Callback reaches app-port 3000 without a bearer | Pending live run |
+| Missing Authorization header on read | 401, Nest never observes it | **Executed 2026-09-02 — see §5** (Dapr rejects it before Nest; proven via the direct-to-sidecar bypass) |
+| Valid bearer reaches read and write | Both forwarded to Nest:3000 | **Executed 2026-09-02 — see §5** (read path proven live; write/relay path — `POST /workflows` to `dws-controller` — is unchanged by this change and out of its scope) |
+| Invalid token does not reach SSE route | 401, no SSE subscription in Nest | **Executed 2026-09-02 — see §5** (401 proven on the SSE path's sibling read route; the SSE endpoint itself was proven reachable and non-buffering with a *valid* token — see §5) |
+| Pubsub callback remains internal | Callback reaches app-port 3000 without a bearer | **Executed 2026-09-02 — FAILED, see §5.** Dapr's own internal `GET /dapr/subscribe` call is rejected 401 by the same bearer gate. This scenario is not currently met. |
 
 ---
 
-## 5. Deferred Verification (explicitly incomplete, not falsely claimed)
+## 5. Live Verification (executed 2026-09-02, superseding the prior deferral)
 
-`plan.md:23` states up front: "Treat live SSE-over-APISIX/Dapr as deferred verification; do not claim
-live success without evidence." This report honors that constraint.
+The prior version of this section deferred live SSE-over-APISIX/Dapr verification per `plan.md:23`
+("Treat live SSE-over-APISIX/Dapr as deferred verification; do not claim live success without
+evidence"). That verification has now been run against a real cluster. This section replaces the
+deferral with the actual command, exit codes, and observed output — including one scenario that
+**did not pass** and two chart defects the run found and fixed.
 
-| Item | Status | Why deferred |
+### 5.1 What was run
+
+`scripts/verify-gateway-sse-path.sh` (new script, committed alongside this update). It provisions a
+disposable `dws-gw-e2e*`-prefixed namespace, builds `dws-admin`/`dws-console` from this exact
+working tree (not a published image), installs `charts/dws` in bundled gateway mode
+(`apiGateway.enabled=true`, `apisix.enabled=true`, `auth.enabled=true`, `admin.enabled=true`,
+`console.enabled=true`, `dapr.enabled=false` reusing the cluster's pre-installed Dapr control
+plane), and asserts the live matrix through a port-forwarded APISIX gateway Service and, in
+parallel, a port-forwarded admin Service (used to bypass APISIX entirely for one comparison).
+
+```text
+$ bash scripts/verify-gateway-sse-path.sh
+...
+PASS: Gateway API v1 CRDs and APISIX apisix.apache.org/v1alpha1 CRDs are Established cluster-wide
+PASS: dws-admin:gw-e2e and dws-console:gw-e2e built from <repo>
+PASS: dws-admin:gw-e2e and dws-console:gw-e2e loaded into every cluster node's containerd content store
+PASS: minted RSA keypair, JWKS document, and valid/tampered test tokens (issuer=http://mock-idp.dws-gw-e2e.svc.cluster.local audience=dws-admin)
+PASS: disposable Redis and mock JWKS IdP are Ready in dws-gw-e2e
+PASS: helm install succeeded (bundled APISIX + Gateway API, auth/admin/console enabled)
+PASS: admin Deployment carries dapr.io/sidecar-listen-addresses so daprd's sidecar port is actually Service-reachable
+PASS: all Deployments/StatefulSets in dws-gw-e2e are Ready (admin, console, apisix, apisix-ingress-controller, etcd, postgres, redis, mock-idp)
+PASS: GatewayClass/Gateway/GatewayProxy/HTTPRoutes exist in dws-gw-e2e
+FINDING: Dapr's own internal 'GET /dapr/subscribe' discovery call was rejected with 401 ...  (see §5.4)
+PASS: port-forwards ready: Gateway (http://127.0.0.1:18080) and admin Service direct (http://127.0.0.1:18081, bypasses APISIX)
+PASS: APISIX has programmed the /dws-admin route (first successful proxied request observed)
+PASS: GET /dws-admin/instances with a valid bearer returns HTTP 200 with the expected {items,nextCursor} JSON from Nest, via Gateway -> APISIX -> Dapr invoke -> Nest:3000
+PASS: missing and tampered-signature bearers both get HTTP 401 through the Gateway
+PASS: direct-to-sidecar requests (APISIX entirely bypassed via a second port-forward straight to the admin Service) reproduce the identical 401/200 behavior -- Dapr's bearer middleware is the enforcement point, APISIX adds none of its own
+PASS: SSE on /dws-admin/instances/events delivers a named 'event: instance' frame 778ms after connect, observed while the connection was still open (closed 5000ms later by the client, not the server) -- NOT buffered/batched at close, through Gateway -> APISIX -> Dapr invoke -> Nest
+PASS: GET / routes to the console Service (redirects same-app to its default view exactly as the console SPA does outside the gateway too) and ultimately returns HTTP 200 text/html
+PASS: /dws-admin/instances still returns the admin JSON payload (not the console's HTML) -- the admin PathPrefix rule wins over the console's catch-all /
+
+=== 17 assertions passed. verify-gateway-sse-path.sh: all checks passed ===
+$ echo $?
+0
+```
+
+Cleanup ran to completion in the same invocation (`helm uninstall`, namespace delete, cluster-scoped
+GatewayClass delete); the only things left behind on the cluster afterward are the cluster-scoped
+Gateway API v1 and `apisix.apache.org` CRDs, deliberately not removed (see the script header).
+`kubectl get pods -n dapr-system`, `-n dws-phase2`, `-n dws-phase4`, `-n dws-phase5`, and
+`-n kafka` were checked before and after every run in this pass; none of those pre-existing
+releases were touched (same restart counts/ages throughout).
+
+### 5.2 Result against the four required scenarios
+
+| # | Scenario | Result |
 |---|---|---|
-| **SSE over Gateway + Dapr (end to end)** | **NOT VERIFIED** | Requires a real cluster, APISIX data plane, and Dapr sidecar. Transport-layer behavior has unit coverage in `dws-console` (fetch-based SSE parsing, named events, cancellation, terminal-state closure, token reacquisition, reconnect/resync, 401 degradation — see task 2.4), but **actual streaming across APISIX and Dapr invoke is unproven**. Buffering, `Transfer-Encoding: chunked` passthrough, and idle timeout in particular cannot be verified at render time. |
-| **Live bearer matrix (§4)** | **NOT EXECUTED** | Same constraint; needs a real IdP issuing tokens. |
-| **Real APISIX traffic behavior** | **NOT VERIFIED** | This pass validated manifest render correctness only; no real data plane was started. |
+| 1 | Valid bearer reaches Nest through APISIX -> Dapr invoke, returns real JSON | **PASS.** `GET /dws-admin/instances` with a valid bearer → HTTP 200, body `{"items":[...],"nextCursor":...}` (the actual `PaginatedInstanceSummaryDto` shape), via the real Gateway/APISIX/Dapr-invoke hop. |
+| 2 | Invalid/absent bearer rejected by Dapr, not APISIX | **PASS.** Missing and tampered-signature bearers both return 401 through the Gateway. The decisive check: the *same* request sent **directly to the admin Service, entirely bypassing APISIX** via a second port-forward, reproduces the identical 401 (no bearer) / 200 (valid bearer) behavior — APISIX is not in that request's path at all, so Dapr's `middleware.http.bearer` is unambiguously the enforcement point. |
+| 3 | SSE delivers a named event frame while the connection is open (not buffered/batched at close) | **PASS.** A Node HTTP client opened `GET /dws-admin/instances/events` with a valid bearer through the Gateway; 778ms after connecting, a properly-framed `event: instance` SSE message arrived; the client then deliberately held the connection open **5000ms longer** before closing it itself. Because the event arrived long before the client-initiated close, the response was not withheld until the stream ended — the specific failure mode ("buffered until close") this item was deferred over does not occur. |
+| 4 | Console root routes to console; `/dws-admin/*` takes precedence | **PASS.** `GET /` returns the console's own same-app redirect (`307 -> /workflows`, identical to the console's behavior outside the gateway) and, followed once, HTTP 200 `text/html` with the console's SSR shell. `/dws-admin/instances` continues to return the admin JSON payload, not the console's HTML, confirming the admin `PathPrefix` rule wins over the console's catch-all `/`. |
 
-**Stated plainly**: the guarantee this change currently carries stops at "manifests render correctly
-and component unit/integration tests pass." The claim that a browser actually receives an SSE stream
-through the Gateway is **not supported by any evidence yet**.
+### 5.3 Two chart defects found and fixed by this live run
+
+Neither of these was ever caught by `helm lint`/`helm template` because both are runtime behaviors
+a rendered-YAML-only check cannot see.
+
+1. **`apisix.service.externalTrafficPolicy` invalid for `type: ClusterIP`.** The upstream `apisix`
+   subchart's own default (`externalTrafficPolicy: Cluster`) combined with this chart's
+   `apisix.service.type: ClusterIP` default produced a Service Kubernetes' API server rejects
+   outright: `spec.externalTrafficPolicy: Invalid value: "Cluster": may only be set for
+   externally-accessible services`. **Fixed** in `charts/dws/values.yaml` by clearing
+   `apisix.service.externalTrafficPolicy` to `""` alongside `type: ClusterIP`. Without this fix, a
+   plain `apisix.enabled=true` bundled install fails `helm install` on any real cluster, every time.
+2. **`dapr.io/sidecar-listen-addresses` missing on the admin pod.** Dapr's app-facing HTTP API
+   (port 3500) binds to loopback only (`[::1]`/`127.0.0.1`) by default — reachable from the admin
+   container in the same pod, but not through any Kubernetes Service, because kube-proxy's DNAT
+   still targets the pod's real interface IP, which a loopback-only daprd never listens on. Both
+   admin Service shapes that front 3500 (`templates/admin/service.yaml`, migration-window
+   `dapr-http` port and gateway-mode sidecar-only port) depend on this working, but nothing in the
+   chart requested a wider bind address. Observed failure: APISIX's data-plane log showed
+   `connect() failed (111: Connection refused) while connecting to upstream ... upstream:
+   "http://<admin-pod-ip>:3500/v1.0/invoke/dws-admin/method/instances"` — a clean 502 on every
+   request. **Fixed** in `charts/dws/templates/admin/deployment.yaml` by adding
+   `dapr.io/sidecar-listen-addresses: "[::],0.0.0.0"` to the admin pod annotations whenever
+   `auth.enabled=true` (the same condition that already renders `dapr.io/config`). This exact
+   defect was already independently documented, for a different reason, in
+   `.github/workflows/helm.yml`'s pubsub e2e job comment ("daprd's HTTP API (port 3500) binds to
+   127.0.0.1 / [::1] only for security") — that job worked around it with `kubectl debug
+   --target=admin` (shared network namespace) rather than a Service, so the underlying
+   Service-unreachability was never surfaced as a chart defect until this run. **Open follow-up**
+   (not fixed here, out of this change's scope): `templates/controller/deployment.yaml` has the
+   identical `dapr.io/config`-when-`auth.enabled` pattern and the identical Service-front-porting
+   shape (from the already-archived `dws-console-auth-phase-2` change) without this annotation —
+   it is very likely affected the same way and should get the same fix in a follow-up change; see
+   `docs/roadmaps/dws-auth.md` §4.
+3. `helm lint`, `helm template` (default/bundled/external), and both `charts/dws/tests/*.sh`
+   scripts were re-run after both fixes and still pass — see the fresh output in §3.3 above,
+   unchanged by either fix (neither is visible to a render-only check).
+
+### 5.4 One scenario that did NOT pass: Dapr's own subscription discovery is bearer-gated too
+
+While bringing the admin pod up for the checks above, its `daprd` sidecar logged:
+
+```text
+level=error msg="app returned http status code 401 from subscription endpoint" scope=dapr.runtime.processor.subscription
+```
+
+Dapr's own internal `GET /dapr/subscribe` discovery call — made by daprd itself, with no
+`Authorization` header, to discover the app's declared subscriptions — is rejected 401 by the same
+`middleware.http.bearer` Component wired into `spec.appHttpPipeline`. That pipeline applies to
+**every** inbound sidecar→app call, not just externally-originated ones, so it gates Dapr's own
+housekeeping traffic identically to a browser request. This directly contradicts the requirement in
+spec `helm-admin-auth-middleware`: *"Dapr's internal programmatic-subscription discovery and
+pub/sub callback delivery SHALL continue to reach the app without requiring a browser bearer
+token."* As currently wired, it does not — no subscription is ever registered once `auth.enabled`
+is on, so `dws.events` messages published through the normal pubsub API would never reach Nest.
+
+Dapr's built-in `middleware.http.bearer` has no path-exemption/allowlist field (only
+`audience`/`issuer`/`jwksURL` — confirmed against the upstream component reference), so there is no
+values-only workaround available in this chart today. **This is reported as a finding, not fixed in
+this change** — fixing it needs a design decision (e.g. moving pubsub discovery/delivery onto a
+separate, unauthenticated app-port/path Dapr's own ACL can scope independently of the bearer
+pipeline, or a different Dapr-side mechanism entirely) that is out of scope for a live-verification
+pass. It is recorded in `docs/roadmaps/dws-auth.md` §4 as an open item.
+
+To still answer the actual deferred question — does SSE survive the Gateway/APISIX/Dapr-invoke hop
+without buffering — assertion 3 above (§5.2) triggered the test event with a directly-authenticated
+`POST /dws-admin/dapr/events/dws` carrying the identical transport-CloudEvent shape Dapr's own
+delivery would have sent (`{"data": <envelope>}`), through the same Gateway/APISIX/Dapr-invoke path
+already proven for reads, rather than through Dapr's own (currently broken) automatic delivery.
+That isolates the streaming/buffering question this section exists to answer from the
+pubsub-registration defect above, and is called out explicitly in the script's own comments and
+output so the distinction is never silently blurred.
+
+### 5.5 What this changes about the guarantee this change carries
+
+The `helm-admin-auth-middleware` spec's four scenarios are: 3 of 4 proven live, 1 of 4 (pubsub
+callback stays internal) proven **false** as currently implemented. SSE-over-Gateway/APISIX/Dapr
+invoke — the specific item `design.md` and `plan.md` called out as unproven and deferred — **is now
+proven to work**, with real measured timing evidence that it is not buffered. The bearer/pubsub
+conflict in §5.4 is a **new, separate, real finding**, not a re-statement of the old deferral, and
+is why this change is not being marked fully spec-compliant here — see the Overall Decision below.
 
 ---
 
 ## Overall Decision
 
-- [x] PASS (within the scope of local gates) — ready for code review and commit
+- [x] PASS for the render/unit/integration gates in §1–§4 (unchanged from the prior pass).
+- [x] PASS for 3 of the 4 live scenarios in §5 (valid-bearer reads, Dapr-not-APISIX bearer
+  enforcement, and — the specific item this section existed to resolve — non-buffered SSE over
+  Gateway/APISIX/Dapr invoke).
+- [ ] **NOT PASS** for the 4th live scenario: Dapr's own subscription discovery/delivery is
+  bearer-gated (§5.4), contradicting the `helm-admin-auth-middleware` spec's pubsub-stays-internal
+  requirement. `auth.enabled=true` + `apiGateway.enabled=true` currently means no `dws.events`
+  message ever reaches `dws-admin`'s read model or its SSE feed in a real deployment.
 
-**Qualification**: this PASS covers render, unit, and integration gates only. The live verification in
-§4 and §5 remains outstanding. Before archiving:
+**Qualification**: two chart defects that blocked ANY live use of bundled gateway mode
+(`apisix.service.externalTrafficPolicy`, `dapr.io/sidecar-listen-addresses`) were found and fixed
+in this pass — see §5.3. The remaining open item is real and tracked, not a re-statement of the
+prior deferral:
 
-1. Run the §4 bearer matrix and the SSE end-to-end check against a real cluster;
+1. ~~Run the §4 bearer matrix and the SSE end-to-end check against a real cluster~~ **Done — see
+   §5.** 3 of 4 scenarios pass live; the pubsub-callback scenario does not (§5.4), tracked as an
+   open item in `docs/roadmaps/dws-auth.md` §4, not resolved by this pass;
 2. ~~Clear the six pre-existing spec-lint items listed in §1.~~ **Done for five of six** — see §6.
    Only `ows-phase3-errors-timeouts` remains, deliberately untouched (another team's active change);
 3. ~~Review the unintended TanStack patch bumps in the `dws-console` lockfile.~~ **Resolved — accepted

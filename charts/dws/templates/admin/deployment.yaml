@@ -24,6 +24,17 @@ spec:
         dapr.io/app-port: "3000"
         {{- if .Values.auth.enabled }}
         dapr.io/config: {{ include "dws.admin.auth.configName" . | quote }}
+        # Dapr's app-facing HTTP API (port 3500) binds to loopback only ([::1]/127.0.0.1) by
+        # default -- reachable from the admin container in the same pod, but NOT through any
+        # Kubernetes Service, because kube-proxy's DNAT still targets the pod's real interface
+        # IP, which loopback-only daprd never listens on. Both admin Service shapes that front
+        # 3500 (the migration-window dapr-http port and the gateway-mode sidecar-only port, see
+        # templates/admin/service.yaml) depend on daprd actually accepting that traffic, so widen
+        # the bind address whenever the sidecar is Service-exposed. Discovered via a live
+        # Gateway/APISIX run that got ECONNREFUSED at the APISIX->sidecar hop (502) with this
+        # annotation absent; scripts/verify-gateway-sse-path.sh proves live traffic reaches the
+        # sidecar with it present.
+        dapr.io/sidecar-listen-addresses: "[::],0.0.0.0"
         {{- end }}
       {{- end }}
     spec:
