@@ -16,6 +16,7 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { useOidc } from "#/lib/oidc";
 import {
 	toInstanceDetail,
 	toInstanceRow,
@@ -24,15 +25,16 @@ import {
 } from "./admin-adapters";
 import {
 	ApiError,
+	AuthenticationError,
 	fetchInstance,
 	fetchInstances,
 	fetchInstanceTasks,
 	fetchWorkflowDeployments,
 	fetchWorkflows,
 	fetchWorkflowVersions,
+	type InstanceFilters,
 	subscribeToInstance,
 	subscribeToInstanceStatuses,
-	type InstanceFilters,
 } from "./admin-client";
 import {
 	applyInstanceStatus,
@@ -76,14 +78,19 @@ async function fetchAllPages<T>(
 }
 
 /**
- * Retry transport and server failures, but never a 4xx.
+ * Retry transport and server failures, but never a 4xx or an authentication
+ * outcome.
  *
  * A missing workflow or instance answers `404`, and a rejected filter or page
  * size answers `400` — none of which a retry can change. Without this the
  * not-found and bad-request views sit behind three backing-off retries before
- * they appear, which reads to an operator as a hung page.
+ * they appear, which reads to an operator as a hung page. A `401` (also a
+ * 4xx, so already covered) and a failure to acquire a token at all
+ * (`AuthenticationError`, which never reached the network) are both
+ * sign-in/session outcomes, not transport failures a retry could fix.
  */
 function retryUnlessClientError(failureCount: number, error: Error): boolean {
+	if (error instanceof AuthenticationError) return false;
 	if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
 		return false;
 	}
@@ -95,6 +102,7 @@ function retryUnlessClientError(failureCount: number, error: Error): boolean {
  * Returns the accumulated rows across every fetched page.
  */
 export function useWorkflows() {
+	const oidc = useOidc();
 	const query = useInfiniteQuery({
 		queryKey: ["workflows"],
 		initialPageParam: FIRST_PAGE,
@@ -102,6 +110,7 @@ export function useWorkflows() {
 			fetchWorkflows({ cursor: pageParam }, signal),
 		getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
 		retry: retryUnlessClientError,
+		enabled: oidc.isUserLoggedIn === true,
 	});
 
 	const rows: WorkflowRow[] =
@@ -119,6 +128,7 @@ export function useWorkflows() {
  * route renders as its not-found state.
  */
 export function useWorkflowDetail(name: string) {
+	const oidc = useOidc();
 	return useQuery<WorkflowDetail>({
 		queryKey: ["workflow", name],
 		queryFn: async ({ signal }) => {
@@ -133,6 +143,7 @@ export function useWorkflowDetail(name: string) {
 			return toWorkflowDetail(name, versions, deployments);
 		},
 		retry: retryUnlessClientError,
+		enabled: oidc.isUserLoggedIn === true,
 	});
 }
 
@@ -141,6 +152,7 @@ export function useWorkflowDetail(name: string) {
  * pages: a filter that only offers the first page silently hides workflows.
  */
 export function useWorkflowNames() {
+	const oidc = useOidc();
 	return useQuery<string[]>({
 		queryKey: ["workflow-names"],
 		queryFn: () =>
@@ -148,6 +160,7 @@ export function useWorkflowNames() {
 				(items) => items.map((i) => i.name),
 			),
 		retry: retryUnlessClientError,
+		enabled: oidc.isUserLoggedIn === true,
 	});
 }
 
@@ -162,6 +175,7 @@ export const instanceKey = (id: string) => ["instance", id] as const;
  * the browser (which would only ever filter the rows already loaded).
  */
 export function useInstances(filters: InstanceFilters) {
+	const oidc = useOidc();
 	const query = useInfiniteQuery({
 		queryKey: instancesKey(filters),
 		initialPageParam: FIRST_PAGE,
@@ -169,6 +183,7 @@ export function useInstances(filters: InstanceFilters) {
 			fetchInstances(filters, { cursor: pageParam }, signal),
 		getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
 		retry: retryUnlessClientError,
+		enabled: oidc.isUserLoggedIn === true,
 	});
 
 	const rows: InstanceRow[] =
@@ -186,6 +201,7 @@ export function useInstances(filters: InstanceFilters) {
  * separate query without the header lagging behind.
  */
 export function useInstanceDetail(id: string) {
+	const oidc = useOidc();
 	return useQuery<InstanceDetailData, Error, InstanceDetail>({
 		queryKey: instanceKey(id),
 		queryFn: async ({ signal }) => {
@@ -200,6 +216,7 @@ export function useInstanceDetail(id: string) {
 		// assembled view model would leave nothing to merge into.
 		select: ({ instance, tasks }) => toInstanceDetail(instance, tasks),
 		retry: retryUnlessClientError,
+		enabled: oidc.isUserLoggedIn === true,
 	});
 }
 
@@ -221,9 +238,11 @@ export function useInstanceDetail(id: string) {
  */
 export function useInstanceLiveUpdates(id: string, isRunning: boolean) {
 	const queryClient = useQueryClient();
+	const oidc = useOidc();
+	const isSignedIn = oidc.isUserLoggedIn === true;
 
 	useEffect(() => {
-		if (!isRunning) return;
+		if (!isRunning || !isSignedIn) return;
 
 		let closed = false;
 		// The first connect needs no resync — the query's own fetch is that GET.
@@ -260,7 +279,7 @@ export function useInstanceLiveUpdates(id: string, isRunning: boolean) {
 			closed = true;
 			subscription.close();
 		};
-	}, [id, isRunning, queryClient]);
+	}, [id, isRunning, isSignedIn, queryClient]);
 }
 
 /**
@@ -271,11 +290,14 @@ export function useInstanceLiveUpdates(id: string, isRunning: boolean) {
  */
 export function useInstanceListLiveUpdates(filters: InstanceFilters) {
 	const queryClient = useQueryClient();
+	const oidc = useOidc();
+	const isSignedIn = oidc.isUserLoggedIn === true;
 	// The key is an object literal, so depend on its content rather than its
 	// identity — otherwise every render resubscribes.
 	const filtersKey = JSON.stringify(filters);
 
 	useEffect(() => {
+		if (!isSignedIn) return;
 		const key = instancesKey(JSON.parse(filtersKey) as InstanceFilters);
 
 		// As above: resync on reconnect, not on the first connect.
@@ -295,5 +317,5 @@ export function useInstanceListLiveUpdates(filters: InstanceFilters) {
 		});
 
 		return () => subscription.close();
-	}, [filtersKey, queryClient]);
+	}, [filtersKey, isSignedIn, queryClient]);
 }

@@ -49,8 +49,9 @@ export function resolveOidcConfig(env: {
  * way, so the rest of the console is unaffected.
  *
  * Note there is no token field in any variant, and none should be added: the
- * access token stays inside the OIDC client, in memory. Nothing consumes it yet
- * (roadmap Phase 5).
+ * access token stays inside the OIDC client, in memory. `admin-client.ts`
+ * reads it directly from `oidc.ts`'s `getAccessToken()` immediately before
+ * each request (roadmap Phase 5) — it must never be copied onto this state.
  */
 export type AuthState =
 	| { status: "initializing" }

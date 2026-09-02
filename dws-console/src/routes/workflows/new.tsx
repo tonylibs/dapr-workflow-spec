@@ -6,8 +6,13 @@ import CodeMirror from "@uiw/react-codemirror";
 import { useMemo, useState } from "react";
 import { AppLayout } from "#/components/app-layout";
 import { Banner } from "#/components/states";
-import { ApiError, type DefinitionSubmission, submitDefinition } from "#/lib/admin-client";
-import { getOidc, useOidc } from "#/lib/oidc";
+import {
+	ApiError,
+	AuthenticationError,
+	type DefinitionSubmission,
+	submitDefinition,
+} from "#/lib/admin-client";
+import { useOidc } from "#/lib/oidc";
 
 export const Route = createFileRoute("/workflows/new")({
 	component: DefinitionEditor,
@@ -69,22 +74,19 @@ function DefinitionEditor() {
 		setOutcome(undefined);
 		setRequestError(undefined);
 		try {
-			// Getting the token is reported on its own: the login assertion fails
-			// when the session lapsed between the enable-check and here, which is a
-			// sign-in problem, not the transport failure the outer catch names.
-			let accessToken: string;
-			try {
-				const authenticated = await getOidc({ assert: "user logged in" });
-				accessToken = await authenticated.getAccessToken();
-			} catch {
-				setRequestError("Your session has expired. Sign in again to submit.");
-				return;
-			}
-			setOutcome(await submitDefinition(definition, accessToken));
+			// The centralized transport acquires the current bearer token itself
+			// (design D6); this route no longer touches the OIDC client directly.
+			setOutcome(await submitDefinition(definition));
 		} catch (error) {
-			setRequestError(
-				error instanceof ApiError ? error.message : "Could not reach dws-admin.",
-			);
+			if (error instanceof AuthenticationError) {
+				setRequestError("Your session has expired. Sign in again to submit.");
+			} else {
+				setRequestError(
+					error instanceof ApiError
+						? error.message
+						: "Could not reach dws-admin.",
+				);
+			}
 		} finally {
 			setIsSubmitting(false);
 		}
@@ -103,7 +105,9 @@ function DefinitionEditor() {
 			<div className="pane" style={{ gap: 16 }}>
 				<div>
 					<h2 className="pane-title">Definition editor</h2>
-					<p className="pane-lede">Write or paste a DSL 1.0 YAML or JSON definition.</p>
+					<p className="pane-lede">
+						Write or paste a DSL 1.0 YAML or JSON definition.
+					</p>
 				</div>
 				<div style={{ display: "flex", alignItems: "center", gap: 10 }}>
 					<label className="muted" htmlFor="definition-format">

@@ -43,6 +43,27 @@ docker build --build-arg VITE_DWS_ADMIN_URL=https://admin.example -t dws-console
 
 and set `CORS_ORIGINS` on `dws-admin` to the console's origin (see [`dws-admin/README.md`](../dws-admin/README.md)).
 
+### Admin transport authentication
+
+Every `dws-admin` call the console makes — JSON reads, the definition write, and both live
+`text/event-stream` subscriptions — is bearer-authenticated at one boundary: `src/lib/oidc.ts`'s
+`getAccessToken()` reads the current token from the `oidc-spa` client in memory, and
+`src/lib/admin-client.ts`'s `adminFetch` attaches it fresh to every request (a silently renewed
+token is always the one sent; nothing caches a copy). TanStack Query hooks in `admin-hooks.ts` stay
+`enabled: false` until `useOidc().isUserLoggedIn` is `true`, so no admin request — read, write, or
+stream — goes out anonymously, and a `401` or a token-acquisition failure is treated as a
+sign-in/session outcome, not a retryable transport error.
+
+The two live streams (`GET /instances/events` and `GET /instances/:id/events`) no longer use the
+browser's native `EventSource`, which cannot set an `Authorization` header. They use a small
+fetch/`ReadableStream` SSE parser instead (still in `admin-client.ts`), so they carry the same
+bearer token as reads, reacquire it on every reconnect, and treat a `401` as terminal (no anonymous
+retry) instead of `EventSource`'s automatic reconnect loop.
+
+Access tokens never leave that boundary: they are not stored in `localStorage`/`sessionStorage`,
+cookies, URLs, TanStack Query keys, React state, or logs — see
+`src/lib/admin-client.test.ts` and `src/lib/oidc-config.test.ts` for the tests that guard this.
+
 CI (`.github/workflows/dws-console.yml`) builds the image on every PR, runs it and requires
 `/healthz` and an SSR route to answer, and pushes `ghcr.io/tonylibs/dws-console` only on merge to
 `main`.

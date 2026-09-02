@@ -1,15 +1,36 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { submitDefinition } from "./admin-client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Mocked at the OIDC boundary so admin-client tests never start a real login;
+// this is also what proves every operation goes through the centralized
+// `getAccessToken` rather than reading a token some other way.
+vi.mock("#/lib/oidc", () => ({
+	getAccessToken: vi.fn(),
+}));
+
+import { getAccessToken } from "#/lib/oidc";
+import {
+	fetchWorkflows,
+	getJson,
+	submitDefinition,
+	subscribeToInstance,
+} from "./admin-client";
 
 const originalFetch = globalThis.fetch;
+const mockedGetAccessToken = vi.mocked(getAccessToken);
+
+beforeEach(() => {
+	mockedGetAccessToken.mockReset();
+	mockedGetAccessToken.mockResolvedValue("test-token");
+});
 
 afterEach(() => {
 	globalThis.fetch = originalFetch;
 	vi.unstubAllEnvs();
+	vi.useRealTimers();
 });
 
 describe("submitDefinition", () => {
-	it("posts the unchanged source and OIDC token to the configured relay URL", async () => {
+	it("posts the unchanged source to the configured relay URL with the current bearer token", async () => {
 		vi.stubEnv("VITE_DWS_ADMIN_URL", "https://admin.example.test/api");
 		const fetchMock = vi.fn().mockResolvedValue(
 			new Response(
@@ -25,7 +46,7 @@ describe("submitDefinition", () => {
 		globalThis.fetch = fetchMock;
 		const definition = "document:\n  dsl: '1.0.0'\n";
 
-		await expect(submitDefinition(definition, "oidc-token")).resolves.toEqual({
+		await expect(submitDefinition(definition)).resolves.toEqual({
 			kind: "applied",
 			result: {
 				workflow: "order",
@@ -35,18 +56,15 @@ describe("submitDefinition", () => {
 			},
 		});
 
-		expect(fetchMock).toHaveBeenCalledWith(
-			"https://admin.example.test/api/workflows?dryRun=false",
-			{
-				method: "POST",
-				headers: {
-					Accept: "application/json",
-					Authorization: "Bearer oidc-token",
-					"Content-Type": "application/yaml",
-				},
-				body: definition,
-			},
-		);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe("https://admin.example.test/api/workflows?dryRun=false");
+		expect(init.method).toBe("POST");
+		expect(init.body).toBe(definition);
+		const headers = new Headers(init.headers);
+		expect(headers.get("Authorization")).toBe("Bearer test-token");
+		expect(headers.get("Accept")).toBe("application/json");
+		expect(headers.get("Content-Type")).toBe("application/yaml");
 	});
 
 	it("preserves an idempotent apply as a success", async () => {
@@ -62,7 +80,7 @@ describe("submitDefinition", () => {
 			),
 		);
 
-		await expect(submitDefinition("document: {}", "oidc-token")).resolves.toMatchObject({
+		await expect(submitDefinition("document: {}")).resolves.toMatchObject({
 			kind: "applied",
 			result: { created: false },
 		});
@@ -79,22 +97,20 @@ describe("submitDefinition", () => {
 			),
 		);
 
-		await expect(submitDefinition("invalid", "oidc-token")).resolves.toEqual({
+		await expect(submitDefinition("invalid")).resolves.toEqual({
 			kind: "validation-error",
 			errors: ["task name is required", "unsupported DSL version"],
 		});
 	});
 
 	it("rejects a 400 whose body is not a well-formed error list, quoting the payload", async () => {
-		globalThis.fetch = vi
-			.fn()
-			.mockResolvedValue(
-				new Response(JSON.stringify({ message: "Definition is invalid" }), {
-					status: 400,
-				}),
-			);
+		globalThis.fetch = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ message: "Definition is invalid" }), {
+				status: 400,
+			}),
+		);
 
-		await expect(submitDefinition("invalid", "oidc-token")).rejects.toMatchObject({
+		await expect(submitDefinition("invalid")).rejects.toMatchObject({
 			status: 400,
 			message: expect.stringContaining("Definition is invalid"),
 		});
@@ -107,7 +123,7 @@ describe("submitDefinition", () => {
 				new Response(JSON.stringify({ workflow: "order" }), { status: 200 }),
 			);
 
-		await expect(submitDefinition("document: {}", "oidc-token")).rejects.toMatchObject({
+		await expect(submitDefinition("document: {}")).rejects.toMatchObject({
 			status: 200,
 			message: expect.stringContaining("unexpected apply result"),
 		});
@@ -118,8 +134,218 @@ describe("submitDefinition", () => {
 			.fn()
 			.mockResolvedValue(new Response("unavailable", { status: 503 }));
 
-		await expect(submitDefinition("document: {}", "oidc-token")).rejects.toMatchObject({
+		await expect(submitDefinition("document: {}")).rejects.toMatchObject({
 			status: 503,
 		});
+	});
+});
+
+describe("centralized token acquisition", () => {
+	function jsonResponse(body: unknown): Response {
+		return new Response(JSON.stringify(body), {
+			status: 200,
+			headers: { "Content-Type": "application/json" },
+		});
+	}
+
+	it("acquires the current access token for every JSON read", async () => {
+		const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+		globalThis.fetch = fetchMock;
+
+		await getJson("/workflows");
+
+		expect(mockedGetAccessToken).toHaveBeenCalledTimes(1);
+		const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		const headers = new Headers(init.headers);
+		expect(headers.get("Authorization")).toBe("Bearer test-token");
+	});
+
+	it("sends two sequential reads with two distinct, freshly-acquired tokens", async () => {
+		mockedGetAccessToken
+			.mockReset()
+			.mockResolvedValueOnce("token-1")
+			.mockResolvedValueOnce("token-2");
+		const fetchMock = vi
+			.fn()
+			.mockImplementation(() =>
+				Promise.resolve(jsonResponse({ items: [], nextCursor: null })),
+			);
+		globalThis.fetch = fetchMock;
+
+		await fetchWorkflows();
+		await fetchWorkflows();
+
+		expect(mockedGetAccessToken).toHaveBeenCalledTimes(2);
+		const headersOf = (index: number) =>
+			new Headers(
+				(fetchMock.mock.calls[index] as [string, RequestInit])[1].headers,
+			);
+		expect(headersOf(0).get("Authorization")).toBe("Bearer token-1");
+		expect(headersOf(1).get("Authorization")).toBe("Bearer token-2");
+	});
+
+	it("never places the access token in the request URL or query string", async () => {
+		mockedGetAccessToken.mockResolvedValue("super-secret-token");
+		const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+		globalThis.fetch = fetchMock;
+
+		await getJson("/workflows", { limit: 20 });
+
+		const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).not.toContain("super-secret-token");
+	});
+});
+
+// ── Fetch-based SSE transport ────────────────────────────────────────────
+
+/** Encodes a small named-event SSE fixture as a one-shot readable byte stream. */
+function sseStream(frames: string): ReadableStream<Uint8Array> {
+	const encoder = new TextEncoder();
+	return new ReadableStream({
+		start(controller) {
+			controller.enqueue(encoder.encode(frames));
+			controller.close();
+		},
+	});
+}
+
+const FIXTURE_FRAMES =
+	'event: instance\ndata: {"instanceId":"i-1","status":"completed"}\n\n' +
+	'event: task\ndata: {"id":"t-1","instanceId":"i-1"}\n\n';
+
+function streamResponse(
+	body: ReadableStream<Uint8Array> | null,
+	status = 200,
+): Response {
+	return new Response(body, { status });
+}
+
+describe("subscribeToInstance (fetch/ReadableStream SSE)", () => {
+	it("opens with Accept: text/event-stream and the current bearer token, and dispatches named events", async () => {
+		mockedGetAccessToken.mockResolvedValueOnce("token-1");
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(streamResponse(sseStream(FIXTURE_FRAMES)));
+		globalThis.fetch = fetchMock;
+
+		const onInstance = vi.fn();
+		const onTask = vi.fn();
+		const subscription = subscribeToInstance("i-1", { onInstance, onTask });
+
+		await vi.waitFor(() => {
+			expect(onInstance).toHaveBeenCalledWith({
+				instanceId: "i-1",
+				status: "completed",
+			});
+			expect(onTask).toHaveBeenCalledWith({ id: "t-1", instanceId: "i-1" });
+		});
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toContain("/instances/i-1/events");
+		const headers = new Headers(init.headers);
+		expect(headers.get("Accept")).toBe("text/event-stream");
+		expect(headers.get("Authorization")).toBe("Bearer token-1");
+
+		subscription.close();
+		expect((init.signal as AbortSignal).aborted).toBe(true);
+	});
+
+	it("calls onOpen before reading frames, reconnects with a renewed token, and resyncs", async () => {
+		vi.useFakeTimers();
+		mockedGetAccessToken
+			.mockResolvedValueOnce("token-1")
+			.mockResolvedValueOnce("token-2");
+
+		// First connection ends the stream after one event (a disconnect), the
+		// second stays open with the fixture frames.
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(
+				streamResponse(
+					sseStream(
+						'event: instance\ndata: {"instanceId":"i-1","status":"started"}\n\n',
+					),
+				),
+			)
+			.mockResolvedValueOnce(streamResponse(sseStream(FIXTURE_FRAMES)));
+		globalThis.fetch = fetchMock;
+
+		const onOpen = vi.fn();
+		const onInstance = vi.fn();
+		const onTask = vi.fn();
+		const subscription = subscribeToInstance("i-1", {
+			onOpen,
+			onInstance,
+			onTask,
+		});
+
+		await vi.waitFor(() => expect(onOpen).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+		// Let exactly the first scheduled reconnect fire, then close before the
+		// second connection's own end-of-stream reconnect would be due — this
+		// test is about one reconnect using a renewed token, not the backoff loop.
+		await vi.advanceTimersByTimeAsync(1_000);
+		await vi.waitFor(() => expect(onOpen).toHaveBeenCalledTimes(2));
+		await vi.waitFor(() =>
+			expect(onTask).toHaveBeenCalledWith({ id: "t-1", instanceId: "i-1" }),
+		);
+		subscription.close();
+
+		expect(mockedGetAccessToken).toHaveBeenCalledTimes(2);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		const secondHeaders = new Headers(
+			(fetchMock.mock.calls[1] as [string, RequestInit])[1].headers,
+		);
+		expect(secondHeaders.get("Authorization")).toBe("Bearer token-2");
+	});
+
+	it("closes on a terminal instance event and never reconnects", async () => {
+		vi.useFakeTimers();
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(
+				streamResponse(
+					sseStream(
+						'event: instance\ndata: {"instanceId":"i-1","status":"completed"}\n\n',
+					),
+				),
+			);
+		globalThis.fetch = fetchMock;
+
+		let subscription!: { close(): void };
+		const onInstance = vi.fn((event: { status: string }) => {
+			if (event.status === "completed") subscription.close();
+		});
+		subscription = subscribeToInstance("i-1", { onInstance, onTask: vi.fn() });
+
+		await vi.waitFor(() => expect(onInstance).toHaveBeenCalledTimes(1));
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("treats a 401 as terminal and does not retry anonymously", async () => {
+		vi.useFakeTimers();
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(new Response(null, { status: 401 }));
+		globalThis.fetch = fetchMock;
+
+		const onError = vi.fn();
+		const subscription = subscribeToInstance("i-1", {
+			onError,
+			onInstance: vi.fn(),
+			onTask: vi.fn(),
+		});
+
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(onError).toHaveBeenCalled();
+
+		subscription.close();
 	});
 });
