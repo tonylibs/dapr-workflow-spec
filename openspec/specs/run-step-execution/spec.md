@@ -180,9 +180,9 @@ policy re-invokes the step.
 - **THEN** the response status is `502`
 
 ### Requirement: Spawn failures are retryable
-A failure to spawn the subprocess at all — a missing interpreter, a permission error, or any
-other transport-equivalent fault — SHALL fail the `Run` activity with a stable
-upstream/transport-equivalent marker, matching `dws-call-http`'s handling of transport errors,
+A failure to spawn the subprocess at all SHALL fail the `Run` activity with a stable
+upstream/transport-equivalent marker — whether a missing interpreter, a permission error, or any
+other transport-equivalent fault — matching `dws-call-http`'s handling of transport errors,
 so `dws-orchestrator` classifies it as a communication error and the workflow retries rather than
 failing the instance.
 

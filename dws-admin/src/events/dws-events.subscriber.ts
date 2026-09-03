@@ -1,5 +1,4 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { DaprPubSub } from '@dbc-tech/nest-dapr';
 import type { CloudEventV1 } from 'cloudevents';
 import { DB } from '../store/store.module';
 import type { Db } from '../store/db.type';
@@ -9,18 +8,13 @@ import { ControllerEventsHandler } from './controller-events.handler';
 import { OrchestratorEventsHandler } from './orchestrator-events.handler';
 import { InstanceEventsService, type LiveEvent } from './instance-events.service';
 
-// pubsubName/topic must be statically resolvable at class-definition time
-// (the decorator's arguments), so this reads process.env directly rather
-// than going through Nest's DI-resolved ConfigService (see design D3).
-const PUBSUB_NAME = process.env.DAPR_PUBSUB_NAME ?? 'pubsub';
-const TOPIC = process.env.DAPR_PUBSUB_TOPIC ?? 'dws.events';
-
 /**
- * Owns the single Dapr subscription to the shared dws.events topic. Dapr's
- * SDK allows only one subscription per (pubsubName, topic) pair with no
- * matching route, so every event type funnels through this one entry point
- * and is dispatched by envelope.type to ControllerEventsHandler or
- * OrchestratorEventsHandler (design D3).
+ * Owns processing of the shared dws.events topic. Every event type funnels
+ * through this one entry point and is dispatched by envelope.type to
+ * ControllerEventsHandler or OrchestratorEventsHandler (design D3). This
+ * class is a decorator-free injectable domain service: the HTTP adapter that
+ * calls it (`DaprSubscriptionController`) owns Dapr's programmatic
+ * subscription contract (`GET /dapr/subscribe`, `POST /dapr/events/dws`).
  */
 @Injectable()
 export class DwsEventsSubscriber {
@@ -36,14 +30,13 @@ export class DwsEventsSubscriber {
   /**
    * The message Dapr delivers is our documented CloudEvent (docs/events.md),
    * carried as the `data` of Dapr's own transport CloudEvent. It arrives here
-   * as an already-parsed object, or — per @dapr/dapr's callback contract
+   * as an already-parsed object, or — per Dapr's pubsub delivery contract
    * ("typically string or object") — as its JSON text; `decodeEventEnvelope`
    * accepts either and validates it with the CloudEvents SDK. The declared
    * type states that expectation; it is not a runtime guarantee, so a
    * non-conforming payload is still rejected below rather than trusted.
    */
-  @DaprPubSub(PUBSUB_NAME, TOPIC)
-  async onMessage(message: CloudEventV1<unknown> | string): Promise<void> {
+  async process(message: CloudEventV1<unknown> | string): Promise<void> {
     let envelope;
     try {
       envelope = decodeEventEnvelope(message);

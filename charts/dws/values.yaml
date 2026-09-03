@@ -12,7 +12,7 @@ global:
   security:
     allowInsecureImages: true
 
-# Defaults for every chart-owned Deployment (controller, admin, admin-gateway, and console).
+# Defaults for every chart-owned Deployment (controller, admin, and console).
 # Component `resources`, `nodeSelector`, and `affinity` maps deep-merge with these defaults;
 # a non-empty component `tolerations` list replaces defaults.tolerations. Override only the
 # settings that differ for a component. PostgreSQL is an upstream StatefulSet subchart, so its
@@ -100,34 +100,104 @@ auth:
   dex:
     enabled: false
 
-# admin-gateway (auth roadmap Phase 4, docs/roadmaps/dws-auth.md): a chart-bundled nginx
-# reverse proxy that lets dws-console reach dws-admin's Phase 3 write-relay from a browser.
-# Answers the CORS preflight for the console origin locally, then forwards the real request
-# to dws-admin's Dapr sidecar invoke path so the sidecar's bearer middleware (see auth.enabled
-# above) verifies the token before dws-admin's app code ever sees it. Ships inside charts/dws;
-# NOT an assumed cluster Ingress. Off by default so `helm upgrade` is a topological no-op
-# unless the operator opts in.
-adminGateway:
+# Apache APISIX (auth roadmap §2b, docs/roadmaps/dws-auth.md): the optional Gateway API data
+# plane + ingress controller backing the shared console/admin front door (see apiGateway below).
+# Off by default — apisix.enabled only controls whether THIS chart installs its own bundled
+# APISIX; it is independent from apiGateway.enabled, which controls whether DWS's own
+# GatewayClass/Gateway/HTTPRoutes render at all. That split lets an operator point
+# apiGateway.enabled=true at an externally managed APISIX/Gateway API controller instead
+# (see apiGateway.external.gatewayProxyName) without this chart ever assuming a platform-wide
+# APISIX install. Values under apisix.* flow straight into the upstream apache/apisix-helm-chart
+# subchart (https://github.com/apache/apisix-helm-chart/tree/apisix-2.16.0/charts/apisix) — the
+# nested ingress-controller block configures that subchart's own bundled apisix-ingress-controller
+# child the same way.
+#
+# IMPORTANT for migrating an EXISTING release: apisix.enabled=true only self-bootstraps its CRDs
+# and bundled etcd on a brand-new `helm install`; flipping it on via `helm upgrade` on a release
+# that never had it deadlocks (see the apiGateway comment block below for why, and
+# charts/dws/README.md#upgrading-from-a-pre-gateway-release for the verified recipe).
+apisix:
   enabled: false
-  replicaCount: 1
-  image:
-    repository: nginx
-    tag: "1.29-alpine"
-    pullPolicy: IfNotPresent
   service:
     type: ClusterIP
-    port: 80
-  resources: {}
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-  # Browser origins allowed to call the write relay through this gateway. MUST be a non-empty
-  # list of explicit scheme+host+optional-port strings when adminGateway.enabled=true; wildcards
-  # ("*") are rejected at render time (a credentialed cross-origin write cannot combine with a
-  # wildcard Access-Control-Allow-Origin). Example:
-  #   corsOrigins:
-  #     - https://console.example.com
-  corsOrigins: []
+    # The upstream apisix subchart's own default (externalTrafficPolicy: Cluster) is only valid
+    # for NodePort/LoadBalancer Services; left at that default alongside type: ClusterIP above,
+    # a real API server rejects the rendered Service outright ("may only be set for
+    # externally-accessible services") — this was never caught by helm lint/template (which
+    # don't run Kubernetes' apimachinery validation) and only surfaces on a live install. Clear
+    # it here so a plain `apisix.enabled=true` bundled install actually deploys.
+    externalTrafficPolicy: ""
+  # apisix-ingress-controller is APISIX's own conditional child dependency (Gateway API
+  # reconciliation). Keep it enabled whenever apisix.enabled=true — DWS's Gateway/HTTPRoute
+  # objects have no controller to reconcile them otherwise.
+  ingress-controller:
+    enabled: true
+    config:
+      disableGatewayAPI: false
+      listenerPortMatchMode: auto
+    gatewayProxy:
+      # DWS owns creating its own release/namespace-qualified GatewayProxy
+      # (templates/api-gateway/gatewayproxy.yaml) rather than using the ingress-controller's
+      # single implicit default, so two DWS releases in the same cluster don't collide.
+      createDefault: false
+
+# apiGateway (auth roadmap §2b, docs/roadmaps/dws-auth.md): the shared Kubernetes Gateway API
+# front door for dws-console and dws-admin, superseding the old chart-bundled nginx
+# admin-gateway and the console's plain Ingress. Off by default so `helm upgrade` is a
+# topological no-op unless the operator opts in. When enabled, requires auth.enabled=true,
+# admin.enabled=true, and console.enabled=true — the Gateway has no admin bearer middleware or
+# backend to route to otherwise.
+#
+# Two operating modes, selected by apisix.enabled above:
+#   (a) Bundled APISIX (apisix.enabled=true): this chart creates its own namespaced
+#       GatewayProxy bound to the bundled APISIX control plane's admin API.
+#   (b) External APISIX (apisix.enabled=false): apiGateway.external.gatewayProxyName MUST name
+#       an existing GatewayProxy managed outside this chart; a render-time preflight check
+#       requires Gateway API v1 and APISIX apisix.apache.org/v1alpha1 CRDs to already be present
+#       (see templates/_preflight.tpl).
+#
+# MIGRATING AN EXISTING RELEASE (verified live, see charts/dws/README.md#upgrading-from-a-pre-
+# gateway-release and scripts/verify-console-ingress-migration.sh): mode (a), bundled APISIX,
+# can ONLY be turned on via a brand-new `helm install`. Enabling apisix.enabled=true via
+# `helm upgrade` on a release that never had it before deadlocks on the bundled Bitnami-etcd
+# sub-chart's `pre-upgrade` hook — that hook requires a JWT Secret that only the main manifest
+# sync (which never runs, because the hook blocks first) would create, and Helm never re-applies
+# a subchart's crds/ directory on upgrade in the first place. This never surfaces in
+# `helm template`/`helm lint`, only on a real cluster. For an EXISTING release migrating off
+# console.ingress.enabled=true, use mode (b) instead: install APISIX as its own separate Helm
+# release first, then point apiGateway.external.gatewayProxyName at a GatewayProxy bound to it.
+apiGateway:
+  enabled: false
+  # Whether this chart creates the (cluster-scoped) GatewayClass. Set to false and provide
+  # gatewayClassName to attach to an operator-owned GatewayClass instead — useful when another
+  # release or platform team already owns one APISIX-controller GatewayClass per cluster.
+  createGatewayClass: true
+  # Explicit GatewayClass name. Required when createGatewayClass=false. When createGatewayClass
+  # is true and this is left empty, the chart derives a release-and-namespace-qualified name
+  # (see dws.apiGateway.className in _helpers.tpl) so multiple releases/namespaces never collide
+  # on the one cluster-scoped GatewayClass resource.
+  gatewayClassName: ""
+  # The APISIX ingress controller's registered controllerName. Only change this if a different
+  # APISIX ingress-controller release/version registers under another name.
+  controllerName: apisix.apache.org/apisix-ingress-controller
+  # Public hostname the Gateway listener answers on. Left empty, the listener has no hostname
+  # restriction (matches any Host header) — set this for a real deployment alongside TLS below.
+  hostname: ""
+  tls:
+    enabled: false
+    # Name of an existing Kubernetes TLS Secret (same namespace as the release) the Gateway's
+    # HTTPS listener terminates with. Required when tls.enabled=true.
+    certificateName: ""
+  external:
+    # Required when apisix.enabled=false: the name of an existing, externally managed APISIX
+    # GatewayProxy (apisix.apache.org/v1alpha1) in the release namespace that the Gateway binds
+    # to. Ignored when apisix.enabled=true (this chart creates its own).
+    gatewayProxyName: ""
+
+# admin-gateway is REMOVED (auth roadmap §2b). The chart-bundled nginx reverse proxy and its
+# CORS preflight relay are superseded by the shared Gateway API front door above — see
+# apiGateway.enabled and apisix.enabled. There is no adminGateway.* value contract anymore;
+# any persisted adminGateway.* values are simply unrecognized/ignored by this chart version.
 
 # dws-admin read model service. Toggle the whole stack with admin.enabled.
 admin:
@@ -219,19 +289,15 @@ console:
   nodeSelector: {}
   tolerations: []
   affinity: {}
-  # Optional ingress for the console. Off by default. When enabled, a single-rule Ingress routes
-  # the configured host/path to the console Service. This chart intentionally does not own a
-  # combined console+admin Ingress or an admin.ingress block until dws-console's runtime-config
-  # shim (/config.json) lets each installation choose its admin URL. The baked `/dws-admin`
-  # default therefore remains operator-owned today (a second rule or a rebuilt console image).
+  # REMOVED (auth roadmap §2b): the chart-owned console Ingress template is gone, superseded by
+  # the shared apiGateway Gateway API front door above (see apiGateway.enabled, apiGateway.hostname,
+  # apiGateway.tls). ingress.enabled is kept ONLY as a deprecation trap — a leftover
+  # console.ingress.enabled=true in a prior install's persisted values fails render/upgrade with
+  # migration guidance (see dws.console.legacyIngress.validate in _helpers.tpl) rather than
+  # silently dropping the route. There is no other console.ingress.* value; className/host/path/
+  # annotations/tls all migrate onto apiGateway.hostname / apiGateway.tls instead.
   ingress:
     enabled: false
-    className: ""
-    host: ""
-    path: /
-    pathType: Prefix
-    annotations: {}
-    tls: []
 
 # Dex, an optional in-chart IdP for dws-console (auth roadmap Phase 0, docs/roadmaps/dws-auth.md),
 # provided by the upstream dexidp/helm-charts "dex" chart as a conditional dependency (see

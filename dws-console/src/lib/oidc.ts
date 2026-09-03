@@ -55,4 +55,23 @@ export function useAuth(): AuthState {
 	return toAuthState(useOidc());
 }
 
+/**
+ * The sole function that obtains the current access token (design D6).
+ *
+ * This is the one place in the console allowed to read a token out of the
+ * OIDC client: every admin request goes through `admin-client.ts`'s
+ * `adminFetch`, which awaits this function immediately before sending the
+ * request so a silently renewed token is always the one attached. Nothing
+ * downstream of this call may cache the returned string — pass it straight
+ * into a header and let it go out of scope.
+ *
+ * Rejects (via `getOidc`'s login assertion) when the user is not signed in,
+ * which callers surface as an authentication outcome rather than a normal
+ * transport failure.
+ */
+export async function getAccessToken(): Promise<string> {
+	const authenticated = await getOidc({ assert: "user logged in" });
+	return authenticated.getAccessToken();
+}
+
 export type { AuthState };

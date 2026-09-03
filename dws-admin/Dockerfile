@@ -35,5 +35,7 @@ COPY package.json ./
 
 # node:24-slim ships a non-root `node` user.
 USER node
-EXPOSE 3000 3001
+# One listener: API, SSE, and Dapr pub/sub discovery/delivery all share
+# port 3000 — there is no second Dapr application server/port.
+EXPOSE 3000
 CMD ["node", "dist/main.js"]

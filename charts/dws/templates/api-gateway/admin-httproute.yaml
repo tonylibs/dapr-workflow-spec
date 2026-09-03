@@ -1,0 +1,46 @@
+{{- /*
+Shared API Gateway (auth roadmap §2b): the admin HTTPRoute. Matches PathPrefix /dws-admin and
+rewrites it to Dapr's service-invocation URL shape (/v1.0/invoke/<admin-app-id>/method), then
+forwards to the admin Service — which in gateway mode (apiGateway.enabled=true) targets only the
+Dapr sidecar's HTTP port 3500 (see templates/admin/service.yaml), forcing every browser-facing
+admin request through the sidecar's bearer middleware before dws-admin's app code ever sees it.
+
+Method, request body, query string, and Authorization/content headers are untouched by this
+rule — Gateway API HTTPRoute forwarding is transparent for anything not named in `filters`, and
+this rule adds only the one URLRewrite filter. No response-buffering/transforming filter is
+configured, so SSE responses on this same path stream through unmodified.
+
+Path-prefix matching ranks this rule ahead of the console's PathPrefix "/" rule
+(console-httproute.yaml) on the shared listener, so /dws-admin/* always resolves here.
+*/ -}}
+{{- if .Values.apiGateway.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "dws.admin.fullname" . }}-route
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api-gateway
+spec:
+  parentRefs:
+    - name: {{ include "dws.apiGateway.gatewayName" . }}
+  {{- with .Values.apiGateway.hostname }}
+  hostnames:
+    - {{ . | quote }}
+  {{- end }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /dws-admin
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /v1.0/invoke/{{ include "dws.admin.fullname" . }}/method
+      backendRefs:
+        - name: {{ include "dws.admin.fullname" . }}
+          port: {{ .Values.admin.service.port }}
+{{- end }}

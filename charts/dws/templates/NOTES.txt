@@ -1,3 +1,18 @@
+{{- if .Values.apiGateway.enabled }}
+The shared API Gateway is enabled. Console and admin share one Gateway API front door
+(GatewayClass {{ include "dws.apiGateway.className" . }}, Gateway {{ include "dws.apiGateway.gatewayName" . }}):
+  - `/dws-admin/*` routes through Dapr service invocation to the dws-admin sidecar's
+    bearer-gated middleware (dws-admin's app port is not directly reachable).
+  - every other path routes to dws-console.
+{{- if .Values.apisix.enabled }}
+APISIX is bundled with this release. Find its externally reachable address with:
+
+  kubectl get svc -n {{ include "dws.namespace" . }} -l app.kubernetes.io/instance={{ .Release.Name }} -l app.kubernetes.io/name=apisix
+{{- else }}
+APISIX/Gateway API is externally managed (apisix.enabled=false); this chart only renders the
+GatewayClass/Gateway/HTTPRoute objects, bound to apiGateway.external.gatewayProxyName.
+{{- end }}
+{{- end }}
 {{- if .Values.dex.enabled }}
 Dex (dws-console's in-chart IdP) is enabled.
 

@@ -1,0 +1,32 @@
+{{- /*
+Shared API Gateway (auth roadmap §2b): the console fallback HTTPRoute. Matches PathPrefix / on
+the same Gateway listener as the admin route (admin-httproute.yaml) and forwards to the console
+Service unmodified — no filters, so method/body/headers/query and streamed bodies pass through
+untouched. Gateway API HTTPRoute matching selects the more specific /dws-admin PathPrefix rule
+ahead of this catch-all, so admin paths never fall through to the console Service.
+*/ -}}
+{{- if .Values.apiGateway.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "dws.console.fullname" . }}-route
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api-gateway
+spec:
+  parentRefs:
+    - name: {{ include "dws.apiGateway.gatewayName" . }}
+  {{- with .Values.apiGateway.hostname }}
+  hostnames:
+    - {{ . | quote }}
+  {{- end }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "dws.console.fullname" . }}
+          port: {{ .Values.console.service.port }}
+{{- end }}

@@ -6,7 +6,6 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { raw } from 'express';
 import { AppModule } from './app.module';
 import type { AppConfig } from './config/configuration';
-import { corsOptions } from './config/cors';
 import { runMigrations } from './store/run-migrations';
 
 async function bootstrap() {
@@ -24,10 +23,11 @@ async function bootstrap() {
   // query-string form), and 400 on out-of-range values.
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
-  // dws-console runs as a separate origin unless both sit behind one ingress,
-  // and a browser will not deliver a cross-origin response without these
-  // headers. Configured through CORS_ORIGINS.
-  app.enableCors(corsOptions(config.get('corsOrigins', { infer: true })));
+  // No CORS bootstrap: the public console/admin path is same-origin through
+  // the shared Gateway (Dapr's bearer-gated invoke prefix), and local
+  // development proxies dws-console's dev server to this API instead of
+  // making a cross-origin browser request. See README's "Local development"
+  // section.
 
   // Publish the read API's OpenAPI document at /docs — dws-console generates a
   // typed client from this contract.

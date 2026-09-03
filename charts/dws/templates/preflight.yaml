@@ -1,5 +1,9 @@
 {{- /*
 Renders on every helm template/install/upgrade regardless of which components are toggled on,
-so the Dapr preflight check (see _preflight.tpl) always runs. Emits no resource itself.
+so the Dapr and API Gateway preflight checks (see _preflight.tpl) and the shared API Gateway /
+legacy-Ingress value validations (see _helpers.tpl) always run. Emits no resource itself.
 */ -}}
 {{- include "dws.preflight.dapr" . -}}
+{{- include "dws.preflight.apiGateway" . -}}
+{{- include "dws.apiGateway.validate" . -}}
+{{- include "dws.console.legacyIngress.validate" . -}}

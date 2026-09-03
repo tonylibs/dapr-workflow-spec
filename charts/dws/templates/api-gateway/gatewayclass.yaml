@@ -1,0 +1,17 @@
+{{- /*
+Shared API Gateway (auth roadmap §2b): the cluster-scoped GatewayClass identifying the APISIX
+ingress controller. Rendered only when this chart owns the class (apiGateway.createGatewayClass,
+the default); external mode instead references an operator-owned GatewayClass by name via
+apiGateway.gatewayClassName (see dws.apiGateway.className in _helpers.tpl, used by gateway.yaml).
+*/ -}}
+{{- if and .Values.apiGateway.enabled .Values.apiGateway.createGatewayClass }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: {{ include "dws.apiGateway.className" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api-gateway
+spec:
+  controllerName: {{ .Values.apiGateway.controllerName }}
+{{- end }}

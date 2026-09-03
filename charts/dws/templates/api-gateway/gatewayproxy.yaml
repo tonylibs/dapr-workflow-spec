@@ -1,0 +1,33 @@
+{{- /*
+Shared API Gateway (auth roadmap §2b): the bundled-mode GatewayProxy binding
+(apisix.apache.org/v1alpha1) that tells the APISIX ingress controller how to reach this
+release's own APISIX control-plane Admin API. Rendered only when apisix.enabled=true —
+external mode instead requires an existing GatewayProxy the operator already manages
+(apiGateway.external.gatewayProxyName, validated in _helpers.tpl and referenced by gateway.yaml).
+
+The ControlPlane Service name/port here (<dws.apisix.fullname>-admin:9180) mirrors the pinned
+apache/apisix-helm-chart 2.16.0's own admin Service exactly (charts/apisix/templates/
+service-admin.yaml), and the admin key mirrors that subchart's default admin.credentials.admin
+value unless the operator overrode it under apisix.admin.credentials.admin.
+*/ -}}
+{{- if and .Values.apiGateway.enabled .Values.apisix.enabled }}
+apiVersion: apisix.apache.org/v1alpha1
+kind: GatewayProxy
+metadata:
+  name: {{ include "dws.apiGateway.gatewayProxyName" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api-gateway
+spec:
+  provider:
+    type: ControlPlane
+    controlPlane:
+      service:
+        name: {{ include "dws.apisix.fullname" . }}-admin
+        port: 9180
+      auth:
+        type: AdminKey
+        adminKey:
+          value: {{ dig "admin" "credentials" "admin" "edd1c9f034335f136f87ad84b625c8f1" .Values.apisix | quote }}
+{{- end }}

@@ -87,7 +87,7 @@ describe('decodeEventEnvelope', () => {
     expect(envelope.datacontenttype).toBe('application/json');
   });
 
-  it('parses a raw JSON string payload (per @dapr/dapr\'s documented "string or object" callback type)', () => {
+  it('parses a raw JSON string payload (per Dapr\'s documented "string or object" pubsub delivery payload)', () => {
     const raw = JSON.stringify({ id: '1', type: 'io.dws.instance.started', source: 's', time: TIME, data: { instanceId: 'x' } });
 
     const envelope = decodeEventEnvelope(raw);

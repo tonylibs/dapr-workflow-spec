@@ -35,8 +35,8 @@ export class ControllerRelayService {
   ) {
     const dapr = config.get('dapr', { infer: true });
     // Sidecar host defaults to loopback because daprd is injected into
-    // dws-admin's own pod. Ports/host are the same ones nest-dapr already
-    // consumes for pubsub and state.
+    // dws-admin's own pod. Ports/host are the same ones the Dapr subscription
+    // adapter already consumes for pubsub delivery.
     const host = dapr.daprHost ?? '127.0.0.1';
     const port = dapr.daprPort ?? '3500';
     this.sidecarBaseUrl = `http://${host}:${port}`;

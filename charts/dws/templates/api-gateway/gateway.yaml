@@ -1,0 +1,51 @@
+{{- /*
+Shared API Gateway (auth roadmap §2b): the one namespaced Gateway listener console and admin
+HTTPRoutes both attach to. Binds to the resolved GatewayClass and GatewayProxy (bundled or
+external, see dws.apiGateway.className / dws.apiGateway.gatewayProxyName in _helpers.tpl).
+Renders an HTTP:80 listener by default; when apiGateway.tls.enabled, also renders an HTTPS:443
+listener terminating with the configured Secret. hostname is applied to both listeners only when
+non-empty, matching any Host header otherwise.
+*/ -}}
+{{- if .Values.apiGateway.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ include "dws.apiGateway.gatewayName" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api-gateway
+spec:
+  gatewayClassName: {{ include "dws.apiGateway.className" . }}
+  infrastructure:
+    parametersRef:
+      group: apisix.apache.org
+      kind: GatewayProxy
+      name: {{ include "dws.apiGateway.gatewayProxyName" . }}
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      {{- with .Values.apiGateway.hostname }}
+      hostname: {{ . | quote }}
+      {{- end }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- if .Values.apiGateway.tls.enabled }}
+    - name: https
+      protocol: HTTPS
+      port: 443
+      {{- with .Values.apiGateway.hostname }}
+      hostname: {{ . | quote }}
+      {{- end }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: {{ .Values.apiGateway.tls.certificateName }}
+    {{- end }}
+{{- end }}

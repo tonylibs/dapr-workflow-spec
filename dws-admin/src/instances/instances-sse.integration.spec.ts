@@ -28,7 +28,7 @@ describe('Instances SSE push API (integration)', () => {
 
   let eventSeq = 0;
   const ingest = (type: string, data: Record<string, unknown>) =>
-    subscriber.onMessage(
+    subscriber.process(
       new CloudEvent({
         id: `evt-${++eventSeq}`,
         source: '/dws-orchestrator',
