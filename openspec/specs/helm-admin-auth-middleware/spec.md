@@ -78,33 +78,28 @@ Owning component: `charts/dws` (`templates/admin/auth-configuration.yaml`).
 
 ### Requirement: Bearer middleware verifies tokens before the dws-admin app runs
 
-At runtime when `auth.enabled=true`, the sidecar SHALL reject an inbound request that reaches
-`dws-admin` via Dapr service invocation with `401` (or `403` for role
-failures, if a role middleware is present) when the request carries no `Authorization` header,
-a malformed token, a token with a tampered signature, a wrong `aud`, or a wrong `iss`. In each
-of those cases the `dws-admin` application container SHALL NOT observe the request in its own
-access log. A valid token SHALL be forwarded and the application SHALL observe it in its access
-log.
+At runtime, the shared API Gateway SHALL route every browser-facing `dws-admin` read, write,
+OpenAPI, and SSE request to the admin app only through Dapr service invocation and the
+admin sidecar's bearer middleware. The sidecar MUST reject a missing Authorization header, a
+malformed token, a tampered signature, a wrong `aud`, or a wrong `iss` before Nest observes the
+request. A valid token SHALL be forwarded to the matching Nest route. Dapr's internal
+programmatic-subscription discovery and pub/sub callback delivery SHALL continue to reach the app
+without requiring a browser bearer token. Owning component: `charts/dws`.
 
-Owning component: `charts/dws` (`templates/admin/auth-component.yaml`,
-`templates/admin/auth-configuration.yaml`, `templates/admin/deployment.yaml`).
+#### Scenario: Missing Authorization header on read
+- **WHEN** the gateway sends `GET /instances` through the admin Dapr invoke path without an
+  Authorization header
+- **THEN** the sidecar responds 401 and Nest does not observe the request
 
-#### Scenario: Missing Authorization header
+#### Scenario: Valid bearer token reaches read and write routes
+- **WHEN** requests for an admin GET route and `POST /workflows` carry a valid configured token
+- **THEN** the sidecar forwards both requests to Nest on port 3000
 
-- **WHEN** the sidecar's Dapr-invoke endpoint receives a request with no `Authorization`
-  header addressed at the admin app-id
-- **THEN** the sidecar responds `401`
-- **AND** the `dws-admin` container's access log records no matching request
+#### Scenario: Invalid token does not reach SSE route
+- **WHEN** an SSE request carries a malformed, tampered, wrong-audience, or wrong-issuer token
+- **THEN** the sidecar rejects it with 401 and no SSE subscription is opened in Nest
 
-#### Scenario: Valid bearer token from the configured issuer/audience
-
-- **WHEN** the sidecar's Dapr-invoke endpoint receives a request whose bearer token was
-  signed by the configured issuer, carries the configured audience, and is unexpired
-- **THEN** the sidecar forwards the request to the `dws-admin` container
-- **AND** the container's access log records the request
-
-#### Scenario: Malformed, tampered-signature, wrong-audience, or wrong-issuer token
-
-- **WHEN** any of those failure cases is presented at the sidecar
-- **THEN** the sidecar responds `401` (or `403` for role failures, if configured)
-- **AND** the `dws-admin` container's access log records no matching request
+#### Scenario: Pubsub callback remains internal
+- **WHEN** Dapr discovers subscriptions or delivers a `dws.events` message to the app callback
+- **THEN** the callback reaches Nest on app-port 3000 without an end-user bearer token and event
+  ingestion continues
