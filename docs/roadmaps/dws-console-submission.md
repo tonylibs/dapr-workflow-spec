@@ -38,7 +38,8 @@ flowchart TD
   P1 --> P4["Phase 4: Workflow diagram"]
   P4 --> P5["Phase 5: Visual editor<br/>(exploratory)"]
   P2 -.informs.-> P5
-  AuthLater["dws-auth.md<br/>(later, separate)"] -.guards/replaces.-> P1
+  Auth["dws-auth.md Phase 5 ✅ 2026-08-31<br/>bearer token attached"] -.replaced direct call.-> P1
+  Gateway["dws-auth.md Phase 4 ✅ 2026-09-03<br/>same-origin /dws-admin via Gateway"] -.default base URL now.-> P1
 ```
 
 ## 3. Phased roadmap
@@ -46,7 +47,7 @@ flowchart TD
 | Phase | Sub-feature | Depends on | Status |
 |---|---|---|---|
 | **1** | **Definition editor** — write or paste a DSL 1.0 definition and submit it to the cluster | dws-auth Phase 1 OIDC client + Phase 3 `dws-admin` write relay | ✅ done — `dws-console-definition-editor` |
-| **2** | **Validation preview** — see what a definition will deploy, and why it's invalid, before committing it | Phase 1 | ❌ not started |
+| **2** | **Validation preview** — see what a definition will deploy, and why it's invalid, before committing it | Phase 1 | ❌ not started — design decided 2026-09-03 (two-layer validation, see §6) |
 | **3** | **File import** — load a definition from a local `.yaml`/`.yml`/`.json` file instead of typing it | Phase 1 | ❌ not started |
 | **4** | **Workflow diagram** — see the task graph a definition describes, laid out automatically | Phase 1 | ❌ not started |
 | **5** | **Visual editor** — inspect, then edit, a workflow directly on the diagram instead of the text | Phase 4 | ❌ not started — exploratory |
@@ -82,13 +83,102 @@ flowchart TD
   than bundled into "Phase 5." Underlying architecture, once a depth is chosen: the parsed
   definition (not the text or the diagram) is the single source of truth — the editor, the diagram,
   and the text view all read from and write to it, never to each other directly.
-- **Error precision**: the flat `errors[]` string list has no line/path mapping until
-  [OWS Phase 3](openworkflow-features.md#phased-roadmap) ships an RFC 7807 model — until then the
-  editor can show the message list but can't highlight the offending line.
-- **Gateway rollout remains separate**: Phase 1 calls the Phase 3 relay directly using the console's
-  bearer token. The Phase 4 gateway can later become the browser-facing route without changing
-  editor semantics.
+- **Error precision — corrected 2026-09-03.** This was previously written as blocked on
+  [OWS Phase 3](openworkflow-features.md#phased-roadmap) shipping an RFC 7807 model. That's wrong:
+  OWS Phase 3 (`openspec/changes/ows-phase3-errors-timeouts`) is about *runtime* error kinds
+  (`WorkflowErrors`, used by `catch`/`retry` while an instance is executing) — a different code
+  path from `dws-controller`'s compile-time `CompilationException`, which is what dry-run actually
+  throws (a flat `List<String>`, unrelated to that change). Error precision isn't blocked on
+  anything upstream; see §6 for how the new dws-admin spec-validation layer solves it directly via
+  ajv's `instancePath`, without touching dws-controller at all.
+- **Gateway rollout — closed, as predicted.** `dws-auth.md` Phase 4 (Kubernetes Gateway API via
+  APISIX) merged 2026-09-03. As this section anticipated, it changed nothing about editor
+  semantics: `dws-console/src/lib/admin-client.ts`'s `DEFAULT_BASE_URL` is `/dws-admin`, so Phase
+  1's submit call already goes same-origin through the shared Gateway by default — no editor-side
+  change was needed to pick it up. Phase 1 also already carries the OIDC bearer token on every
+  call (`dws-auth.md` Phase 5, 2026-08-31, via the centralized `admin-client`/`admin-hooks`
+  boundary), so Phase 1 is authenticated + gateway-routed end to end.
+
+### Current progress (2026-09-03)
+
+- Repo scan confirms Phases 2–5 genuinely have not started: no `@xyflow/react` or Monaco dependency
+  in `dws-console/package.json`, `definition-graph.tsx` is still the same hardcoded single-example
+  SVG described in §1 (not wired to a real definition), and no file-import or validation-preview
+  components exist under `dws-console/src`. The status table below is accurate as-is.
+- The only change since this doc's last update is infrastructural, not a new phase: Phase 1's
+  submission path is now both bearer-authenticated and same-origin-gateway-routed by construction
+  (see the updated dependency graph and open item above) — nothing on this roadmap's own critical
+  path moved.
+
+**Next up:** Phases 2 (validation preview) and 3 (file import) are independent siblings — either
+can start first, per §4's rationale. Phase 4 (workflow diagram) has no network dependency at all
+and, per that same rationale, could ship earliest of the three if a quick, self-contained win is
+wanted — it only needs a client-side DSL parser plus swapping `definition-graph.tsx`'s hardcoded
+SVG for `@xyflow/react`. Phase 5 (visual editor) stays exploratory and blocked on Phase 4 plus the
+still-open editing-depth (A/B/C) and canvas-layout-persistence decisions in §5.
+
+## 6. Phase 2 design (2026-09-03): two-layer validation
+
+Discussed with the user: instead of Phase 2 just rendering `dws-controller`'s dry-run response,
+split validation by *kind of rule*, not by which service happens to run it.
+
+```mermaid
+flowchart LR
+  A["dws-admin:
+spec conformance
+(is this valid OWS DSL 1.0?)"]
+  B["dws-controller:
+deployability
+(can THIS runtime deploy it?)"]
+  Console -->|"1. fast, local"| A
+  A -->|"passes spec shape"| Console
+  Console -->|"2. dryRun=true"| B
+```
+
+**Layer 1 — dws-admin, spec conformance.** The OWS DSL 1.0 spec publishes its own JSON Schema:
+[`schema/workflow.yaml`](https://github.com/open-workflow-specification/specification/blob/main/schema/workflow.yaml)
+in the spec's own repo — `$id: https://open-workflow-specification.org/schemas/1.0.3/workflow.yaml`,
+JSON Schema draft 2020-12, ~4,500 lines, single self-contained file (no external `$ref`s). `dws-admin`
+vendors this one file and validates the parsed document against it with **ajv** (draft-2020-12
+support). This needs no port of `dws-controller`'s `semanticErrors()` — the schema already encodes
+document/task shape, required fields, and per-task-type structure — and ajv's errors carry an
+`instancePath` (JSON pointer to the offending field), which is exactly the line/path precision the
+old "Error precision" open item wanted, with no dependency on OWS Phase 3 (see the corrected bullet
+above).
+
+**Layer 2 — dws-controller, deployability.** Unchanged. Stays the sole authority on whether *this*
+DWS runtime can actually compile and deploy a spec-valid document: task-kind support (`run:
+container`/`run: workflow` rejected, script language must be `js`/`python`), Kubernetes-specific
+naming (secret names must be DNS-1123), image resolution, OAuth/secret wiring. None of this is an
+OWS DSL rule — it's this implementation's current limitations — so it stays exactly where it is
+today, reached via the existing `dryRun=true` dry-run endpoint through the same relay.
+
+**Mapping today's `WorkflowCompiler` checks onto the split**, for concreteness:
+
+| Check | Layer |
+|---|---|
+| Missing `document`/`document.name`/`document.version`; `do` has no tasks | Spec (dws-admin) |
+| Definition doesn't parse, or doesn't match the DSL's shape (unknown fields, wrong types) | Spec (dws-admin) |
+| Secret name must be DNS-1123 (Kubernetes Secret naming) | Deployability (dws-controller) |
+| `run: container`/`run: workflow` not yet supported; script language/identifier rules; image resolution | Deployability (dws-controller) |
+
+**Open questions before this is buildable, not yet resolved:**
+
+1. **DSL version match is unconfirmed.** The published schema is versioned `1.0.3`; nothing in
+   `dws-controller`'s Java model (`Document`, `Workflow`, etc.) or `pom.xml` pins an explicit DSL
+   spec version to compare against. A schema/model version mismatch would show up as either false
+   positives (dws-admin rejects something dws-controller actually accepts) or false negatives (the
+   reverse) — needs a deliberate check before adopting the schema, not an assumption.
+2. **Not everything in the split above is expressible in JSON Schema alone.** Task-name uniqueness
+   is cross-referential — "unique across the whole flat `do` list, including nested `try`/`catch`/
+   `for`/`fork` bodies" — and JSON Schema can't express that constraint on its own. `dws-admin`
+   still needs one small custom check layered on top of ajv for this; it is not a pure
+   schema-only validator.
+3. **Vendoring approach**: pull the schema file in at build time (a fetch script + checked-in
+   snapshot, like the chart's own vendored APISIX archive) versus committing a manual copy — needs
+   a decision so upstream spec revisions (past `1.0.3`) are a deliberate, visible update, not a
+   silent drift.
 
 ## Status legend
 
-✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 2026-08-19.
+✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 2026-09-03.
