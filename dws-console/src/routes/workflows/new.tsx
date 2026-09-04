@@ -86,6 +86,13 @@ export function DefinitionEditor() {
 		setIsSubmitting(true);
 		setOutcome(undefined);
 		setRequestError(undefined);
+		// A preview asserts "nothing was applied"; a submission is about to make
+		// that false. Cleared as the request starts, not when it succeeds, so the
+		// stale claim is gone while the write is in flight too. Deliberately not
+		// restored on failure: the buffer that produced the plan is the one the
+		// controller just rejected, so re-showing it would pair a failure banner
+		// with a plan promising a successful deploy.
+		clearPreview();
 		try {
 			// The centralized transport acquires the current bearer token itself
 			// (design D6); this route no longer touches the OIDC client directly.
@@ -114,9 +121,11 @@ export function DefinitionEditor() {
 	const runPreview = async () => {
 		if (!oidc.isUserLoggedIn || !definition.trim()) return;
 		setIsPreviewing(true);
-		setPreview(undefined);
-		setSpecErrors(undefined);
+		clearPreview();
 		setRequestError(undefined);
+		// The mirror of the above: an "Applied …" banner above a fresh plan reads
+		// as two verdicts on one buffer.
+		setOutcome(undefined);
 		try {
 			const report = await validateDefinitionSpec(definition, format);
 			if (!report.valid) {
@@ -139,12 +148,22 @@ export function DefinitionEditor() {
 		}
 	};
 
+	/**
+	 * Drops every preview outcome — the plan, a deployability rejection, and the
+	 * spec-error list alike. All three describe one specific buffer, so any
+	 * action that changes what that buffer is, or what has been done with it,
+	 * has to retire them together.
+	 */
+	const clearPreview = () => {
+		setPreview(undefined);
+		setSpecErrors(undefined);
+	};
+
 	// A plan describes the buffer that produced it; once the text moves, showing
 	// it would assert something no longer true.
 	const onDefinitionChange = (next: string) => {
 		setDefinition(next);
-		setPreview(undefined);
-		setSpecErrors(undefined);
+		clearPreview();
 	};
 
 	const canSubmit = oidc.isUserLoggedIn && definition.trim().length > 0;

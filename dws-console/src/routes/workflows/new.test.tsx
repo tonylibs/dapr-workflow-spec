@@ -10,7 +10,13 @@
  * `new.tsx` actually publishes to assistive tech, not a test double's.
  */
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+	cleanup,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -39,17 +45,22 @@ vi.mock("#/lib/admin-client", async (importOriginal) => ({
 	submitDefinition: vi.fn(),
 }));
 
-import { previewDefinition, validateDefinitionSpec } from "#/lib/admin-client";
+import {
+	previewDefinition,
+	submitDefinition,
+	validateDefinitionSpec,
+} from "#/lib/admin-client";
 import { DefinitionEditor } from "./new";
 
 // CodeMirror measures itself through Range client rects on every layout pass;
 // jsdom implements neither, and the unhandled rejection would otherwise fail
 // the run from inside a requestAnimationFrame callback.
-Range.prototype.getClientRects = () => ({
-	length: 0,
-	item: () => null,
-	[Symbol.iterator]: function* () {},
-}) as unknown as DOMRectList;
+Range.prototype.getClientRects = () =>
+	({
+		length: 0,
+		item: () => null,
+		[Symbol.iterator]: function* () {},
+	}) as unknown as DOMRectList;
 Range.prototype.getBoundingClientRect = () => new DOMRect();
 
 /**
@@ -69,6 +80,11 @@ const type = (text: string) => {
 
 const previewButton = () =>
 	screen.getByRole("button", { name: /preview/i }) as HTMLButtonElement;
+
+const submitButton = () =>
+	screen.getByRole("button", {
+		name: /submit definition/i,
+	}) as HTMLButtonElement;
 
 const PLAN = {
 	workflow: "order",
@@ -90,6 +106,7 @@ const PLAN = {
 beforeEach(() => {
 	vi.mocked(validateDefinitionSpec).mockReset();
 	vi.mocked(previewDefinition).mockReset();
+	vi.mocked(submitDefinition).mockReset();
 });
 
 afterEach(cleanup);
@@ -104,7 +121,9 @@ describe("definition editor preview", () => {
 		vi.mocked(validateDefinitionSpec).mockResolvedValue({
 			valid: false,
 			truncated: false,
-			errors: [{ path: "/do/0", message: "must have required property 'call'" }],
+			errors: [
+				{ path: "/do/0", message: "must have required property 'call'" },
+			],
 		});
 		render(<DefinitionEditor />);
 		type("document: {}");
@@ -132,7 +151,10 @@ describe("definition editor preview", () => {
 
 	it("renders the plan when both layers pass", async () => {
 		vi.mocked(validateDefinitionSpec).mockResolvedValue({ valid: true });
-		vi.mocked(previewDefinition).mockResolvedValue({ kind: "plan", plan: PLAN });
+		vi.mocked(previewDefinition).mockResolvedValue({
+			kind: "plan",
+			plan: PLAN,
+		});
 		render(<DefinitionEditor />);
 		type("document: {}");
 		fireEvent.click(previewButton());
@@ -171,8 +193,81 @@ describe("definition editor preview", () => {
 
 		type("\nmore: text");
 
-		await waitFor(() =>
-			expect(screen.queryByText(/would deploy/i)).toBeNull(),
-		);
+		await waitFor(() => expect(screen.queryByText(/would deploy/i)).toBeNull());
+	});
+});
+
+/**
+ * A preview and a submission describe mutually exclusive states — one says
+ * nothing was applied, the other says something was. Whichever the operator
+ * asks for last is the only one that may be on screen; leaving the other
+ * behind produces a pane that contradicts itself in the same breath.
+ */
+describe("preview and submission outcomes do not coexist", () => {
+	const APPLIED = {
+		kind: "applied" as const,
+		result: {
+			workflow: "order",
+			versionId: "order@v1",
+			version: "v1",
+			created: true,
+		},
+	};
+
+	it("clears a rendered plan when the definition is submitted", async () => {
+		vi.mocked(validateDefinitionSpec).mockResolvedValue({ valid: true });
+		vi.mocked(previewDefinition).mockResolvedValue({
+			kind: "plan",
+			plan: PLAN,
+		});
+		vi.mocked(submitDefinition).mockResolvedValue(APPLIED);
+		render(<DefinitionEditor />);
+		type("document: {}");
+		fireEvent.click(previewButton());
+		expect(await screen.findByText(/would deploy order@v1/i)).toBeTruthy();
+
+		fireEvent.click(submitButton());
+
+		expect(await screen.findByText("Applied order@v1.")).toBeTruthy();
+		expect(screen.queryByText(/would deploy/i)).toBeNull();
+		expect(screen.queryByText(/nothing was applied/i)).toBeNull();
+	});
+
+	it("clears rendered spec errors when the definition is submitted", async () => {
+		vi.mocked(validateDefinitionSpec).mockResolvedValue({
+			valid: false,
+			truncated: false,
+			errors: [
+				{ path: "/do/0", message: "must have required property 'call'" },
+			],
+		});
+		vi.mocked(submitDefinition).mockResolvedValue(APPLIED);
+		render(<DefinitionEditor />);
+		type("document: {}");
+		fireEvent.click(previewButton());
+		expect(await screen.findByText(/must have required property/)).toBeTruthy();
+
+		fireEvent.click(submitButton());
+
+		expect(await screen.findByText("Applied order@v1.")).toBeTruthy();
+		expect(screen.queryByText(/not a valid DSL 1.0 definition/i)).toBeNull();
+	});
+
+	it("clears a submission outcome when a new preview is requested", async () => {
+		vi.mocked(submitDefinition).mockResolvedValue(APPLIED);
+		vi.mocked(validateDefinitionSpec).mockResolvedValue({ valid: true });
+		vi.mocked(previewDefinition).mockResolvedValue({
+			kind: "plan",
+			plan: PLAN,
+		});
+		render(<DefinitionEditor />);
+		type("document: {}");
+		fireEvent.click(submitButton());
+		expect(await screen.findByText("Applied order@v1.")).toBeTruthy();
+
+		fireEvent.click(previewButton());
+
+		expect(await screen.findByText(/would deploy order@v1/i)).toBeTruthy();
+		expect(screen.queryByText("Applied order@v1.")).toBeNull();
 	});
 });
