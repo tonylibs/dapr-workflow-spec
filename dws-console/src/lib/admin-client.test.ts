@@ -9,10 +9,13 @@ vi.mock("#/lib/oidc", () => ({
 
 import { getAccessToken } from "#/lib/oidc";
 import {
+	ApiError,
 	fetchWorkflows,
 	getJson,
+	previewDefinition,
 	submitDefinition,
 	subscribeToInstance,
+	validateDefinitionSpec,
 } from "./admin-client";
 
 const originalFetch = globalThis.fetch;
@@ -347,5 +350,139 @@ describe("subscribeToInstance (fetch/ReadableStream SSE)", () => {
 		expect(onError).toHaveBeenCalled();
 
 		subscription.close();
+	});
+});
+
+describe("validateDefinitionSpec", () => {
+	it("posts the raw buffer with the format's content type and the bearer token", async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ valid: true }), { status: 200 }),
+			);
+		globalThis.fetch = fetchMock;
+
+		const report = await validateDefinitionSpec("document: {}", "yaml");
+
+		expect(report).toEqual({ valid: true });
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe("/dws-admin/definitions/validate");
+		expect(init.method).toBe("POST");
+		expect(init.body).toBe("document: {}");
+		expect(new Headers(init.headers).get("content-type")).toBe(
+			"application/yaml",
+		);
+		expect(new Headers(init.headers).get("authorization")).toBe(
+			"Bearer test-token",
+		);
+	});
+
+	it("uses the JSON content type for a JSON buffer", async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ valid: true }), { status: 200 }),
+			);
+		globalThis.fetch = fetchMock;
+
+		await validateDefinitionSpec("{}", "json");
+
+		const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(new Headers(init.headers).get("content-type")).toBe(
+			"application/json",
+		);
+	});
+
+	it("returns the reported errors verbatim", async () => {
+		const body = {
+			valid: false,
+			truncated: false,
+			errors: [
+				{ path: "/do/0", message: "must have required property 'call'" },
+			],
+		};
+		globalThis.fetch = vi
+			.fn()
+			.mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
+
+		const report = await validateDefinitionSpec("x", "yaml");
+
+		expect(report).toEqual(body);
+	});
+
+	it("throws ApiError on a non-2xx response", async () => {
+		globalThis.fetch = vi
+			.fn()
+			.mockResolvedValue(new Response("", { status: 413 }));
+		await expect(validateDefinitionSpec("x", "yaml")).rejects.toBeInstanceOf(
+			ApiError,
+		);
+	});
+});
+
+describe("previewDefinition", () => {
+	const plan = {
+		workflow: "order",
+		versionId: "v12345678",
+		version: "order@v12345678",
+		definitionResource: "dws-def-order-v12345678",
+		specText: "document: {}",
+		steps: [
+			{
+				name: "fetch-order",
+				kind: "CALL_HTTP",
+				image: "ghcr.io/dws/call-http:1",
+			},
+		],
+		bindings: [{ task: "notify", direction: "EMIT", topic: "orders" }],
+		orchestrator: {
+			name: "dws-orch-order-v12345678",
+			image: "ghcr.io/dws/orchestrator:1",
+			appId: "order",
+			appPort: 8080,
+			replicas: 1,
+		},
+		oauthEndpoints: [],
+		bindingComponents: [],
+	};
+
+	it("requests a dry run and returns the parsed plan", async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(new Response(JSON.stringify(plan), { status: 200 }));
+		globalThis.fetch = fetchMock;
+
+		const outcome = await previewDefinition("document: {}");
+
+		expect(fetchMock.mock.calls[0][0]).toBe("/dws-admin/workflows?dryRun=true");
+		expect(outcome).toEqual({
+			kind: "plan",
+			plan: expect.objectContaining({ workflow: "order" }),
+		});
+	});
+
+	it("returns the controller's flat errors on a 400", async () => {
+		globalThis.fetch = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(
+					JSON.stringify({ message: "invalid", errors: ["task 'a': boom"] }),
+					{ status: 400 },
+				),
+			);
+
+		await expect(previewDefinition("x")).resolves.toEqual({
+			kind: "deploy-error",
+			errors: ["task 'a': boom"],
+		});
+	});
+
+	it("throws ApiError when the plan shape is unexpected", async () => {
+		globalThis.fetch = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ workflow: 1 }), { status: 200 }),
+			);
+		await expect(previewDefinition("x")).rejects.toBeInstanceOf(ApiError);
 	});
 });
