@@ -2,6 +2,8 @@ import {
   BadRequestException,
   Controller,
   Headers,
+  HttpCode,
+  HttpStatus,
   PayloadTooLargeException,
   Post,
   Req,
@@ -24,8 +26,14 @@ const ACCEPTED = new Set([
   'application/json',
 ]);
 
-/** CPU-bound endpoint on an operator-supplied body; cap it explicitly. */
-const MAX_BODY_BYTES = 1024 * 1024;
+/**
+ * CPU-bound endpoint on an operator-supplied body; cap it explicitly.
+ *
+ * Exported because the body parsers enforce the same cap upstream (see
+ * src/http/body-parsers.ts) — sharing the constant is what keeps the parser and
+ * the route from disagreeing about the limit.
+ */
+export const MAX_BODY_BYTES = 1024 * 1024;
 
 /**
  * Spec-conformance check for a raw definition. Local to dws-admin: it never
@@ -37,6 +45,10 @@ export class DefinitionValidationController {
   constructor(private readonly validation: DefinitionValidationService) {}
 
   @Post('validate')
+  // Nest answers 201 for POST by default, but nothing is created here: the
+  // contract is 200 with the report, so an invalid document is distinguishable
+  // from a bad request by status alone.
+  @HttpCode(HttpStatus.OK)
   @ApiExcludeEndpoint()
   validate(
     @Req() req: RawRequest,
