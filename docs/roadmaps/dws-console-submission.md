@@ -48,7 +48,7 @@ flowchart TD
 |---|---|---|---|
 | **1** | **Definition editor** — write or paste a DSL 1.0 definition and submit it to the cluster | dws-auth Phase 1 OIDC client + Phase 3 `dws-admin` write relay | ✅ done — `dws-console-definition-editor` |
 | **2** | **Validation preview** — see what a definition will deploy, and why it's invalid, before committing it | Phase 1 | ❌ not started — design decided 2026-09-03 (two-layer validation, see §6) |
-| **3** | **File import** — load a definition from a local `.yaml`/`.yml`/`.json` file instead of typing it | Phase 1 | ❌ not started |
+| **3** | **File import** — load a definition from a local `.yaml`/`.yml`/`.json` file instead of typing it | Phase 1 | ❌ not started — design decided 2026-09-04 (file input + Zustand-persisted draft, see §7) |
 | **4** | **Workflow diagram** — see the task graph a definition describes, laid out automatically | Phase 1 | ❌ not started |
 | **5** | **Visual editor** — inspect, then edit, a workflow directly on the diagram instead of the text | Phase 4 | ❌ not started — exploratory |
 
@@ -179,6 +179,55 @@ today, reached via the existing `dryRun=true` dry-run endpoint through the same 
    a decision so upstream spec revisions (past `1.0.3`) are a deliberate, visible update, not a
    silent drift.
 
+## 7. Phase 3 design (2026-09-04): file import + draft persistence
+
+Discussed with the user: file import needs to (a) read a local file's text into the editor buffer,
+and (b) survive a page refresh once loaded — the plain buffer Phase 1 introduced is in-memory React
+state only, so a refresh silently returns to an empty editor with no warning today.
+
+**Import mechanism: plain `<input type="file">`.** The File System Access API
+(`showOpenFilePicker`) was considered — it additionally hands back a reusable `FileSystemFileHandle`
+for writing back to the same file on disk — but Phase 3 is import-only, with no "save to the
+original file" requirement, and the API is Chrome/Edge-only (no Safari/Firefox support). A standard
+file input + `File.text()` covers the actual requirement everywhere, so it's the choice. The File
+System Access API is deferred to a hypothetical future "save back to disk" feature — not part of
+Phase 3.
+
+Read the picked file, infer `format` from its extension (`.json` → `json`, else `yaml`), and feed
+both into the same `definition`/`format` state the editor already uses — no new buffer, no parser.
+
+**Draft persistence: Zustand, with the `persist` middleware.** Rather than hand-rolled
+`localStorage` `useEffect` calls, `dws-console` should introduce Zustand (no state library currently
+in `package.json`) as a small persisted store for `definition`/`format`, keyed e.g. `dws:draft`.
+This is deliberately generic beyond file-import: it also survives refresh for hand-typed definitions
+entered directly into the editor (Phase 1), and gives Phase 2/5 a natural place to add more
+persisted editor state later instead of one-off storage per feature.
+
+```ts
+// lib/definition-draft-store.ts
+export const useDraftStore = create<DraftState>()(
+  persist(
+    (set) => ({
+      definition: "",
+      format: "yaml",
+      setDefinition: (definition) => set({ definition }),
+      setFormat: (format) => set({ format }),
+    }),
+    { name: "dws:draft" },
+  ),
+);
+```
+
+`DefinitionEditor` swaps its two `useState` pairs for `useDraftStore()`; the file-import handler and
+the CodeMirror `onChange` both just call the store's setters — no other wiring changes.
+
+**Open items:**
+
+- Confirm `dws-console/package.json` has no existing state library before adding Zustand as a new
+  dependency.
+- Extension-based `format` sniffing on import is a heuristic, not content-based — acceptable since
+  the format dropdown remains user-overridable after import.
+
 ## Status legend
 
-✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 2026-09-03.
+✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 2026-09-04.
