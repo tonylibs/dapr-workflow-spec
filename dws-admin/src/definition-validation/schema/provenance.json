@@ -1,0 +1,6 @@
+{
+  "sdkVersion": "7.26.0.Final",
+  "schemaId": "https://serverlessworkflow.io/schemas/1.0.1/workflow.yaml",
+  "sourceJar": "https://repo1.maven.org/maven2/io/serverlessworkflow/serverlessworkflow-types/7.26.0.Final/serverlessworkflow-types-7.26.0.Final.jar",
+  "sha256": "9790eb391b6defd07f7a46d6d6ce7a8d21207ebbfe3de009a8758052bd463b31"
+}

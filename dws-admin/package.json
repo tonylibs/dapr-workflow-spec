@@ -17,7 +17,8 @@
     "test:watch": "jest --watch --runInBand",
     "test:cov": "jest --coverage",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/store/migrate.ts"
+    "db:migrate": "tsx src/store/migrate.ts",
+    "vendor:schema": "node scripts/vendor-dsl-schema.mjs"
   },
   "dependencies": {
     "@knaadh/nestjs-drizzle-postgres": "^1.2.0",
@@ -27,6 +28,8 @@
     "@nestjs/platform-express": "^11.1.28",
     "@nestjs/swagger": "^11.4.6",
     "@nestjs/terminus": "^11.1.1",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "cloudevents": "^10.0.0",
@@ -34,7 +37,8 @@
     "express": "^5.2.1",
     "postgres": "^3.4.9",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

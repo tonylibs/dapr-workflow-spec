@@ -47,7 +47,7 @@ flowchart TD
 | Phase | Sub-feature | Depends on | Status |
 |---|---|---|---|
 | **1** | **Definition editor** — write or paste a DSL 1.0 definition and submit it to the cluster | dws-auth Phase 1 OIDC client + Phase 3 `dws-admin` write relay | ✅ done — `dws-console-definition-editor` |
-| **2** | **Validation preview** — see what a definition will deploy, and why it's invalid, before committing it | Phase 1 | ❌ not started — design decided 2026-09-03 (two-layer validation, see §6) |
+| **2** | **Validation preview** — see what a definition will deploy, and why it's invalid, before committing it | Phase 1 | ✅ done 2026-09-04 — `submission-preview-validation`; two-layer validation, see §6 |
 | **3** | **File import** — load a definition from a local `.yaml`/`.yml`/`.json` file instead of typing it | Phase 1 | ❌ not started — design decided 2026-09-04 (file input + Zustand-persisted draft, see §7) |
 | **4** | **Workflow diagram** — see the task graph a definition describes, laid out automatically | Phase 1 | ❌ not started |
 | **5** | **Visual editor** — inspect, then edit, a workflow directly on the diagram instead of the text | Phase 4 | ❌ not started — exploratory |
@@ -90,7 +90,11 @@ flowchart TD
   path from `dws-controller`'s compile-time `CompilationException`, which is what dry-run actually
   throws (a flat `List<String>`, unrelated to that change). Error precision isn't blocked on
   anything upstream; see §6 for how the new dws-admin spec-validation layer solves it directly via
-  ajv's `instancePath`, without touching dws-controller at all.
+  ajv's `instancePath`, without touching dws-controller at all. **Closed 2026-09-04** — that layer
+  shipped with Phase 2. Structural errors now carry a JSON pointer and parse failures carry a real
+  line and column. One limit remains, deliberately: the pointer is rendered as text, not mapped to
+  a CodeMirror gutter marker, because mapping a JSON path back to a YAML source position needs a
+  CST the console does not have.
 - **Gateway rollout — closed, as predicted.** `dws-auth.md` Phase 4 (Kubernetes Gateway API via
   APISIX) merged 2026-09-03. As this section anticipated, it changed nothing about editor
   semantics: `dws-console/src/lib/admin-client.ts`'s `DEFAULT_BASE_URL` is `/dws-admin`, so Phase
@@ -99,23 +103,24 @@ flowchart TD
   call (`dws-auth.md` Phase 5, 2026-08-31, via the centralized `admin-client`/`admin-hooks`
   boundary), so Phase 1 is authenticated + gateway-routed end to end.
 
-### Current progress (2026-09-03)
+### Current progress (2026-09-04)
 
-- Repo scan confirms Phases 2–5 genuinely have not started: no `@xyflow/react` or Monaco dependency
-  in `dws-console/package.json`, `definition-graph.tsx` is still the same hardcoded single-example
-  SVG described in §1 (not wired to a real definition), and no file-import or validation-preview
-  components exist under `dws-console/src`. The status table below is accurate as-is.
-- The only change since this doc's last update is infrastructural, not a new phase: Phase 1's
-  submission path is now both bearer-authenticated and same-origin-gateway-routed by construction
-  (see the updated dependency graph and open item above) — nothing on this roadmap's own critical
-  path moved.
+- **Phase 2 shipped.** New: `dws-admin/src/definition-validation/` (service, controller, module,
+  `task-names.ts`, `validation-report.ts`, the vendored `schema/`, and five spec files),
+  `dws-admin/scripts/vendor-dsl-schema.mjs`, and `dws-console/src/components/deployment-plan-view.tsx`,
+  plus the preview action in `dws-console/src/routes/workflows/new.tsx` and two new transport
+  functions in `admin-client.ts` (`submitDefinition` itself is unchanged). See §6 for the design as
+  built and for the three open questions it resolved.
+- Phases 3–5 are unchanged and still not started: no `@xyflow/react` or Monaco dependency in
+  `dws-console/package.json`, `definition-graph.tsx` is still the hardcoded single-example SVG
+  described in §1, and no file-import component exists under `dws-console/src`.
 
-**Next up:** Phases 2 (validation preview) and 3 (file import) are independent siblings — either
-can start first, per §4's rationale. Phase 4 (workflow diagram) has no network dependency at all
-and, per that same rationale, could ship earliest of the three if a quick, self-contained win is
-wanted — it only needs a client-side DSL parser plus swapping `definition-graph.tsx`'s hardcoded
-SVG for `@xyflow/react`. Phase 5 (visual editor) stays exploratory and blocked on Phase 4 plus the
-still-open editing-depth (A/B/C) and canvas-layout-persistence decisions in §5.
+**Next up:** Phase 3 (file import) — designed 2026-09-04 in §7 and unblocked. Phase 4 (workflow
+diagram) has no network dependency at all and, per §4's rationale, could ship first if a quick,
+self-contained win is wanted — it only needs a client-side DSL parser plus swapping
+`definition-graph.tsx`'s hardcoded SVG for `@xyflow/react`. Phase 5 (visual editor) stays
+exploratory and blocked on Phase 4 plus the still-open editing-depth (A/B/C) and
+canvas-layout-persistence decisions in §5.
 
 ## 6. Phase 2 design (2026-09-03): two-layer validation
 
@@ -162,22 +167,76 @@ today, reached via the existing `dryRun=true` dry-run endpoint through the same 
 | Secret name must be DNS-1123 (Kubernetes Secret naming) | Deployability (dws-controller) |
 | `run: container`/`run: workflow` not yet supported; script language/identifier rules; image resolution | Deployability (dws-controller) |
 
-**Open questions before this is buildable, not yet resolved:**
+**Open questions — all three resolved during implementation (2026-09-04). One of them
+changed the design above.**
 
-1. **DSL version match is unconfirmed.** The published schema is versioned `1.0.3`; nothing in
-   `dws-controller`'s Java model (`Document`, `Workflow`, etc.) or `pom.xml` pins an explicit DSL
-   spec version to compare against. A schema/model version mismatch would show up as either false
-   positives (dws-admin rejects something dws-controller actually accepts) or false negatives (the
-   reverse) — needs a deliberate check before adopting the schema, not an assumption.
-2. **Not everything in the split above is expressible in JSON Schema alone.** Task-name uniqueness
-   is cross-referential — "unique across the whole flat `do` list, including nested `try`/`catch`/
-   `for`/`fork` bodies" — and JSON Schema can't express that constraint on its own. `dws-admin`
-   still needs one small custom check layered on top of ajv for this; it is not a pure
-   schema-only validator.
-3. **Vendoring approach**: pull the schema file in at build time (a fetch script + checked-in
-   snapshot, like the chart's own vendored APISIX archive) versus committing a manual copy — needs
-   a decision so upstream spec revisions (past `1.0.3`) are a deliberate, visible update, not a
-   silent drift.
+1. **DSL version — resolved, and the answer was not `1.0.3`.** `dws-controller` has no
+   hand-written DSL model at all: it parses with `io.serverlessworkflow.api.WorkflowReader` from
+   `serverlessworkflow-api`, pinned in `pom.xml` as
+   `<serverlessworkflow.version>7.26.0.Final</serverlessworkflow.version>`, and every DSL type
+   `WorkflowCompiler` imports is generated from that SDK's own schema. The SDK ships it inside the
+   jar — `serverlessworkflow-types-7.26.0.Final.jar!/schema/workflow.yaml`, 1,828 lines,
+   `$id: https://serverlessworkflow.io/schemas/1.0.1/workflow.yaml`. So the real comparison was
+   **1.0.1 (what the compiler enforces) vs 1.0.3 (what this section proposed vendoring)**. Both
+   were fetched and diffed: 185 added / 20 removed lines, and the differences are load-bearing.
+
+   | Difference | Direction | Consequence of validating with 1.0.3 |
+   |---|---|---|
+   | `run.shell`/`run.script` `arguments`: **object** (1.0.1) → **array of strings** (1.0.3) | false positive | **Rejects a definition DWS deploys today.** `WorkflowCompiler` reads it as `Map<String,Object>`, dws-run renders `--key value` from that map's order, and `dws-controller/src/test/resources/fixtures/run-shell.yaml` uses the object form. |
+   | `emit.event.with` required: `[source, type]` → `[type]` | false negative | accepts documents missing `source` that the 1.0.1 model still requires |
+   | inline `oauth2` gains `required: [authority, grant]` | false positive | rejects OAuth shapes the controller accepts |
+   | `for.in`: `string` → `oneOf[string, array]` | false negative | accepts inline arrays the 1.0.1 model cannot bind |
+   | `uriTemplate` pattern loosened (scheme required → relative allowed) | false negative | accepts relative URIs the controller's stricter pattern rejects |
+   | `call: mcp`, `catch.then`, `container.stdin`/`arguments`/`pullPolicy` added | false negative | passes constructs the controller has no model for |
+
+   **Decision: vendor the SDK's schema, not the spec repo's.** DWS's spec-conformance layer is
+   therefore pinned to DSL 1.0.1 as realised by SDK 7.26.0.Final; moving to 1.0.3 is a
+   `dws-controller` SDK upgrade, not a console-side choice.
+
+2. **Task-name uniqueness — confirmed needed, with a correction.** Still not expressible in JSON
+   Schema, so `dws-admin` carries a custom walk over `do`, `try.do`, `catch.do`, `for.do`, and
+   `fork.branches` (`task-names.ts`). But `dws-controller` **already** enforces this
+   (`WorkflowCompiler.duplicateTaskNames`/`collectTaskNames`), so it is early, path-precise
+   *parity* — not coverage that was missing. It is the one case where layer 1 would otherwise pass
+   something layer 2 rejects.
+
+3. **Vendoring — resolved as neither listed option.** Both listed options treated the spec repo as
+   the source of truth, when what layer 2 actually enforces is the SDK's schema. Instead,
+   `pnpm vendor:schema` in `dws-admin` reads `<serverlessworkflow.version>` out of
+   `dws-controller/pom.xml`, downloads that jar from Maven Central, extracts `schema/workflow.yaml`,
+   and writes a checked-in `workflow-schema.json` plus a `provenance.json` recording
+   `sdkVersion`, `schemaId`, `sourceJar`, and `sha256`. A `dws-admin` test asserts the provenance
+   still matches the pom, so a controller-side SDK bump that forgets this module fails `pnpm test`
+   rather than drifting silently. Drift is made impossible to introduce quietly, not merely visible
+   in review.
+
+**What shipped (2026-09-04).**
+
+- `dws-admin`: `POST /definitions/validate` — raw definition in (`application/yaml`,
+  `application/x-yaml`, `text/yaml`, `application/json`), and **always 200** for a well-formed
+  request, with the document's validity in the body (`{valid: true}` or `{valid: false, errors,
+  truncated}`). Non-2xx means the *request* was wrong: 400 empty body or unsupported type, 413 over
+  1 MiB. Parsing uses the `yaml` package, so a malformed buffer reports a real line and column —
+  feedback `dws-controller` cannot give at all. Schema validation uses ajv `Ajv2020`
+  (`allErrors: true`, `strict: false`, `ajv-formats`), reporting each error's `instancePath` as its
+  `path`, capped at 50 errors with a `truncated` flag because the DSL schema is one large union and
+  a broken document otherwise produces hundreds of `anyOf`-branch errors.
+- A fixture-parity test asserts every `dws-controller` fixture that compiles today is spec-valid
+  here — the regression net for the whole version decision. It also asserts that
+  `run-container.yaml` and `run-script-bad-language.yaml` are *spec-valid despite* the controller
+  rejecting them, which encodes the layer boundary as a test, and that `broken.yaml` is rejected.
+- Both definition paths' body cap was lifted from the body parsers' 100 kB default to the
+  documented 1 MiB, in `dws-admin/src/main.ts`. This widens the relay too, deliberately: preview
+  and submit read the same buffer, so a definition that previews must be submittable.
+- `dws-console`: a `Preview` action beside `Submit definition` that runs the layers **sequentially**
+  — spec check first, and only on `valid: true` the `dryRun=true` compile. A spec-invalid document
+  never reaches the controller, because it would fail there too with strictly worse feedback.
+  Renders one of three outcomes: spec errors with their JSON pointer (and line/column for parse
+  failures), the controller's flat deployability strings in a visibly distinct banner, or the
+  `DeploymentPlan` (version, step services, topic bindings, orchestrator) via
+  `src/components/deployment-plan-view.tsx`. The plan response is zod-parsed, not cast. A rendered
+  preview clears when the buffer changes, so a stale plan is never read as current.
+- **`dws-controller` was not modified.** The non-goal held: no deployability logic moved.
 
 ## 7. Phase 3 design (2026-09-04): file import + draft persistence
 

@@ -6,8 +6,9 @@ import { WorkflowsModule } from './workflows/workflows.module';
 import { InstancesModule } from './instances/instances.module';
 import { HealthModule } from './health/health.module';
 import { ControllerRelayModule } from './controller-relay/controller-relay.module';
+import { DefinitionValidationModule } from './definition-validation/definition-validation.module';
 
 @Module({
-  imports: [ConfigModule, StoreModule, DaprEventsModule, WorkflowsModule, InstancesModule, HealthModule, ControllerRelayModule],
+  imports: [ConfigModule, StoreModule, DaprEventsModule, WorkflowsModule, InstancesModule, HealthModule, ControllerRelayModule, DefinitionValidationModule],
 })
 export class AppModule {}
