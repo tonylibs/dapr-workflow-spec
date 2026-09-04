@@ -34,6 +34,7 @@ and the Dapr subscription routes — there is no second listener or port.
 | `WorkflowsModule` / `InstancesModule` | The read API. `InstancesModule` also serves the two SSE push endpoints (`GET /instances/:id/events`, `GET /instances/events`), which stream status changes as they are ingested. |
 | `InstanceEventsModule` | In-process live-event bus (an RxJS `Subject`) between event ingestion and the SSE endpoints. Ingestion publishes to it *after* its transaction commits, so a rolled-back write is never pushed. Single-replica only — see the note below. |
 | `HealthModule` | `GET /health` (`@nestjs/terminus`), checking DB connectivity. |
+| `DefinitionValidationModule` | `POST /definitions/validate` — spec-conformance checking of a raw DSL definition against the vendored JSON Schema. Local and non-mutating: it never calls `dws-controller`. |
 
 ## Read model schema
 
@@ -45,6 +46,60 @@ only as `drizzle-kit generate` output checked into [`drizzle/`](drizzle/) — ne
 pnpm db:generate   # after changing a schema file, generates a new migration
 pnpm db:migrate     # applies pending migrations (also runs on boot by default)
 ```
+
+---
+
+## Definition validation
+
+`POST /definitions/validate` answers one question about a definition — *is this a valid DSL
+document?* — without deploying anything and without contacting `dws-controller`. It is the fast,
+local first layer behind `dws-console`'s **Preview**; the second layer is the controller's own
+compile-only dry run, reached through the existing relay with `POST /workflows?dryRun=true`.
+
+The body is the raw definition bytes, with `Content-Type` `application/yaml`,
+`application/x-yaml`, `text/yaml` or `application/json`. Authentication is the same bearer path
+as every other route.
+
+A well-formed request always answers **200**; the document's validity is in the body, not the
+status. Non-2xx is reserved for a malformed *request*: **400** for an empty body or an unsupported
+content type, **413** for a body over 1 MiB (the endpoint is CPU-bound on operator-supplied input).
+
+```jsonc
+{ "valid": true }
+
+{ "valid": false, "truncated": false, "errors": [
+    // YAML/JSON parse failures carry line/column; schema errors carry a JSON pointer.
+    { "path": "/do/0/fetchOrder/call", "message": "must be equal to constant \"http\"",
+      "keyword": "const" } ] }
+```
+
+At most 50 errors are reported, with `truncated` set when there were more — the DSL schema is one
+large union over task kinds, so a badly broken document can otherwise produce hundreds of
+`anyOf`-branch errors.
+
+Checked: YAML/JSON parseability, conformance to the DSL JSON Schema (ajv `Ajv2020` +
+`ajv-formats`), and task-name uniqueness across nested `try`/`catch`/`for`/`fork` bodies —
+the one rule JSON Schema cannot express. **Not** checked: deployability. Image resolution,
+DNS-1123 secret naming, `run: container` support, script languages and OAuth wiring stay in
+`dws-controller`, which remains the sole authority on what this cluster can actually run.
+
+### Regenerating the vendored schema
+
+The schema is **not** the newest published DSL revision. It is extracted from
+`io.serverlessworkflow:serverlessworkflow-types` at exactly the version
+`dws-controller/pom.xml` pins in `<serverlessworkflow.version>` — the same artifact its parser's
+types are generated from — so the two layers cannot disagree about document shape. Today that is
+`7.26.0.Final`, schema `$id` `https://serverlessworkflow.io/schemas/1.0.1/workflow.yaml`.
+
+```bash
+pnpm vendor:schema   # re-downloads the jar and rewrites src/definition-validation/schema/
+```
+
+Run it manually after a controller-side SDK bump — never during `pnpm build`, which must not need
+network access. `schema/provenance.json` records the SDK version, schema `$id`, source jar and
+content hash, and `schema-provenance.spec.ts` re-reads `dws-controller/pom.xml`, so forgetting to
+revendor fails `pnpm test` here instead of drifting silently. (If `dws-controller` is not in the
+checkout, that check skips with a message rather than failing.)
 
 ---
 
