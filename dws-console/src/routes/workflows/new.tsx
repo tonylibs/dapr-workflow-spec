@@ -3,7 +3,7 @@ import { yaml } from "@codemirror/lang-yaml";
 import { EditorView } from "@codemirror/view";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import CodeMirror from "@uiw/react-codemirror";
-import { useMemo, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import { AppLayout } from "#/components/app-layout";
 import { Banner } from "#/components/states";
 import {
@@ -12,13 +12,15 @@ import {
 	type DefinitionSubmission,
 	submitDefinition,
 } from "#/lib/admin-client";
+import {
+	readDefinitionFile,
+	useDefinitionDraftStore,
+} from "#/lib/definition-draft-store";
 import { useOidc } from "#/lib/oidc";
 
 export const Route = createFileRoute("/workflows/new")({
 	component: DefinitionEditor,
 });
-
-type Format = "yaml" | "json";
 
 const editorTheme = EditorView.theme({
 	"&": {
@@ -55,11 +57,22 @@ const editorLabel = EditorView.contentAttributes.of({
 
 function DefinitionEditor() {
 	const oidc = useOidc();
-	const [definition, setDefinition] = useState("");
-	const [format, setFormat] = useState<Format>("yaml");
+	const definition = useDefinitionDraftStore((state) => state.definition);
+	const format = useDefinitionDraftStore((state) => state.format);
+	const setDefinition = useDefinitionDraftStore(
+		(state) => state.setDefinition,
+	);
+	const setFormat = useDefinitionDraftStore((state) => state.setFormat);
+	const setDraft = useDefinitionDraftStore((state) => state.setDraft);
 	const [outcome, setOutcome] = useState<DefinitionSubmission | undefined>();
 	const [requestError, setRequestError] = useState<string | undefined>();
+	const [importError, setImportError] = useState<string | undefined>();
 	const [isSubmitting, setIsSubmitting] = useState(false);
+
+	useEffect(() => {
+		void useDefinitionDraftStore.persist.rehydrate();
+	}, []);
+
 	// Only the highlighting extension follows the format selector — the buffer is
 	// never rewritten on toggle, so flipping YAML/JSON cannot mangle a draft
 	// (design D3). Do not reformat here.
@@ -67,6 +80,31 @@ function DefinitionEditor() {
 		() => [format === "yaml" ? yaml() : json(), editorTheme, editorLabel],
 		[format],
 	);
+
+	const importDefinition = async (event: ChangeEvent<HTMLInputElement>) => {
+		const input = event.currentTarget;
+		const file = input.files?.[0];
+		if (!file) return;
+
+		setImportError(undefined);
+		try {
+			const draft = await readDefinitionFile(file);
+			setDraft(draft.definition, draft.format);
+		} catch (error) {
+			setImportError(
+				error instanceof Error
+					? `Could not read the selected file: ${error.message}`
+					: "Could not read the selected file.",
+			);
+		} finally {
+			// Allow selecting the same file again after its contents have changed.
+			input.value = "";
+		}
+	};
+
+	const selectFormat = (event: ChangeEvent<HTMLSelectElement>) => {
+		setFormat(event.target.value === "json" ? "json" : "yaml");
+	};
 
 	const submit = async () => {
 		if (!oidc.isUserLoggedIn || !definition.trim()) return;
@@ -116,11 +154,20 @@ function DefinitionEditor() {
 					<select
 						id="definition-format"
 						value={format}
-						onChange={(event) => setFormat(event.target.value as Format)}
+						onChange={selectFormat}
 					>
 						<option value="yaml">YAML</option>
 						<option value="json">JSON</option>
 					</select>
+					<label className="muted" htmlFor="definition-file">
+						Import definition
+					</label>
+					<input
+						id="definition-file"
+						type="file"
+						accept=".yaml,.yml,.json"
+						onChange={importDefinition}
+					/>
 					<button
 						type="button"
 						className="btn-sm primary"
@@ -133,6 +180,7 @@ function DefinitionEditor() {
 				{!oidc.isUserLoggedIn && (
 					<Banner variant="warn">Sign in to submit a definition.</Banner>
 				)}
+				{importError && <Banner>{importError}</Banner>}
 				<CodeMirror
 					value={definition}
 					height="480px"
