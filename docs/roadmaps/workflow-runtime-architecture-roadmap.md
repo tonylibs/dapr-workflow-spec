@@ -69,7 +69,9 @@ The spec says each compiled Flow/Step "can be scheduled from its parent with a t
 `catch`, fork branch) gets its own deployed `dws-flow` instance, and — following from the decision
 above — **every compiled Step task, with no exceptions**, gets its own deployed `dws-step` instance,
 each addressed by its derived identifier as the Dapr app ID. Not a shared app multiplexing scopes
-as registered workflow types, and not a carve-out for the Go-backed task kinds either.
+as registered workflow types, and not a carve-out for the Go-backed task kinds either. **Amended by
+[ADR 0003](../adr/0003-fork-as-a-flow-node.md), 2026-09-05:** `fork` itself also gets its own
+`dws-flow` instance now, not just its branches — see the fork design decision below.
 
 This is the closest literal reading of the spec, and it lines up with the convention
 `dws-controller` already uses: `call`/`run` task names become kebab-case Dapr app IDs for their
@@ -115,6 +117,24 @@ must sanitize dots to dashes when turning a derived identifier into a Dapr app I
 transform `checkInventory` → `check-inventory` already does for `call`/`run` task names today, just
 extended to dotted identifiers too.
 
+## Design decision: fork as a standalone Flow node
+
+_Recorded in [ADR 0003](../adr/0003-fork-as-a-flow-node.md), amending ADR 0001 Decision 1._
+
+Every other structural task (`for`, `try`/`catch`) already follows one rule from its caller's
+side: reach the task, call that scope's own `dws-flow` app-id, await, continue — the scope's own
+behavior is entirely the child's problem. `fork`'s branches already got their own `dws-flow`
+instances too, but the `allOf`/`anyOf` fan-out/combine itself was decided to run inline in the
+parent — the one structural task kind the parent's dispatch code had to special-case.
+
+Resolved: fork gets its own `FlowNode` too (same shape as any other Flow node, no new type —
+see the compiler-strategy decision below), with `children` = branch app-ids and a new `forkMode:
+all|any` field; its own `tasks` list is empty. This restores the uniform rule for every structural
+task kind. Cost: +1 pod and +1 hop per fork occurrence — no new failure-semantics category, since
+the branches were already separate cross-app instances either way. Open follow-up, not applied
+here: `openspec/schemas/single-node-definition.schema.json` (already merged as part of Phase 0)
+needs a `fork` value added to its `scope` enum plus the `forkMode` field.
+
 ## Design decision: WorkflowCompiler as two Strategies over a widened DeploymentPlan
 
 _Recorded in [ADR 0002](../adr/0002-workflow-compiler-strategy-split.md)._
@@ -136,12 +156,24 @@ instead of later. Because the interface keeps the `WorkflowCompiler` name, no ca
 (`WorkflowResource`, etc.) changes while only v1 is wired.
 
 `DeploymentPlan` is widened, not replaced: existing fields (`orchestrator`, `steps`, `bindings`,
-`oauthEndpoints`, `bindingComponents`) keep their v1 meaning unchanged; new fields carry the
-compiled Flow/Step node graph for v2. Contract: each strategy populates only its own fields, never
-both, so nothing consuming the legacy fields needs to change while v1 is selected. The same
-interface/two-strategy split repeats one layer down at `StackSynthesizer` in Phase 4 — not a
-different mechanism, the same one applied to rendering instead of compiling. Recommended as the
+`oauthEndpoints`, `bindingComponents`) keep their v1 meaning unchanged; a new `flowStepGraph` field
+carries the compiled Flow/Step tree for v2 as a Composite — a sealed `CompiledNode` interface with
+`FlowNode`/`StepNode` implementations, `children()` walking the tree the compiler's own recursive
+classification pass naturally produces (see ADR 0002 for the shape; [ADR 0003](../adr/0003-fork-as-a-flow-node.md)
+covers how `fork` fits it with no third node type). Contract: each strategy populates only its own
+fields, never both, so nothing consuming the legacy fields needs to change while v1 is selected.
+The same interface/two-strategy split repeats one layer down at `StackSynthesizer` in Phase 4 — not
+a different mechanism, the same one applied to rendering instead of compiling. Recommended as the
 first Phase 1 task (a pure refactor) before any classification-rule logic lands.
+
+**`children()` is a plain `List<CompiledNode>`, not a `Map<String, CompiledNode>`** — resolved in
+ADR 0002. Dispatch (`callActivity` vs. `callChildWorkflow`) is decided by the child's sealed type
+alone, never by a key lookup, and a child's key (needed for the Phase 0 schema's keyed `children`
+field, NetworkPolicy edges, logs) is a property of the child itself — a `key()` default method
+derived from its own `nodeId()` — not something the parent stores in a map. A parent gets it with
+`child.key()`; the schema's keyed object is built as a projection at serialization time
+(`children.stream().collect(toMap(CompiledNode::key, CompiledNode::appId))`), so the already-merged
+Phase 0 schema needs no change.
 
 ```mermaid
 flowchart TD
@@ -160,7 +192,7 @@ flowchart TD
 | **0** | Write the ADR covering both decisions above ([ADR 0001](../adr/0001-workflow-runtime-v2-decisions.md) — done, 2026-08-29) (per-node app IDs; uniform plain-HTTP function images behind a uniform `dws-step`); scaffold `dws-flow` (.NET, Dapr Workflow SDK) and `dws-step` (Java/Spring, Dapr Workflow SDK) as new, per-node-deployable component templates — one running instance hosts exactly one compiled node, same "generic image, pinned definition at startup" shape `dws-orchestrator` uses today, just one node's definition instead of the whole workflow — alongside, not replacing, `dws-orchestrator`. Define the language-neutral single-node definition JSON contract (a node's own task list plus its children's target app IDs) the controller hands each instance | new repos/modules | ✅ done, 2026-09-04 (`workflow-runtime-v2-phase0-scaffolding`; schema + both runtime scaffolds, loaders, activities, Dockerfiles, READMEs, unit tests all landed; only the deferred follow-up — path-filtered CI for `dws-flow`/`dws-step` — remains open) |
 | **1** | Structural compiler: extract `WorkflowCompiler` into an interface with `V1OrchestratorCompiler`/`V2StructuralCompiler` strategies over a widened `DeploymentPlan`, selected via a Dapr Configuration resource, not local app config (see [Design decision](#design-decision-workflowcompiler-as-two-strategies-over-a-widened-deploymentplan) above, [ADR 0002](../adr/0002-workflow-compiler-strategy-split.md)) — do this refactor first. Then `V2StructuralCompiler` gains a pass that emits the Flow/Step/fork-branch graph per the [classification rules](workflow-runtime-architecture.md#classification-rules), with derived identifiers (`<workflow>.main`, `<try-task>.catch`, `<fork-task>.branch.<branch-root-task>`) that become each node's Dapr app ID once sanitized to a DNS-1123 label (dots → dashes). Every Step node — no exceptions — gets a `dws-step` app-id entry; for `call`/`run` Step nodes, apply the resolved naming rule to avoid the app-ID collision with the existing function's Knative Service — `dws-step` keeps the task-derived name, the function's Knative Service app ID gets a `-fn` suffix (see worked example above). Plus duplicate/ambiguous-id rejection. Golden tests against the spec's 5 worked examples | `dws-controller/compile` | ❌ not started |
 | **2** | `dws-step` runtime: new `WorkflowActivity` implementations for `set`/`switch`/`wait`/`listen`/`emit`/`raise` (ported from the in-process orchestrator — no prebuilt image exists for these today); one uniform proxy `WorkflowActivity` for every `call`/`run` kind (`http`/`openapi`/`grpc`/`asyncapi`/`shell`/`script`) that does the same Dapr-service-invocation `POST /run` call `CallServiceActivity` already makes for `call: openapi` today, generalized to all six. In parallel: add a plain HTTP `POST /run` handler to `dws-call-http`/`dws-run-*`/`dws-call-grpc` (matching `dws-call-openapi`/`dws-call-asyncapi`'s existing shape) **without removing their current `Run` activity-worker registration yet** — see the sequencing note above; that removal is deferred to Phase 5's cleanup so v1 keeps working throughout | new `dws-step` | ❌ not started |
-| **3** | `dws-flow` runtime: .NET Dapr Workflow host where each deployed instance hosts the single compiled Flow scope it was built for as its one registered workflow type, sequences that scope's tasks, and calls `CallActivityAsync`/`CallChildWorkflowAsync` per the classification rules — every Step child, with no exceptions, is invoked by calling its deployed `dws-step` app-id (never the underlying function image directly). Ports `try`/`catch`/`retry` (backoff, jitter, limits) from Java; parent Flow performs `allOf`/`anyOf` directly for `fork` (no standalone fork node) | new `dws-flow` | ❌ not started |
+| **3** | `dws-flow` runtime: .NET Dapr Workflow host where each deployed instance hosts the single compiled Flow scope it was built for as its one registered workflow type, sequences that scope's tasks, and calls `CallActivityAsync`/`CallChildWorkflowAsync` per the classification rules — every Step child, with no exceptions, is invoked by calling its deployed `dws-step` app-id (never the underlying function image directly). Ports `try`/`catch`/`retry` (backoff, jitter, limits) from Java; `fork` is its own `FlowNode` too (see [Design decision](#design-decision-fork-as-a-standalone-flow-node) above, [ADR 0003](../adr/0003-fork-as-a-flow-node.md)) — it fans out to its branch app-ids and does `allOf`/`anyOf` itself, not the parent | new `dws-flow` | ❌ not started |
 | **4** | Deploy synthesis v2: `StackSynthesizer`/`StackApplier` gain a path that emits one `dws-flow` Deployment per compiled Flow node and one `dws-step` Deployment per compiled Step node — every Step node, no exceptions — per workflow version, each carrying its own node's compiled definition as its definition key; version-drain/GC logic extended to both. Knative synthesis for `dws-call-*`/`dws-run-*` is unchanged and still runs — `dws-step` is a new layer deployed *in front of* those functions, not a replacement for their synthesis. No new Helm templates — same "deployed dynamically per-workflow, not chart-managed" pattern `dws-orchestrator` already follows — only new base images to build/push in CI | `dws-controller/k8s`, CI | ❌ not started |
 | **5** | Parity verification and cutover: cross-app integration tests (.NET Flow → child Flow, .NET Flow → Java Step, Java Step → function `POST /run`; success/retry/failure propagation); run v1 and v2 side by side behind a controller flag — `dws-call-http`/`dws-run-*`/`dws-call-grpc` keep serving both interfaces (activity worker for v1, plain HTTP for v2's `dws-step`) throughout this window; parity-tested against the full [OWS feature matrix](openworkflow-features.md#1-current-task-type-coverage). On cutover: retire `dws-orchestrator`, **then** remove the now-unused activity-worker registration from those three images as cleanup, update [deployed-workflow.md](../../openwiki/architecture/deployed-workflow.md) | `dws-orchestrator` (retired), `dws-call-http`/`dws-run-*`/`dws-call-grpc` (cleanup), openwiki | ❌ not started |
 

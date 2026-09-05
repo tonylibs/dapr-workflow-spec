@@ -52,13 +52,60 @@ needs `CompilerProducer`'s current `@ApplicationScoped` singleton-strategy wirin
 re-check on each `compile()` call rather than freeze the strategy at startup; not committed to
 here, left as a Phase 1 implementation choice.
 
-**3. `DeploymentPlan` is widened, not replaced.** Existing fields (`orchestrator`, `steps`,
-`bindings`, `oauthEndpoints`, `bindingComponents`) keep their current v1 meaning, unchanged, for as
-long as v1 is selected. New fields are added to carry the compiled Flow/Step node graph for v2.
-Compatibility contract (fixed by this ADR; the graph's actual data model is Phase 1 design work,
-not pinned here):
-- `V1OrchestratorCompiler` populates only the legacy fields; new v2 fields are left empty.
-- `V2StructuralCompiler` populates only the new fields; legacy `orchestrator`/`steps` are left
+**3. `DeploymentPlan` is widened with a Composite-shaped graph, not replaced.** Existing fields
+(`orchestrator`, `steps`, `bindings`, `oauthEndpoints`, `bindingComponents`) keep their current v1
+meaning, unchanged, for as long as v1 is selected. A new field, `List<CompiledNode>
+flowStepGraph`, carries the compiled Flow/Step tree for v2 — a Composite over a sealed interface,
+not a flat list, because the compiler's classification pass is itself a recursive descent into
+nested scopes (`try`/`for`/`catch`/fork branches), so the tree is the natural output, and it
+matches the Phase 0 schema's own shape (a `flow` node's `children` field, a `step` node has none):
+
+```java
+sealed interface CompiledNode permits FlowNode, StepNode {
+  String nodeId();              // pre-sanitized derived id, e.g. "fulfillOrder.catch"
+  default String key() {        // this node's label from its parent's side, e.g. "catch"
+    int i = nodeId().lastIndexOf('.');
+    return i < 0 ? nodeId() : nodeId().substring(i + 1);
+  }
+  String appId();                // sanitized DNS-1123 app-id, e.g. "fulfill-order-catch"
+  String definitionResource();   // this node's own ConfigMap/Configuration-store key
+  String specText();             // this node's single-node definition JSON (Phase 0 schema)
+  List<CompiledNode> children();
+}
+
+record FlowNode(String nodeId, String appId, String definitionResource, String specText,
+    List<CompiledNode> children) implements CompiledNode {}
+
+record StepNode(String nodeId, String appId, String definitionResource, String specText,
+    Optional<String> functionAppId) implements CompiledNode {
+  public List<CompiledNode> children() { return List.of(); }  // leaf
+}
+```
+
+A `flatten()`/pre-order-walk default method on `CompiledNode` gives `StackSynthesizer` (Phase 4)
+its flat "one Deployment per node" view without the compiler ever materializing one — the tree is
+for compiling and testing against, the flat walk is for deploying. See [ADR 0003](0003-fork-as-a-flow-node.md)
+for how a `fork` task fits this same `FlowNode` shape (no third node type needed).
+
+**`children()` stays a plain `List<CompiledNode>` — no `Map<String, CompiledNode>` alongside it.**
+Two things briefly looked like they required a keyed map: dispatch (a parent needs to know
+`ctx.callActivity` vs. `ctx.callChildWorkflow` per child) and the Phase 0 schema's own `children`
+field (`additionalProperties: string`, a keyed object). Neither does. Dispatch is decided by the
+child's sealed type alone — `StepNode` always means `callActivity` against the constant `"Step"`
+activity name, `FlowNode` always means `callChildWorkflow` against the constant `"Flow"` workflow
+type — so no key lookup is ever on that path. And a child's key, when something *does* need one
+(rendering the wire-format `children` map, `StackSynthesizer`'s NetworkPolicy edges, logs), is a
+property of the child itself, not something the parent assigns and stores: `key()` above is a
+default method derived from `nodeId()`'s own last dotted segment (`fulfillOrder.catch` → `catch`),
+so a parent gets it by calling `child.key()`, never by looking anything up. Building the schema's
+keyed `children` object is then a projection at serialization time, not a stored structure:
+`children.stream().collect(toMap(CompiledNode::key, CompiledNode::appId))`. Net effect: the
+already-merged Phase 0 schema needs no change for this, and the Java model stays the simplest shape
+that fits — a list.
+
+Compatibility contract (fixed by this ADR):
+- `V1OrchestratorCompiler` populates only the legacy fields; `flowStepGraph` is left empty.
+- `V2StructuralCompiler` populates only `flowStepGraph`; legacy `orchestrator`/`steps` are left
   empty.
 - No field is ever populated by both strategies. No consumer of the legacy fields needs to change
   while v1 is selected.
@@ -75,12 +122,14 @@ objects.
 - `DeploymentPlan`'s widened shape must be treated as append-only for the duration of the
   migration: no repurposing or removing legacy fields until Phase 5 cutover, same "v1 keeps
   working throughout" precedent ADR 0001 Decision 2 already set for the function images.
-- This ADR does not pin the Flow/Step graph's actual node/edge types, the Configuration store's
-  exact Component name or key naming, whether the flag is global-only or also per-workflow, or
-  whether `CompilerProducer` polls vs. subscribes — those are Phase 1 (and Phase 4, for the
-  synthesizer side) implementation decisions. It only fixes the compatibility contract (one
-  interface, additive schema, mutually exclusive population) and the storage mechanism (Dapr
-  Configuration API, not local app config).
+- `flowStepGraph`'s `CompiledNode`/`FlowNode`/`StepNode` shape is a sealed interface with two
+  record implementations, not one record type — unlike the rest of `DeploymentPlan`'s fields, this
+  needs Jackson polymorphic-type config (`@JsonTypeInfo`/subtypes) to serialize cleanly for the
+  `/plan` dry-run endpoint. A Phase 1 implementation detail, not a design risk, but worth planning
+  for up front rather than discovering at the dry-run endpoint.
+- This ADR does not pin the Configuration store's exact Component name or key naming, whether the
+  flag is global-only or also per-workflow, or whether `CompilerProducer` polls vs. subscribes —
+  those remain Phase 1 (and Phase 4, for the synthesizer side) implementation decisions.
 - Recommended as the *first* Phase 1 task (a pure refactor — rename the existing class, extract the
   interface, add the empty `V2StructuralCompiler` stub and the new `DeploymentPlan` fields) before
   any classification-rule logic lands, so the rest of Phase 1 can build incrementally against a
@@ -90,7 +139,7 @@ objects.
 
 Doesn't change Phase 1's actual scope (classification rules, derived-identifier sanitization, the
 `-fn` naming-collision handling from ADR 0001, golden tests against the spec's 5 worked examples) —
-those are unaffected and still ahead. Doesn't decide the Flow/Step graph's data model, the
-Configuration store's Component name or key naming, or the flag's scoping (global vs.
-per-workflow) — only that it lives on a Dapr Configuration resource, read via the Configuration
-API, not local app config.
+those are unaffected and still ahead. Doesn't decide the Configuration store's Component name or
+key naming, or the flag's scoping (global vs. per-workflow) — only that it lives on a Dapr
+Configuration resource, read via the Configuration API, not local app config. Fork's fit into this
+node shape is [ADR 0003](0003-fork-as-a-flow-node.md)'s decision, not this one.

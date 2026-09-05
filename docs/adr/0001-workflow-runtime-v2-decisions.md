@@ -26,6 +26,12 @@ Every compiled Flow scope (`main`, each `for`, `try`, `catch`, fork branch) gets
 `dws-step` instance — each addressed by its derived identifier as the Dapr app ID. Not a shared app
 multiplexing scopes as registered workflow types, and no carve-out for the Go-backed task kinds.
 
+> **Amended by [ADR 0003](0003-fork-as-a-flow-node.md), 2026-09-05:** this enumeration originally
+> excluded the fork task itself (only its branches got instances; the fork point ran inline in the
+> parent — see that decision's original Consequences below). ADR 0003 gives fork its own `dws-flow`
+> instance too, for the reasons recorded there. Read the enumeration above as amended to include
+> `fork` alongside the branches.
+
 **Rationale:** the closest literal reading of the spec ("can be scheduled from its parent with a
 target app ID"), and it lines up with the convention `dws-controller` already uses — `call`/`run`
 task names become kebab-case Dapr app IDs for their Knative Services (root `CLAUDE.md` §
