@@ -2,6 +2,7 @@ package io.dws.controller.k8s;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.dws.controller.compile.V1OrchestratorCompiler;
 import io.dws.controller.compile.WorkflowCompiler;
 import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.EnvValue.Literal;
@@ -45,7 +46,7 @@ class StackSynthesizerTest {
 
   private final StackSynthesizer synthesizer = new StackSynthesizer();
   private final WorkflowCompiler compiler =
-      new WorkflowCompiler(IMAGES, ignored -> "openapi".getBytes(StandardCharsets.UTF_8));
+      new V1OrchestratorCompiler(IMAGES, ignored -> "openapi".getBytes(StandardCharsets.UTF_8));
 
   @ParameterizedTest
   @EnumSource(

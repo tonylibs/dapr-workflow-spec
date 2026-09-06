@@ -38,7 +38,7 @@ class WorkflowCompilerTest {
   private static final byte[] OPENAPI_DOC =
       "OPENAPI-DOCUMENT-BYTES".getBytes(StandardCharsets.UTF_8);
 
-  private final WorkflowCompiler compiler = new WorkflowCompiler(IMAGES, url -> OPENAPI_DOC);
+  private final WorkflowCompiler compiler = new V1OrchestratorCompiler(IMAGES, url -> OPENAPI_DOC);
 
   @Test
   @DisplayName("step services retain literal and secret-key environment value types")
@@ -161,7 +161,7 @@ class WorkflowCompilerTest {
   @DisplayName("OpenAPI OAuth targets the API server when the document is a file URL")
   void openApiOAuthUsesApiServerForFileDocument() {
     WorkflowCompiler openApiCompiler =
-        new WorkflowCompiler(
+        new V1OrchestratorCompiler(
             IMAGES, ignored -> openApiDocument("https://accounts.example.test/api/v2"));
 
     DeploymentPlan plan =
@@ -180,7 +180,7 @@ class WorkflowCompilerTest {
   @DisplayName("OpenAPI OAuth targets an absolute API server instead of the HTTP document host")
   void openApiOAuthUsesApiServerDifferentFromHttpDocument() {
     WorkflowCompiler openApiCompiler =
-        new WorkflowCompiler(
+        new V1OrchestratorCompiler(
             IMAGES, ignored -> openApiDocument("https://accounts.example.test/api/v2"));
 
     DeploymentPlan plan =
@@ -200,7 +200,7 @@ class WorkflowCompilerTest {
   @DisplayName("OpenAPI OAuth resolves a relative API server against the HTTP document URL")
   void openApiOAuthResolvesRelativeServerAgainstHttpDocument() {
     WorkflowCompiler openApiCompiler =
-        new WorkflowCompiler(IMAGES, ignored -> openApiDocument("../api/v2"));
+        new V1OrchestratorCompiler(IMAGES, ignored -> openApiDocument("../api/v2"));
 
     DeploymentPlan plan =
         openApiCompiler.compile(
@@ -219,7 +219,7 @@ class WorkflowCompilerTest {
   @DisplayName("OpenAPI OAuth rejects an API server that is not HTTP or HTTPS")
   void openApiOAuthRejectsNonHttpServer() {
     WorkflowCompiler openApiCompiler =
-        new WorkflowCompiler(IMAGES, ignored -> openApiDocument("file:///srv/accounts"));
+        new V1OrchestratorCompiler(IMAGES, ignored -> openApiDocument("file:///srv/accounts"));
 
     assertThatThrownBy(
             () ->
@@ -1309,7 +1309,7 @@ class WorkflowCompilerTest {
   @DisplayName("a call: asyncapi task compiles to a binding-backed step service")
   void asyncApiCallCompilesToBindingStep() {
     WorkflowCompiler asyncCompiler =
-        new WorkflowCompiler(
+        new V1OrchestratorCompiler(
             IMAGES, ignored -> asyncApiDocument("kafka", "kafka.example.test:9092"));
 
     DeploymentPlan plan = asyncCompiler.compile(asyncApiDefinition());
@@ -1336,7 +1336,8 @@ class WorkflowCompilerTest {
   @DisplayName("an unsupported AsyncAPI server protocol is rejected at compile time")
   void asyncApiRejectsUnsupportedProtocol() {
     WorkflowCompiler asyncCompiler =
-        new WorkflowCompiler(IMAGES, ignored -> asyncApiDocument("nats", "nats.example.test:4222"));
+        new V1OrchestratorCompiler(
+            IMAGES, ignored -> asyncApiDocument("nats", "nats.example.test:4222"));
 
     assertThatThrownBy(() -> asyncCompiler.compile(asyncApiDefinition()))
         .isInstanceOf(CompilationException.class)
