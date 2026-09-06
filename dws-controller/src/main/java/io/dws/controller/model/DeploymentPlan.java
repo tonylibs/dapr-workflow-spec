@@ -18,6 +18,8 @@ import java.util.List;
  * @param oauthEndpoints canonical external-host/OAuth policy descriptors for Dapr synthesis
  * @param bindingComponents version-scoped Dapr output-binding Components for {@code call: asyncapi}
  *     steps
+ * @param flowStepGraph the compiled Flow/Step graph (ADR 0002). Populated only by the v2 structural
+ *     compiler; the v1 compiler leaves it empty. Append-only for the migration's duration.
  */
 public record DeploymentPlan(
     String workflow,
@@ -29,13 +31,44 @@ public record DeploymentPlan(
     List<TopicBinding> bindings,
     OrchestratorSpec orchestrator,
     List<OAuthEndpoint> oauthEndpoints,
-    List<BindingComponent> bindingComponents) {
+    List<BindingComponent> bindingComponents,
+    List<CompiledNode> flowStepGraph) {
 
   public DeploymentPlan {
     steps = List.copyOf(steps);
     bindings = List.copyOf(bindings);
     oauthEndpoints = List.copyOf(oauthEndpoints);
     bindingComponents = List.copyOf(bindingComponents);
+    flowStepGraph = List.copyOf(flowStepGraph);
+  }
+
+  /**
+   * Compatibility constructor for the v1 (legacy) shape: every existing call site that supplies the
+   * legacy fields keeps compiling and gets an empty {@code flowStepGraph}.
+   */
+  public DeploymentPlan(
+      String workflow,
+      String versionId,
+      String version,
+      String definitionResource,
+      String specText,
+      List<StepService> steps,
+      List<TopicBinding> bindings,
+      OrchestratorSpec orchestrator,
+      List<OAuthEndpoint> oauthEndpoints,
+      List<BindingComponent> bindingComponents) {
+    this(
+        workflow,
+        versionId,
+        version,
+        definitionResource,
+        specText,
+        steps,
+        bindings,
+        orchestrator,
+        oauthEndpoints,
+        bindingComponents,
+        List.of());
   }
 
   /** Compatibility constructor for plans with OAuth resources but no binding Components. */
