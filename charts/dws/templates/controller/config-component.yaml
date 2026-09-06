@@ -1,0 +1,45 @@
+{{- if .Values.controller.enabled }}
+{{- /*
+  Dapr Configuration store backing the controller's v1/v2 compiler-strategy flag (ADR 0002).
+  Chart-managed, mirroring definitions-component.yaml: a configuration.redis Component read via the
+  Dapr Configuration API (DaprClient.getConfiguration) by CompilerProducer, which defaults to v1
+  when the key is absent or the store is unreachable. Applications only READ from this store; the
+  compiler-version key(s) are set out of band (kubectl/redis-cli) until a later Phase 1 task.
+  Always rendered — see actor-statestore-component.yaml for the rationale
+  (`dapr.enabled=false` means externally-managed Dapr, CRDs already present).
+*/}}
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: dws-controller-config
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  type: configuration.redis
+  version: v1
+  # See pubsub-component.yaml — extend past Dapr's 5s default to survive the
+  # Bitnami Redis 20s readiness-probe warmup window without a fatal sidecar exit.
+  initTimeout: 1m
+  metadata:
+    - name: redisHost
+      value: {{ include "dws.redis.host" . | quote }}
+    - name: redisPassword
+      secretKeyRef:
+        name: {{ include "dws.redis.secretName" . }}
+        key: {{ include "dws.redis.secretKey" . }}
+    # Flag values are plain scalar strings (e.g. "v1"/"v2"); do not treat them as JSON documents.
+    - name: enableTLS
+      value: "false"
+auth:
+  secretStore: kubernetes
+# Only the controller reads the compiler-strategy flag via the Configuration API.
+# Scoping this Component to the controller's Dapr app-id prevents unrelated pods' daprd
+# sidecars (admin, orchestrator) from initializing the store — a configuration.redis init
+# hitting Redis before it's fully warm can exceed Dapr's 5s per-component init timeout and
+# fatally crash the sidecar. Same isolation reason dws-definitions is scoped to the
+# orchestrator only.
+scopes:
+  - {{ include "dws.controller.fullname" . }}
+{{- end }}
