@@ -5,12 +5,17 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import CodeMirror from "@uiw/react-codemirror";
 import { useMemo, useState } from "react";
 import { AppLayout } from "#/components/app-layout";
+import { DeploymentPlanView } from "#/components/deployment-plan-view";
 import { Banner } from "#/components/states";
 import {
 	ApiError,
 	AuthenticationError,
+	type DefinitionPreview,
 	type DefinitionSubmission,
+	previewDefinition,
+	type SpecError,
 	submitDefinition,
+	validateDefinitionSpec,
 } from "#/lib/admin-client";
 import { useOidc } from "#/lib/oidc";
 
@@ -53,13 +58,21 @@ const editorLabel = EditorView.contentAttributes.of({
 	"aria-label": "Workflow definition",
 });
 
-function DefinitionEditor() {
+/**
+ * Exported for its own tests: the route registration above owns how this
+ * component is reached, not what it does, and the preview behaviour is worth
+ * asserting without standing up a router.
+ */
+export function DefinitionEditor() {
 	const oidc = useOidc();
 	const [definition, setDefinition] = useState("");
 	const [format, setFormat] = useState<Format>("yaml");
 	const [outcome, setOutcome] = useState<DefinitionSubmission | undefined>();
 	const [requestError, setRequestError] = useState<string | undefined>();
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [preview, setPreview] = useState<DefinitionPreview | undefined>();
+	const [specErrors, setSpecErrors] = useState<SpecError[] | undefined>();
+	const [isPreviewing, setIsPreviewing] = useState(false);
 	// Only the highlighting extension follows the format selector — the buffer is
 	// never rewritten on toggle, so flipping YAML/JSON cannot mangle a draft
 	// (design D3). Do not reformat here.
@@ -73,6 +86,13 @@ function DefinitionEditor() {
 		setIsSubmitting(true);
 		setOutcome(undefined);
 		setRequestError(undefined);
+		// A preview asserts "nothing was applied"; a submission is about to make
+		// that false. Cleared as the request starts, not when it succeeds, so the
+		// stale claim is gone while the write is in flight too. Deliberately not
+		// restored on failure: the buffer that produced the plan is the one the
+		// controller just rejected, so re-showing it would pair a failure banner
+		// with a plan promising a successful deploy.
+		clearPreview();
 		try {
 			// The centralized transport acquires the current bearer token itself
 			// (design D6); this route no longer touches the OIDC client directly.
@@ -90,6 +110,60 @@ function DefinitionEditor() {
 		} finally {
 			setIsSubmitting(false);
 		}
+	};
+
+	/**
+	 * Two layers, in order: spec conformance in dws-admin (fast, local, gives
+	 * field paths), then — only if that passes — dws-controller's compile-only
+	 * dry run for deployability. A document that fails layer 1 would fail layer 2
+	 * too, with strictly worse feedback, so the controller is never asked.
+	 */
+	const runPreview = async () => {
+		if (!oidc.isUserLoggedIn || !definition.trim()) return;
+		setIsPreviewing(true);
+		clearPreview();
+		setRequestError(undefined);
+		// The mirror of the above: an "Applied …" banner above a fresh plan reads
+		// as two verdicts on one buffer.
+		setOutcome(undefined);
+		try {
+			const report = await validateDefinitionSpec(definition, format);
+			if (!report.valid) {
+				setSpecErrors(report.errors);
+				return;
+			}
+			setPreview(await previewDefinition(definition));
+		} catch (error) {
+			if (error instanceof AuthenticationError) {
+				setRequestError("Your session has expired. Sign in again to preview.");
+			} else {
+				setRequestError(
+					error instanceof ApiError
+						? error.message
+						: "Could not reach dws-admin.",
+				);
+			}
+		} finally {
+			setIsPreviewing(false);
+		}
+	};
+
+	/**
+	 * Drops every preview outcome — the plan, a deployability rejection, and the
+	 * spec-error list alike. All three describe one specific buffer, so any
+	 * action that changes what that buffer is, or what has been done with it,
+	 * has to retire them together.
+	 */
+	const clearPreview = () => {
+		setPreview(undefined);
+		setSpecErrors(undefined);
+	};
+
+	// A plan describes the buffer that produced it; once the text moves, showing
+	// it would assert something no longer true.
+	const onDefinitionChange = (next: string) => {
+		setDefinition(next);
+		clearPreview();
 	};
 
 	const canSubmit = oidc.isUserLoggedIn && definition.trim().length > 0;
@@ -123,6 +197,14 @@ function DefinitionEditor() {
 					</select>
 					<button
 						type="button"
+						className="btn-sm"
+						disabled={!canSubmit || isPreviewing || isSubmitting}
+						onClick={runPreview}
+					>
+						{isPreviewing ? "Checking…" : "Preview"}
+					</button>
+					<button
+						type="button"
 						className="btn-sm primary"
 						disabled={!canSubmit || isSubmitting}
 						onClick={submit}
@@ -137,7 +219,7 @@ function DefinitionEditor() {
 					value={definition}
 					height="480px"
 					extensions={extensions}
-					onChange={setDefinition}
+					onChange={onDefinitionChange}
 				/>
 				{outcome?.kind === "applied" && (
 					<Banner variant="success" role="status">
@@ -156,6 +238,31 @@ function DefinitionEditor() {
 					</Banner>
 				)}
 				{requestError && <Banner>{requestError}</Banner>}
+				{specErrors && (
+					<Banner>
+						<p>This is not a valid DSL 1.0 definition.</p>
+						<ul>
+							{specErrors.map((error) => (
+								<li key={`${error.path}:${error.message}:${error.line ?? ""}`}>
+									<code>{error.path || "(document)"}</code> — {error.message}
+									{error.line !== undefined &&
+										` (line ${error.line}, column ${error.column})`}
+								</li>
+							))}
+						</ul>
+					</Banner>
+				)}
+				{preview?.kind === "deploy-error" && (
+					<Banner variant="warn">
+						<p>Valid DSL, but this cluster cannot deploy it.</p>
+						<ul>
+							{preview.errors.map((error) => (
+								<li key={error}>{error}</li>
+							))}
+						</ul>
+					</Banner>
+				)}
+				{preview?.kind === "plan" && <DeploymentPlanView plan={preview.plan} />}
 				<Link to="/workflows" className="btn-sm">
 					← Back to workflows
 				</Link>

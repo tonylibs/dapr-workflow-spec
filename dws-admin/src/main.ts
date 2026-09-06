@@ -2,22 +2,23 @@ import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { raw } from 'express';
 import { AppModule } from './app.module';
 import type { AppConfig } from './config/configuration';
+import { configureBodyParsers } from './http/body-parsers';
 import { runMigrations } from './store/run-migrations';
 
 async function bootstrap() {
   // rawBody: the compile/submit relay to dws-controller forwards the request
   // body verbatim (YAML or JSON) — Nest's JSON parser would drop YAML and
   // re-serialise JSON, changing the content-hashed version on the far side.
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   const config = app.get(ConfigService<AppConfig, true>);
 
-  // Nest captures raw JSON when rawBody is enabled, but it has no built-in parser
-  // for YAML. Parse it as bytes so the controller relay can preserve it verbatim.
-  app.use(raw({ type: ['application/yaml', 'application/x-yaml', 'text/yaml'] }));
+  // Body-parser wiring lives in its own module because its *ordering* is the
+  // behaviour, and the HTTP-level tests boot against the same function.
+  configureBodyParsers(app);
 
   // Reject unknown query params, coerce typed ones (e.g. `limit` from its
   // query-string form), and 400 on out-of-range values.
