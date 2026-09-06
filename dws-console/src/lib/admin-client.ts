@@ -184,6 +184,153 @@ export async function submitDefinition(
 	return { kind: "applied", result: parsed.data };
 }
 
+/** Content type per editor format; the admin validator accepts both. */
+const CONTENT_TYPES = {
+	yaml: "application/yaml",
+	json: "application/json",
+} as const;
+
+/** One spec-conformance problem. `line`/`column` appear only for parse failures. */
+export interface SpecError {
+	path: string;
+	message: string;
+	keyword?: string;
+	line?: number;
+	column?: number;
+}
+
+export type SpecValidationReport =
+	| { valid: true }
+	| { valid: false; errors: SpecError[]; truncated: boolean };
+
+/**
+ * Layer 1 of preview: does this parse, and is it valid DSL?
+ *
+ * Answered inside dws-admin against the JSON Schema vendored from the same SDK
+ * dws-controller parses with — no controller hop, so an invalid draft never
+ * costs a compile. Unlike the submit path, an invalid *document* is a 200 here;
+ * a non-2xx means the *request* was wrong.
+ */
+export async function validateDefinitionSpec(
+	definition: string,
+	format: "yaml" | "json",
+	signal?: AbortSignal,
+): Promise<SpecValidationReport> {
+	const response = await adminFetch(
+		"/definitions/validate",
+		{
+			method: "POST",
+			headers: {
+				Accept: "application/json",
+				"Content-Type": CONTENT_TYPES[format],
+			},
+			body: definition,
+		},
+		signal,
+	);
+
+	if (!response.ok) {
+		throw new ApiError(
+			response.status,
+			`POST /definitions/validate failed: ${response.status} ${response.statusText}`,
+		);
+	}
+
+	return (await response.json()) as SpecValidationReport;
+}
+
+/**
+ * Mirrors dws-controller's `DeploymentPlan` record. Parsed, not cast, for the
+ * same reason `applyResultSchema` is: a silent shape drift would otherwise reach
+ * the plan table as "undefined".
+ *
+ * `oauthEndpoints`/`bindingComponents` are accepted permissively — Phase 2 does
+ * not render them and their shape is not console-facing.
+ */
+const deploymentPlanSchema = z.object({
+	workflow: z.string(),
+	versionId: z.string(),
+	version: z.string(),
+	definitionResource: z.string(),
+	specText: z.string(),
+	steps: z.array(
+		z.object({ name: z.string(), kind: z.string(), image: z.string() }),
+	),
+	bindings: z.array(
+		z.object({ task: z.string(), direction: z.string(), topic: z.string() }),
+	),
+	orchestrator: z.object({
+		name: z.string(),
+		image: z.string(),
+		appId: z.string(),
+		appPort: z.number(),
+		replicas: z.number(),
+	}),
+	oauthEndpoints: z.array(z.unknown()).optional(),
+	bindingComponents: z.array(z.unknown()).optional(),
+});
+
+export type DeploymentPlan = z.infer<typeof deploymentPlanSchema>;
+
+/** Layer 2 of preview: what would this actually deploy, per dws-controller? */
+export type DefinitionPreview =
+	| { kind: "plan"; plan: DeploymentPlan }
+	| { kind: "deploy-error"; errors: string[] };
+
+/**
+ * Compile-only request through the same relay the real submit uses. Applies
+ * nothing: `dryRun=true` makes dws-controller return the plan without touching
+ * the cluster.
+ */
+export async function previewDefinition(
+	definition: string,
+	signal?: AbortSignal,
+): Promise<DefinitionPreview> {
+	const response = await adminFetch(
+		"/workflows?dryRun=true",
+		{
+			method: "POST",
+			headers: {
+				Accept: "application/json",
+				"Content-Type": "application/yaml",
+			},
+			body: definition,
+		},
+		signal,
+	);
+
+	if (response.status === 400) {
+		const payload = (await response.json()) as { errors?: unknown };
+		if (
+			Array.isArray(payload.errors) &&
+			payload.errors.every((error) => typeof error === "string")
+		) {
+			return { kind: "deploy-error", errors: payload.errors };
+		}
+		throw new ApiError(
+			400,
+			`POST /workflows?dryRun=true failed: invalid validation response: ${summarize(payload)}`,
+		);
+	}
+
+	if (!response.ok) {
+		throw new ApiError(
+			response.status,
+			`POST /workflows?dryRun=true failed: ${response.status} ${response.statusText}`,
+		);
+	}
+
+	const parsed = deploymentPlanSchema.safeParse(await response.json());
+	if (!parsed.success) {
+		throw new ApiError(
+			response.status,
+			`POST /workflows?dryRun=true failed: unexpected plan: ${parsed.error.message}`,
+		);
+	}
+
+	return { kind: "plan", plan: parsed.data };
+}
+
 /** Longest server payload echoed into an `ApiError` message. */
 const MAX_PAYLOAD_CHARS = 200;
 

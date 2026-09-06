@@ -5,12 +5,17 @@ import { Link } from "@tanstack/react-router";
 import CodeMirror from "@uiw/react-codemirror";
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import { AppLayout } from "#/components/app-layout";
+import { DeploymentPlanView } from "#/components/deployment-plan-view";
 import { Banner } from "#/components/states";
 import {
 	ApiError,
 	AuthenticationError,
+	type DefinitionPreview,
 	type DefinitionSubmission,
+	previewDefinition,
+	type SpecError,
 	submitDefinition,
+	validateDefinitionSpec,
 } from "#/lib/admin-client";
 import {
 	readDefinitionFile,
@@ -62,6 +67,9 @@ export function DefinitionEditor() {
 	const [requestError, setRequestError] = useState<string | undefined>();
 	const [importError, setImportError] = useState<string | undefined>();
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [preview, setPreview] = useState<DefinitionPreview | undefined>();
+	const [specErrors, setSpecErrors] = useState<SpecError[] | undefined>();
+	const [isPreviewing, setIsPreviewing] = useState(false);
 
 	useEffect(() => {
 		void useDefinitionDraftStore.persist.rehydrate();
@@ -84,6 +92,7 @@ export function DefinitionEditor() {
 		try {
 			const draft = await readDefinitionFile(file);
 			setDraft(draft.definition, draft.format);
+			clearPreview();
 		} catch (error) {
 			setImportError(
 				error instanceof Error
@@ -98,6 +107,7 @@ export function DefinitionEditor() {
 
 	const selectFormat = (event: ChangeEvent<HTMLSelectElement>) => {
 		setFormat(event.target.value === "json" ? "json" : "yaml");
+		clearPreview();
 	};
 
 	const submit = async () => {
@@ -105,6 +115,7 @@ export function DefinitionEditor() {
 		setIsSubmitting(true);
 		setOutcome(undefined);
 		setRequestError(undefined);
+		clearPreview();
 		try {
 			// The centralized transport acquires the current bearer token itself
 			// (design D6); this route no longer touches the OIDC client directly.
@@ -122,6 +133,44 @@ export function DefinitionEditor() {
 		} finally {
 			setIsSubmitting(false);
 		}
+	};
+
+	const runPreview = async () => {
+		if (!oidc.isUserLoggedIn || !definition.trim()) return;
+		setIsPreviewing(true);
+		clearPreview();
+		setOutcome(undefined);
+		setRequestError(undefined);
+		try {
+			const report = await validateDefinitionSpec(definition, format);
+			if (!report.valid) {
+				setSpecErrors(report.errors);
+				return;
+			}
+			setPreview(await previewDefinition(definition));
+		} catch (error) {
+			if (error instanceof AuthenticationError) {
+				setRequestError("Your session has expired. Sign in again to preview.");
+			} else {
+				setRequestError(
+					error instanceof ApiError
+						? error.message
+						: "Could not reach dws-admin.",
+				);
+			}
+		} finally {
+			setIsPreviewing(false);
+		}
+	};
+
+	const clearPreview = () => {
+		setPreview(undefined);
+		setSpecErrors(undefined);
+	};
+
+	const onDefinitionChange = (next: string) => {
+		setDefinition(next);
+		clearPreview();
 	};
 
 	const canSubmit = oidc.isUserLoggedIn && definition.trim().length > 0;
@@ -160,6 +209,14 @@ export function DefinitionEditor() {
 					/>
 					<button
 						type="button"
+						className="btn-sm"
+						disabled={!canSubmit || isPreviewing || isSubmitting}
+						onClick={runPreview}
+					>
+						{isPreviewing ? "Checking…" : "Preview"}
+					</button>
+					<button
+						type="button"
 						className="btn-sm primary"
 						disabled={!canSubmit || isSubmitting}
 						onClick={submit}
@@ -175,7 +232,7 @@ export function DefinitionEditor() {
 					value={definition}
 					height="480px"
 					extensions={extensions}
-					onChange={setDefinition}
+					onChange={onDefinitionChange}
 				/>
 				{outcome?.kind === "applied" && (
 					<Banner variant="success" role="status">
@@ -194,6 +251,31 @@ export function DefinitionEditor() {
 					</Banner>
 				)}
 				{requestError && <Banner>{requestError}</Banner>}
+				{specErrors && (
+					<Banner>
+						<p>This is not a valid DSL 1.0 definition.</p>
+						<ul>
+							{specErrors.map((error) => (
+								<li key={`${error.path}:${error.message}:${error.line ?? ""}`}>
+									<code>{error.path || "(document)"}</code> — {error.message}
+									{error.line !== undefined &&
+										` (line ${error.line}, column ${error.column})`}
+								</li>
+							))}
+						</ul>
+					</Banner>
+				)}
+				{preview?.kind === "deploy-error" && (
+					<Banner variant="warn">
+						<p>Valid DSL, but this cluster cannot deploy it.</p>
+						<ul>
+							{preview.errors.map((error) => (
+								<li key={error}>{error}</li>
+							))}
+						</ul>
+					</Banner>
+				)}
+				{preview?.kind === "plan" && <DeploymentPlanView plan={preview.plan} />}
 				<Link to="/workflows" className="btn-sm">
 					← Back to workflows
 				</Link>
