@@ -190,9 +190,10 @@ jobs:
         # admin pod's already-injected, already-Ready daprd sidecar via a
         # port-forward from the runner:
         #   1. Confirm each Component is present in-cluster.
-        #   2. Confirm admin's daprd logged its subscription registration on the
-        #      `pubsub` component + `dws.events` topic — proves the Component
-        #      loaded correctly and Dapr routed the Subscription CRD.
+        #   2. Confirm admin actually serves Dapr's programmatic-subscription
+        #      contract on `GET /dapr/subscribe` (topic `dws.events`, the
+        #      chart's `pubsub` Component, route `/dapr/events/dws`), and that
+        #      admin's daprd loaded that `pubsub` Component.
         #   3. Publish two real DWS lifecycle events (per docs/events.md) through
         #      admin's daprd sidecar; a 2xx from the pubsub API is proof the
         #      Component accepted the message and wrote to the Redis stream.
@@ -207,12 +208,42 @@ jobs:
           kubectl get component dws-definitions -n "$NS"
           kubectl get component dws-actor-statestore -n "$NS"
 
-          echo "--- admin subscription registration and pubsub initialization ---"
-          # Dapr 1.18 does not emit a subscription-registration log line. Verify
-          # the app's registration and the sidecar's pubsub Component separately.
-          kubectl logs -n "$NS" -l app.kubernetes.io/component=admin -c admin --tail=500 \
-            | grep -F '[Topic = dws.events] Registered Subscription with routes: default' \
-            || { echo "::error::admin never registered the dws.events subscription"; exit 1; }
+          echo "--- admin subscription contract and pubsub initialization ---"
+          # admin serves Dapr's programmatic-subscription contract from a plain
+          # Nest controller on its own port 3000 (no separate Dapr application
+          # server, so there is no SDK startup log line to grep). Assert the
+          # served contract itself instead: port-forward the admin pod and check
+          # `GET /dapr/subscribe` advertises the chart's pubsub Component and the
+          # dws.events topic. Then verify the sidecar loaded that Component.
+          admin_sub_pod=$(kubectl get pods -n "$NS" -l app.kubernetes.io/component=admin \
+            -o jsonpath='{.items[0].metadata.name}')
+          [ -n "$admin_sub_pod" ] || { echo "::error::no admin pod found"; exit 1; }
+
+          kubectl port-forward -n "$NS" "pod/$admin_sub_pod" 18080:3000 >/dev/null 2>&1 &
+          pf_pid=$!
+          trap 'kill "$pf_pid" 2>/dev/null || true' EXIT
+
+          subs=""
+          for _ in $(seq 1 30); do
+            if subs=$(curl -fsS --max-time 5 http://127.0.0.1:18080/dapr/subscribe 2>/dev/null); then
+              break
+            fi
+            subs=""
+            sleep 2
+          done
+          [ -n "$subs" ] || { echo "::error::admin never served GET /dapr/subscribe"; exit 1; }
+          echo "GET /dapr/subscribe -> $subs"
+
+          echo "$subs" | jq -e '
+            any(.[];
+              .topic == "dws.events"
+              and .pubsubname == "pubsub"
+              and .routes.default == "/dapr/events/dws")' >/dev/null \
+            || { echo "::error::admin did not advertise the dws.events subscription on the pubsub Component with route /dapr/events/dws"; exit 1; }
+
+          kill "$pf_pid" 2>/dev/null || true
+          trap - EXIT
+
           kubectl logs -n "$NS" -l app.kubernetes.io/component=admin -c daprd --tail=500 \
             | grep -F 'Component loaded: pubsub (pubsub.redis/v1)' \
             || { echo "::error::admin daprd never loaded the pubsub Component"; exit 1; }
