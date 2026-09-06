@@ -50,7 +50,11 @@ import {
 	submitDefinition,
 	validateDefinitionSpec,
 } from "#/lib/admin-client";
-import { DefinitionEditor } from "./new";
+import {
+	definitionDraftDefaults,
+	useDefinitionDraftStore,
+} from "#/lib/definition-draft-store";
+import { DefinitionEditor } from "./definition-editor";
 
 // CodeMirror measures itself through Range client rects on every layout pass;
 // jsdom implements neither, and the unhandled rejection would otherwise fail
@@ -104,12 +108,18 @@ const PLAN = {
 };
 
 beforeEach(() => {
+	localStorage.clear();
+	useDefinitionDraftStore.setState(definitionDraftDefaults);
 	vi.mocked(validateDefinitionSpec).mockReset();
 	vi.mocked(previewDefinition).mockReset();
 	vi.mocked(submitDefinition).mockReset();
 });
 
-afterEach(cleanup);
+afterEach(() => {
+	cleanup();
+	localStorage.clear();
+	useDefinitionDraftStore.setState(definitionDraftDefaults);
+});
 
 describe("definition editor preview", () => {
 	it("disables preview while the buffer is empty", () => {
