@@ -1063,9 +1063,9 @@ package io.dws.controller.compile;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.networknt.schema.JsonSchema;
-import com.networknt.schema.JsonSchemaFactory;
-import com.networknt.schema.SpecVersion;
+import com.networknt.schema.Schema;
+import com.networknt.schema.SchemaRegistry;
+import com.networknt.schema.SpecificationVersion;
 import io.dws.controller.model.CompiledNode;
 import io.dws.controller.model.DeploymentPlan;
 import java.nio.file.Files;
@@ -1101,8 +1101,9 @@ class V2GoldenTest {
             .replace("<versionId>", plan.versionId());
     assertThat(JSON.readTree(describe(root))).isEqualTo(JSON.readTree(expectedGraph));
 
-    JsonSchema schema =
-        JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7).getSchema(Files.readString(SCHEMA));
+    Schema schema =
+        SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_7)
+            .getSchema(JSON.readTree(Files.readString(SCHEMA)));
     for (CompiledNode node : root.flatten()) {
       Path nodeFixture = dir.resolve("nodes").resolve(node.appId() + ".json");
       assertThat(node.specText())
@@ -1127,6 +1128,30 @@ class V2GoldenTest {
 
 Run: `cd dws-controller && ./mvnw -q -Dtest=V2GoldenTest test`
 Expected: FAIL — `describe` throws, and no fixture files exist.
+
+Note the validator API: `com.networknt:json-schema-validator` resolves at 2.0.0 on this classpath,
+which is a from-scratch rewrite — `JsonSchema`/`JsonSchemaFactory`/`SpecVersion` do not exist in it.
+Use `SchemaRegistry`/`Schema`/`SpecificationVersion` as written above. `SingleNodeDefinitionTest`
+from Task 4 already uses this API; copy its `schema()` helper rather than reinventing it.
+
+- [ ] **Step 2b: Prove the validator is not vacuous**
+
+A validator that silently fails to load its schema returns an empty violation list for everything,
+so every `isEmpty()` assertion would pass against nothing. Add one negative control:
+
+```java
+  @Test
+  void theSchemaActuallyRejectsAnInvalidNode() throws Exception {
+    Schema schema =
+        SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_7)
+            .getSchema(JSON.readTree(Files.readString(SCHEMA)));
+    // kind: flow with no scope, no tasks, no children — required fields missing
+    JsonNode invalid = JSON.readTree("{\"workflow\":\"w\",\"version\":\"v\",\"nodeId\":\"n\",\"kind\":\"flow\"}");
+    assertThat(schema.validate(invalid)).isNotEmpty();
+  }
+```
+
+Run it and confirm it passes before trusting any `isEmpty()` assertion in this file.
 
 - [ ] **Step 3: Implement `describe` and generate the fixtures**
 
