@@ -39,8 +39,8 @@ fork is an inline region with no standalone node, directly contradicting ADR 000
 
 **Derived identifiers**
 - To: `<workflow>.main`, `<try-task>.catch`, `<fork-task>.branch.<branch-root-task>` for scopes the
-  DSL does not name; a named scope keeps its own task name. A structural task at a fork-branch root
-  appends its kind (`.for`, `.try`) because the branch id already consumed its name. Every `nodeId`
+  DSL does not name; a named scope keeps its own task name. A structural task at a fork-branch root keeps
+  its own task name, like any other named scope. Every `nodeId`
   is then sanitized to a DNS-1123 label as its `appId` — dots to dashes, camelCase to kebab
   (`fulfillOrder.catch` → `fulfill-order-catch`).
 - Reason: acceptance criterion #2 plus ADR 0001's sanitization corollary.

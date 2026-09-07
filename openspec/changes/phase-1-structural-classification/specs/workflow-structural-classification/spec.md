@@ -66,8 +66,9 @@ branch's root task as its child node.
 The compiler SHALL derive each node's `nodeId` and SHALL sanitize it into that node's `appId` as a
 DNS-1123 label. A scope the DSL names SHALL keep that name as its `nodeId`. Scopes the DSL does not
 name SHALL derive one: `<workflow>.main` for the top-level scope, `<try-task>.catch` for a catch
-scope, `<fork-task>.branch.<branch-root-task>` for a fork branch, and `<branch-nodeId>.<kind>` for a
-structural task sitting at a fork branch's root. Sanitization SHALL collapse dots and other
+scope, `<fork-task>.branch.<branch-root-task>` for a fork branch,. A structural task sitting at a fork branch's
+root is a named scope and keeps its own task name, so that a flow's `children` keys always match its
+`tasks` entries' task names. Sanitization SHALL collapse dots and other
 non-alphanumeric characters to single dashes and SHALL split camelCase boundaries.
 
 #### Scenario: an unnamed catch scope derives its identifier from its try task
@@ -94,12 +95,18 @@ non-alphanumeric characters to single dashes and SHALL split camelCase boundarie
 - **THEN** the branch `FlowNode`'s `nodeId` SHALL be `notifyChannels.branch.notifyRecipients` and
   its `appId` SHALL be `notify-channels-branch-notify-recipients`
 
-#### Scenario: a structural task at a branch root appends its kind
+#### Scenario: a structural task at a branch root keeps its own name
 
-- **WHEN** the branch `notifyChannels.branch.notifyRecipients`'s root task is a `for`
-- **THEN** that `for` `FlowNode`'s `nodeId` SHALL be
-  `notifyChannels.branch.notifyRecipients.for` and its `appId` SHALL be
-  `notify-channels-branch-notify-recipients-for`
+- **WHEN** the branch `notifyChannels.branch.notifyRecipients`'s root task is a `for` named
+  `notifyRecipients`
+- **THEN** that `for` `FlowNode`'s `nodeId` SHALL be `notifyRecipients` and its `appId` SHALL be
+  `notify-recipients`
+
+#### Scenario: a flow's children keys match its task names
+
+- **WHEN** any `FlowNode`'s `specText` is rendered
+- **THEN** every key of its `children` object SHALL equal the task name of the corresponding entry in
+  its `tasks` array, for every task that compiles to its own node
 
 #### Scenario: an app ID exceeding the DNS-1123 length limit is rejected
 

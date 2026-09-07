@@ -94,7 +94,7 @@ supplies none:
 | named `for`/`try` | the task's own name | `reserve-items` |
 | `catch` | `<try-task>.catch` | `fulfill-order-catch` |
 | fork branch | `<fork-task>.branch.<branch-root-task>` | `notify-channels-branch-notify-recipients` |
-| structural task at a branch root | `<branch-nodeId>.<kind>` | `notify-channels-branch-notify-recipients-for` |
+| structural task at a branch root | the task's own name | `notify-recipients` |
 
 Alternatives considered. **Parent-qualified paths** (`order-fulfillment.main.fulfillOrder.reserveItems`)
 are unique by construction but breach DNS-1123's 63-character cap at realistic nesting depth and
@@ -102,9 +102,14 @@ contradict acceptance criterion #2's own examples. **Flat with qualification onl
 makes a node's app ID depend on unrelated parts of the document — renaming a task elsewhere
 silently re-addresses this node — and removes the rejection behavior criterion #9 requires.
 
-The last row exists because a fork branch's derived id has already consumed its root task's name;
-repeating it would produce `...branch.notifyRecipients.notifyRecipients`. Appending the kind keeps
-`key()` meaningful (`for`) and the id readable.
+The last row is not a special case: a structural task at a branch root is a named scope like any
+other, so the flat rule applies unchanged. An earlier draft appended the scope kind
+(`<branch-nodeId>.for`) to avoid repeating the name the branch id already consumed. That broke the
+wire contract — the phase-0 `single-node-definition-contract` requires `children` to map *task name*
+to app ID, and `key()` returns a nodeId's last dotted segment, so the appended form keyed the branch's
+only child `for` while its `tasks` entry was keyed `notifyRecipients`. Phase 3 dispatch resolves
+children through that map, so the two must agree. Dropping the suffix removes the special case and
+restores the match.
 
 Sanitization is `Names.kebab` applied to the whole dotted id: dots and other non-alphanumerics
 collapse to single dashes, camelCase boundaries split. `fulfillOrder.catch` → `fulfill-order-catch`.

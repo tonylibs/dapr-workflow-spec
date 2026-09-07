@@ -281,7 +281,6 @@ git commit -m "refactor(controller): extract SpecParser shared by both compiler 
   - `String mainNodeId(String workflow)` → `workflow + ".main"`
   - `String catchNodeId(String tryTaskName)` → `tryTaskName + ".catch"`
   - `String branchNodeId(String forkTaskName, String branchRootTaskName)`
-  - `String branchScopeNodeId(String branchNodeId, String kind)` → `branchNodeId + "." + kind`
   - `String appId(String nodeId)` — kebab + 63-char rejection
   - `String functionAppId(String appId)` → `appId + "-fn"`
   And on `Names`: `String nodeDefinitionResource(String workflow, String versionId, String appId)`.
@@ -307,8 +306,6 @@ class NodeNamingTest {
     assertThat(NodeNaming.catchNodeId("fulfillOrder")).isEqualTo("fulfillOrder.catch");
     assertThat(NodeNaming.branchNodeId("notifyChannels", "notifyRecipients"))
         .isEqualTo("notifyChannels.branch.notifyRecipients");
-    assertThat(NodeNaming.branchScopeNodeId("notifyChannels.branch.notifyRecipients", "for"))
-        .isEqualTo("notifyChannels.branch.notifyRecipients.for");
   }
 
   @Test
@@ -316,8 +313,8 @@ class NodeNamingTest {
     assertThat(NodeNaming.appId("fulfillOrder.catch")).isEqualTo("fulfill-order-catch");
     assertThat(NodeNaming.appId("order-fulfillment.main")).isEqualTo("order-fulfillment-main");
     assertThat(NodeNaming.appId("reserveItems")).isEqualTo("reserve-items");
-    assertThat(NodeNaming.appId("notifyChannels.branch.notifyRecipients.for"))
-        .isEqualTo("notify-channels-branch-notify-recipients-for");
+    assertThat(NodeNaming.appId("notifyChannels.branch.notifyRecipients"))
+        .isEqualTo("notify-channels-branch-notify-recipients");
   }
 
   @Test
@@ -380,10 +377,6 @@ final class NodeNaming {
 
   static String branchNodeId(String forkTaskName, String branchRootTaskName) {
     return forkTaskName + ".branch." + branchRootTaskName;
-  }
-
-  static String branchScopeNodeId(String branchNodeId, String kind) {
-    return branchNodeId + "." + kind;
   }
 
   static String appId(String nodeId) {
@@ -911,8 +904,7 @@ switches on task kind:
   `getFork().isCompete() ? "any" : "all"`, empty tasks, one branch child per
   `getFork().getBranches()` entry. Each branch is a `FlowNode` with
   `NodeNaming.branchNodeId(forkName, branchRootName)` and scope `forkBranch`, whose single child is
-  the classified branch root — and when that root is itself a `for` or `try`, its `nodeId` is
-  `NodeNaming.branchScopeNodeId(branchNodeId, "for"|"try")` rather than its own task name.
+  the classified branch root, which keeps its own task name as its `nodeId` whatever its kind.
 - otherwise → `StepNode`, `nodeId` = the task's own name, `functionAppId` set via
   `NodeNaming.functionAppId(appId)` when `task.getCallTask() != null || task.getRunTask() != null`,
   otherwise `Optional.empty()`.
@@ -1169,7 +1161,7 @@ notify-order-main                                (flow, main)
   prepare-notification                           (step)
   notify-channels                                (flow, fork, forkMode all)
     notify-channels-branch-notify-recipients     (flow, forkBranch)
-      notify-channels-branch-notify-recipients-for  (flow, for)
+      notify-recipients                          (flow, for)
         send-email                               (step, functionAppId send-email-fn)
     notify-channels-branch-write-audit           (flow, forkBranch)
       write-audit                                (step)
