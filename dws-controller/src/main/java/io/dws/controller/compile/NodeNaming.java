@@ -21,10 +21,6 @@ final class NodeNaming {
     return forkTaskName + ".branch." + branchRootTaskName;
   }
 
-  static String branchScopeNodeId(String branchNodeId, String kind) {
-    return branchNodeId + "." + kind;
-  }
-
   static String appId(String nodeId) {
     String appId = Names.kebab(nodeId);
     if (appId.isEmpty()) {

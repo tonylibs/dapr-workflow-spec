@@ -3,13 +3,20 @@ package io.dws.controller.compile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dws.controller.model.CompiledNode;
 import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.FlowNode;
 import io.dws.controller.model.StepNode;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class V2StructuralCompilerTest {
+
+  private static final ObjectMapper JSON = new ObjectMapper();
 
   private static final String NESTED =
       """
@@ -77,6 +84,34 @@ class V2StructuralCompilerTest {
 
   private final V2StructuralCompiler compiler = new V2StructuralCompiler();
 
+  /**
+   * The invariant the single-node-definition contract rests on: a flow dispatches its children
+   * through a map keyed by task name, so every {@code children} key must be the name of the
+   * corresponding {@code tasks} entry — the dedicated {@code catch} child aside. A fork node
+   * sequences no tasks of its own, fanning out to branch children instead, so it is skipped.
+   */
+  private static void assertChildrenKeysMatchTaskNames(CompiledNode root) throws Exception {
+    for (CompiledNode node : root.flatten()) {
+      if (!(node instanceof FlowNode)) {
+        continue;
+      }
+      JsonNode spec = JSON.readTree(node.specText());
+      if (spec.get("tasks").isEmpty()) {
+        continue;
+      }
+      List<String> taskNames = new ArrayList<>();
+      spec.get("tasks")
+          .forEach(task -> taskNames.add(task.properties().iterator().next().getKey()));
+      List<String> childKeys = new ArrayList<>();
+      for (Map.Entry<String, JsonNode> child : spec.get("children").properties()) {
+        if (!(spec.has("catch") && child.getKey().equals("catch"))) {
+          childKeys.add(child.getKey());
+        }
+      }
+      assertThat(childKeys).describedAs(node.appId()).isEqualTo(taskNames);
+    }
+  }
+
   private static CompiledNode node(CompiledNode root, String appId) {
     return root.flatten().stream().filter(n -> n.appId().equals(appId)).findFirst().orElseThrow();
   }
@@ -130,7 +165,7 @@ class V2StructuralCompilerTest {
             "prepare-notification",
             "notify-channels",
             "notify-channels-branch-notify-recipients",
-            "notify-channels-branch-notify-recipients-for",
+            "notify-recipients",
             "send-email",
             "notify-channels-branch-write-audit",
             "write-audit");
@@ -142,9 +177,16 @@ class V2StructuralCompilerTest {
         .extracting(CompiledNode::key)
         .containsExactly("notifyRecipients", "writeAudit");
 
-    CompiledNode branchFor = node(main, "notify-channels-branch-notify-recipients-for");
-    assertThat(branchFor.nodeId()).isEqualTo("notifyChannels.branch.notifyRecipients.for");
-    assertThat(branchFor.key()).isEqualTo("for");
+    CompiledNode branchFor = node(main, "notify-recipients");
+    assertThat(branchFor.nodeId()).isEqualTo("notifyRecipients");
+    assertThat(branchFor.key()).isEqualTo("notifyRecipients");
+  }
+
+  @Test
+  void keysEveryFlowNodesChildrenByItsOwnTaskNames() throws Exception {
+    for (String specText : new String[] {NESTED, FORKED}) {
+      assertChildrenKeysMatchTaskNames(compiler.compile(specText).flowStepGraph().get(0));
+    }
   }
 
   @Test

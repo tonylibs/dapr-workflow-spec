@@ -13,8 +13,6 @@ class NodeNamingTest {
     assertThat(NodeNaming.catchNodeId("fulfillOrder")).isEqualTo("fulfillOrder.catch");
     assertThat(NodeNaming.branchNodeId("notifyChannels", "notifyRecipients"))
         .isEqualTo("notifyChannels.branch.notifyRecipients");
-    assertThat(NodeNaming.branchScopeNodeId("notifyChannels.branch.notifyRecipients", "for"))
-        .isEqualTo("notifyChannels.branch.notifyRecipients.for");
   }
 
   @Test
@@ -22,8 +20,8 @@ class NodeNamingTest {
     assertThat(NodeNaming.appId("fulfillOrder.catch")).isEqualTo("fulfill-order-catch");
     assertThat(NodeNaming.appId("order-fulfillment.main")).isEqualTo("order-fulfillment-main");
     assertThat(NodeNaming.appId("reserveItems")).isEqualTo("reserve-items");
-    assertThat(NodeNaming.appId("notifyChannels.branch.notifyRecipients.for"))
-        .isEqualTo("notify-channels-branch-notify-recipients-for");
+    assertThat(NodeNaming.appId("notifyChannels.branch.notifyRecipients"))
+        .isEqualTo("notify-channels-branch-notify-recipients");
   }
 
   @Test

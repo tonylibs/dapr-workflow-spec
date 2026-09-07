@@ -92,17 +92,18 @@ final class NodeClassifier {
     List<CompiledNode> children = new ArrayList<>(items.size());
     for (int i = 0; i < items.size(); i++) {
       TaskItem item = items.get(i);
-      children.add(classifyTask(item, rawTasks.get(i), item.getName(), context));
+      children.add(classifyTask(item, rawTasks.get(i), context));
     }
     return List.copyOf(children);
   }
 
   /**
-   * Classifies one task. {@code nodeId} is the task's own name everywhere except a fork branch
-   * root, where the branch node has already consumed that name (design §D3, last row).
+   * Classifies one task. Its node id is always the task's own name — a named scope keeps that name
+   * wherever it appears, including at a fork branch's root, so a flow's {@code children} keys are
+   * always its {@code tasks} entries' names (design §D3, §D5).
    */
-  private static CompiledNode classifyTask(
-      TaskItem item, JsonNode rawItem, String nodeId, Context context) {
+  private static CompiledNode classifyTask(TaskItem item, JsonNode rawItem, Context context) {
+    String nodeId = item.getName();
     Task task = item.getTask();
     JsonNode rawBody = rawBody(rawItem, item.getName());
     if (task != null && task.getForTask() != null) {
@@ -185,8 +186,7 @@ final class NodeClassifier {
   private static CompiledNode branchFlow(
       String forkNodeId, TaskItem branch, JsonNode rawBranch, Context context) {
     String branchNodeId = NodeNaming.branchNodeId(forkNodeId, branch.getName());
-    CompiledNode root =
-        classifyTask(branch, rawBranch, branchRootNodeId(branchNodeId, branch), context);
+    CompiledNode root = classifyTask(branch, rawBranch, context);
     return flow(
         context,
         branchNodeId,
@@ -195,21 +195,6 @@ final class NodeClassifier {
         List.of(root),
         null,
         null);
-  }
-
-  /**
-   * A branch root's node id. The branch node's own id has already consumed the root task's name, so
-   * a structural root is suffixed with its kind instead of repeating that name (design §D3).
-   */
-  private static String branchRootNodeId(String branchNodeId, TaskItem branch) {
-    Task task = branch.getTask();
-    if (task != null && task.getForTask() != null) {
-      return NodeNaming.branchScopeNodeId(branchNodeId, SCOPE_FOR);
-    }
-    if (task != null && task.getTryTask() != null) {
-      return NodeNaming.branchScopeNodeId(branchNodeId, SCOPE_TRY);
-    }
-    return branch.getName();
   }
 
   /**
