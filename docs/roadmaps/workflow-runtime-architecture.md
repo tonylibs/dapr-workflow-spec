@@ -42,7 +42,7 @@ parent Flow performs all durable orchestration; a Step performs exactly one task
 
 | Component | Tasks and constructs |
 |---|---|
-| Flow service | Top-level `main` flow, `for`, `try`, `catch`, and `fork` branch-flow lifecycle. The parent Flow service performs `allOf` or `anyOf` for a `fork`. |
+| Flow service | Top-level `main` flow, `for`, `try`, `catch`, `fork`, and fork branch-flow lifecycle. When a Flow is a `fork` scope, it performs `allOf` when `compete: false` or `anyOf` when `compete: true` for its branches. |
 | Step service | `call`, `run`, `set`, `switch`, `wait`, `listen`, `emit`, and `raise`. The `call` and `run` variants delegate their concrete work to Knative functions; the remaining Step task types execute in their Java Activity implementations. |
 
 At the service boundary, a .NET Flow calls another .NET Flow through
