@@ -27,6 +27,14 @@ final class NodeNaming {
 
   static String appId(String nodeId) {
     String appId = Names.kebab(nodeId);
+    if (appId.isEmpty()) {
+      throw new CompilationException(
+          List.of(
+              "node '"
+                  + nodeId
+                  + "' produces an empty app ID; DNS-1123 labels must contain at least one "
+                  + "alphanumeric character"));
+    }
     if (appId.length() > DNS_1123_LABEL_MAX) {
       throw new CompilationException(
           List.of(
@@ -44,6 +52,20 @@ final class NodeNaming {
   }
 
   static String functionAppId(String appId) {
-    return appId + "-fn";
+    String functionAppId = appId + "-fn";
+    if (functionAppId.length() > DNS_1123_LABEL_MAX) {
+      throw new CompilationException(
+          List.of(
+              "app ID '"
+                  + appId
+                  + "' with the function suffix produces '"
+                  + functionAppId
+                  + "' ("
+                  + functionAppId.length()
+                  + " characters), which exceeds the "
+                  + DNS_1123_LABEL_MAX
+                  + "-character DNS-1123 label limit"));
+    }
+    return functionAppId;
   }
 }

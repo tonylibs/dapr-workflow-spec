@@ -45,4 +45,23 @@ class NodeNamingTest {
             Names.nodeDefinitionResource("order-fulfillment", "v1a2b3c4d", "fulfill-order-catch"))
         .isEqualTo("dws-def-order-fulfillment-v1a2b3c4d-fulfill-order-catch");
   }
+
+  @Test
+  void rejectsFunctionAppIdThatExceedsSixtyThreeCharacters() {
+    // An appId of 61 characters + "-fn" (3 chars) = 64 chars, exceeding the limit
+    String appIdAt61Chars = "a".repeat(61);
+    assertThatThrownBy(() -> NodeNaming.functionAppId(appIdAt61Chars))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining(appIdAt61Chars)
+        .hasMessageContaining(appIdAt61Chars + "-fn");
+  }
+
+  @Test
+  void rejectsBlankDerivedAppId() {
+    // A nodeId with only symbols (no alphanumerics) produces an empty appId
+    String symbolOnlyNodeId = "___";
+    assertThatThrownBy(() -> NodeNaming.appId(symbolOnlyNodeId))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining(symbolOnlyNodeId);
+  }
 }
