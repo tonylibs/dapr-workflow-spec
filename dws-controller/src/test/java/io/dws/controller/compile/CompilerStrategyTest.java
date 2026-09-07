@@ -56,12 +56,14 @@ class CompilerStrategyTest {
   }
 
   @Test
-  @DisplayName("v2 stub populates only flowStepGraph and leaves legacy steps empty")
+  @DisplayName("v2 compiler populates flowStepGraph and leaves legacy steps empty")
   void v2LeavesLegacyEmpty() {
     DeploymentPlan plan = new V2StructuralCompiler().compile(MINIMAL);
     assertThat(plan.steps()).isEmpty();
     assertThat(plan.orchestrator()).isNull();
-    assertThat(plan.flowStepGraph()).isEmpty();
+    assertThat(plan.flowStepGraph()).hasSize(1);
+    assertThat(plan.flowStepGraph().get(0).appId()).isEqualTo("minimal-main");
+    assertThat(plan.workflow()).isEqualTo("minimal");
   }
 
   @Test

@@ -2,6 +2,7 @@ package io.dws.controller.model;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -47,5 +48,17 @@ public sealed interface CompiledNode permits FlowNode, StepNode {
   default String key() {
     int i = nodeId().lastIndexOf('.');
     return i < 0 ? nodeId() : nodeId().substring(i + 1);
+  }
+
+  /**
+   * This node followed by all its descendants in pre-order — the flat "one Deployment per node"
+   * view {@code StackSynthesizer} will consume in Phase 4, and the walk the compiler's
+   * duplicate-app-ID check runs over.
+   */
+  default List<CompiledNode> flatten() {
+    List<CompiledNode> all = new ArrayList<>();
+    all.add(this);
+    children().forEach(child -> all.addAll(child.flatten()));
+    return List.copyOf(all);
   }
 }
