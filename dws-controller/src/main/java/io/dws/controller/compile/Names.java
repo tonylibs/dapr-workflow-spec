@@ -40,4 +40,8 @@ public final class Names {
   public static String orchestrator(String workflow, String versionId) {
     return workflow + "-" + versionId;
   }
+
+  public static String nodeDefinitionResource(String workflow, String versionId, String appId) {
+    return definitionResource(workflow, versionId) + "-" + appId;
+  }
 }
