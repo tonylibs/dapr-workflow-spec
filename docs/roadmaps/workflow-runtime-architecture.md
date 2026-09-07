@@ -79,7 +79,7 @@ the task-specific I/O, while the workflow layer retains orchestration and retry 
 | Flow | A task-list scope. | Green node. A flow invokes its direct child steps and flows. |
 | Step | A single task that does not own a task list. | Orange node. |
 | Fork branch flow | The implicit scope created for every item in `fork.branches`. | Green node. All sibling branch flows start in parallel. |
-| Fork region | An inline parallel region on the containing flow. | Annotation on the parent flow, not a separate node. |
+| Fork node | The flow created for a `fork` task. | Green node. It starts every branch flow and performs the join or race. |
 
 ## Classification rules
 
@@ -89,7 +89,7 @@ the task-specific I/O, while the workflow layer retains orchestration and retry 
 | `for` | Flow | Its `do` property owns the loop body. |
 | `try` | Flow | It owns the `try` task list and may own a `catch.do` recovery list. |
 | `catch` | Flow | `catch.do` owns the recovery task list. Its identifier is derived as `<try-task>.catch`. |
-| `fork` | Inline parallel region | The parent flow starts the branch flows and performs the join or race. Do not render a separate `fork` flow node. |
+| `fork` | Flow | It owns the fan-out over `fork.branches` and the join. Its own task list is empty; `forkMode` is `all` when `compete: false` and `any` when `compete: true`. |
 | Each `fork.branches` item | Fork branch flow | It is an independently executed child scope of the fork. |
 | `call`, `run`, `set`, `switch`, `wait`, `listen`, `emit`, `raise` | Step | These tasks do not own a nested task list. |
 
@@ -107,8 +107,8 @@ Every edge represents one of these target invocations:
 - Flow -> child Flow: cross-app `CallChildWorkflowAsync`.
 - Flow -> Step: cross-app `CallActivityAsync`.
 - I/O Step -> task-derived Knative function: Dapr service invocation using HTTP `POST /run`.
-- A parent Flow with a `fork` region -> each fork branch Flow: parallel
-  `CallChildWorkflowAsync` calls. The parent performs `allOf` when `compete: false` and `anyOf`
+- A parent Flow calling the fork Flow, which calls each fork branch Flow: parallel
+  `CallChildWorkflowAsync` calls. The fork Flow performs `allOf` when `compete: false` and `anyOf`
   when `compete: true`.
 
 The view must not add control-path edges such as `then`, switch cases, loop-back arrows, or error
@@ -198,10 +198,11 @@ do:
 
 ```mermaid
 flowchart LR
-  Main["Flow: main<br/>inline fork: notifyChannels"] -->|CallActivityAsync| Prepare["Step: prepareNotification"]
-  Main -->|parallel CallChildWorkflowAsync| BranchNotify["Flow (fork branch): notifyRecipients"]
-  Main -->|parallel CallChildWorkflowAsync| BranchAudit["Flow (fork branch): writeAudit"]
-  BranchNotify -->|CallChildWorkflowAsync| For["Flow (for): notifyRecipients.for"]
+  Main["Flow: main"] -->|CallActivityAsync| Prepare["Step: prepareNotification"]
+  Main -->|CallChildWorkflowAsync| Fork["Flow (fork): notifyChannels"]
+  Fork -->|parallel CallChildWorkflowAsync| BranchNotify["Flow (fork branch): notifyChannels.branch.notifyRecipients"]
+  Fork -->|parallel CallChildWorkflowAsync| BranchAudit["Flow (fork branch): notifyChannels.branch.writeAudit"]
+  BranchNotify -->|CallChildWorkflowAsync| For["Flow (for): notifyChannels.branch.notifyRecipients.for"]
   For -->|CallActivityAsync| Email["Step: sendEmail"]
   Email -->|HTTP POST /run| Http["Knative function: dws-call-http"]
   BranchAudit -->|CallActivityAsync| Audit["Step: writeAudit"]
@@ -391,10 +392,9 @@ The target state is achieved when all of the following are true:
    scheduled from its parent with a target app ID.
 5. I/O Steps invoke their task-derived Knative function through Dapr service invocation and return
    its result or structured failure to the parent Flow.
-6. A parent Flow handles `fork` directly: it starts one child Flow per branch and performs `allOf`
-   when `compete: false` or `anyOf` when `compete: true`. No standalone fork invocation is created.
-7. The visualizer renders `fork` as an inline region of its containing Flow and represents only its
-   branches as distinct child Flow nodes.
+6. A `fork` task compiles to its own Flow, deployed like any other scope: it starts one child Flow
+   per branch and performs `allOf` when `compete: false` or `anyOf` when `compete: true`.
+7. The visualizer renders `fork` as its own Flow node with its branch Flows as children.
 8. Structural, execution, data-flow, and deployment diagrams remain separate view modes.
 9. Duplicate task names or ambiguous derived identifiers are rejected or visibly reported,
    consistent with controller validation.
