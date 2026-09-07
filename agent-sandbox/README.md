@@ -20,7 +20,7 @@ runtime option: it creates containers through the local Docker daemon and does n
 | `sandbox.yaml` | `Sandbox` CRD manifest for one agent session | skeleton — confirm installed CRD apiVersion first |
 | `cache-pvcs.yaml` | PVCs for `~/.m2`, Go module cache, pnpm store | skeleton — confirm storageClass |
 | `opensandbox/docker.toml` | OpenSandbox lifecycle-server profile for local Docker-backed sandboxes | local profile — Docker Desktop/Engine required |
-| `sshd-start.sh` | Key-only SSH daemon entrypoint for Docker-backed remote-development sandboxes | generates unique host keys at each container start |
+| `sshd-start.sh` | Key-only SSH daemon entrypoint for Docker-backed remote-development sandboxes | clones the DWS repository into an empty `/workspace`, reuses an existing matching checkout unchanged, and generates unique host keys at each container start |
 
 ## Local Docker runtime
 
@@ -44,10 +44,15 @@ For a one-off localhost experiment without an API key, set
 
 The image includes OpenSSH server support for using a sandbox as a Codex Desktop SSH remote
 project. It is key-only: passwords and root-password login are disabled. The default image
-command runs `sshd-start`, which generates fresh host keys per container and starts `sshd` in
-the foreground. Supply an authorized public key at runtime in `/root/.ssh/authorized_keys`,
-then map the image's declared port 22 through the Docker/OpenSandbox deployment. Do not expose
-the SSH port publicly; use a localhost mapping, VPN, or mesh network.
+command runs `sshd-start`, which clones `https://github.com/tonylibs/dapr-workflow-spec.git`
+into an empty `/workspace`, leaves an existing checkout with the same origin unchanged, generates
+fresh host keys per container, and starts `sshd` in the foreground. It refuses to overwrite a
+non-empty workspace or a checkout with a different origin. `DWS_REPOSITORY_URL` and
+`DWS_REPOSITORY_DIR` can override the clone source and destination.
+
+Supply an authorized public key at runtime in `/root/.ssh/authorized_keys`, then map the image's
+declared port 22 through the Docker/OpenSandbox deployment. Do not expose the SSH port publicly;
+use a localhost mapping, VPN, or mesh network.
 
 The published GHCR image will contain this capability after the updated Dockerfile passes the
 agent-sandbox CI workflow and is published from `main`.
