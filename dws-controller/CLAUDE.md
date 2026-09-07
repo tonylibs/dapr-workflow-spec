@@ -107,3 +107,133 @@ Windows: use `mvnw.cmd`; POSIX shells (Git Bash): use `./mvnw`.
 ## Known issues
 
 - `pom.xml` sets `maven.compiler.release=25`; the environment's default JDK may be older (e.g. GraalVM 21), which fails `./mvnw compile` with "release version 25 not supported". This is a pre-existing project/environment mismatch, not something recent changes caused — resolve by pointing `JAVA_HOME` at a JDK 25, or ask before lowering the pom's release version (it's a project-wide decision).
+
+## Style guide
+
+Root-level cross-cutting rules are in the repo root `CLAUDE.md`. This section is dws-controller-specific
+idioms only, inferred from the actual source (not generic Java advice).
+
+### Null handling: prefer `Optional` chaining over explicit null checks
+
+This is a repo-wide decision (all three Java packages) even though dws-controller's current code
+leans more on explicit checks and `Optional` as a finder return type. New code here should prefer
+chaining over adding another `if (x == null)`.
+
+```java
+// Before — explicit check (existing style, e.g. StackApplier.java:180-184)
+String orchestratorAppId = plan.orchestrator() != null ? plan.orchestrator().appId() : null;
+if (orchestratorAppId == null) {
+    throw new IllegalStateException("orchestrator app-id missing");
+}
+
+// After — chain to the same outcome
+String orchestratorAppId = Optional.ofNullable(plan.orchestrator())
+        .map(OrchestratorSpec::appId)
+        .orElseThrow(() -> new IllegalStateException("orchestrator app-id missing"));
+```
+
+`Optional<T>` as a return type for finder-style methods stays the existing, correct pattern — don't
+change that part:
+
+```java
+// StackReader.java:54 — keep this shape
+public Optional<WorkflowDetail> get(String workflow) { ... }
+```
+
+### Loops vs streams: for-loops for imperative/validation walks, streams for one-shot collect
+
+Matches the existing split in `V1OrchestratorCompiler.java` and `StackApplier.java` — don't convert
+one style into the other wholesale.
+
+```java
+// For-loop — used when the body does more than one thing per element
+// (StackReader.java:63)
+for (Deployment deployment : deployments) {
+    if (deployment.getStatus() == null) {
+        continue;
+    }
+    // ...multiple statements...
+}
+
+// Stream — used for a simple map-to-list, nothing else
+// (StackApplier.java:119)
+List<String> stepNames = plan.steps().stream().map(StepService::name).toList();
+```
+
+### DTO/model: everything under `model/` is an immutable `record`, no Lombok
+
+14/14 classes in `model/` are `public record`; compact constructors defensively copy mutable
+collection args (`DeploymentPlan.java:37-43`). `lombok` is not a dependency here — don't add it.
+
+```java
+// model/DeploymentPlan.java — the pattern to follow for any new model type
+public record DeploymentPlan(String workflow, List<StepService> steps, OrchestratorSpec orchestrator) {
+    public DeploymentPlan {
+        steps = List.copyOf(steps); // defensive copy in the compact constructor
+    }
+}
+```
+
+### DI: constructor injection only, never `@Inject` on a field
+
+Verified zero field-injection usages in `src/main/java`. Quarkus ARC does implicit constructor
+injection for a CDI bean with exactly one constructor — no annotation needed.
+
+```java
+// Wrong
+@Inject
+StackReader stackReader;
+
+// Right (WorkflowResource.java:31-35 pattern)
+public class WorkflowResource {
+    private final StackReader stackReader;
+
+    public WorkflowResource(StackReader stackReader) {
+        this.stackReader = stackReader;
+    }
+}
+```
+
+### Exceptions: one custom `RuntimeException` per failure kind + one JAX-RS `ExceptionMapper` each
+
+No global catch-all handler — each exception type gets its own `@Provider ExceptionMapper`, mapped
+to a shared `ErrorResponse` record.
+
+```java
+// 1. The exception (WorkflowNotFoundException.java)
+public class WorkflowNotFoundException extends RuntimeException {
+    public WorkflowNotFoundException(String workflow) {
+        super("workflow not found: " + workflow);
+    }
+}
+
+// 2. Its mapper (WorkflowNotFoundExceptionMapper.java)
+@Provider
+public class WorkflowNotFoundExceptionMapper implements ExceptionMapper<WorkflowNotFoundException> {
+    @Override
+    public Response toResponse(WorkflowNotFoundException e) {
+        return Response.status(404).entity(new ErrorResponse(e.getMessage())).build();
+    }
+}
+```
+
+### Tests: AssertJ for object assertions, Hamcrest only inside REST-Assured chains
+
+```java
+// Plain object assertion — AssertJ (WorkflowCompilerTest.java style)
+assertThat(plan.steps()).hasSize(2);
+
+// REST-Assured HTTP assertion chain — Hamcrest, because .body() expects a Matcher
+// (WorkflowResourceTest.java:5-8)
+given().when().get("/workflows/foo").then().body("steps", hasSize(2));
+```
+
+`@QuarkusTest` + `@WithKubernetesTestServer` for the apply/read pass; plain JUnit 5 (no Quarkus
+annotations) for `WorkflowCompilerTest` — the compiler is deliberately framework-free, keep it that
+way when adding compiler tests.
+
+### Formatting
+
+Spotless + `googleJavaFormat` 1.32.0 auto-applies on every `./mvnw compile`/`test`/`package` (bound
+to `process-sources`) — you don't run a separate formatter command, just build. `./mvnw spotless:check`
+checks without mutating files.
