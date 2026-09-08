@@ -75,6 +75,22 @@ class SingleNodeDefinitionTest {
   }
 
   @Test
+  void rendersADoScopeFlowNode() throws Exception {
+    JsonNode task = JSON.readTree("{\"stampOrder\":{\"set\":{\"stamped\":true}}}");
+    String rendered =
+        SingleNodeDefinition.flow(
+            ENVELOPE,
+            "prepare-order",
+            "do",
+            List.of(task),
+            Map.of("stampOrder", "stamp-order"),
+            null,
+            null);
+    assertThat(JSON.readTree(rendered).get("scope").asText()).isEqualTo("do");
+    assertValid(rendered);
+  }
+
+  @Test
   void rendersAStepNodeWithAndWithoutFunctionAppId() throws Exception {
     JsonNode task = JSON.readTree("{\"reserveItem\":{\"call\":\"http\"}}");
     String withFunction =

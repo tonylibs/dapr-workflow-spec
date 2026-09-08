@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.dws.controller.model.CompiledNode;
 import io.dws.controller.model.FlowNode;
 import io.dws.controller.model.StepNode;
+import io.serverlessworkflow.api.types.DoTask;
 import io.serverlessworkflow.api.types.ForTask;
 import io.serverlessworkflow.api.types.ForkTask;
 import io.serverlessworkflow.api.types.ForkTaskConfiguration;
@@ -22,9 +23,9 @@ import java.util.Optional;
  * Recursive descent over a parsed definition, producing the v2 Flow/Step graph (ADR 0001, ADR 0002,
  * ADR 0003).
  *
- * <p>Classification is the table in the change's design §D2: {@code main}, each {@code for}, each
- * {@code try}, each {@code catch}, each {@code fork} and each fork branch become a {@link
- * FlowNode}; every other task kind becomes a {@link StepNode}, with no exceptions.
+ * <p>Classification is the table in the change's design §D2: {@code main}, each nested {@code do},
+ * each {@code for}, each {@code try}, each {@code catch}, each {@code fork} and each fork branch
+ * become a {@link FlowNode}; every other task kind becomes a {@link StepNode}, with no exceptions.
  *
  * <p>The walk is driven by the typed model but reads every task object out of a parallel raw {@link
  * JsonNode} of the same definition text, so a node's rendered {@code tasks}/{@code task} carries
@@ -38,6 +39,7 @@ import java.util.Optional;
 final class NodeClassifier {
 
   private static final String SCOPE_MAIN = "main";
+  private static final String SCOPE_DO = "do";
   private static final String SCOPE_FOR = "for";
   private static final String SCOPE_TRY = "try";
   private static final String SCOPE_CATCH = "catch";
@@ -115,7 +117,22 @@ final class NodeClassifier {
     if (task != null && task.getForkTask() != null) {
       return forkFlow(nodeId, task.getForkTask(), rawBody, context);
     }
+    if (task != null && task.getDoTask() != null) {
+      return doFlow(nodeId, task.getDoTask(), rawBody, context);
+    }
     return step(nodeId, task, rawItem, context);
+  }
+
+  /**
+   * A nested {@code do} scope: its own flow node over the task list in {@code do}. A Step executes
+   * one task and owns no list, so a task that owns one is a Flow — even though the DSL gives this
+   * scope no keyword of its own beyond the list itself.
+   */
+  private static CompiledNode doFlow(
+      String nodeId, DoTask doTask, JsonNode rawBody, Context context) {
+    JsonNode rawDo = rawArray(rawBody, "do");
+    List<CompiledNode> children = classifyTasks(doTask.getDo(), rawDo, context);
+    return flow(context, nodeId, SCOPE_DO, elements(rawDo), children, null, null);
   }
 
   /** A {@code for} scope: its own flow node over the task list in {@code for.do}. */

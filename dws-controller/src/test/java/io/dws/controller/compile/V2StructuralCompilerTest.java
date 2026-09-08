@@ -439,6 +439,55 @@ class V2StructuralCompilerTest {
     assertThat(spec.has("catch")).isFalse();
   }
 
+  /**
+   * A nested {@code do} task owns a task list, which is exactly what a Step does not: it is a Flow
+   * scope with its own {@code do} scope value, keeping its own DSL task name as its node id.
+   */
+  @Test
+  void classifiesANestedDoTaskAsItsOwnFlowNode() throws Exception {
+    String nested =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: grouped
+          version: '1.0.0'
+        do:
+          - prepareOrder:
+              do:
+                - stampOrder:
+                    set:
+                      stamped: true
+                - loadCustomer:
+                    call: http
+                    with:
+                      method: get
+                      endpoint: https://customers.example.com/1
+        """;
+    DeploymentPlan plan = compiler.compile(nested);
+    CompiledNode main = plan.flowStepGraph().get(0);
+
+    assertThat(main.flatten())
+        .extracting(CompiledNode::appId)
+        .containsExactly("grouped-main", "prepare-order", "stamp-order", "load-customer");
+
+    CompiledNode prepareOrder = node(main, "prepare-order");
+    assertThat(prepareOrder).isInstanceOf(FlowNode.class);
+    assertThat(prepareOrder.nodeId()).isEqualTo("prepareOrder");
+    assertThat(prepareOrder.children())
+        .extracting(CompiledNode::appId)
+        .containsExactly("stamp-order", "load-customer");
+    assertThat(prepareOrder.children()).allMatch(child -> child instanceof StepNode);
+
+    JsonNode spec = JSON.readTree(prepareOrder.specText());
+    assertThat(spec.get("kind").asText()).isEqualTo("flow");
+    assertThat(spec.get("scope").asText()).isEqualTo("do");
+    assertThat(spec.get("children").get("stampOrder").asText()).isEqualTo("stamp-order");
+    assertThat(spec.get("children").get("loadCustomer").asText()).isEqualTo("load-customer");
+    assertThat(spec.at("/tasks/0/stampOrder/set/stamped").asBoolean()).isTrue();
+    assertChildrenKeysMatchTaskNames(main);
+  }
+
   /** A {@code run} task, like {@code call}, gets a {@code -fn} companion function app ID. */
   @Test
   void classifiesRunTaskWithFunctionAppId() {
