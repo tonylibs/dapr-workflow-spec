@@ -247,6 +247,32 @@ class V2StructuralCompilerTest {
         .hasMessageContaining("reserve-item");
   }
 
+  /**
+   * A {@code call}/{@code run} step's {@code -fn} function shares the Dapr app-id namespace with
+   * every node, so a sibling task whose own app ID lands on that suffixed name is a collision
+   * between two deployables, not a valid definition.
+   */
+  @Test
+  void rejectsANodeAppIdCollidingWithAFunctionAppId() {
+    String colliding =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: collide-fn
+          version: '1.0.0'
+        do:
+          - reserveItem:   { call: http, with: { method: get, endpoint: https://x/a } }
+          - reserveItemFn: { set: { a: 1 } }
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(colliding))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("the function app ID of node 'reserveItem'")
+        .hasMessageContaining("node 'reserveItemFn'")
+        .hasMessageContaining("reserve-item-fn");
+  }
+
   /** Finding 1: a task name containing '.' would collide with a derived dotted node id. */
   @Test
   void rejectsATaskNameContainingADot() {

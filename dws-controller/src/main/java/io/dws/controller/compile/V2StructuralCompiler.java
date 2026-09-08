@@ -3,6 +3,7 @@ package io.dws.controller.compile;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.dws.controller.model.CompiledNode;
 import io.dws.controller.model.DeploymentPlan;
+import io.dws.controller.model.StepNode;
 import io.serverlessworkflow.api.WorkflowFormat;
 import io.serverlessworkflow.api.types.Workflow;
 import java.util.LinkedHashMap;
@@ -67,24 +68,37 @@ public class V2StructuralCompiler implements WorkflowCompiler {
   }
 
   /**
-   * Rejects a definition whose nodes do not resolve to distinct Dapr app IDs (design §D6). Run as a
-   * post-pass over the finished tree, so the message can name both colliding node ids.
+   * Rejects a definition whose deployables do not resolve to distinct Dapr app IDs (design §D6).
+   * Run as a post-pass over the finished tree, so the message can name both colliding claimants.
+   *
+   * <p>A {@code call}/{@code run} step's {@code functionAppId} shares the one Dapr app-id namespace
+   * with every node app ID — the {@code -fn} Knative Service is a deployable like any other — so it
+   * is claimed here too. Leaving it out let a step named {@code reserveItemFn} silently claim the
+   * same {@code reserve-item-fn} app-id as the function behind a {@code call} step {@code
+   * reserveItem}.
    */
   private static void rejectDuplicateAppIds(CompiledNode root) {
     Map<String, String> seen = new LinkedHashMap<>();
     for (CompiledNode node : root.flatten()) {
-      String previous = seen.putIfAbsent(node.appId(), node.nodeId());
-      if (previous != null) {
-        throw new CompilationException(
-            List.of(
-                "nodes '"
-                    + previous
-                    + "' and '"
-                    + node.nodeId()
-                    + "' both derive the app ID '"
-                    + node.appId()
-                    + "'"));
+      claim(seen, node.appId(), "node '" + node.nodeId() + "'");
+      if (node instanceof StepNode step) {
+        step.functionAppId()
+            .ifPresent(
+                functionAppId ->
+                    claim(
+                        seen,
+                        functionAppId,
+                        "the function app ID of node '" + node.nodeId() + "'"));
       }
+    }
+  }
+
+  /** Binds one app ID to the thing claiming it, rejecting a second claim on the same ID. */
+  private static void claim(Map<String, String> seen, String appId, String claimant) {
+    String previous = seen.putIfAbsent(appId, claimant);
+    if (previous != null) {
+      throw new CompilationException(
+          List.of(previous + " and " + claimant + " both derive the app ID '" + appId + "'"));
     }
   }
 }
