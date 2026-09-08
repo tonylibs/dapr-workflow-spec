@@ -67,6 +67,19 @@ class CompilerStrategyTest {
   }
 
   @Test
+  @DisplayName("both strategies agree on workflow identity")
+  void bothStrategiesAgreeOnIdentity() {
+    DeploymentPlan v1 = new V1OrchestratorCompiler(IMAGES, fetcher).compile(MINIMAL);
+    DeploymentPlan v2 = new V2StructuralCompiler().compile(MINIMAL);
+
+    assertThat(v2.workflow()).isEqualTo(v1.workflow());
+    assertThat(v2.versionId()).isEqualTo(v1.versionId());
+    assertThat(v2.version()).isEqualTo(v1.version());
+    assertThat(v2.definitionResource()).isEqualTo(v1.definitionResource());
+    assertThat(v2.specText()).isEqualTo(v1.specText());
+  }
+
+  @Test
   @DisplayName("producer defaults to v1 when the config flag is absent")
   void producerDefaultsToV1WhenFlagAbsent() {
     DaprClient client = mock(DaprClient.class);
