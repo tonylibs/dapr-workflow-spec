@@ -123,6 +123,15 @@
             <version>3.26.3</version>
             <scope>test</scope>
         </dependency>
+        <!-- Used by the v2 compiler's tests to validate rendered single-node definitions against
+             openspec/schemas/single-node-definition.schema.json. Also arrives transitively via
+             serverlessworkflow-api; declared so an SDK bump cannot remove it silently. -->
+        <dependency>
+            <groupId>com.networknt</groupId>
+            <artifactId>json-schema-validator</artifactId>
+            <version>2.0.0</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
