@@ -16,6 +16,7 @@ import io.serverlessworkflow.api.types.Workflow;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import lombok.experimental.UtilityClass;
 
 /**
  * Recursive descent over a parsed definition, producing the v2 Flow/Step graph (ADR 0001, ADR 0002,
@@ -34,7 +35,8 @@ import java.util.Optional;
  * <p>Children are classified before their parent is rendered, because a flow's {@code specText}
  * names its children's app IDs.
  */
-final class NodeClassifier {
+@UtilityClass
+class NodeClassifier {
 
   private static final String SCOPE_MAIN = "main";
   private static final String SCOPE_DO = "do";
@@ -46,8 +48,6 @@ final class NodeClassifier {
 
   private static final String FORK_MODE_ANY = "any";
   private static final String FORK_MODE_ALL = "all";
-
-  private NodeClassifier() {}
 
   /** Everything the recursion carries unchanged from the top of the definition. */
   private record Context(

@@ -6,13 +6,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Map;
+import lombok.experimental.UtilityClass;
 
 /** Renders one compiled node's single-node definition (Phase 0 schema). */
-final class SingleNodeDefinition {
+@UtilityClass
+class SingleNodeDefinition {
 
   private static final ObjectMapper JSON = new ObjectMapper();
-
-  private SingleNodeDefinition() {}
 
   /** The envelope fields every node shares. */
   record Envelope(String workflow, String version) {}

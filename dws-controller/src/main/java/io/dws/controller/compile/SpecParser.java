@@ -5,11 +5,11 @@ import io.serverlessworkflow.api.WorkflowReader;
 import io.serverlessworkflow.api.types.Workflow;
 import java.util.ArrayList;
 import java.util.List;
+import lombok.experimental.UtilityClass;
 
 /** Format detection and parse-or-throw, shared by the v1 and v2 compile strategies. */
-final class SpecParser {
-
-  private SpecParser() {}
+@UtilityClass
+class SpecParser {
 
   static WorkflowFormat detectFormat(String specText) {
     return specText.stripLeading().startsWith("{") ? WorkflowFormat.JSON : WorkflowFormat.YAML;

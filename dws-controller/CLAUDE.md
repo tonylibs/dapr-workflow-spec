@@ -160,10 +160,12 @@ for (Deployment deployment : deployments) {
 List<String> stepNames = plan.steps().stream().map(StepService::name).toList();
 ```
 
-### DTO/model: everything under `model/` is an immutable `record`, no Lombok
+### DTO/model: everything under `model/` is an immutable `record`
 
 14/14 classes in `model/` are `public record`; compact constructors defensively copy mutable
-collection args (`DeploymentPlan.java:37-43`). `lombok` is not a dependency here — don't add it.
+collection args (`DeploymentPlan.java:37-43`). Lombok is on the compile classpath but is **not**
+used for models — records already give you the constructor, accessors, `equals`/`hashCode` and
+immutability, so don't reach for `@Data`/`@Value`/`@Builder` here.
 
 ```java
 // model/DeploymentPlan.java — the pattern to follow for any new model type
@@ -216,6 +218,65 @@ public class WorkflowNotFoundExceptionMapper implements ExceptionMapper<Workflow
     }
 }
 ```
+
+### Static-utility classes use Lombok's `@UtilityClass`
+
+The only Lombok annotation in use here. It makes the class final, makes every member static, and
+generates the private throwing constructor — so don't hand-write one.
+
+```java
+// Wrong
+final class NodeNaming {
+    private NodeNaming() {}
+    static String appId(String nodeId) { ... }
+}
+
+// Right (NodeNaming.java, Names.java, ChildIndex.java, Labels.java, ...)
+@UtilityClass
+class NodeNaming {
+    static String appId(String nodeId) { ... }
+}
+```
+
+`@UtilityClass` does not change the class's own access modifier — keep `public class` on the ones
+other packages use (`Names`, `SpecDigest`, `Labels`, `ResourceContexts`).
+
+### Validation lives in the type that reads the data, not in the caller
+
+A check the caller can forget will eventually be forgotten. Fuse reading and validating so the
+value cannot exist unvalidated (`RawTaskList.in` reads a raw task list *and* aligns it against the
+typed one).
+
+```java
+// Wrong — two calls, and the second is optional in practice
+JsonNode raw = rawArray(parent, "do");
+requireAligned(typed, raw);
+
+// Right (RawTaskList.java) — one call, no unaligned RawTaskList can be constructed
+RawTaskList raw = RawTaskList.in(parent, "do", typed);
+```
+
+### Optional/absent arguments go in a value object, not trailing nulls
+
+```java
+// Wrong — every caller pads the tail
+flow(context, nodeId, "do", tasks, children, null, null);
+
+// Right (FlowScope.java) — copy-on-write withers; callers name only what they have
+flow(context, nodeId, FlowScope.of("do", tasks), children);
+flow(context, nodeId, FlowScope.of("try", tasks).withCatch(catchAppId), children);
+```
+
+### A rule that end-to-end tests can't reach belongs in its own type
+
+Private statics behind a full parse (`ChildIndex.of`'s duplicate-key rule, `NodeNaming
+.requireUndottedTaskName`) get no direct coverage. Extracting is what makes them testable — treat
+the untestability as the signal to move it.
+
+### Moved code keeps its `CompilationException` message verbatim
+
+Those strings are operator-facing and asserted on by tests. Reword them in a separate change, never
+as a side effect of moving them.
 
 ### Tests: AssertJ for object assertions, Hamcrest only inside REST-Assured chains
 

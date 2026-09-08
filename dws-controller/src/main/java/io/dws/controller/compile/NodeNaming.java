@@ -2,9 +2,11 @@ package io.dws.controller.compile;
 
 import java.util.List;
 import java.util.regex.Pattern;
+import lombok.experimental.UtilityClass;
 
 /** Derives a compiled node's identifier and its sanitized DNS-1123 Dapr app ID (ADR 0001). */
-final class NodeNaming {
+@UtilityClass
+class NodeNaming {
 
   private static final int DNS_1123_LABEL_MAX = 63;
 
@@ -15,8 +17,6 @@ final class NodeNaming {
    * shares {@code Names.kebab}, so the check belongs here rather than there.
    */
   private static final Pattern DNS_1123_LABEL = Pattern.compile("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$");
-
-  private NodeNaming() {}
 
   /**
    * Rejects a task name containing {@code .} (Finding 1): {@link

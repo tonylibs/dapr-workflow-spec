@@ -4,15 +4,15 @@ import io.dws.controller.model.CompiledNode;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.experimental.UtilityClass;
 
 /**
  * Builds a flow node's wire-format {@code children} object: a render-time projection keyed by each
  * child's own {@link CompiledNode#key()} (ADR 0002), in source order — never a stored parent-side
  * map.
  */
-final class ChildIndex {
-
-  private ChildIndex() {}
+@UtilityClass
+class ChildIndex {
 
   /**
    * Projects {@code children} to their {@code key() -> appId()} mapping.
