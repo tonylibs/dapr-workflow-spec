@@ -1,9 +1,11 @@
 package io.dws.controller.k8s;
 
 import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
+import lombok.experimental.UtilityClass;
 
 /** Dynamic-client contexts for the CRDs the controller manages (no generated Java model needed). */
-public final class ResourceContexts {
+@UtilityClass
+public class ResourceContexts {
 
   public static final ResourceDefinitionContext KNATIVE_SERVICE =
       new ResourceDefinitionContext.Builder()
@@ -49,6 +51,4 @@ public final class ResourceContexts {
           .withPlural("workflowaccesspolicies")
           .withNamespaced(true)
           .build();
-
-  private ResourceContexts() {}
 }

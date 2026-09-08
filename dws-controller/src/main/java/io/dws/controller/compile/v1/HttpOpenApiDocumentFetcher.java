@@ -1,4 +1,4 @@
-package io.dws.controller.compile;
+package io.dws.controller.compile.v1;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import java.io.IOException;

@@ -38,4 +38,28 @@ class SpecParserTest {
     assertThatThrownBy(() -> SpecParser.parseOrThrow("::not yaml::", WorkflowFormat.YAML))
         .isInstanceOf(CompilationException.class);
   }
+
+  @Test
+  void readsTheSameDefinitionAsARawTree() {
+    assertThat(SpecParser.readRawOrThrow(YAML, WorkflowFormat.YAML).get("do").get(0).has("noop"))
+        .isTrue();
+  }
+
+  /** The raw read reports the underlying cause rather than a bare "could not be parsed". */
+  @Test
+  void wrapsRawReadFailuresWithTheUnderlyingMessage() {
+    assertThatThrownBy(() -> SpecParser.readRawOrThrow("{\"unclosed\": ", WorkflowFormat.JSON))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageNotContaining("Definition could not be parsed");
+  }
+
+  @Test
+  void rejectsAnEmptyOrBlankDefinition() {
+    assertThatThrownBy(() -> SpecParser.requireNonBlank(null))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("Definition is empty");
+    assertThatThrownBy(() -> SpecParser.requireNonBlank("   \n "))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("Definition is empty");
+  }
 }

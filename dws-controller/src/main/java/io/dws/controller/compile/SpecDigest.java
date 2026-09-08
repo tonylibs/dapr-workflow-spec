@@ -7,20 +7,20 @@ import io.serverlessworkflow.api.WorkflowFormat;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import lombok.experimental.UtilityClass;
 
 /**
  * Computes the content-addressed version id of a definition. The spec text is parsed into a
  * canonical, key-sorted JSON form first, so semantically identical definitions (whitespace, key
  * order, YAML vs JSON) hash to the same id — the basis for idempotency.
  */
-public final class SpecDigest {
+@UtilityClass
+public class SpecDigest {
 
   private static final ObjectMapper CANONICAL =
       JsonMapper.builder().configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true).build();
 
   private static final int SHORT_LENGTH = 8;
-
-  private SpecDigest() {}
 
   /**
    * @return {@code v<first 8 hex of sha256(canonical spec)>}.

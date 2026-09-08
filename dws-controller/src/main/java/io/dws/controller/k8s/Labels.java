@@ -4,13 +4,15 @@ import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.TaskKind;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import lombok.experimental.UtilityClass;
 
 /**
  * Label/annotation vocabulary stamped on every managed resource. The cluster is the source of
  * truth, so these selectors are how the controller lists, rolls out and tears down stacks — there
  * is no internal database.
  */
-public final class Labels {
+@UtilityClass
+public class Labels {
 
   public static final String WORKFLOW = "dws.io/workflow";
   public static final String VERSION = "dws.io/version";
@@ -18,8 +20,6 @@ public final class Labels {
   public static final String MANAGED_BY_VALUE = "dws-controller";
   public static final String DRAIN = "dws.io/drain";
   public static final String STEP_TYPE = "dws.io/step-type";
-
-  private Labels() {}
 
   public static Map<String, String> forPlan(DeploymentPlan plan) {
     return of(plan.workflow(), plan.versionId());

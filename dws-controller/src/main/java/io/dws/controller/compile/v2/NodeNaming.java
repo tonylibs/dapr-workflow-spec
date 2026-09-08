@@ -1,10 +1,14 @@
-package io.dws.controller.compile;
+package io.dws.controller.compile.v2;
 
+import io.dws.controller.compile.CompilationException;
+import io.dws.controller.compile.Names;
 import java.util.List;
 import java.util.regex.Pattern;
+import lombok.experimental.UtilityClass;
 
 /** Derives a compiled node's identifier and its sanitized DNS-1123 Dapr app ID (ADR 0001). */
-final class NodeNaming {
+@UtilityClass
+class NodeNaming {
 
   private static final int DNS_1123_LABEL_MAX = 63;
 
@@ -16,7 +20,23 @@ final class NodeNaming {
    */
   private static final Pattern DNS_1123_LABEL = Pattern.compile("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$");
 
-  private NodeNaming() {}
+  /**
+   * Rejects a task name containing {@code .} (Finding 1): {@link
+   * io.dws.controller.model.CompiledNode#key()} returns a nodeId's last dotted segment, so a dotted
+   * task name would collide with the dotted derived ids this class synthesizes for scopes the DSL
+   * itself does not name ({@link #catchNodeId}, {@link #branchNodeId}), silently dropping a sibling
+   * from the wire {@code children} map.
+   */
+  static void requireUndottedTaskName(String taskName) {
+    if (taskName.indexOf('.') >= 0) {
+      throw new CompilationException(
+          List.of(
+              "task '"
+                  + taskName
+                  + "' must not contain '.' in its name; a dotted name collides with this "
+                  + "compiler's derived node ids"));
+    }
+  }
 
   static String mainNodeId(String workflow) {
     return workflow + ".main";

@@ -1,47 +1,36 @@
-package io.dws.controller.compile;
+package io.dws.controller.model;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.util.List;
 import java.util.Map;
+import lombok.experimental.UtilityClass;
 
 /** Renders one compiled node's single-node definition (Phase 0 schema). */
-final class SingleNodeDefinition {
+@UtilityClass
+public class SingleNodeDefinition {
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
-  private SingleNodeDefinition() {}
-
   /** The envelope fields every node shares. */
-  record Envelope(String workflow, String version) {}
+  public record Envelope(String workflow, String version) {}
 
-  static String flow(
-      Envelope envelope,
-      String appId,
-      String scope,
-      List<JsonNode> tasks,
-      Map<String, String> children,
-      String catchAppId,
-      String forkMode) {
+  public static String flow(
+      Envelope envelope, String appId, FlowScope scope, Map<String, String> children) {
     ObjectNode node = envelope(envelope, appId, "flow");
-    node.put("scope", scope);
+    node.put("scope", scope.scope());
     ArrayNode taskArray = node.putArray("tasks");
-    tasks.forEach(taskArray::add);
+    scope.tasks().forEach(taskArray::add);
     ObjectNode childObject = node.putObject("children");
     children.forEach(childObject::put);
-    if (catchAppId != null) {
-      node.put("catch", catchAppId);
-    }
-    if (forkMode != null) {
-      node.put("forkMode", forkMode);
-    }
+    scope.catchAppId().ifPresent(catchAppId -> node.put("catch", catchAppId));
+    scope.forkMode().ifPresent(forkMode -> node.put("forkMode", forkMode));
     return write(node);
   }
 
-  static String step(Envelope envelope, String appId, JsonNode task, String functionAppId) {
+  public static String step(Envelope envelope, String appId, JsonNode task, String functionAppId) {
     ObjectNode node = envelope(envelope, appId, "step");
     node.set("task", task);
     if (functionAppId != null) {
