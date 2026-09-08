@@ -1,4 +1,4 @@
-package io.dws.controller.compile;
+package io.dws.controller.model;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -10,14 +10,14 @@ import lombok.experimental.UtilityClass;
 
 /** Renders one compiled node's single-node definition (Phase 0 schema). */
 @UtilityClass
-class SingleNodeDefinition {
+public class SingleNodeDefinition {
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
   /** The envelope fields every node shares. */
-  record Envelope(String workflow, String version) {}
+  public record Envelope(String workflow, String version) {}
 
-  static String flow(
+  public static String flow(
       Envelope envelope, String appId, FlowScope scope, Map<String, String> children) {
     ObjectNode node = envelope(envelope, appId, "flow");
     node.put("scope", scope.scope());
@@ -30,7 +30,7 @@ class SingleNodeDefinition {
     return write(node);
   }
 
-  static String step(Envelope envelope, String appId, JsonNode task, String functionAppId) {
+  public static String step(Envelope envelope, String appId, JsonNode task, String functionAppId) {
     ObjectNode node = envelope(envelope, appId, "step");
     node.set("task", task);
     if (functionAppId != null) {

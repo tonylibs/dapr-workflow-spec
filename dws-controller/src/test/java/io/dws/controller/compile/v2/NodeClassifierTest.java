@@ -1,9 +1,12 @@
-package io.dws.controller.compile;
+package io.dws.controller.compile.v2;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.dws.controller.compile.CompilationException;
+import io.dws.controller.compile.SpecParser;
+import io.dws.controller.model.SingleNodeDefinition;
 import io.serverlessworkflow.api.WorkflowFormat;
 import io.serverlessworkflow.api.types.Workflow;
 import org.junit.jupiter.api.Test;

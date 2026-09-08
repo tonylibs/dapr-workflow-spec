@@ -1,9 +1,11 @@
-package io.dws.controller.compile;
+package io.dws.controller.compile.v2;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.dws.controller.compile.CompilationException;
+import io.dws.controller.compile.Names;
 import org.junit.jupiter.api.Test;
 
 class NodeNamingTest {

@@ -1,6 +1,7 @@
-package io.dws.controller.compile;
+package io.dws.controller.compile.v2;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.dws.controller.compile.CompilationException;
 import io.serverlessworkflow.api.types.TaskItem;
 import java.util.ArrayList;
 import java.util.List;

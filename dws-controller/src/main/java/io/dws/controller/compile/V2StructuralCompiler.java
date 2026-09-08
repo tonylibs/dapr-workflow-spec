@@ -1,8 +1,11 @@
 package io.dws.controller.compile;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.dws.controller.compile.v2.AppIdRegistry;
+import io.dws.controller.compile.v2.NodeClassifier;
 import io.dws.controller.model.CompiledNode;
 import io.dws.controller.model.DeploymentPlan;
+import io.dws.controller.model.SingleNodeDefinition;
 import io.serverlessworkflow.api.WorkflowFormat;
 import io.serverlessworkflow.api.types.Workflow;
 

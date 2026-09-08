@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import io.dapr.client.DaprClient;
 import io.dapr.client.domain.ConfigurationItem;
+import io.dws.controller.compile.v1.OpenApiDocumentFetcher;
 import io.dws.controller.config.DwsConfig;
 import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.ImageCatalog;

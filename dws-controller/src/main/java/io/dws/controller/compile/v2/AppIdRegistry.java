@@ -1,5 +1,6 @@
-package io.dws.controller.compile;
+package io.dws.controller.compile.v2;
 
+import io.dws.controller.compile.CompilationException;
 import io.dws.controller.model.CompiledNode;
 import io.dws.controller.model.StepNode;
 import java.util.LinkedHashMap;
@@ -14,7 +15,7 @@ import lombok.experimental.UtilityClass;
  * rejection can name both claimants.
  */
 @UtilityClass
-class AppIdRegistry {
+public class AppIdRegistry {
 
   /**
    * Rejects a graph whose deployables do not resolve to distinct Dapr app IDs.
@@ -26,7 +27,7 @@ class AppIdRegistry {
    *
    * @throws CompilationException if two deployables derive the same app ID
    */
-  static void requireDistinct(CompiledNode root) {
+  public static void requireDistinct(CompiledNode root) {
     Map<String, String> claimants = new LinkedHashMap<>();
     for (CompiledNode node : root.flatten()) {
       claim(claimants, node.appId(), "node '" + node.nodeId() + "'");

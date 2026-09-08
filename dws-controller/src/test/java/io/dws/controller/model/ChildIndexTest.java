@@ -1,11 +1,9 @@
-package io.dws.controller.compile;
+package io.dws.controller.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.entry;
 
-import io.dws.controller.model.CompiledNode;
-import io.dws.controller.model.StepNode;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -15,7 +13,11 @@ class ChildIndexTest {
 
   @Test
   void keysChildrenByTheirLastDottedSegmentInSourceOrder() {
-    assertThat(ChildIndex.of(List.of(node("fulfillOrder"), node("fulfillOrder.catch"))))
+    assertThat(
+            ChildIndex.of(
+                List.of(
+                    node("fulfillOrder", "fulfill-order"),
+                    node("fulfillOrder.catch", "fulfill-order-catch"))))
         .containsExactly(
             entry("fulfillOrder", "fulfill-order"), entry("catch", "fulfill-order-catch"));
   }
@@ -33,17 +35,17 @@ class ChildIndexTest {
    */
   @Test
   void rejectsTwoChildrenResolvingToTheSameKey() {
-    List<CompiledNode> children = List.of(node("catch"), node("fulfillOrder.catch"));
+    List<CompiledNode> children =
+        List.of(node("catch", "catch"), node("fulfillOrder.catch", "fulfill-order-catch"));
 
     assertThatThrownBy(() -> ChildIndex.of(children))
-        .isInstanceOf(CompilationException.class)
+        .isInstanceOf(DuplicateChildKeyException.class)
         .hasMessageContaining("'catch'")
         .hasMessageContaining("'fulfill-order-catch'")
         .hasMessageContaining("must be unique");
   }
 
-  private static CompiledNode node(String nodeId) {
-    String appId = NodeNaming.appId(nodeId);
+  private static CompiledNode node(String nodeId, String appId) {
     return new StepNode(nodeId, appId, "dws-def-w-v1-" + appId, "{}", Optional.empty());
   }
 }

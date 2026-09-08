@@ -1,8 +1,13 @@
-package io.dws.controller.compile;
+package io.dws.controller.compile.v2;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.dws.controller.compile.CompilationException;
+import io.dws.controller.compile.Names;
 import io.dws.controller.model.CompiledNode;
+import io.dws.controller.model.DuplicateChildKeyException;
 import io.dws.controller.model.FlowNode;
+import io.dws.controller.model.FlowScope;
+import io.dws.controller.model.SingleNodeDefinition;
 import io.dws.controller.model.StepNode;
 import io.serverlessworkflow.api.types.DoTask;
 import io.serverlessworkflow.api.types.ForTask;
@@ -36,7 +41,7 @@ import lombok.experimental.UtilityClass;
  * names its children's app IDs.
  */
 @UtilityClass
-class NodeClassifier {
+public class NodeClassifier {
 
   private static final String SCOPE_MAIN = "main";
   private static final String SCOPE_DO = "do";
@@ -64,15 +69,27 @@ class NodeClassifier {
    * @param workflowName the kebab-cased workflow name
    * @param versionId the content-addressed {@code v<sha256-8>} version id
    */
-  static CompiledNode classify(
+  public static CompiledNode classify(
       Workflow workflow,
       JsonNode rawSpec,
       SingleNodeDefinition.Envelope envelope,
       String workflowName,
       String versionId) {
     Context context = new Context(envelope, workflowName, versionId);
-    return listFlow(
-        NodeNaming.mainNodeId(workflowName), SCOPE_MAIN, workflow.getDo(), rawSpec, "do", context);
+    try {
+      return listFlow(
+          NodeNaming.mainNodeId(workflowName),
+          SCOPE_MAIN,
+          workflow.getDo(),
+          rawSpec,
+          "do",
+          context);
+    } catch (DuplicateChildKeyException e) {
+      // The model's child-key invariant, re-reported as a compile error. Translated here, at the
+      // walk's one entry point, rather than at each construction site — a per-site wrapper is
+      // exactly what a later site (an append, say) forgets.
+      throw new CompilationException(List.of(e.getMessage()));
+    }
   }
 
   /** Classifies one scope's task list, in source order, into that scope's child nodes. */
@@ -135,19 +152,20 @@ class NodeClassifier {
   private static CompiledNode tryFlow(
       String nodeId, TryTask tryTask, JsonNode rawBody, Context context) {
     RawTaskList rawTry = RawTaskList.in(rawBody, "try", tryTask.getTry());
-    List<CompiledNode> children = new ArrayList<>(classifyTasks(tryTask.getTry(), rawTry, context));
     Optional<CompiledNode> catchNode =
         Optional.ofNullable(tryTask.getCatch())
             .filter(caught -> caught.getDo() != null && !caught.getDo().isEmpty())
             .map(caught -> catchFlow(nodeId, caught, rawBody.get("catch"), context));
-    catchNode.ifPresent(children::add);
 
+    // The catch node is built first either way: the try node's own scope has to name its app ID.
     FlowScope scope = FlowScope.of(SCOPE_TRY, rawTry.copies());
-    return flow(
-        context,
-        nodeId,
-        catchNode.map(CompiledNode::appId).map(scope::withCatch).orElse(scope),
-        children);
+    FlowNode tryNode =
+        flow(
+            context,
+            nodeId,
+            catchNode.map(CompiledNode::appId).map(scope::withCatch).orElse(scope),
+            classifyTasks(tryTask.getTry(), rawTry, context));
+    return catchNode.map(tryNode::withChild).orElse(tryNode);
   }
 
   /** A {@code catch} scope: its own flow node over the recovery task list in {@code catch.do}. */
@@ -226,6 +244,11 @@ class NodeClassifier {
     return flow(context, nodeId, FlowScope.of(scope, rawTasks.copies()), children);
   }
 
+  /**
+   * Builds one flow node. The node renders its own {@code specText}, so all this supplies is the
+   * scope and the already-classified children. A duplicate child key throws from the constructor
+   * and is translated to a compile error by {@link #classify}.
+   */
   private static FlowNode flow(
       Context context, String nodeId, FlowScope scope, List<CompiledNode> children) {
     String appId = NodeNaming.appId(nodeId);
@@ -233,7 +256,8 @@ class NodeClassifier {
         nodeId,
         appId,
         Names.nodeDefinitionResource(context.workflow(), context.versionId(), appId),
-        SingleNodeDefinition.flow(context.envelope(), appId, scope, ChildIndex.of(children)),
+        context.envelope(),
+        scope,
         children);
   }
 }

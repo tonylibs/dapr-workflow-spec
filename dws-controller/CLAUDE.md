@@ -56,7 +56,9 @@ Windows: use `mvnw.cmd`; POSIX shells (Git Bash): use `./mvnw`.
 | Package | Role |
 |---------|------|
 | `api` | JAX-RS resource (`/workflows`) + exception mappers |
-| `compile` | **Pure** compile pass — no Kubernetes calls. `WorkflowCompiler` parses via `WorkflowReader` and walks `document`+`do` into a `DeploymentPlan`. `SpecDigest` computes the content-addressed version; `Names` holds the naming rules. |
+| `compile` | **Pure** compile pass — no Kubernetes calls. Holds the strategy family (`WorkflowCompiler` + both concretes, selected by `CompilerProducer`) and what both share: `SpecParser` (parse), `SpecDigest` (content-addressed version), `Names` (naming rules), `CompilationException`. |
+| `compile.v1` | v1-only machinery: `OpenApiDocumentFetcher` and its HTTP implementation. |
+| `compile.v2` | v2-only machinery: `NodeClassifier` (recursive descent), `RawTaskList`/`RawTaskItem` (the raw-JSON half of the lockstep walk), `NodeNaming`, `SingleNodeDefinition`, `FlowScope`, `ChildIndex`, `AppIdRegistry`. Only `NodeClassifier`, `SingleNodeDefinition` and `AppIdRegistry` are public — the rest are sealed inside the package. |
 | `k8s` | Apply pass. `StackSynthesizer` renders the plan (cdk8s for Knative/Dapr, fabric8 models for ConfigMap/Deployment); `StackApplier` mutates + rolls out + GCs; `StackReader` answers all GETs from the cluster. |
 | `model` | Records: `DeploymentPlan`, `StepService`, `OrchestratorSpec`, status projections. |
 | `config` | `DwsConfig` `@ConfigMapping` over `dws.*` in `application.yaml`. |
@@ -160,22 +162,6 @@ for (Deployment deployment : deployments) {
 List<String> stepNames = plan.steps().stream().map(StepService::name).toList();
 ```
 
-### DTO/model: everything under `model/` is an immutable `record`
-
-14/14 classes in `model/` are `public record`; compact constructors defensively copy mutable
-collection args (`DeploymentPlan.java:37-43`). Lombok is on the compile classpath but is **not**
-used for models — records already give you the constructor, accessors, `equals`/`hashCode` and
-immutability, so don't reach for `@Data`/`@Value`/`@Builder` here.
-
-```java
-// model/DeploymentPlan.java — the pattern to follow for any new model type
-public record DeploymentPlan(String workflow, List<StepService> steps, OrchestratorSpec orchestrator) {
-    public DeploymentPlan {
-        steps = List.copyOf(steps); // defensive copy in the compact constructor
-    }
-}
-```
-
 ### DI: constructor injection only, never `@Inject` on a field
 
 Verified zero field-injection usages in `src/main/java`. Quarkus ARC does implicit constructor
@@ -221,8 +207,9 @@ public class WorkflowNotFoundExceptionMapper implements ExceptionMapper<Workflow
 
 ### Static-utility classes use Lombok's `@UtilityClass`
 
-The only Lombok annotation in use here. It makes the class final, makes every member static, and
-generates the private throwing constructor — so don't hand-write one.
+The only Lombok annotation in use here — in particular, models are plain records, so don't reach
+for `@Data`/`@Value`/`@Builder`. `@UtilityClass` makes the class final, makes every member static,
+and generates the private throwing constructor — so don't hand-write one.
 
 ```java
 // Wrong

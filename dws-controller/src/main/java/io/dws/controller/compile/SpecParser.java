@@ -10,20 +10,20 @@ import lombok.experimental.UtilityClass;
 
 /** Format detection and parse-or-throw, shared by the v1 and v2 compile strategies. */
 @UtilityClass
-class SpecParser {
+public class SpecParser {
 
   /** Rejects a definition with no text at all, before either parse is attempted. */
-  static void requireNonBlank(String specText) {
+  public static void requireNonBlank(String specText) {
     if (specText == null || specText.isBlank()) {
       throw new CompilationException(List.of("Definition is empty"));
     }
   }
 
-  static WorkflowFormat detectFormat(String specText) {
+  public static WorkflowFormat detectFormat(String specText) {
     return specText.stripLeading().startsWith("{") ? WorkflowFormat.JSON : WorkflowFormat.YAML;
   }
 
-  static Workflow parseOrThrow(String specText, WorkflowFormat format) {
+  public static Workflow parseOrThrow(String specText, WorkflowFormat format) {
     try {
       Workflow workflow = WorkflowReader.readWorkflowFromString(specText, format);
       if (workflow == null) {
@@ -42,7 +42,7 @@ class SpecParser {
    * rendered {@code tasks}/{@code task} carries the document's own JSON instead of a round-trip
    * through the typed model (which drops unknown fields and reorders keys).
    */
-  static JsonNode readRawOrThrow(String specText, WorkflowFormat format) {
+  public static JsonNode readRawOrThrow(String specText, WorkflowFormat format) {
     try {
       return format.mapper().readTree(specText);
     } catch (Exception e) {

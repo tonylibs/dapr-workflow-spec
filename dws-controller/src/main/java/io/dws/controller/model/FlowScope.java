@@ -1,4 +1,4 @@
-package io.dws.controller.compile;
+package io.dws.controller.model;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
@@ -16,27 +16,27 @@ import java.util.Optional;
  * @param catchAppId a {@code try} scope's sibling catch node, when the definition supplies one
  * @param forkMode a {@code fork} scope's {@code any}/{@code all} completion mode
  */
-record FlowScope(
+public record FlowScope(
     String scope, List<JsonNode> tasks, Optional<String> catchAppId, Optional<String> forkMode) {
 
-  FlowScope {
+  public FlowScope {
     tasks = List.copyOf(tasks);
   }
 
   /**
    * A scope carrying only a task list — every scope but {@code try}-with-catch and {@code fork}.
    */
-  static FlowScope of(String scope, List<JsonNode> tasks) {
+  public static FlowScope of(String scope, List<JsonNode> tasks) {
     return new FlowScope(scope, tasks, Optional.empty(), Optional.empty());
   }
 
   /** This scope with its dedicated catch node's app ID attached. */
-  FlowScope withCatch(String catchAppId) {
+  public FlowScope withCatch(String catchAppId) {
     return new FlowScope(scope, tasks, Optional.of(catchAppId), forkMode);
   }
 
   /** This scope with its fork completion mode attached. */
-  FlowScope withForkMode(String forkMode) {
+  public FlowScope withForkMode(String forkMode) {
     return new FlowScope(scope, tasks, catchAppId, Optional.of(forkMode));
   }
 }

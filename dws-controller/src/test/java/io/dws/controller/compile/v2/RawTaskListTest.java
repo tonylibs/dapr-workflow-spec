@@ -1,4 +1,4 @@
-package io.dws.controller.compile;
+package io.dws.controller.compile.v2;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.dws.controller.compile.CompilationException;
 import io.serverlessworkflow.api.types.TaskItem;
 import java.util.Arrays;
 import java.util.List;

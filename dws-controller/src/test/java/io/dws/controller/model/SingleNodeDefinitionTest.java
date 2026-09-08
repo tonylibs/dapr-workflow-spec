@@ -1,4 +1,4 @@
-package io.dws.controller.compile;
+package io.dws.controller.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

@@ -1,10 +1,13 @@
-package io.dws.controller.compile;
+package io.dws.controller.compile.v2;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.dws.controller.compile.CompilationException;
 import io.dws.controller.model.CompiledNode;
 import io.dws.controller.model.FlowNode;
+import io.dws.controller.model.FlowScope;
+import io.dws.controller.model.SingleNodeDefinition;
 import io.dws.controller.model.StepNode;
 import java.util.List;
 import java.util.Optional;
@@ -19,6 +22,10 @@ import org.junit.jupiter.api.Test;
  * the only one the function IDs add.
  */
 class AppIdRegistryTest {
+
+  private static final SingleNodeDefinition.Envelope ENVELOPE =
+      new SingleNodeDefinition.Envelope("w", "w@v1");
+  private static final FlowScope SCOPE = FlowScope.of("do", List.of());
 
   @Test
   void acceptsAGraphWhoseDeployablesAreDistinct() {
@@ -61,7 +68,7 @@ class AppIdRegistryTest {
 
   private static CompiledNode flow(String nodeId, CompiledNode... children) {
     String appId = NodeNaming.appId(nodeId);
-    return new FlowNode(nodeId, appId, "dws-def-w-v1-" + appId, "{}", List.of(children));
+    return new FlowNode(nodeId, appId, "dws-def-w-v1-" + appId, ENVELOPE, SCOPE, List.of(children));
   }
 
   private static CompiledNode step(String nodeId) {

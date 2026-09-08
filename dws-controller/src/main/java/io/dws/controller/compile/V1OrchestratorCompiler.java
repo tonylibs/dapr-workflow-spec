@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import io.dws.controller.compile.v1.OpenApiDocumentFetcher;
 import io.dws.controller.model.BindingComponent;
 import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.EnvValue;

@@ -1,6 +1,5 @@
-package io.dws.controller.compile;
+package io.dws.controller.model;
 
-import io.dws.controller.model.CompiledNode;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,11 +17,11 @@ class ChildIndex {
    * Projects {@code children} to their {@code key() -> appId()} mapping.
    *
    * <p>Two children resolving to the same key (Finding 1/2 — most commonly a task literally named
-   * {@code catch} shadowing the dedicated catch child) is a compile error, not a silent merge: a
-   * merge would leave one node reachable through this map and one unreachable, though both still
-   * get a Deployment.
+   * {@code catch} shadowing the dedicated catch child) is an error, not a silent merge: a merge
+   * would leave one node reachable through this map and one unreachable, though both still get a
+   * Deployment.
    *
-   * @throws CompilationException if two children share a key
+   * @throws DuplicateChildKeyException if two children share a key
    */
   static Map<String, String> of(List<CompiledNode> children) {
     Map<String, String> appIds = new LinkedHashMap<>();
@@ -30,16 +29,7 @@ class ChildIndex {
       String key = child.key();
       String previous = appIds.putIfAbsent(key, child.appId());
       if (previous != null) {
-        throw new CompilationException(
-            List.of(
-                "children '"
-                    + previous
-                    + "' and '"
-                    + child.appId()
-                    + "' both resolve to the key '"
-                    + key
-                    + "'; a runtime dispatches a flow's children through this key, so it must be "
-                    + "unique"));
+        throw new DuplicateChildKeyException(previous, child.appId(), key);
       }
     }
     return appIds;
