@@ -202,7 +202,7 @@ flowchart LR
   Main -->|CallChildWorkflowAsync| Fork["Flow (fork): notifyChannels"]
   Fork -->|parallel CallChildWorkflowAsync| BranchNotify["Flow (fork branch): notifyChannels.branch.notifyRecipients"]
   Fork -->|parallel CallChildWorkflowAsync| BranchAudit["Flow (fork branch): notifyChannels.branch.writeAudit"]
-  BranchNotify -->|CallChildWorkflowAsync| For["Flow (for): notifyChannels.branch.notifyRecipients.for"]
+  BranchNotify -->|CallChildWorkflowAsync| For["Flow (for): notifyRecipients"]
   For -->|CallActivityAsync| Email["Step: sendEmail"]
   Email -->|HTTP POST /run| Http["Knative function: dws-call-http"]
   BranchAudit -->|CallActivityAsync| Audit["Step: writeAudit"]
