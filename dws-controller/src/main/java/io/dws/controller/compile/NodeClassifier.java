@@ -147,9 +147,13 @@ final class NodeClassifier {
    * A {@code try} scope: its own flow node over the guarded task list, plus a sibling {@code catch}
    * flow node when the definition supplies a non-empty {@code catch.do}. The catch node appears
    * both in {@code children} and in the dedicated {@code catch} field (design §D5). A {@code catch}
-   * with no {@code do} (e.g. retry-only recovery) gets no catch node and no {@code catch} field —
-   * the recovery configuration survives verbatim in this try node's own {@code tasks} entry, which
-   * is where the runtime reads scope configuration from (coordinator ruling on Finding 4).
+   * with no {@code do} (e.g. retry-only recovery) gets no catch node and no {@code catch} field.
+   *
+   * <p>Note where the recovery configuration ends up: not here. This try node's own {@code
+   * specText} carries the guarded task list but neither {@code errors} nor {@code retry} — those
+   * survive verbatim only in the <em>parent's</em> {@code tasks} entry for this try task. Whether
+   * that is correct is the unresolved scope-configuration question in the change's design (Open
+   * Questions), which blocks Phase 2.
    */
   private static CompiledNode tryFlow(
       String nodeId, TryTask tryTask, JsonNode rawBody, Context context) {

@@ -23,7 +23,7 @@ class SingleNodeDefinitionTest {
   // (the 1.x API). The version resolved transitively on this classpath (2.0.0) is the rewritten
   // v2 API (SchemaRegistry/Schema/SpecificationVersion) — those 1.x classes no longer exist in
   // the jar. Adapted to the 2.0.0 API below; behavior (load the real schema file, validate the
-  // rendered JSON, assert no errors) is unchanged. See task-4-report.md for detail.
+  // rendered JSON, assert no errors) is unchanged.
   private static Schema schema() throws Exception {
     Path path = Path.of("..", "openspec", "schemas", "single-node-definition.schema.json");
     JsonNode schemaNode = JSON.readTree(Files.readString(path));

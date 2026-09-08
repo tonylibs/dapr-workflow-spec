@@ -374,7 +374,9 @@ class V2StructuralCompilerTest {
   /**
    * Finding 4 (coordinator ruling): a retry-only {@code catch} — no {@code do} — produces no catch
    * node at all, and the try node omits the {@code catch} field entirely. The retry configuration
-   * itself survives verbatim in the try node's own {@code tasks} entry (read by Phase 3).
+   * survives verbatim in the <em>parent's</em> {@code tasks} entry for this try task, not in the
+   * try node's own definition — see the scope-configuration entry under the change's design Open
+   * Questions, which is unresolved.
    */
   @Test
   void aRetryOnlyCatchProducesNoCatchNodeOrField() throws Exception {
@@ -407,7 +409,7 @@ class V2StructuralCompilerTest {
     JsonNode spec = JSON.readTree(guard.specText());
     assertThat(spec.has("catch")).isFalse();
     assertThat(spec.get("children").properties()).hasSize(1);
-    assertThat(spec.at("/tasks/0/attempt/set/a")).isNotNull();
+    assertThat(spec.at("/tasks/0/attempt/set/a").asInt()).isEqualTo(1);
   }
 
   /** A {@code try} with no {@code catch} key at all compiles the same way — no catch node/field. */
