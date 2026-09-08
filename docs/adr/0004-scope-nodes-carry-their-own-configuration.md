@@ -119,6 +119,19 @@ do:
       then: end
 ```
 
+```mermaid
+flowchart LR
+  Main["Flow: main<br/>order-fulfillment-main"] -->|CallActivityAsync| Validate["Step: validate-order"]
+  Main -->|CallChildWorkflowAsync| TryCatch["Flow (try-catch): fulfill-order<br/>errors, retry"]
+  TryCatch -->|CallChildWorkflowAsync: try| TryDo["Flow (do): fulfill-order-try"]
+  TryCatch -->|CallChildWorkflowAsync: catch| CatchDo["Flow (do): fulfill-order-catch"]
+  TryDo -->|CallChildWorkflowAsync| For["Flow (for): reserve-items<br/>each: item, in: .items"]
+  For -->|CallChildWorkflowAsync: do<br/>once per item| ForDo["Flow (do): reserve-items-do"]
+  ForDo -->|CallActivityAsync| Reserve["Step: reserve-item"]
+  Reserve -->|HTTP POST /run| Fn["Knative function: reserve-item-fn"]
+  CatchDo -->|CallActivityAsync| Failed["Step: mark-order-failed"]
+```
+
 | app ID | scope | shape | `tasks` | `children` | carries |
 |---|---|---|---|---|---|
 | `order-fulfillment-main` | main | sequencer | 2 | `validateOrder`, `fulfillOrder` | — |
@@ -167,6 +180,17 @@ do:
       then: end
 ```
 
+```mermaid
+flowchart LR
+  Main["Flow: main<br/>notify-order-main"] -->|CallActivityAsync| Prep["Step: prepare-notification"]
+  Main -->|CallChildWorkflowAsync| Fork["Flow (fork): notify-channels<br/>forkMode: all"]
+  Fork -->|parallel CallChildWorkflowAsync| For["Flow (for): notify-recipients<br/>each: recipient, in: .recipients"]
+  Fork -->|parallel CallActivityAsync| Audit["Step: write-audit"]
+  For -->|CallChildWorkflowAsync: do<br/>once per item| ForDo["Flow (do): notify-recipients-do"]
+  ForDo -->|CallActivityAsync| Email["Step: send-email"]
+  Email -->|HTTP POST /run| Fn["Knative function: send-email-fn"]
+```
+
 | app ID | scope | shape | `tasks` | `children` | carries |
 |---|---|---|---|---|---|
 | `notify-order-main` | main | sequencer | 2 | `prepareNotification`, `notifyChannels` | — |
@@ -209,6 +233,15 @@ do:
           - recordFailure:
               set: { status: failed }
       then: end
+```
+
+```mermaid
+flowchart LR
+  Main["Flow: main<br/>guarded-payment-main"] -->|CallChildWorkflowAsync| TryCatch["Flow (try-catch): process-payment<br/>errors.with.status: 402"]
+  TryCatch -->|CallChildWorkflowAsync: try| TryDo["Flow (do): process-payment-try"]
+  TryCatch -->|CallChildWorkflowAsync: catch<br/>only when the filter matches| CatchDo["Flow (do): process-payment-catch"]
+  TryDo -->|CallActivityAsync| Raise["Step: reject-payment"]
+  CatchDo -->|CallActivityAsync| Record["Step: record-failure"]
 ```
 
 | app ID | scope | shape | `tasks` | `children` | carries |
