@@ -75,8 +75,8 @@ deliberately deleted mid-branch when a fork-branch root became an ordinary named
 - [x] Working tree clean (`git status --porcelain` empty).
 - [x] All commits pushed to `claude/v2-structural-compiler-classification-zpt6ro`.
 
-**Commit range**: `84acce8..6942147` (27 commits including merges of the branch's prior state;
-the change's own work is the 27-commit span from `84acce8`).
+**Commit range**: `84acce8` through `287da8c` inclusive — 28 commits, all of them this change's own
+work (the branch's prior state ends at `1990347`).
 
 **Gate**: `cd dws-controller && ./mvnw verify` → `Tests run: 158, Failures: 0, Errors: 0` /
 `BUILD SUCCESS`, run at verification time on the current HEAD.
