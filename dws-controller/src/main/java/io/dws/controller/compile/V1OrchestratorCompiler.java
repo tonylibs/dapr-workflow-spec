@@ -111,9 +111,7 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
 
   @Override
   public DeploymentPlan compile(String specText) {
-    if (specText == null || specText.isBlank()) {
-      throw new CompilationException(List.of("Definition is empty"));
-    }
+    SpecParser.requireNonBlank(specText);
     WorkflowFormat format = SpecParser.detectFormat(specText);
     Workflow workflow = SpecParser.parseOrThrow(specText, format);
 

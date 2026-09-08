@@ -43,6 +43,33 @@ public record DeploymentPlan(
   }
 
   /**
+   * The v2 (structural) shape: identity fields plus the compiled graph's root, with every legacy
+   * field empty. The mirror image of the v1 compatibility constructor below — v2 populates only
+   * {@code flowStepGraph}, so its call site should name the graph rather than five empty legacy
+   * collections.
+   */
+  public static DeploymentPlan structural(
+      String workflow,
+      String versionId,
+      String version,
+      String definitionResource,
+      String specText,
+      CompiledNode root) {
+    return new DeploymentPlan(
+        workflow,
+        versionId,
+        version,
+        definitionResource,
+        specText,
+        List.of(),
+        List.of(),
+        null,
+        List.of(),
+        List.of(),
+        List.of(root));
+  }
+
+  /**
    * Compatibility constructor for the v1 (legacy) shape: every existing call site that supplies the
    * legacy fields keeps compiling and gets an empty {@code flowStepGraph}.
    */
