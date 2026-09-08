@@ -1,0 +1,25 @@
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: guarded-payment
+  version: '1.0.0'
+
+do:
+  - processPayment:
+      try:
+        - rejectPayment:
+            raise:
+              error:
+                type: https://example.com/errors/payment-rejected
+                status: 402
+                title: Payment rejected
+                detail: Payment authorization failed
+      catch:
+        errors:
+          with:
+            status: 402
+        do:
+          - recordFailure:
+              set:
+                status: failed
+      then: end

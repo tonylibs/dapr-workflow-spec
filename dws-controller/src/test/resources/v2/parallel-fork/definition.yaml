@@ -1,0 +1,30 @@
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: notify-order
+  version: '1.0.0'
+
+do:
+  - prepareNotification:
+      set:
+        status: ready
+      then: notifyChannels
+
+  - notifyChannels:
+      fork:
+        compete: false
+        branches:
+          - notifyRecipients:
+              for:
+                each: recipient
+                in: .recipients
+              do:
+                - sendEmail:
+                    call: http
+                    with:
+                      method: post
+                      endpoint: https://email.example.com/send
+          - writeAudit:
+              set:
+                auditStatus: recorded
+      then: end

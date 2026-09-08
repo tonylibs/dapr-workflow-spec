@@ -2,6 +2,7 @@ package io.dws.controller.compile;
 
 import io.dapr.client.DaprClient;
 import io.dapr.client.domain.ConfigurationItem;
+import io.dws.controller.compile.v1.OpenApiDocumentFetcher;
 import io.dws.controller.config.DwsConfig;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;

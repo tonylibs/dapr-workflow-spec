@@ -1,4 +1,4 @@
-# CLAUDE.md
+ # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -56,7 +56,9 @@ Windows: use `mvnw.cmd`; POSIX shells (Git Bash): use `./mvnw`.
 | Package | Role |
 |---------|------|
 | `api` | JAX-RS resource (`/workflows`) + exception mappers |
-| `compile` | **Pure** compile pass — no Kubernetes calls. `WorkflowCompiler` parses via `WorkflowReader` and walks `document`+`do` into a `DeploymentPlan`. `SpecDigest` computes the content-addressed version; `Names` holds the naming rules. |
+| `compile` | **Pure** compile pass — no Kubernetes calls. Holds the strategy family (`WorkflowCompiler` + both concretes, selected by `CompilerProducer`) and what both share: `SpecParser` (parse), `SpecDigest` (content-addressed version), `Names` (naming rules), `CompilationException`. |
+| `compile.v1` | v1-only machinery: `OpenApiDocumentFetcher` and its HTTP implementation. |
+| `compile.v2` | v2-only machinery: `NodeClassifier` (recursive descent), `RawTaskList`/`RawTaskItem` (the raw-JSON half of the lockstep walk), `NodeNaming`, `SingleNodeDefinition`, `FlowScope`, `ChildIndex`, `AppIdRegistry`. Only `NodeClassifier`, `SingleNodeDefinition` and `AppIdRegistry` are public — the rest are sealed inside the package. |
 | `k8s` | Apply pass. `StackSynthesizer` renders the plan (cdk8s for Knative/Dapr, fabric8 models for ConfigMap/Deployment); `StackApplier` mutates + rolls out + GCs; `StackReader` answers all GETs from the cluster. |
 | `model` | Records: `DeploymentPlan`, `StepService`, `OrchestratorSpec`, status projections. |
 | `config` | `DwsConfig` `@ConfigMapping` over `dws.*` in `application.yaml`. |
@@ -160,20 +162,6 @@ for (Deployment deployment : deployments) {
 List<String> stepNames = plan.steps().stream().map(StepService::name).toList();
 ```
 
-### DTO/model: everything under `model/` is an immutable `record`, no Lombok
-
-14/14 classes in `model/` are `public record`; compact constructors defensively copy mutable
-collection args (`DeploymentPlan.java:37-43`). `lombok` is not a dependency here — don't add it.
-
-```java
-// model/DeploymentPlan.java — the pattern to follow for any new model type
-public record DeploymentPlan(String workflow, List<StepService> steps, OrchestratorSpec orchestrator) {
-    public DeploymentPlan {
-        steps = List.copyOf(steps); // defensive copy in the compact constructor
-    }
-}
-```
-
 ### DI: constructor injection only, never `@Inject` on a field
 
 Verified zero field-injection usages in `src/main/java`. Quarkus ARC does implicit constructor
@@ -216,6 +204,66 @@ public class WorkflowNotFoundExceptionMapper implements ExceptionMapper<Workflow
     }
 }
 ```
+
+### Static-utility classes use Lombok's `@UtilityClass`
+
+The only Lombok annotation in use here — in particular, models are plain records, so don't reach
+for `@Data`/`@Value`/`@Builder`. `@UtilityClass` makes the class final, makes every member static,
+and generates the private throwing constructor — so don't hand-write one.
+
+```java
+// Wrong
+final class NodeNaming {
+    private NodeNaming() {}
+    static String appId(String nodeId) { ... }
+}
+
+// Right (NodeNaming.java, Names.java, ChildIndex.java, Labels.java, ...)
+@UtilityClass
+class NodeNaming {
+    static String appId(String nodeId) { ... }
+}
+```
+
+`@UtilityClass` does not change the class's own access modifier — keep `public class` on the ones
+other packages use (`Names`, `SpecDigest`, `Labels`, `ResourceContexts`).
+
+### Validation lives in the type that reads the data, not in the caller
+
+A check the caller can forget will eventually be forgotten. Fuse reading and validating so the
+value cannot exist unvalidated (`RawTaskList.in` reads a raw task list *and* aligns it against the
+typed one).
+
+```java
+// Wrong — two calls, and the second is optional in practice
+JsonNode raw = rawArray(parent, "do");
+requireAligned(typed, raw);
+
+// Right (RawTaskList.java) — one call, no unaligned RawTaskList can be constructed
+RawTaskList raw = RawTaskList.in(parent, "do", typed);
+```
+
+### Optional/absent arguments go in a value object, not trailing nulls
+
+```java
+// Wrong — every caller pads the tail
+flow(context, nodeId, "do", tasks, children, null, null);
+
+// Right (FlowScope.java) — copy-on-write withers; callers name only what they have
+flow(context, nodeId, FlowScope.of("do", tasks), children);
+flow(context, nodeId, FlowScope.of("try", tasks).withCatch(catchAppId), children);
+```
+
+### A rule that end-to-end tests can't reach belongs in its own type
+
+Private statics behind a full parse (`ChildIndex.of`'s duplicate-key rule, `NodeNaming
+.requireUndottedTaskName`) get no direct coverage. Extracting is what makes them testable — treat
+the untestability as the signal to move it.
+
+### Moved code keeps its `CompilationException` message verbatim
+
+Those strings are operator-facing and asserted on by tests. Reword them in a separate change, never
+as a side effect of moving them.
 
 ### Tests: AssertJ for object assertions, Hamcrest only inside REST-Assured chains
 

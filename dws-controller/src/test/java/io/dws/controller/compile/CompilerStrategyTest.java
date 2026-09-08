@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import io.dapr.client.DaprClient;
 import io.dapr.client.domain.ConfigurationItem;
+import io.dws.controller.compile.v1.OpenApiDocumentFetcher;
 import io.dws.controller.config.DwsConfig;
 import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.ImageCatalog;
@@ -56,12 +57,27 @@ class CompilerStrategyTest {
   }
 
   @Test
-  @DisplayName("v2 stub populates only flowStepGraph and leaves legacy steps empty")
+  @DisplayName("v2 compiler populates flowStepGraph and leaves legacy steps empty")
   void v2LeavesLegacyEmpty() {
     DeploymentPlan plan = new V2StructuralCompiler().compile(MINIMAL);
     assertThat(plan.steps()).isEmpty();
     assertThat(plan.orchestrator()).isNull();
-    assertThat(plan.flowStepGraph()).isEmpty();
+    assertThat(plan.flowStepGraph()).hasSize(1);
+    assertThat(plan.flowStepGraph().get(0).appId()).isEqualTo("minimal-main");
+    assertThat(plan.workflow()).isEqualTo("minimal");
+  }
+
+  @Test
+  @DisplayName("both strategies agree on workflow identity")
+  void bothStrategiesAgreeOnIdentity() {
+    DeploymentPlan v1 = new V1OrchestratorCompiler(IMAGES, fetcher).compile(MINIMAL);
+    DeploymentPlan v2 = new V2StructuralCompiler().compile(MINIMAL);
+
+    assertThat(v2.workflow()).isEqualTo(v1.workflow());
+    assertThat(v2.versionId()).isEqualTo(v1.versionId());
+    assertThat(v2.version()).isEqualTo(v1.version());
+    assertThat(v2.definitionResource()).isEqualTo(v1.definitionResource());
+    assertThat(v2.specText()).isEqualTo(v1.specText());
   }
 
   @Test

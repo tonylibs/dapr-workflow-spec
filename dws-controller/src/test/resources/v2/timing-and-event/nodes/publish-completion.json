@@ -1,0 +1,20 @@
+{
+  "workflow" : "approval-reminder",
+  "version" : "approval-reminder@<versionId>",
+  "nodeId" : "publish-completion",
+  "kind" : "step",
+  "task" : {
+    "publishCompletion" : {
+      "emit" : {
+        "event" : {
+          "with" : {
+            "source" : "https://workflow.example.com/approval-reminder",
+            "type" : "com.example.request.completed",
+            "data" : "${ . }"
+          }
+        }
+      },
+      "then" : "end"
+    }
+  }
+}

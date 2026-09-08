@@ -97,6 +97,15 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-rest</artifactId>
         </dependency>
+        <!-- Compile-time only: the annotation processor path is configured on maven-compiler-plugin
+             below; this puts the annotations themselves on the compile classpath. Not on the
+             runtime classpath, so it does not affect the Quarkus build or native image. -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-junit</artifactId>
@@ -121,6 +130,15 @@
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
             <version>3.26.3</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- Used by the v2 compiler's tests to validate rendered single-node definitions against
+             openspec/schemas/single-node-definition.schema.json. Also arrives transitively via
+             serverlessworkflow-api; declared so an SDK bump cannot remove it silently. -->
+        <dependency>
+            <groupId>com.networknt</groupId>
+            <artifactId>json-schema-validator</artifactId>
+            <version>2.0.0</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

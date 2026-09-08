@@ -1,0 +1,29 @@
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: review-request
+  version: '1.0.0'
+
+do:
+  - initializeReview:
+      set:
+        eligible: true
+      then: chooseOutcome
+
+  - chooseOutcome:
+      switch:
+        - approved:
+            when: ${ .eligible }
+            then: recordApproval
+        - default:
+            then: recordRejection
+
+  - recordApproval:
+      set:
+        status: approved
+      then: end
+
+  - recordRejection:
+      set:
+        status: rejected
+      then: end

@@ -1,0 +1,13 @@
+{
+  "workflow" : "guarded-payment",
+  "version" : "guarded-payment@<versionId>",
+  "nodeId" : "record-failure",
+  "kind" : "step",
+  "task" : {
+    "recordFailure" : {
+      "set" : {
+        "status" : "failed"
+      }
+    }
+  }
+}

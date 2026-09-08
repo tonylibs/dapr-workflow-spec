@@ -1,5 +1,6 @@
 package io.dws.controller.model;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,6 +25,6 @@ public record StepNode(
   /** A step is a leaf: it never has children. */
   @Override
   public List<CompiledNode> children() {
-    return List.of();
+    return Collections.emptyList();
   }
 }

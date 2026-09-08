@@ -1,0 +1,13 @@
+{
+  "workflow" : "order-fulfillment",
+  "version" : "order-fulfillment@<versionId>",
+  "nodeId" : "mark-order-failed",
+  "kind" : "step",
+  "task" : {
+    "markOrderFailed" : {
+      "set" : {
+        "status" : "failed"
+      }
+    }
+  }
+}

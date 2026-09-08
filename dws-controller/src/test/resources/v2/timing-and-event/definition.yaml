@@ -1,0 +1,25 @@
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: approval-reminder
+  version: '1.0.0'
+
+do:
+  - reminderDelay:
+      wait: PT5M
+
+  - awaitApproval:
+      listen:
+        to:
+          one:
+            with:
+              type: com.example.request.approved
+
+  - publishCompletion:
+      emit:
+        event:
+          with:
+            source: https://workflow.example.com/approval-reminder
+            type: com.example.request.completed
+            data: ${ . }
+      then: end

@@ -1,0 +1,14 @@
+{
+  "workflow" : "order-fulfillment",
+  "version" : "order-fulfillment@<versionId>",
+  "nodeId" : "validate-order",
+  "kind" : "step",
+  "task" : {
+    "validateOrder" : {
+      "set" : {
+        "status" : "validating"
+      },
+      "then" : "fulfillOrder"
+    }
+  }
+}

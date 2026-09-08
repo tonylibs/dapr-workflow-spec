@@ -1,0 +1,16 @@
+{
+  "workflow" : "synchronize-catalog",
+  "version" : "synchronize-catalog@<versionId>",
+  "nodeId" : "fetch-inventory",
+  "kind" : "step",
+  "task" : {
+    "fetchInventory" : {
+      "call" : "http",
+      "with" : {
+        "method" : "get",
+        "endpoint" : "https://inventory.example.com/items"
+      }
+    }
+  },
+  "functionAppId" : "fetch-inventory-fn"
+}

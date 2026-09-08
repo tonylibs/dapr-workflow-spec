@@ -1,0 +1,13 @@
+{
+  "workflow" : "notify-order",
+  "version" : "notify-order@<versionId>",
+  "nodeId" : "notify-channels",
+  "kind" : "flow",
+  "scope" : "fork",
+  "tasks" : [ ],
+  "children" : {
+    "notifyRecipients" : "notify-channels-branch-notify-recipients",
+    "writeAudit" : "notify-channels-branch-write-audit"
+  },
+  "forkMode" : "all"
+}

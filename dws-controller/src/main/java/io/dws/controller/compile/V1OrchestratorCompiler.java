@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import io.dws.controller.compile.v1.OpenApiDocumentFetcher;
 import io.dws.controller.model.BindingComponent;
 import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.EnvValue;
@@ -15,7 +16,6 @@ import io.dws.controller.model.StepService;
 import io.dws.controller.model.TaskKind;
 import io.dws.controller.model.TopicBinding;
 import io.serverlessworkflow.api.WorkflowFormat;
-import io.serverlessworkflow.api.WorkflowReader;
 import io.serverlessworkflow.api.types.AsyncApiArguments;
 import io.serverlessworkflow.api.types.AuthenticationPolicyUnion;
 import io.serverlessworkflow.api.types.BasicAuthenticationPolicy;
@@ -112,11 +112,9 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
 
   @Override
   public DeploymentPlan compile(String specText) {
-    if (specText == null || specText.isBlank()) {
-      throw new CompilationException(List.of("Definition is empty"));
-    }
-    WorkflowFormat format = detectFormat(specText);
-    Workflow workflow = parseOrThrow(specText, format);
+    SpecParser.requireNonBlank(specText);
+    WorkflowFormat format = SpecParser.detectFormat(specText);
+    Workflow workflow = SpecParser.parseOrThrow(specText, format);
 
     List<String> errors = semanticErrors(workflow);
     if (!errors.isEmpty()) {
@@ -169,37 +167,6 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
   }
 
   // ---- parsing / validation ------------------------------------------------
-
-  private static WorkflowFormat detectFormat(String specText) {
-    return specText.stripLeading().startsWith("{") ? WorkflowFormat.JSON : WorkflowFormat.YAML;
-  }
-
-  private Workflow parseOrThrow(String specText, WorkflowFormat format) {
-    try {
-      Workflow workflow = WorkflowReader.readWorkflowFromString(specText, format);
-      if (workflow == null) {
-        throw new CompilationException(List.of("Definition could not be parsed"));
-      }
-      return workflow;
-    } catch (CompilationException e) {
-      throw e;
-    } catch (Exception e) {
-      throw new CompilationException(collectMessages(e));
-    }
-  }
-
-  private static List<String> collectMessages(Throwable t) {
-    List<String> messages = new ArrayList<>();
-    for (Throwable c = t; c != null && c != c.getCause(); c = c.getCause()) {
-      if (c.getMessage() != null && !c.getMessage().isBlank()) {
-        messages.add(c.getMessage());
-      }
-    }
-    if (messages.isEmpty()) {
-      messages.add(t.getClass().getSimpleName());
-    }
-    return messages;
-  }
 
   private static List<String> semanticErrors(Workflow workflow) {
     List<String> errors = new ArrayList<>();
@@ -574,7 +541,7 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
   private static JsonNode parseAsyncApiDocument(String taskName, byte[] document) {
     try {
       String text = new String(document, StandardCharsets.UTF_8);
-      return detectFormat(text).mapper().readTree(document);
+      return SpecParser.detectFormat(text).mapper().readTree(document);
     } catch (Exception e) {
       throw invalid(taskName, "asyncapi call requires a parseable AsyncAPI document");
     }
@@ -1158,7 +1125,7 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
   private static JsonNode parseOpenApiDocument(String taskName, byte[] document) {
     try {
       String text = new String(document, StandardCharsets.UTF_8);
-      return detectFormat(text).mapper().readTree(document);
+      return SpecParser.detectFormat(text).mapper().readTree(document);
     } catch (Exception e) {
       throw invalid(taskName, "OpenAPI OAuth requires a parseable OpenAPI document");
     }

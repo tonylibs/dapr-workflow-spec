@@ -1,0 +1,40 @@
+{
+  "workflow" : "synchronize-catalog",
+  "version" : "synchronize-catalog@<versionId>",
+  "nodeId" : "synchronize-catalog-main",
+  "kind" : "flow",
+  "scope" : "main",
+  "tasks" : [ {
+    "fetchInventory" : {
+      "call" : "http",
+      "with" : {
+        "method" : "get",
+        "endpoint" : "https://inventory.example.com/items"
+      }
+    }
+  }, {
+    "lookupPrice" : {
+      "call" : "openapi",
+      "with" : {
+        "document" : {
+          "endpoint" : "https://catalog.example.com/openapi.json"
+        },
+        "operationId" : "getPrice"
+      }
+    }
+  }, {
+    "rebuildIndex" : {
+      "run" : {
+        "shell" : {
+          "command" : "./rebuild-index.sh"
+        }
+      },
+      "then" : "end"
+    }
+  } ],
+  "children" : {
+    "fetchInventory" : "fetch-inventory",
+    "lookupPrice" : "lookup-price",
+    "rebuildIndex" : "rebuild-index"
+  }
+}

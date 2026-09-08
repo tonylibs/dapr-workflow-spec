@@ -1,0 +1,36 @@
+{
+  "nodeId" : "review-request.main",
+  "appId" : "review-request-main",
+  "definitionResource" : "dws-def-review-request-<versionId>-review-request-main",
+  "kind" : "flow",
+  "functionAppId" : null,
+  "children" : [ {
+    "nodeId" : "initializeReview",
+    "appId" : "initialize-review",
+    "definitionResource" : "dws-def-review-request-<versionId>-initialize-review",
+    "kind" : "step",
+    "functionAppId" : null,
+    "children" : [ ]
+  }, {
+    "nodeId" : "chooseOutcome",
+    "appId" : "choose-outcome",
+    "definitionResource" : "dws-def-review-request-<versionId>-choose-outcome",
+    "kind" : "step",
+    "functionAppId" : null,
+    "children" : [ ]
+  }, {
+    "nodeId" : "recordApproval",
+    "appId" : "record-approval",
+    "definitionResource" : "dws-def-review-request-<versionId>-record-approval",
+    "kind" : "step",
+    "functionAppId" : null,
+    "children" : [ ]
+  }, {
+    "nodeId" : "recordRejection",
+    "appId" : "record-rejection",
+    "definitionResource" : "dws-def-review-request-<versionId>-record-rejection",
+    "kind" : "step",
+    "functionAppId" : null,
+    "children" : [ ]
+  } ]
+}

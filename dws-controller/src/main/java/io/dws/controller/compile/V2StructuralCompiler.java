@@ -1,32 +1,48 @@
 package io.dws.controller.compile;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import io.dws.controller.compile.v2.AppIdRegistry;
+import io.dws.controller.compile.v2.NodeClassifier;
+import io.dws.controller.model.CompiledNode;
 import io.dws.controller.model.DeploymentPlan;
-import java.util.List;
+import io.dws.controller.model.SingleNodeDefinition;
+import io.serverlessworkflow.api.WorkflowFormat;
+import io.serverlessworkflow.api.types.Workflow;
 
 /**
  * The v2 (structural) {@link WorkflowCompiler} strategy: compiles a definition into the Flow/Step
  * graph ({@code flowStepGraph}) rather than the legacy flat step list.
  *
- * <p>Phase 1 seam stub (ADR 0002): classification rules, derived-identifier sanitization, and fork
- * handling are later Phase 1 tasks. This stub only establishes the compatibility contract — it
- * populates <em>only</em> {@code flowStepGraph} (currently empty) and leaves every legacy field
- * empty — so subsequent tasks fill in the graph without touching the seam or v1.
+ * <p>Orchestration only (ADR 0002): {@link SpecParser} parses, {@link NodeClassifier} walks the
+ * definition into the node tree, {@link AppIdRegistry} rejects a graph whose nodes collide on a
+ * derived Dapr app ID, and this class computes the plan's identity fields. It populates
+ * <em>only</em> {@code flowStepGraph} plus the identity fields, and leaves every legacy field
+ * empty, so v1's compiled output is unaffected.
  */
 public class V2StructuralCompiler implements WorkflowCompiler {
 
   @Override
   public DeploymentPlan compile(String specText) {
-    return new DeploymentPlan(
-        "",
-        "",
-        "",
-        "",
-        specText == null ? "" : specText,
-        List.of(),
-        List.of(),
-        null,
-        List.of(),
-        List.of(),
-        List.of());
+    SpecParser.requireNonBlank(specText);
+    WorkflowFormat format = SpecParser.detectFormat(specText);
+    Workflow workflow = SpecParser.parseOrThrow(specText, format);
+    JsonNode rawSpec = SpecParser.readRawOrThrow(specText, format);
+
+    String workflowName = Names.kebab(workflow.getDocument().getName());
+    String versionId = SpecDigest.versionId(specText, format);
+    String version = WorkflowCompiler.version(workflowName, versionId);
+    String definitionResource = Names.definitionResource(workflowName, versionId);
+
+    CompiledNode root =
+        NodeClassifier.classify(
+            workflow,
+            rawSpec,
+            new SingleNodeDefinition.Envelope(workflowName, version),
+            workflowName,
+            versionId);
+    AppIdRegistry.requireDistinct(root);
+
+    return DeploymentPlan.structural(
+        workflowName, versionId, version, definitionResource, specText, root);
   }
 }

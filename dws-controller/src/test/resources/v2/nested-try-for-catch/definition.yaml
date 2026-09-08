@@ -1,0 +1,30 @@
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: order-fulfillment
+  version: '1.0.0'
+
+do:
+  - validateOrder:
+      set:
+        status: validating
+      then: fulfillOrder
+
+  - fulfillOrder:
+      try:
+        - reserveItems:
+            for:
+              each: item
+              in: .items
+            do:
+              - reserveItem:
+                  call: http
+                  with:
+                    method: post
+                    endpoint: https://inventory.example.com/reservations
+      catch:
+        do:
+          - markOrderFailed:
+              set:
+                status: failed
+      then: end

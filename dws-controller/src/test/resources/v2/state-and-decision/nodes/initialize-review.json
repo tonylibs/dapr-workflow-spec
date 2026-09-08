@@ -1,0 +1,14 @@
+{
+  "workflow" : "review-request",
+  "version" : "review-request@<versionId>",
+  "nodeId" : "initialize-review",
+  "kind" : "step",
+  "task" : {
+    "initializeReview" : {
+      "set" : {
+        "eligible" : true
+      },
+      "then" : "chooseOutcome"
+    }
+  }
+}

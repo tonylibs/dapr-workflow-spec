@@ -1,0 +1,16 @@
+{
+  "workflow" : "order-fulfillment",
+  "version" : "order-fulfillment@<versionId>",
+  "nodeId" : "reserve-item",
+  "kind" : "step",
+  "task" : {
+    "reserveItem" : {
+      "call" : "http",
+      "with" : {
+        "method" : "post",
+        "endpoint" : "https://inventory.example.com/reservations"
+      }
+    }
+  },
+  "functionAppId" : "reserve-item-fn"
+}

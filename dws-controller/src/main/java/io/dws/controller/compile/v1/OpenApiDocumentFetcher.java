@@ -1,4 +1,4 @@
-package io.dws.controller.compile;
+package io.dws.controller.compile.v1;
 
 /**
  * Fetches the raw bytes of an OpenAPI document referenced by a {@code call: openapi} task, so the

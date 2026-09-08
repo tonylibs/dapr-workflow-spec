@@ -1,0 +1,16 @@
+{
+  "workflow" : "notify-order",
+  "version" : "notify-order@<versionId>",
+  "nodeId" : "send-email",
+  "kind" : "step",
+  "task" : {
+    "sendEmail" : {
+      "call" : "http",
+      "with" : {
+        "method" : "post",
+        "endpoint" : "https://email.example.com/send"
+      }
+    }
+  },
+  "functionAppId" : "send-email-fn"
+}

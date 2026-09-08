@@ -1,9 +1,10 @@
 package io.dws.controller.compile;
 
-/** Naming helpers shared by the compile and apply passes. */
-public final class Names {
+import lombok.experimental.UtilityClass;
 
-  private Names() {}
+/** Naming helpers shared by the compile and apply passes. */
+@UtilityClass
+public class Names {
 
   /** RFC-1123-ish kebab-case: camelCase boundaries and non-alphanumerics become single dashes. */
   public static String kebab(String input) {
@@ -39,5 +40,9 @@ public final class Names {
 
   public static String orchestrator(String workflow, String versionId) {
     return workflow + "-" + versionId;
+  }
+
+  public static String nodeDefinitionResource(String workflow, String versionId, String appId) {
+    return definitionResource(workflow, versionId) + "-" + appId;
   }
 }

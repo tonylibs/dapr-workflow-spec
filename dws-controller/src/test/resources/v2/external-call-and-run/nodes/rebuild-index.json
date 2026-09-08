@@ -1,0 +1,17 @@
+{
+  "workflow" : "synchronize-catalog",
+  "version" : "synchronize-catalog@<versionId>",
+  "nodeId" : "rebuild-index",
+  "kind" : "step",
+  "task" : {
+    "rebuildIndex" : {
+      "run" : {
+        "shell" : {
+          "command" : "./rebuild-index.sh"
+        }
+      },
+      "then" : "end"
+    }
+  },
+  "functionAppId" : "rebuild-index-fn"
+}

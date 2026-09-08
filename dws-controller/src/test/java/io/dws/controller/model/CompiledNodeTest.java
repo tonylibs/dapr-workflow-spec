@@ -11,6 +11,10 @@ import org.junit.jupiter.api.Test;
 
 class CompiledNodeTest {
 
+  private static final SingleNodeDefinition.Envelope ENVELOPE =
+      new SingleNodeDefinition.Envelope("w", "w@v1");
+  private static final FlowScope SCOPE = FlowScope.of("do", List.of());
+
   private final ObjectMapper mapper = JsonMapper.builder().findAndAddModules().build();
 
   @Test
@@ -24,7 +28,8 @@ class CompiledNodeTest {
   @Test
   @DisplayName("key() is the whole nodeId() when there is no dot")
   void keyIsWholeNodeIdWhenNoDot() {
-    CompiledNode top = new FlowNode("fulfillOrder", "fulfill-order", "res", "{}", List.of());
+    CompiledNode top =
+        new FlowNode("fulfillOrder", "fulfill-order", "res", ENVELOPE, SCOPE, List.of());
     assertThat(top.key()).isEqualTo("fulfillOrder");
   }
 
@@ -43,11 +48,17 @@ class CompiledNodeTest {
             "fulfillOrder",
             "fulfill-order",
             "flow-res",
-            "{\"flow\":true}",
+            ENVELOPE,
+            SCOPE,
             List.of(
                 new StepNode("fulfillOrder.charge", "charge", "step-res", "{}", Optional.empty()),
                 new FlowNode(
-                    "fulfillOrder.catch", "fulfill-order-catch", "catch-res", "{}", List.of())));
+                    "fulfillOrder.catch",
+                    "fulfill-order-catch",
+                    "catch-res",
+                    ENVELOPE,
+                    SCOPE,
+                    List.of())));
 
     String json = mapper.writeValueAsString(graph);
     assertThat(json).contains("\"nodeType\":\"flow\"").contains("\"nodeType\":\"step\"");

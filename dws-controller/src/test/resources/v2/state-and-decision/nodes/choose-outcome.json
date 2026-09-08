@@ -1,0 +1,20 @@
+{
+  "workflow" : "review-request",
+  "version" : "review-request@<versionId>",
+  "nodeId" : "choose-outcome",
+  "kind" : "step",
+  "task" : {
+    "chooseOutcome" : {
+      "switch" : [ {
+        "approved" : {
+          "when" : "${ .eligible }",
+          "then" : "recordApproval"
+        }
+      }, {
+        "default" : {
+          "then" : "recordRejection"
+        }
+      } ]
+    }
+  }
+}

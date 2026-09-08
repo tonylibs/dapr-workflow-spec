@@ -1,0 +1,29 @@
+{
+  "nodeId" : "approval-reminder.main",
+  "appId" : "approval-reminder-main",
+  "definitionResource" : "dws-def-approval-reminder-<versionId>-approval-reminder-main",
+  "kind" : "flow",
+  "functionAppId" : null,
+  "children" : [ {
+    "nodeId" : "reminderDelay",
+    "appId" : "reminder-delay",
+    "definitionResource" : "dws-def-approval-reminder-<versionId>-reminder-delay",
+    "kind" : "step",
+    "functionAppId" : null,
+    "children" : [ ]
+  }, {
+    "nodeId" : "awaitApproval",
+    "appId" : "await-approval",
+    "definitionResource" : "dws-def-approval-reminder-<versionId>-await-approval",
+    "kind" : "step",
+    "functionAppId" : null,
+    "children" : [ ]
+  }, {
+    "nodeId" : "publishCompletion",
+    "appId" : "publish-completion",
+    "definitionResource" : "dws-def-approval-reminder-<versionId>-publish-completion",
+    "kind" : "step",
+    "functionAppId" : null,
+    "children" : [ ]
+  } ]
+}
