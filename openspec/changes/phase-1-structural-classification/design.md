@@ -218,3 +218,22 @@ is renamed until Phase 4 consumes it, so no running workload is affected.
 - Whether `flatten()` belongs on `CompiledNode` as a default method or on a separate walker.
   Placed on `CompiledNode` per ADR 0002's own sketch; Phase 4 may move it if `StackSynthesizer`
   wants a different traversal order.
+- **A scope node's `specText` does not carry that scope's own configuration, and that contradicts
+  ADR 0003. Phase 2 must not start until this is resolved.** A `for` node's `specText` carries its
+  loop body in `tasks` but neither `each` nor `in`; a `try` node's carries the guarded list but no
+  `errors` and no `retry`; a `catch` node's carries the recovery list but, again, no `errors` and
+  no `retry`. That configuration exists in exactly one place: the *parent's* verbatim `tasks` entry
+  for the scope task, which the parent renders whole. ADR 0003 decides the opposite — "The scope's
+  own behavior (loop over items, try/catch/retry) lives entirely inside the child instance; the
+  parent never special-cases *how* a child scope works, only that it's a child to call." Under that
+  decision a `for` Flow must iterate its own items and a `try` Flow must apply its own error
+  filter, and from its own pinned definition neither can. `forkMode` was added to the schema for
+  precisely this reason — a fork node cannot join without knowing whether it races or waits — and
+  the same reasoning was not applied to `for` or to `catch`. The concrete failure mode: a Phase 3
+  implementer reading the obvious semantics off a `try` node's definition builds a Flow that
+  catches every error, silently ignoring the `errors.with.status` filter the author wrote, and the
+  definition it loaded gives it nothing to detect the omission with. Resolving this means deciding
+  where scope configuration lives — hoisted into each scope node's own definition, or read by the
+  parent, which reinstates the special-casing ADR 0003 removed — and the decision changes the
+  single-node definition schema, so it must land before `dws-step` and `dws-flow` are built
+  against it.
