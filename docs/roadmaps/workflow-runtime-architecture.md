@@ -86,6 +86,7 @@ the task-specific I/O, while the workflow layer retains orchestration and retry 
 | DSL construct | Classification | Reason |
 |---|---|---|
 | Top-level `do` | `Flow: main` | It is the workflow's outer task-list scope. |
+| Nested `do` | Flow | Its `do` property owns a task list, which a step never does. Its scope value is `do`. |
 | `for` | Flow | Its `do` property owns the loop body. |
 | `try` | Flow | It owns the `try` task list and may own a `catch.do` recovery list. |
 | `catch` | Flow | `catch.do` owns the recovery task list. Its identifier is derived as `<try-task>.catch`. |
