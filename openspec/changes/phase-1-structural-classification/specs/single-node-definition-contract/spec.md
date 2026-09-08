@@ -3,9 +3,9 @@
 ### Requirement: Fork nodes declare their scope and join mode
 
 A `kind: "flow"` single-node definition SHALL accept `fork` as a value of `scope`, alongside
-`main`, `for`, `try`, `catch`, and `forkBranch`. A definition whose `scope` is `fork` SHALL carry
-`forkMode` with the value `all` or `any`, and SHALL carry an empty `tasks` array, since a fork node
-sequences nothing of its own — it fans out to its `children` and joins. A definition whose `scope`
+`main`, `do`, `for`, `try`, `catch`, and `forkBranch`. A definition whose `scope` is `fork` SHALL
+carry `forkMode` with the value `all` or `any`, and SHALL carry an empty `tasks` array, since a fork
+node sequences nothing of its own — it fans out to its `children` and joins. A definition whose `scope`
 is anything other than `fork` SHALL NOT carry `forkMode`.
 
 #### Scenario: A fork definition carries forkMode and no tasks
@@ -22,8 +22,8 @@ is anything other than `fork` SHALL NOT carry `forkMode`.
 
 #### Scenario: forkMode on a non-fork scope is rejected
 
-- **WHEN** a definition declares `forkMode` alongside a `scope` of `main`, `for`, `try`, `catch`, or
-  `forkBranch`
+- **WHEN** a definition declares `forkMode` alongside a `scope` of `main`, `do`, `for`, `try`,
+  `catch`, or `forkBranch`
 - **THEN** validation fails, since only a fork node performs a join
 
 #### Scenario: A competing fork declares forkMode any
