@@ -92,6 +92,162 @@ the only scope built that way.
 Retiring `forkBranch` follows from the same test applied honestly: a node shape earns its place by
 carrying something its children cannot see. `forkBranch` carried nothing.
 
+## Worked examples
+
+Three definitions, each already checked in under
+`dws-controller/src/test/resources/v2/`, with the graph this decision produces.
+
+### 1. Nested `try`, `for`, `catch` — `order-fulfillment`
+
+```yaml
+do:
+  - validateOrder:
+      set: { status: validating }
+      then: fulfillOrder
+  - fulfillOrder:
+      try:
+        - reserveItems:
+            for: { each: item, in: .items }
+            do:
+              - reserveItem:
+                  call: http
+                  with: { method: post, endpoint: https://inventory.example.com/reservations }
+      catch:
+        do:
+          - markOrderFailed:
+              set: { status: failed }
+      then: end
+```
+
+| app ID | scope | shape | `tasks` | `children` | carries |
+|---|---|---|---|---|---|
+| `order-fulfillment-main` | main | sequencer | 2 | `validateOrder`, `fulfillOrder` | — |
+| `validate-order` | — | step | — | — | — |
+| `fulfill-order` | try-catch | controller | `[]` | `try`, `catch` | `catch` app ID |
+| `fulfill-order-try` | do | sequencer | 1 | `reserveItems` | — |
+| `reserve-items` | for | controller | `[]` | `do` | `each`, `in` |
+| `reserve-items-do` | do | sequencer | 1 | `reserveItem` | — |
+| `reserve-item` | — | step | — | — | `functionAppId: reserve-item-fn` |
+| `fulfill-order-catch` | do | sequencer | 1 | `markOrderFailed` | — |
+| `mark-order-failed` | — | step | — | — | — |
+
+9 nodes, up from 7 today. The two new ones are the `do` sequencers for the try body and the loop
+body. The loop node now carries what it needs:
+
+```json
+{ "workflow": "order-fulfillment", "version": "order-fulfillment@v1a2b3c4d",
+  "nodeId": "reserve-items", "kind": "flow", "scope": "for",
+  "tasks": [],
+  "children": { "do": "reserve-items-do" },
+  "each": "item", "in": ".items" }
+```
+
+This `catch` has no `errors` filter, so `fulfill-order` omits the field — `errors` and `retry` are
+optional on a `try-catch` node, present only when the DSL sets them.
+
+### 2. Parallel fork — `notify-order`
+
+```yaml
+do:
+  - prepareNotification:
+      set: { status: ready }
+      then: notifyChannels
+  - notifyChannels:
+      fork:
+        compete: false
+        branches:
+          - notifyRecipients:
+              for: { each: recipient, in: .recipients }
+              do:
+                - sendEmail:
+                    call: http
+                    with: { method: post, endpoint: https://email.example.com/send }
+          - writeAudit:
+              set: { auditStatus: recorded }
+      then: end
+```
+
+| app ID | scope | shape | `tasks` | `children` | carries |
+|---|---|---|---|---|---|
+| `notify-order-main` | main | sequencer | 2 | `prepareNotification`, `notifyChannels` | — |
+| `prepare-notification` | — | step | — | — | — |
+| `notify-channels` | fork | controller | `[]` | `notifyRecipients`, `writeAudit` | `forkMode: all` |
+| `notify-recipients` | for | controller | `[]` | `do` | `each`, `in` |
+| `notify-recipients-do` | do | sequencer | 1 | `sendEmail` | — |
+| `send-email` | — | step | — | — | `functionAppId: send-email-fn` |
+| `write-audit` | — | step | — | — | — |
+
+7 nodes, down from 8. The two `forkBranch` nodes are gone; `notify-channels` addresses each branch
+root directly. Note the branches are not the same kind: `notifyRecipients` is a `FlowNode` reached
+by `CallChildWorkflowAsync`, `writeAudit` a `StepNode` reached by `CallActivityAsync`. The fork does
+not choose between them — ADR 0002's sealed type does.
+
+```json
+{ "nodeId": "notify-channels", "kind": "flow", "scope": "fork",
+  "tasks": [],
+  "children": { "notifyRecipients": "notify-recipients", "writeAudit": "write-audit" },
+  "forkMode": "all" }
+```
+
+### 3. An error filter that currently vanishes — `guarded-payment`
+
+```yaml
+do:
+  - processPayment:
+      try:
+        - rejectPayment:
+            raise:
+              error:
+                type: https://example.com/errors/payment-rejected
+                status: 402
+                title: Payment rejected
+                detail: Payment authorization failed
+      catch:
+        errors:
+          with: { status: 402 }
+        do:
+          - recordFailure:
+              set: { status: failed }
+      then: end
+```
+
+| app ID | scope | shape | `tasks` | `children` | carries |
+|---|---|---|---|---|---|
+| `guarded-payment-main` | main | sequencer | 1 | `processPayment` | — |
+| `process-payment` | try-catch | controller | `[]` | `try`, `catch` | `errors`, `catch` app ID |
+| `process-payment-try` | do | sequencer | 1 | `rejectPayment` | — |
+| `reject-payment` | — | step | — | — | — |
+| `process-payment-catch` | do | sequencer | 1 | `recordFailure` | — |
+| `record-failure` | — | step | — | — | — |
+
+6 nodes, up from 5. This is the decisive one — the node that must decide whether to recover finally
+holds the rule:
+
+```json
+{ "nodeId": "process-payment", "kind": "flow", "scope": "try-catch",
+  "tasks": [],
+  "children": { "try": "process-payment-try", "catch": "process-payment-catch" },
+  "catch": "process-payment-catch",
+  "errors": { "with": { "status": 402 } } }
+```
+
+Compare today's output, where the same node names its recovery child but not the condition, so a
+runtime reading it recovers from every error:
+
+```json
+{ "nodeId": "process-payment", "kind": "flow", "scope": "try",
+  "tasks": [ { "rejectPayment": { "raise": { "error": { "status": 402, "…": "…" } } } } ],
+  "children": { "rejectPayment": "reject-payment", "catch": "process-payment-catch" },
+  "catch": "process-payment-catch" }
+```
+
+With a retry policy, the same node gains it alongside:
+
+```json
+  "errors": { "with": { "status": 402 } },
+  "retry":  { "limit": { "attempt": { "count": 3 } }, "delay": { "seconds": 2 } }
+```
+
 ## Consequences
 
 - **`openspec/schemas/single-node-definition.schema.json` changes.** The `scope` enum becomes
