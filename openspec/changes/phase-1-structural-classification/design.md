@@ -29,7 +29,11 @@ renders; Phase 4 (`StackSynthesizer`) consumes the tree and `functionAppId`.
 
 **Goals**
 
-- A recursive classification pass producing a `CompiledNode` tree for any definition v1 accepts.
+- A recursive classification pass producing a `CompiledNode` tree for any definition v1 accepts whose
+  derived identifiers are valid DNS-1123 labels. The qualifier is not cosmetic: `Names.kebab` is
+  shared with v1 and deliberately unchanged, and it passes non-ASCII letters through, so a task named
+  `naïveStep` compiles under v1 and is rejected by v2 — see the DNS-1123 rejection scenario in
+  `specs/workflow-structural-classification/spec.md`.
 - Derived identifiers matching acceptance criterion #2, sanitized to DNS-1123 Dapr app IDs.
 - The ADR 0001 `-fn` naming-collision rule recorded on each `call`/`run` `StepNode`.
 - Compilation rejected, with a clear message, when two nodes resolve to one app ID.
