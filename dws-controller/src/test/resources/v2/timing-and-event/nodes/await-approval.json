@@ -1,0 +1,19 @@
+{
+  "workflow" : "approval-reminder",
+  "version" : "approval-reminder@<versionId>",
+  "nodeId" : "await-approval",
+  "kind" : "step",
+  "task" : {
+    "awaitApproval" : {
+      "listen" : {
+        "to" : {
+          "one" : {
+            "with" : {
+              "type" : "com.example.request.approved"
+            }
+          }
+        }
+      }
+    }
+  }
+}

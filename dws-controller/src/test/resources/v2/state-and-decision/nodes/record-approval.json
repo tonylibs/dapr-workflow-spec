@@ -1,0 +1,14 @@
+{
+  "workflow" : "review-request",
+  "version" : "review-request@<versionId>",
+  "nodeId" : "record-approval",
+  "kind" : "step",
+  "task" : {
+    "recordApproval" : {
+      "set" : {
+        "status" : "approved"
+      },
+      "then" : "end"
+    }
+  }
+}

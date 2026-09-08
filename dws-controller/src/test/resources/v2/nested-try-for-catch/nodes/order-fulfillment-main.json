@@ -1,0 +1,49 @@
+{
+  "workflow" : "order-fulfillment",
+  "version" : "order-fulfillment@<versionId>",
+  "nodeId" : "order-fulfillment-main",
+  "kind" : "flow",
+  "scope" : "main",
+  "tasks" : [ {
+    "validateOrder" : {
+      "set" : {
+        "status" : "validating"
+      },
+      "then" : "fulfillOrder"
+    }
+  }, {
+    "fulfillOrder" : {
+      "try" : [ {
+        "reserveItems" : {
+          "for" : {
+            "each" : "item",
+            "in" : ".items"
+          },
+          "do" : [ {
+            "reserveItem" : {
+              "call" : "http",
+              "with" : {
+                "method" : "post",
+                "endpoint" : "https://inventory.example.com/reservations"
+              }
+            }
+          } ]
+        }
+      } ],
+      "catch" : {
+        "do" : [ {
+          "markOrderFailed" : {
+            "set" : {
+              "status" : "failed"
+            }
+          }
+        } ]
+      },
+      "then" : "end"
+    }
+  } ],
+  "children" : {
+    "validateOrder" : "validate-order",
+    "fulfillOrder" : "fulfill-order"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "workflow" : "guarded-payment",
+  "version" : "guarded-payment@<versionId>",
+  "nodeId" : "process-payment-catch",
+  "kind" : "flow",
+  "scope" : "catch",
+  "tasks" : [ {
+    "recordFailure" : {
+      "set" : {
+        "status" : "failed"
+      }
+    }
+  } ],
+  "children" : {
+    "recordFailure" : "record-failure"
+  }
+}

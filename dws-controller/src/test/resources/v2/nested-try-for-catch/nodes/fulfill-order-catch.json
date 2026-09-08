@@ -1,0 +1,17 @@
+{
+  "workflow" : "order-fulfillment",
+  "version" : "order-fulfillment@<versionId>",
+  "nodeId" : "fulfill-order-catch",
+  "kind" : "flow",
+  "scope" : "catch",
+  "tasks" : [ {
+    "markOrderFailed" : {
+      "set" : {
+        "status" : "failed"
+      }
+    }
+  } ],
+  "children" : {
+    "markOrderFailed" : "mark-order-failed"
+  }
+}

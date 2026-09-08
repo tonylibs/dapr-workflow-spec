@@ -1,0 +1,50 @@
+{
+  "nodeId" : "order-fulfillment.main",
+  "appId" : "order-fulfillment-main",
+  "definitionResource" : "dws-def-order-fulfillment-<versionId>-order-fulfillment-main",
+  "kind" : "flow",
+  "functionAppId" : null,
+  "children" : [ {
+    "nodeId" : "validateOrder",
+    "appId" : "validate-order",
+    "definitionResource" : "dws-def-order-fulfillment-<versionId>-validate-order",
+    "kind" : "step",
+    "functionAppId" : null,
+    "children" : [ ]
+  }, {
+    "nodeId" : "fulfillOrder",
+    "appId" : "fulfill-order",
+    "definitionResource" : "dws-def-order-fulfillment-<versionId>-fulfill-order",
+    "kind" : "flow",
+    "functionAppId" : null,
+    "children" : [ {
+      "nodeId" : "reserveItems",
+      "appId" : "reserve-items",
+      "definitionResource" : "dws-def-order-fulfillment-<versionId>-reserve-items",
+      "kind" : "flow",
+      "functionAppId" : null,
+      "children" : [ {
+        "nodeId" : "reserveItem",
+        "appId" : "reserve-item",
+        "definitionResource" : "dws-def-order-fulfillment-<versionId>-reserve-item",
+        "kind" : "step",
+        "functionAppId" : "reserve-item-fn",
+        "children" : [ ]
+      } ]
+    }, {
+      "nodeId" : "fulfillOrder.catch",
+      "appId" : "fulfill-order-catch",
+      "definitionResource" : "dws-def-order-fulfillment-<versionId>-fulfill-order-catch",
+      "kind" : "flow",
+      "functionAppId" : null,
+      "children" : [ {
+        "nodeId" : "markOrderFailed",
+        "appId" : "mark-order-failed",
+        "definitionResource" : "dws-def-order-fulfillment-<versionId>-mark-order-failed",
+        "kind" : "step",
+        "functionAppId" : null,
+        "children" : [ ]
+      } ]
+    } ]
+  } ]
+}

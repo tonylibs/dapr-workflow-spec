@@ -1,0 +1,18 @@
+{
+  "workflow" : "synchronize-catalog",
+  "version" : "synchronize-catalog@<versionId>",
+  "nodeId" : "lookup-price",
+  "kind" : "step",
+  "task" : {
+    "lookupPrice" : {
+      "call" : "openapi",
+      "with" : {
+        "document" : {
+          "endpoint" : "https://catalog.example.com/openapi.json"
+        },
+        "operationId" : "getPrice"
+      }
+    }
+  },
+  "functionAppId" : "lookup-price-fn"
+}

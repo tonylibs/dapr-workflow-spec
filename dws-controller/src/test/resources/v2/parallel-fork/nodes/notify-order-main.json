@@ -1,0 +1,49 @@
+{
+  "workflow" : "notify-order",
+  "version" : "notify-order@<versionId>",
+  "nodeId" : "notify-order-main",
+  "kind" : "flow",
+  "scope" : "main",
+  "tasks" : [ {
+    "prepareNotification" : {
+      "set" : {
+        "status" : "ready"
+      },
+      "then" : "notifyChannels"
+    }
+  }, {
+    "notifyChannels" : {
+      "fork" : {
+        "compete" : false,
+        "branches" : [ {
+          "notifyRecipients" : {
+            "for" : {
+              "each" : "recipient",
+              "in" : ".recipients"
+            },
+            "do" : [ {
+              "sendEmail" : {
+                "call" : "http",
+                "with" : {
+                  "method" : "post",
+                  "endpoint" : "https://email.example.com/send"
+                }
+              }
+            } ]
+          }
+        }, {
+          "writeAudit" : {
+            "set" : {
+              "auditStatus" : "recorded"
+            }
+          }
+        } ]
+      },
+      "then" : "end"
+    }
+  } ],
+  "children" : {
+    "prepareNotification" : "prepare-notification",
+    "notifyChannels" : "notify-channels"
+  }
+}

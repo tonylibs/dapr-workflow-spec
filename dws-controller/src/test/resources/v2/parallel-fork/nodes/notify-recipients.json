@@ -1,0 +1,19 @@
+{
+  "workflow" : "notify-order",
+  "version" : "notify-order@<versionId>",
+  "nodeId" : "notify-recipients",
+  "kind" : "flow",
+  "scope" : "for",
+  "tasks" : [ {
+    "sendEmail" : {
+      "call" : "http",
+      "with" : {
+        "method" : "post",
+        "endpoint" : "https://email.example.com/send"
+      }
+    }
+  } ],
+  "children" : {
+    "sendEmail" : "send-email"
+  }
+}

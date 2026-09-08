@@ -1,0 +1,14 @@
+{
+  "workflow" : "notify-order",
+  "version" : "notify-order@<versionId>",
+  "nodeId" : "prepare-notification",
+  "kind" : "step",
+  "task" : {
+    "prepareNotification" : {
+      "set" : {
+        "status" : "ready"
+      },
+      "then" : "notifyChannels"
+    }
+  }
+}

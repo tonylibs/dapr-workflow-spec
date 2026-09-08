@@ -1,0 +1,25 @@
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: synchronize-catalog
+  version: '1.0.0'
+
+do:
+  - fetchInventory:
+      call: http
+      with:
+        method: get
+        endpoint: https://inventory.example.com/items
+
+  - lookupPrice:
+      call: openapi
+      with:
+        document:
+          endpoint: https://catalog.example.com/openapi.json
+        operationId: getPrice
+
+  - rebuildIndex:
+      run:
+        shell:
+          command: ./rebuild-index.sh
+      then: end

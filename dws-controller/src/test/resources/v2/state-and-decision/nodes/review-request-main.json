@@ -1,0 +1,48 @@
+{
+  "workflow" : "review-request",
+  "version" : "review-request@<versionId>",
+  "nodeId" : "review-request-main",
+  "kind" : "flow",
+  "scope" : "main",
+  "tasks" : [ {
+    "initializeReview" : {
+      "set" : {
+        "eligible" : true
+      },
+      "then" : "chooseOutcome"
+    }
+  }, {
+    "chooseOutcome" : {
+      "switch" : [ {
+        "approved" : {
+          "when" : "${ .eligible }",
+          "then" : "recordApproval"
+        }
+      }, {
+        "default" : {
+          "then" : "recordRejection"
+        }
+      } ]
+    }
+  }, {
+    "recordApproval" : {
+      "set" : {
+        "status" : "approved"
+      },
+      "then" : "end"
+    }
+  }, {
+    "recordRejection" : {
+      "set" : {
+        "status" : "rejected"
+      },
+      "then" : "end"
+    }
+  } ],
+  "children" : {
+    "initializeReview" : "initialize-review",
+    "chooseOutcome" : "choose-outcome",
+    "recordApproval" : "record-approval",
+    "recordRejection" : "record-rejection"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "workflow" : "notify-order",
+  "version" : "notify-order@<versionId>",
+  "nodeId" : "write-audit",
+  "kind" : "step",
+  "task" : {
+    "writeAudit" : {
+      "set" : {
+        "auditStatus" : "recorded"
+      }
+    }
+  }
+}

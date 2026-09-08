@@ -1,0 +1,57 @@
+{
+  "nodeId" : "notify-order.main",
+  "appId" : "notify-order-main",
+  "definitionResource" : "dws-def-notify-order-<versionId>-notify-order-main",
+  "kind" : "flow",
+  "functionAppId" : null,
+  "children" : [ {
+    "nodeId" : "prepareNotification",
+    "appId" : "prepare-notification",
+    "definitionResource" : "dws-def-notify-order-<versionId>-prepare-notification",
+    "kind" : "step",
+    "functionAppId" : null,
+    "children" : [ ]
+  }, {
+    "nodeId" : "notifyChannels",
+    "appId" : "notify-channels",
+    "definitionResource" : "dws-def-notify-order-<versionId>-notify-channels",
+    "kind" : "flow",
+    "functionAppId" : null,
+    "children" : [ {
+      "nodeId" : "notifyChannels.branch.notifyRecipients",
+      "appId" : "notify-channels-branch-notify-recipients",
+      "definitionResource" : "dws-def-notify-order-<versionId>-notify-channels-branch-notify-recipients",
+      "kind" : "flow",
+      "functionAppId" : null,
+      "children" : [ {
+        "nodeId" : "notifyRecipients",
+        "appId" : "notify-recipients",
+        "definitionResource" : "dws-def-notify-order-<versionId>-notify-recipients",
+        "kind" : "flow",
+        "functionAppId" : null,
+        "children" : [ {
+          "nodeId" : "sendEmail",
+          "appId" : "send-email",
+          "definitionResource" : "dws-def-notify-order-<versionId>-send-email",
+          "kind" : "step",
+          "functionAppId" : "send-email-fn",
+          "children" : [ ]
+        } ]
+      } ]
+    }, {
+      "nodeId" : "notifyChannels.branch.writeAudit",
+      "appId" : "notify-channels-branch-write-audit",
+      "definitionResource" : "dws-def-notify-order-<versionId>-notify-channels-branch-write-audit",
+      "kind" : "flow",
+      "functionAppId" : null,
+      "children" : [ {
+        "nodeId" : "writeAudit",
+        "appId" : "write-audit",
+        "definitionResource" : "dws-def-notify-order-<versionId>-write-audit",
+        "kind" : "step",
+        "functionAppId" : null,
+        "children" : [ ]
+      } ]
+    } ]
+  } ]
+}

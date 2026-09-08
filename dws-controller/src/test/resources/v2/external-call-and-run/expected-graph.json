@@ -1,0 +1,29 @@
+{
+  "nodeId" : "synchronize-catalog.main",
+  "appId" : "synchronize-catalog-main",
+  "definitionResource" : "dws-def-synchronize-catalog-<versionId>-synchronize-catalog-main",
+  "kind" : "flow",
+  "functionAppId" : null,
+  "children" : [ {
+    "nodeId" : "fetchInventory",
+    "appId" : "fetch-inventory",
+    "definitionResource" : "dws-def-synchronize-catalog-<versionId>-fetch-inventory",
+    "kind" : "step",
+    "functionAppId" : "fetch-inventory-fn",
+    "children" : [ ]
+  }, {
+    "nodeId" : "lookupPrice",
+    "appId" : "lookup-price",
+    "definitionResource" : "dws-def-synchronize-catalog-<versionId>-lookup-price",
+    "kind" : "step",
+    "functionAppId" : "lookup-price-fn",
+    "children" : [ ]
+  }, {
+    "nodeId" : "rebuildIndex",
+    "appId" : "rebuild-index",
+    "definitionResource" : "dws-def-synchronize-catalog-<versionId>-rebuild-index",
+    "kind" : "step",
+    "functionAppId" : "rebuild-index-fn",
+    "children" : [ ]
+  } ]
+}

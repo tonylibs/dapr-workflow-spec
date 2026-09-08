@@ -1,0 +1,36 @@
+{
+  "nodeId" : "guarded-payment.main",
+  "appId" : "guarded-payment-main",
+  "definitionResource" : "dws-def-guarded-payment-<versionId>-guarded-payment-main",
+  "kind" : "flow",
+  "functionAppId" : null,
+  "children" : [ {
+    "nodeId" : "processPayment",
+    "appId" : "process-payment",
+    "definitionResource" : "dws-def-guarded-payment-<versionId>-process-payment",
+    "kind" : "flow",
+    "functionAppId" : null,
+    "children" : [ {
+      "nodeId" : "rejectPayment",
+      "appId" : "reject-payment",
+      "definitionResource" : "dws-def-guarded-payment-<versionId>-reject-payment",
+      "kind" : "step",
+      "functionAppId" : null,
+      "children" : [ ]
+    }, {
+      "nodeId" : "processPayment.catch",
+      "appId" : "process-payment-catch",
+      "definitionResource" : "dws-def-guarded-payment-<versionId>-process-payment-catch",
+      "kind" : "flow",
+      "functionAppId" : null,
+      "children" : [ {
+        "nodeId" : "recordFailure",
+        "appId" : "record-failure",
+        "definitionResource" : "dws-def-guarded-payment-<versionId>-record-failure",
+        "kind" : "step",
+        "functionAppId" : null,
+        "children" : [ ]
+      } ]
+    } ]
+  } ]
+}
