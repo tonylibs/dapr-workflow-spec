@@ -176,7 +176,8 @@ Each of the six worked examples gets `definition.yaml`, an `expected-graph.json`
 `nodeId`, `appId`, `definitionResource`, `functionAppId`), and one `nodes/<appId>.json` per node.
 Tests assert byte-exact equality *and* validate every rendered `specText` against
 `single-node-definition.schema.json` using `com.networknt:json-schema-validator`, which
-`dws-controller` already resolves on its compile classpath — no new dependency.
+`dws-controller` already resolves transitively — no new external dependency, but declared in
+`pom.xml` in test scope so an SDK bump cannot remove it silently.
 
 Alternative considered: fixture equality alone. Rejected — a fixture is hand-written, so equality
 alone happily passes against a fixture the schema would reject, and the schema is the contract
@@ -197,10 +198,11 @@ Phases 2 and 3 implement against.
 - **`single-node-definition-contract`'s base requirements are in an unarchived change** → this
   change adds to that capability rather than editing phase-0's artifacts, so the two archive in
   either order without conflict.
-- **The schema validator arrives transitively** → `com.networknt:json-schema-validator:2.0.0` is
-  already resolved on `dws-controller`'s compile classpath rather than declared in its `pom.xml`,
-  so a future dependency change could remove it silently. Mitigation: declare it explicitly in
-  `pom.xml` if `./mvnw verify` ever fails to resolve it; no new external dependency either way.
+- **The schema validator arrived transitively** → `com.networknt:json-schema-validator:2.0.0`
+  reached the test classpath only via `serverlessworkflow-api`, so an SDK bump could remove it
+  silently. Resolved: it is declared in `pom.xml` at that version in test scope. No main code
+  references it, and `WorkflowReader.readWorkflowFromString` takes the SDK's no-validation path, so
+  narrowing the scope removes nothing the runtime uses.
 
 ## Migration Plan
 

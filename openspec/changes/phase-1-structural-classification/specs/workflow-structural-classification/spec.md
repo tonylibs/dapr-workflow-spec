@@ -74,7 +74,7 @@ branch's root task as its child node.
 The compiler SHALL derive each node's `nodeId` and SHALL sanitize it into that node's `appId` as a
 DNS-1123 label. A scope the DSL names SHALL keep that name as its `nodeId`. Scopes the DSL does not
 name SHALL derive one: `<workflow>.main` for the top-level scope, `<try-task>.catch` for a catch
-scope, `<fork-task>.branch.<branch-root-task>` for a fork branch,. A structural task sitting at a fork branch's
+scope, `<fork-task>.branch.<branch-root-task>` for a fork branch. A structural task sitting at a fork branch's
 root is a named scope and keeps its own task name, so that a flow's `children` keys always match its
 `tasks` entries' task names. Sanitization SHALL collapse dots and other
 non-alphanumeric characters to single dashes and SHALL split camelCase boundaries.
@@ -112,9 +112,13 @@ non-alphanumeric characters to single dashes and SHALL split camelCase boundarie
 
 #### Scenario: a flow's children keys match its task names
 
-- **WHEN** any `FlowNode`'s `specText` is rendered
-- **THEN** every key of its `children` object SHALL equal the task name of the corresponding entry in
-  its `tasks` array, for every task that compiles to its own node
+- **WHEN** a `FlowNode` whose `scope` is not `fork` has its `specText` rendered
+- **THEN** every key of its `children` object other than the dedicated `catch` key SHALL equal the
+  task name of the corresponding entry in its `tasks` array, in the same order
+- **AND** the dedicated `catch` child SHALL be exempt, since a catch scope hangs off the `try`
+  task's `catch.do` and therefore has no entry of its own in the `try` node's `tasks` array
+- **AND** a `fork` `FlowNode` SHALL be exempt, since it renders an empty `tasks` array and keys its
+  `children` by each branch's root task name
 
 #### Scenario: an app ID exceeding the DNS-1123 length limit is rejected
 
@@ -160,8 +164,10 @@ by appending `-fn` to its own app ID. Every other `StepNode` SHALL leave `functi
 
 ### Requirement: Ambiguous derived identifiers are rejected
 
-Compilation SHALL fail when two nodes in one definition resolve to the same `appId`. The raised
-`CompilationException` SHALL name both source `nodeId`s and the app ID they share.
+Compilation SHALL fail when two deployables in one definition resolve to the same Dapr app ID, a
+node's derived app ID is not a usable DNS-1123 label, or a task name cannot be resolved to exactly
+one node. The raised `CompilationException` SHALL name the offending task or node and the derived
+identifier at fault, and SHALL NOT return a partial plan.
 
 #### Scenario: two tasks sanitizing to one app ID fail compilation
 
@@ -169,6 +175,47 @@ Compilation SHALL fail when two nodes in one definition resolve to the same `app
   DNS-1123 app ID
 - **THEN** compilation SHALL raise `CompilationException` reporting both `nodeId`s and the shared
   app ID, and SHALL NOT return a partial plan
+
+#### Scenario: a step's function app ID colliding with a node's app ID fails compilation
+
+- **WHEN** a definition contains a `call` or `run` task `reserveItem`, whose `functionAppId` is
+  `reserve-item-fn`, alongside any other task whose own app ID is also `reserve-item-fn`
+- **THEN** compilation SHALL raise `CompilationException` naming the shared app ID and
+  distinguishing the node app ID from the function app ID, since both name a deployable in the one
+  Dapr app-id namespace
+
+#### Scenario: a derived app ID outside the DNS-1123 character class is rejected
+
+- **WHEN** a task name sanitizes to an app ID containing any character outside
+  `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$` — for example a non-ASCII letter, which survives sanitization
+- **THEN** compilation SHALL raise `CompilationException` naming the `nodeId` and the app ID it
+  produced, rather than rendering a `specText` the single-node definition schema rejects
+
+#### Scenario: a task name that sanitizes to an empty app ID is rejected
+
+- **WHEN** a task name contains no alphanumeric character, so sanitization yields an empty app ID
+- **THEN** compilation SHALL raise `CompilationException` naming that `nodeId`
+
+#### Scenario: a dotted task name is rejected
+
+- **WHEN** a definition contains a task whose name contains `.`
+- **THEN** compilation SHALL raise `CompilationException` naming that task, since a node's `key()`
+  is the last dotted segment of its `nodeId` and a dotted task name would collide with the derived
+  ids the compiler synthesizes for scopes the DSL does not name
+
+#### Scenario: two children of one flow resolving to the same key are rejected
+
+- **WHEN** two children of one `FlowNode` resolve to the same `key()` — for example a task literally
+  named `catch` inside a `try` list whose `catch.do` also produces a catch node
+- **THEN** compilation SHALL raise `CompilationException` naming the shared key, rather than merging
+  the two into one `children` entry and leaving one node unreachable
+
+#### Scenario: a task item carrying more than one property is rejected
+
+- **WHEN** a submitted document contains a task item object with more than one property, which the
+  typed model silently narrows to its first
+- **THEN** compilation SHALL raise `CompilationException` naming that task item, rather than
+  rendering a node whose verbatim `task` smuggles in a second, node-less task
 
 #### Scenario: a valid definition with no collisions compiles
 
@@ -180,10 +227,10 @@ Compilation SHALL fail when two nodes in one definition resolve to the same `app
 Every compiled node SHALL carry a `specText` that satisfies
 `openspec/schemas/single-node-definition.schema.json`. A `FlowNode`'s `specText` SHALL carry the
 common envelope plus `scope`, its own source-ordered `tasks`, and a `children` object mapping each
-child's `key()` to that child's `appId`; it SHALL carry `catch` when the scope has an attached catch
-block and `forkMode` when the scope is `fork`. A `StepNode`'s `specText` SHALL carry the common
-envelope plus its `task`, and `functionAppId` exactly when the task is a `call` or `run`. The
-envelope's `nodeId` field SHALL carry the node's sanitized `appId`.
+child's `key()` to that child's `appId`; it SHALL carry `catch` when the scope has a catch block
+with a non-empty `do` list and `forkMode` when the scope is `fork`. A `StepNode`'s `specText` SHALL
+carry the common envelope plus its `task`, and `functionAppId` exactly when the task is a `call` or
+`run`. The envelope's `nodeId` field SHALL carry the node's sanitized `appId`.
 
 #### Scenario: a flow node renders scope, tasks, and children
 
