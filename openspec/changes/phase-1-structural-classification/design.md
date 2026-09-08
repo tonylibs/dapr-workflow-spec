@@ -72,10 +72,16 @@ the guard. The alternative, duplicating format detection into v2, guarantees the
 
 ### D2: Classification table
 
-`FlowNode` for `main`, each `for`, each `try`, each `catch`, each `fork`, and each fork branch.
-`StepNode` for every other task kind — `set`, `switch`, `wait`, `listen`, `emit`, `raise`, `call`,
-`run` — with no exceptions, per ADR 0001 Decision 1. `switch` is deliberately a Step: its `then`
-values route to named entities but it owns no task list.
+`FlowNode` for `main`, each nested `do`, each `for`, each `try`, each `catch`, each `fork`, and
+each fork branch. `StepNode` for every other task kind — `set`, `switch`, `wait`, `listen`, `emit`,
+`raise`, `call`, `run` — with no exceptions, per ADR 0001 Decision 1. `switch` is deliberately a
+Step: its `then` values route to named entities but it owns no task list.
+
+A nested `do` task (`DoTask`, whose `do` property is its own `TaskItem` list) is a Flow with a new
+`scope` value of `do`, added to the schema's `scope` enum by this change. It keeps its own DSL task
+name as its `nodeId`, like any other named scope. Classifying it as a Step — the fall-through this
+change originally left it in — emitted a `step` node whose `task` carried a whole task list, which
+contradicts what a Step is: a single task that owns no nested list.
 
 Fork follows ADR 0003 rather than the pre-amendment roadmap text: its own `FlowNode` with
 `forkMode` of `all` (`compete: false`) or `any` (`compete: true`), an empty `tasks` list, and the

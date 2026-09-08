@@ -4,9 +4,9 @@
 
 `V2StructuralCompiler` SHALL walk a parsed DSL 1.0 definition and produce a `CompiledNode` tree
 rooted at the top-level `do` scope, preserving source order within every task list. It SHALL
-classify `main`, each `for`, each `try`, each `catch`, each `fork`, and each `fork.branches` item as
-a `FlowNode`, and every other task kind — `set`, `switch`, `wait`, `listen`, `emit`, `raise`,
-`call`, `run` — as a `StepNode`, with no exceptions.
+classify `main`, each nested `do`, each `for`, each `try`, each `catch`, each `fork`, and each
+`fork.branches` item as a `FlowNode`, and every other task kind — `set`, `switch`, `wait`,
+`listen`, `emit`, `raise`, `call`, `run` — as a `StepNode`, with no exceptions.
 
 #### Scenario: a nested try/for/catch definition classifies into five nodes under main
 
@@ -17,6 +17,14 @@ a `FlowNode`, and every other task kind — `set`, `switch`, `wait`, `listen`, `
   and `fulfillOrder` (`FlowNode`), where `fulfillOrder` has children `reserveItems` (`FlowNode`) and
   `fulfillOrder.catch` (`FlowNode`), `reserveItems` has child `reserveItem` (`StepNode`), and
   `fulfillOrder.catch` has child `markOrderFailed` (`StepNode`)
+
+#### Scenario: a nested do task is a Flow over its own task list
+
+- **WHEN** a definition contains a task whose body is a `do` task list — a `do` task named
+  `prepareOrder` holding a `set` task `stampOrder` and a `call: http` task `loadCustomer`
+- **THEN** `prepareOrder` SHALL compile to a `FlowNode` with `scope` `do`, keeping `prepareOrder`
+  as its `nodeId`, whose children SHALL be that list's nodes in source order — `stampOrder` and
+  `loadCustomer`, each a `StepNode` — and SHALL NOT compile to a `StepNode` carrying a task list
 
 #### Scenario: switch is a Step, not a Flow
 

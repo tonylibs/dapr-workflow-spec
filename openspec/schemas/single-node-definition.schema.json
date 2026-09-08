@@ -30,7 +30,7 @@
           "type": "object",
           "properties": {
             "kind": { "const": "flow" },
-            "scope": { "enum": ["main", "for", "try", "catch", "fork", "forkBranch"] },
+            "scope": { "enum": ["main", "do", "for", "try", "catch", "fork", "forkBranch"] },
             "tasks": {
               "type": "array",
               "items": { "type": "object", "minProperties": 1 }
