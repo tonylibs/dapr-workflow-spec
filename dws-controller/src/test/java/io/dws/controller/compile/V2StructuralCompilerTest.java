@@ -273,6 +273,32 @@ class V2StructuralCompilerTest {
         .hasMessageContaining("reserve-item-fn");
   }
 
+  /**
+   * A non-ASCII task name survives {@code Names.kebab} (which splits on {@code
+   * Character.isLetterOrDigit}) into an app ID no DNS-1123 label may carry, and which the
+   * single-node definition schema's own {@code nodeId} pattern rejects. Compilation must fail
+   * rather than render a node whose {@code specText} violates the schema.
+   */
+  @Test
+  void rejectsANonAsciiTaskNameThatSanitizesOutsideDns1123() {
+    String nonAscii =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: accented
+          version: '1.0.0'
+        do:
+          - na\u00efveStep:
+              set:
+                a: 1
+        """;
+    assertThatThrownBy(() -> compiler.compile(nonAscii))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("na\u00efve-step")
+        .hasMessageContaining("DNS-1123");
+  }
+
   /** Finding 1: a task name containing '.' would collide with a derived dotted node id. */
   @Test
   void rejectsATaskNameContainingADot() {

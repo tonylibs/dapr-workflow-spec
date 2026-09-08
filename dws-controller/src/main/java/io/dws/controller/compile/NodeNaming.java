@@ -1,11 +1,20 @@
 package io.dws.controller.compile;
 
 import java.util.List;
+import java.util.regex.Pattern;
 
 /** Derives a compiled node's identifier and its sanitized DNS-1123 Dapr app ID (ADR 0001). */
 final class NodeNaming {
 
   private static final int DNS_1123_LABEL_MAX = 63;
+
+  /**
+   * The single-node definition schema's own {@code nodeId} pattern. {@link Names#kebab} splits on
+   * {@link Character#isLetterOrDigit}, which admits non-ASCII letters, so a task named {@code
+   * naiveStep} with a diaeresis sanitizes to an app ID Kubernetes and the schema both reject. v1
+   * shares {@code Names.kebab}, so the check belongs here rather than there.
+   */
+  private static final Pattern DNS_1123_LABEL = Pattern.compile("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$");
 
   private NodeNaming() {}
 
@@ -30,6 +39,16 @@ final class NodeNaming {
                   + nodeId
                   + "' produces an empty app ID; DNS-1123 labels must contain at least one "
                   + "alphanumeric character"));
+    }
+    if (!DNS_1123_LABEL.matcher(appId).matches()) {
+      throw new CompilationException(
+          List.of(
+              "node '"
+                  + nodeId
+                  + "' derives the app ID '"
+                  + appId
+                  + "', which is not a DNS-1123 label; a node's name must use only ASCII "
+                  + "lowercase letters, digits, and dashes"));
     }
     if (appId.length() > DNS_1123_LABEL_MAX) {
       throw new CompilationException(

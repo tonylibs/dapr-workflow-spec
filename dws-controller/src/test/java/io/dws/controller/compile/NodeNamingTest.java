@@ -37,6 +37,20 @@ class NodeNamingTest {
         .hasMessageContaining(longName);
   }
 
+  /**
+   * {@code Names.kebab} splits on {@code Character.isLetterOrDigit}, which passes non-ASCII
+   * letters, so the sanitized id can still fall outside the DNS-1123 character class the
+   * single-node definition schema pins for {@code nodeId}.
+   */
+  @Test
+  void rejectsADerivedAppIdOutsideTheDns1123CharacterClass() {
+    assertThatThrownBy(() -> NodeNaming.appId("na\u00efveStep"))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("na\u00efveStep")
+        .hasMessageContaining("na\u00efve-step")
+        .hasMessageContaining("DNS-1123");
+  }
+
   @Test
   void buildsPerNodeDefinitionResources() {
     assertThat(
