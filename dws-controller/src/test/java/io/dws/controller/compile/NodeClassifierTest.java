@@ -9,8 +9,10 @@ import io.serverlessworkflow.api.types.Workflow;
 import org.junit.jupiter.api.Test;
 
 /**
- * Direct tests of {@link NodeClassifier}'s raw/typed alignment guard ({@code requireAligned}),
- * which end-to-end compilation cannot reach: DSL 1.0's {@code do}/{@code try}/{@code catch.do}/
+ * Checks that {@link RawTaskList}'s raw/typed alignment guard actually surfaces through the walk
+ * {@link NodeClassifier} drives — the guard itself is unit-tested in {@link RawTaskListTest}.
+ *
+ * <p>End-to-end compilation cannot reach it: DSL 1.0's {@code do}/{@code try}/{@code catch.do}/
  * {@code fork.branches} are always JSON arrays (schema/workflow.yaml's {@code taskList}), so a real
  * document's typed and raw walks never disagree in length. This constructs that disagreement
  * directly against the package-private classifier, the way a future SDK bug or upstream drift

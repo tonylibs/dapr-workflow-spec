@@ -1,11 +1,31 @@
 package io.dws.controller.compile;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 
 class NodeNamingTest {
+
+  /**
+   * A dotted task name would collide with the dotted ids this class synthesizes for scopes the DSL
+   * does not name, and {@code CompiledNode.key()} would then drop a sibling from the wire {@code
+   * children} map rather than reporting the clash.
+   */
+  @Test
+  void rejectsADottedTaskName() {
+    assertThatThrownBy(() -> NodeNaming.requireUndottedTaskName("fulfillOrder.catch"))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("fulfillOrder.catch")
+        .hasMessageContaining("must not contain '.'");
+  }
+
+  @Test
+  void acceptsAnUndottedTaskName() {
+    assertThatCode(() -> NodeNaming.requireUndottedTaskName("fulfillOrder"))
+        .doesNotThrowAnyException();
+  }
 
   @Test
   void derivesUnnamedScopeIdentifiers() {

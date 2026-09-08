@@ -18,6 +18,24 @@ final class NodeNaming {
 
   private NodeNaming() {}
 
+  /**
+   * Rejects a task name containing {@code .} (Finding 1): {@link
+   * io.dws.controller.model.CompiledNode#key()} returns a nodeId's last dotted segment, so a dotted
+   * task name would collide with the dotted derived ids this class synthesizes for scopes the DSL
+   * itself does not name ({@link #catchNodeId}, {@link #branchNodeId}), silently dropping a sibling
+   * from the wire {@code children} map.
+   */
+  static void requireUndottedTaskName(String taskName) {
+    if (taskName.indexOf('.') >= 0) {
+      throw new CompilationException(
+          List.of(
+              "task '"
+                  + taskName
+                  + "' must not contain '.' in its name; a dotted name collides with this "
+                  + "compiler's derived node ids"));
+    }
+  }
+
   static String mainNodeId(String workflow) {
     return workflow + ".main";
   }

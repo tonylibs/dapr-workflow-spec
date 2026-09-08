@@ -41,11 +41,8 @@ class SingleNodeDefinitionTest {
         SingleNodeDefinition.flow(
             ENVELOPE,
             "fulfill-order",
-            "try",
-            List.of(task),
-            Map.of("reserveItems", "reserve-items", "catch", "fulfill-order-catch"),
-            "fulfill-order-catch",
-            null);
+            FlowScope.of("try", List.of(task)).withCatch("fulfill-order-catch"),
+            Map.of("reserveItems", "reserve-items", "catch", "fulfill-order-catch"));
     JsonNode node = JSON.readTree(rendered);
     assertThat(node.get("nodeId").asText()).isEqualTo("fulfill-order");
     assertThat(node.get("kind").asText()).isEqualTo("flow");
@@ -62,11 +59,8 @@ class SingleNodeDefinitionTest {
         SingleNodeDefinition.flow(
             ENVELOPE,
             "notify-channels",
-            "fork",
-            List.of(),
-            Map.of("notifyRecipients", "notify-channels-branch-notify-recipients"),
-            null,
-            "all");
+            FlowScope.of("fork", List.of()).withForkMode("all"),
+            Map.of("notifyRecipients", "notify-channels-branch-notify-recipients"));
     JsonNode node = JSON.readTree(rendered);
     assertThat(node.get("forkMode").asText()).isEqualTo("all");
     assertThat(node.get("tasks")).isEmpty();
@@ -81,11 +75,8 @@ class SingleNodeDefinitionTest {
         SingleNodeDefinition.flow(
             ENVELOPE,
             "prepare-order",
-            "do",
-            List.of(task),
-            Map.of("stampOrder", "stamp-order"),
-            null,
-            null);
+            FlowScope.of("do", List.of(task)),
+            Map.of("stampOrder", "stamp-order"));
     assertThat(JSON.readTree(rendered).get("scope").asText()).isEqualTo("do");
     assertValid(rendered);
   }

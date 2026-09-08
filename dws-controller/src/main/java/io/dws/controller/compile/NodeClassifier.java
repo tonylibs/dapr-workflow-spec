@@ -14,9 +14,7 @@ import io.serverlessworkflow.api.types.TryTask;
 import io.serverlessworkflow.api.types.TryTaskCatch;
 import io.serverlessworkflow.api.types.Workflow;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -30,8 +28,8 @@ import java.util.Optional;
  * <p>The walk is driven by the typed model but reads every task object out of a parallel raw {@link
  * JsonNode} of the same definition text, so a node's rendered {@code tasks}/{@code task} carries
  * the definition's own JSON rather than a round-trip through the typed model (which drops unknown
- * fields and reorders keys). Both carry the same elements in the same order; a disagreement is
- * rejected as a {@link CompilationException} rather than silently papered over.
+ * fields and reorders keys). {@link RawTaskList} owns that raw half and the guards that keep the
+ * two walks in step.
  *
  * <p>Children are classified before their parent is rendered, because a flow's {@code specText}
  * names its children's app IDs.
@@ -73,27 +71,17 @@ final class NodeClassifier {
       String workflowName,
       String versionId) {
     Context context = new Context(envelope, workflowName, versionId);
-    JsonNode rawTasks = rawArray(rawSpec, "do");
-    List<CompiledNode> children = classifyTasks(workflow.getDo(), rawTasks, context);
-    return flow(
-        context,
-        NodeNaming.mainNodeId(workflowName),
-        SCOPE_MAIN,
-        elements(rawTasks),
-        children,
-        null,
-        null);
+    return listFlow(
+        NodeNaming.mainNodeId(workflowName), SCOPE_MAIN, workflow.getDo(), rawSpec, "do", context);
   }
 
   /** Classifies one scope's task list, in source order, into that scope's child nodes. */
   private static List<CompiledNode> classifyTasks(
-      List<TaskItem> tasks, JsonNode rawTasks, Context context) {
-    List<TaskItem> items = tasks == null ? List.of() : tasks;
-    requireAligned(items, rawTasks);
+      List<TaskItem> tasks, RawTaskList rawTasks, Context context) {
+    List<TaskItem> items = Optional.ofNullable(tasks).orElseGet(List::of);
     List<CompiledNode> children = new ArrayList<>(items.size());
     for (int i = 0; i < items.size(); i++) {
-      TaskItem item = items.get(i);
-      children.add(classifyTask(item, rawTasks.get(i), context));
+      children.add(classifyTask(items.get(i), rawTasks.get(i), context));
     }
     return List.copyOf(children);
   }
@@ -103,24 +91,17 @@ final class NodeClassifier {
    * wherever it appears, including at a fork branch's root, so a flow's {@code children} keys are
    * always its {@code tasks} entries' names (design §D3, §D5).
    */
-  private static CompiledNode classifyTask(TaskItem item, JsonNode rawItem, Context context) {
+  private static CompiledNode classifyTask(TaskItem item, RawTaskItem rawItem, Context context) {
     String nodeId = item.getName();
-    requireUndotted(nodeId);
-    Task task = item.getTask();
-    JsonNode rawBody = rawBody(rawItem, item.getName());
-    if (task != null && task.getForTask() != null) {
-      return forFlow(nodeId, task.getForTask(), rawBody, context);
-    }
-    if (task != null && task.getTryTask() != null) {
-      return tryFlow(nodeId, task.getTryTask(), rawBody, context);
-    }
-    if (task != null && task.getForkTask() != null) {
-      return forkFlow(nodeId, task.getForkTask(), rawBody, context);
-    }
-    if (task != null && task.getDoTask() != null) {
-      return doFlow(nodeId, task.getDoTask(), rawBody, context);
-    }
-    return step(nodeId, task, rawItem, context);
+    NodeNaming.requireUndottedTaskName(nodeId);
+    Optional<Task> task = Optional.ofNullable(item.getTask());
+    JsonNode rawBody = rawItem.body(nodeId);
+    return task.map(Task::getForTask)
+        .map(forTask -> forFlow(nodeId, forTask, rawBody, context))
+        .or(() -> task.map(Task::getTryTask).map(t -> tryFlow(nodeId, t, rawBody, context)))
+        .or(() -> task.map(Task::getForkTask).map(t -> forkFlow(nodeId, t, rawBody, context)))
+        .or(() -> task.map(Task::getDoTask).map(t -> doFlow(nodeId, t, rawBody, context)))
+        .orElseGet(() -> step(nodeId, item.getTask(), rawItem, context));
   }
 
   /**
@@ -130,17 +111,13 @@ final class NodeClassifier {
    */
   private static CompiledNode doFlow(
       String nodeId, DoTask doTask, JsonNode rawBody, Context context) {
-    JsonNode rawDo = rawArray(rawBody, "do");
-    List<CompiledNode> children = classifyTasks(doTask.getDo(), rawDo, context);
-    return flow(context, nodeId, SCOPE_DO, elements(rawDo), children, null, null);
+    return listFlow(nodeId, SCOPE_DO, doTask.getDo(), rawBody, "do", context);
   }
 
   /** A {@code for} scope: its own flow node over the task list in {@code for.do}. */
   private static CompiledNode forFlow(
       String nodeId, ForTask forTask, JsonNode rawBody, Context context) {
-    JsonNode rawDo = rawArray(rawBody, "do");
-    List<CompiledNode> children = classifyTasks(forTask.getDo(), rawDo, context);
-    return flow(context, nodeId, SCOPE_FOR, elements(rawDo), children, null, null);
+    return listFlow(nodeId, SCOPE_FOR, forTask.getDo(), rawBody, "do", context);
   }
 
   /**
@@ -157,30 +134,27 @@ final class NodeClassifier {
    */
   private static CompiledNode tryFlow(
       String nodeId, TryTask tryTask, JsonNode rawBody, Context context) {
-    JsonNode rawTry = rawArray(rawBody, "try");
+    RawTaskList rawTry = RawTaskList.in(rawBody, "try", tryTask.getTry());
     List<CompiledNode> children = new ArrayList<>(classifyTasks(tryTask.getTry(), rawTry, context));
-    TryTaskCatch caught = tryTask.getCatch();
-    String catchAppId = null;
-    if (caught != null && caught.getDo() != null && !caught.getDo().isEmpty()) {
-      CompiledNode catchNode = catchFlow(nodeId, caught, rawBody.get("catch"), context);
-      children.add(catchNode);
-      catchAppId = catchNode.appId();
-    }
-    return flow(context, nodeId, SCOPE_TRY, elements(rawTry), children, catchAppId, null);
+    Optional<CompiledNode> catchNode =
+        Optional.ofNullable(tryTask.getCatch())
+            .filter(caught -> caught.getDo() != null && !caught.getDo().isEmpty())
+            .map(caught -> catchFlow(nodeId, caught, rawBody.get("catch"), context));
+    catchNode.ifPresent(children::add);
+
+    FlowScope scope = FlowScope.of(SCOPE_TRY, rawTry.copies());
+    return flow(
+        context,
+        nodeId,
+        catchNode.map(CompiledNode::appId).map(scope::withCatch).orElse(scope),
+        children);
   }
 
   /** A {@code catch} scope: its own flow node over the recovery task list in {@code catch.do}. */
   private static CompiledNode catchFlow(
       String tryNodeId, TryTaskCatch caught, JsonNode rawCatch, Context context) {
-    JsonNode rawDo = rawArray(rawCatch, "do");
-    return flow(
-        context,
-        NodeNaming.catchNodeId(tryNodeId),
-        SCOPE_CATCH,
-        elements(rawDo),
-        classifyTasks(caught.getDo(), rawDo, context),
-        null,
-        null);
+    return listFlow(
+        NodeNaming.catchNodeId(tryNodeId), SCOPE_CATCH, caught.getDo(), rawCatch, "do", context);
   }
 
   /**
@@ -189,166 +163,77 @@ final class NodeClassifier {
    */
   private static CompiledNode forkFlow(
       String nodeId, ForkTask forkTask, JsonNode rawBody, Context context) {
-    ForkTaskConfiguration configuration = forkTask.getFork();
+    Optional<ForkTaskConfiguration> configuration = Optional.ofNullable(forkTask.getFork());
     List<TaskItem> branches =
-        configuration == null || configuration.getBranches() == null
-            ? List.of()
-            : configuration.getBranches();
-    JsonNode rawBranches = rawArray(rawBody.get("fork"), "branches");
-    requireAligned(branches, rawBranches);
+        configuration.map(ForkTaskConfiguration::getBranches).orElseGet(List::of);
+    RawTaskList rawBranches = RawTaskList.in(rawBody.get("fork"), "branches", branches);
 
     List<CompiledNode> children = new ArrayList<>(branches.size());
     for (int i = 0; i < branches.size(); i++) {
       children.add(branchFlow(nodeId, branches.get(i), rawBranches.get(i), context));
     }
     String forkMode =
-        configuration != null && configuration.isCompete() ? FORK_MODE_ANY : FORK_MODE_ALL;
-    return flow(context, nodeId, SCOPE_FORK, List.of(), children, null, forkMode);
+        configuration.filter(ForkTaskConfiguration::isCompete).isPresent()
+            ? FORK_MODE_ANY
+            : FORK_MODE_ALL;
+    return flow(
+        context, nodeId, FlowScope.of(SCOPE_FORK, List.of()).withForkMode(forkMode), children);
   }
 
   /** One fork branch: its own flow node whose single child is the classified branch root task. */
   private static CompiledNode branchFlow(
-      String forkNodeId, TaskItem branch, JsonNode rawBranch, Context context) {
+      String forkNodeId, TaskItem branch, RawTaskItem rawBranch, Context context) {
     String branchNodeId = NodeNaming.branchNodeId(forkNodeId, branch.getName());
     CompiledNode root = classifyTask(branch, rawBranch, context);
     return flow(
         context,
         branchNodeId,
-        SCOPE_FORK_BRANCH,
-        List.of(rawBranch.deepCopy()),
-        List.of(root),
-        null,
-        null);
+        FlowScope.of(SCOPE_FORK_BRANCH, List.of(rawBranch.copy())),
+        List.of(root));
   }
 
   /**
    * Every non-structural task kind, per design §D2 — including {@code switch}, which owns no list.
    */
-  private static CompiledNode step(String nodeId, Task task, JsonNode rawItem, Context context) {
+  private static CompiledNode step(String nodeId, Task task, RawTaskItem rawItem, Context context) {
     String appId = NodeNaming.appId(nodeId);
     String functionAppId =
-        task != null && (task.getCallTask() != null || task.getRunTask() != null)
-            ? NodeNaming.functionAppId(appId)
-            : null;
+        Optional.ofNullable(task)
+            .filter(t -> t.getCallTask() != null || t.getRunTask() != null)
+            .map(t -> NodeNaming.functionAppId(appId))
+            .orElse(null);
     return new StepNode(
         nodeId,
         appId,
         Names.nodeDefinitionResource(context.workflow(), context.versionId(), appId),
-        SingleNodeDefinition.step(context.envelope(), appId, rawItem.deepCopy(), functionAppId),
+        SingleNodeDefinition.step(context.envelope(), appId, rawItem.copy(), functionAppId),
         Optional.ofNullable(functionAppId));
   }
 
-  private static FlowNode flow(
-      Context context,
+  /**
+   * The shape every scope shares whose whole body is one task list read from a single field:
+   * classify that list, then render a flow node over it.
+   */
+  private static CompiledNode listFlow(
       String nodeId,
       String scope,
-      List<JsonNode> tasks,
-      List<CompiledNode> children,
-      String catchAppId,
-      String forkMode) {
+      List<TaskItem> tasks,
+      JsonNode rawParent,
+      String rawField,
+      Context context) {
+    RawTaskList rawTasks = RawTaskList.in(rawParent, rawField, tasks);
+    List<CompiledNode> children = classifyTasks(tasks, rawTasks, context);
+    return flow(context, nodeId, FlowScope.of(scope, rawTasks.copies()), children);
+  }
+
+  private static FlowNode flow(
+      Context context, String nodeId, FlowScope scope, List<CompiledNode> children) {
     String appId = NodeNaming.appId(nodeId);
     return new FlowNode(
         nodeId,
         appId,
         Names.nodeDefinitionResource(context.workflow(), context.versionId(), appId),
-        SingleNodeDefinition.flow(
-            context.envelope(), appId, scope, tasks, childAppIds(children), catchAppId, forkMode),
+        SingleNodeDefinition.flow(context.envelope(), appId, scope, ChildIndex.of(children)),
         children);
-  }
-
-  /**
-   * The wire-format {@code children} object: a render-time projection keyed by each child's own
-   * {@link CompiledNode#key()} (ADR 0002), in source order — never a stored parent-side map. Two
-   * children resolving to the same key (Finding 1/2 — most commonly a task literally named {@code
-   * catch} shadowing the dedicated catch child) is a compile error, not a silent merge: a merge
-   * would leave one node reachable through this map and one unreachable, though both still get a
-   * Deployment.
-   */
-  private static Map<String, String> childAppIds(List<CompiledNode> children) {
-    Map<String, String> appIds = new LinkedHashMap<>();
-    for (CompiledNode child : children) {
-      String key = child.key();
-      String previous = appIds.putIfAbsent(key, child.appId());
-      if (previous != null) {
-        throw new CompilationException(
-            List.of(
-                "children '"
-                    + previous
-                    + "' and '"
-                    + child.appId()
-                    + "' both resolve to the key '"
-                    + key
-                    + "'; a runtime dispatches a flow's children through this key, so it must be "
-                    + "unique"));
-      }
-    }
-    return appIds;
-  }
-
-  private static List<JsonNode> elements(JsonNode rawTasks) {
-    if (rawTasks == null || !rawTasks.isArray()) {
-      return List.of();
-    }
-    List<JsonNode> elements = new ArrayList<>(rawTasks.size());
-    rawTasks.forEach(element -> elements.add(element.deepCopy()));
-    return List.copyOf(elements);
-  }
-
-  private static JsonNode rawArray(JsonNode parent, String field) {
-    JsonNode array = parent == null ? null : parent.get(field);
-    return array != null && array.isArray() ? array : null;
-  }
-
-  private static JsonNode rawBody(JsonNode rawItem, String name) {
-    if (rawItem == null || !rawItem.isObject() || rawItem.size() != 1) {
-      throw new CompilationException(
-          List.of(
-              "task item '"
-                  + name
-                  + "' must have exactly one property (schema/workflow.yaml's taskList: "
-                  + "minProperties: 1 / maxProperties: 1); found "
-                  + (rawItem == null || !rawItem.isObject() ? "a non-object" : rawItem.size())
-                  + " in the submitted document"));
-    }
-    JsonNode body = rawItem.get(name);
-    if (body == null || !body.isObject()) {
-      throw new CompilationException(
-          List.of(
-              "task '"
-                  + name
-                  + "' could not be matched to its source text; the parsed definition and the "
-                  + "submitted document disagree"));
-    }
-    return body;
-  }
-
-  /**
-   * Rejects a task name containing {@code .} (Finding 1): {@link CompiledNode#key()} returns a
-   * nodeId's last dotted segment, so a dotted task name would collide with the dotted derived ids
-   * this classifier synthesizes for scopes the DSL itself does not name (catch, fork branch),
-   * silently dropping a sibling from the wire {@code children} map.
-   */
-  private static void requireUndotted(String taskName) {
-    if (taskName.indexOf('.') >= 0) {
-      throw new CompilationException(
-          List.of(
-              "task '"
-                  + taskName
-                  + "' must not contain '.' in its name; a dotted name collides with this "
-                  + "compiler's derived node ids"));
-    }
-  }
-
-  private static void requireAligned(List<TaskItem> tasks, JsonNode rawTasks) {
-    int rawSize = rawTasks == null || !rawTasks.isArray() ? 0 : rawTasks.size();
-    if (rawSize != tasks.size()) {
-      throw new CompilationException(
-          List.of(
-              "a task list could not be matched to its source text ("
-                  + tasks.size()
-                  + " parsed tasks, "
-                  + rawSize
-                  + " in the submitted document)"));
-    }
   }
 }
