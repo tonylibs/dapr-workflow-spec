@@ -17,7 +17,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
  * Recursive descent over a parsed definition, producing the v2 Flow/Step graph (ADR 0001, ADR 0002,
@@ -104,6 +103,7 @@ final class NodeClassifier {
    */
   private static CompiledNode classifyTask(TaskItem item, JsonNode rawItem, Context context) {
     String nodeId = item.getName();
+    requireUndotted(nodeId);
     Task task = item.getTask();
     JsonNode rawBody = rawBody(rawItem, item.getName());
     if (task != null && task.getForTask() != null) {
@@ -128,8 +128,11 @@ final class NodeClassifier {
 
   /**
    * A {@code try} scope: its own flow node over the guarded task list, plus a sibling {@code catch}
-   * flow node when the definition supplies one. The catch node appears both in {@code children} and
-   * in the dedicated {@code catch} field (design §D5).
+   * flow node when the definition supplies a non-empty {@code catch.do}. The catch node appears
+   * both in {@code children} and in the dedicated {@code catch} field (design §D5). A {@code catch}
+   * with no {@code do} (e.g. retry-only recovery) gets no catch node and no {@code catch} field —
+   * the recovery configuration survives verbatim in this try node's own {@code tasks} entry, which
+   * is where the runtime reads scope configuration from (coordinator ruling on Finding 4).
    */
   private static CompiledNode tryFlow(
       String nodeId, TryTask tryTask, JsonNode rawBody, Context context) {
@@ -137,7 +140,7 @@ final class NodeClassifier {
     List<CompiledNode> children = new ArrayList<>(classifyTasks(tryTask.getTry(), rawTry, context));
     TryTaskCatch caught = tryTask.getCatch();
     String catchAppId = null;
-    if (caught != null && caught.getDo() != null) {
+    if (caught != null && caught.getDo() != null && !caught.getDo().isEmpty()) {
       CompiledNode catchNode = catchFlow(nodeId, caught, rawBody.get("catch"), context);
       children.add(catchNode);
       catchAppId = catchNode.appId();
@@ -234,16 +237,31 @@ final class NodeClassifier {
 
   /**
    * The wire-format {@code children} object: a render-time projection keyed by each child's own
-   * {@link CompiledNode#key()} (ADR 0002), in source order — never a stored parent-side map.
+   * {@link CompiledNode#key()} (ADR 0002), in source order — never a stored parent-side map. Two
+   * children resolving to the same key (Finding 1/2 — most commonly a task literally named {@code
+   * catch} shadowing the dedicated catch child) is a compile error, not a silent merge: a merge
+   * would leave one node reachable through this map and one unreachable, though both still get a
+   * Deployment.
    */
   private static Map<String, String> childAppIds(List<CompiledNode> children) {
-    return children.stream()
-        .collect(
-            Collectors.toMap(
-                CompiledNode::key,
-                CompiledNode::appId,
-                (first, second) -> first,
-                LinkedHashMap::new));
+    Map<String, String> appIds = new LinkedHashMap<>();
+    for (CompiledNode child : children) {
+      String key = child.key();
+      String previous = appIds.putIfAbsent(key, child.appId());
+      if (previous != null) {
+        throw new CompilationException(
+            List.of(
+                "children '"
+                    + previous
+                    + "' and '"
+                    + child.appId()
+                    + "' both resolve to the key '"
+                    + key
+                    + "'; a runtime dispatches a flow's children through this key, so it must be "
+                    + "unique"));
+      }
+    }
+    return appIds;
   }
 
   private static List<JsonNode> elements(JsonNode rawTasks) {
@@ -261,7 +279,17 @@ final class NodeClassifier {
   }
 
   private static JsonNode rawBody(JsonNode rawItem, String name) {
-    JsonNode body = rawItem == null ? null : rawItem.get(name);
+    if (rawItem == null || !rawItem.isObject() || rawItem.size() != 1) {
+      throw new CompilationException(
+          List.of(
+              "task item '"
+                  + name
+                  + "' must have exactly one property (schema/workflow.yaml's taskList: "
+                  + "minProperties: 1 / maxProperties: 1); found "
+                  + (rawItem == null || !rawItem.isObject() ? "a non-object" : rawItem.size())
+                  + " in the submitted document"));
+    }
+    JsonNode body = rawItem.get(name);
     if (body == null || !body.isObject()) {
       throw new CompilationException(
           List.of(
@@ -271,6 +299,23 @@ final class NodeClassifier {
                   + "submitted document disagree"));
     }
     return body;
+  }
+
+  /**
+   * Rejects a task name containing {@code .} (Finding 1): {@link CompiledNode#key()} returns a
+   * nodeId's last dotted segment, so a dotted task name would collide with the dotted derived ids
+   * this classifier synthesizes for scopes the DSL itself does not name (catch, fork branch),
+   * silently dropping a sibling from the wire {@code children} map.
+   */
+  private static void requireUndotted(String taskName) {
+    if (taskName.indexOf('.') >= 0) {
+      throw new CompilationException(
+          List.of(
+              "task '"
+                  + taskName
+                  + "' must not contain '.' in its name; a dotted name collides with this "
+                  + "compiler's derived node ids"));
+    }
   }
 
   private static void requireAligned(List<TaskItem> tasks, JsonNode rawTasks) {

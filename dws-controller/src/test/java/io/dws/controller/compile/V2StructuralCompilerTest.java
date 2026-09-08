@@ -246,4 +246,206 @@ class V2StructuralCompilerTest {
         .isInstanceOf(CompilationException.class)
         .hasMessageContaining("reserve-item");
   }
+
+  /** Finding 1: a task name containing '.' would collide with a derived dotted node id. */
+  @Test
+  void rejectsATaskNameContainingADot() {
+    String dotted =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: dotted
+          version: '1.0.0'
+        do:
+          - alpha.x:
+              set:
+                a: 1
+        """;
+    assertThatThrownBy(() -> compiler.compile(dotted))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("alpha.x");
+  }
+
+  /**
+   * Finding 2: a task named {@code catch} inside a {@code try} list shadows the dedicated catch
+   * child's key. Both must land in {@code children}, so the duplicate key is a compile error rather
+   * than a silent merge.
+   */
+  @Test
+  void rejectsATaskNamedCatchCollidingWithTheDedicatedCatchNode() {
+    String shadowed =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: guard
+          version: '1.0.0'
+        do:
+          - guard:
+              try:
+                - catch:
+                    set:
+                      a: 1
+              catch:
+                do:
+                  - markFailed:
+                      set:
+                        status: failed
+        """;
+    assertThatThrownBy(() -> compiler.compile(shadowed))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("catch");
+  }
+
+  /**
+   * Finding 3: a task item carrying two properties silently keeps only the first in the typed
+   * model; the raw walk must reject it rather than emit a step whose {@code task} JSON smuggles in
+   * a second, node-less task.
+   */
+  @Test
+  void rejectsAMultiPropertyTaskItem() {
+    String multi =
+        """
+        {
+          "document": {"dsl": "1.0.0", "namespace": "default", "name": "multi", "version": "1.0.0"},
+          "do": [
+            { "foo": { "set": { "a": 1 } }, "bar": { "set": { "b": 2 } } }
+          ]
+        }
+        """;
+    assertThatThrownBy(() -> compiler.compile(multi))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("foo");
+  }
+
+  /**
+   * Finding 4 (coordinator ruling): a retry-only {@code catch} — no {@code do} — produces no catch
+   * node at all, and the try node omits the {@code catch} field entirely. The retry configuration
+   * itself survives verbatim in the try node's own {@code tasks} entry (read by Phase 3).
+   */
+  @Test
+  void aRetryOnlyCatchProducesNoCatchNodeOrField() throws Exception {
+    String retryOnly =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: guarded
+          version: '1.0.0'
+        do:
+          - guard:
+              try:
+                - attempt:
+                    set:
+                      a: 1
+              catch:
+                errors:
+                  with: {}
+                retry: myRetryPolicy
+        """;
+    DeploymentPlan plan = compiler.compile(retryOnly);
+    CompiledNode main = plan.flowStepGraph().get(0);
+
+    assertThat(main.flatten())
+        .extracting(CompiledNode::appId)
+        .containsExactly("guarded-main", "guard", "attempt");
+
+    CompiledNode guard = node(main, "guard");
+    JsonNode spec = JSON.readTree(guard.specText());
+    assertThat(spec.has("catch")).isFalse();
+    assertThat(spec.get("children").properties()).hasSize(1);
+    assertThat(spec.at("/tasks/0/attempt/set/a")).isNotNull();
+  }
+
+  /** A {@code try} with no {@code catch} key at all compiles the same way — no catch node/field. */
+  @Test
+  void aTryWithNoCatchAtAllHasNoCatchNodeOrField() throws Exception {
+    String noCatch =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: unguarded
+          version: '1.0.0'
+        do:
+          - guard:
+              try:
+                - attempt:
+                    set:
+                      a: 1
+        """;
+    DeploymentPlan plan = compiler.compile(noCatch);
+    CompiledNode main = plan.flowStepGraph().get(0);
+
+    assertThat(main.flatten())
+        .extracting(CompiledNode::appId)
+        .containsExactly("unguarded-main", "guard", "attempt");
+
+    CompiledNode guard = node(main, "guard");
+    JsonNode spec = JSON.readTree(guard.specText());
+    assertThat(spec.has("catch")).isFalse();
+  }
+
+  /** A {@code run} task, like {@code call}, gets a {@code -fn} companion function app ID. */
+  @Test
+  void classifiesRunTaskWithFunctionAppId() {
+    String withRun =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: runner
+          version: '1.0.0'
+        do:
+          - runScript:
+              run:
+                shell:
+                  command: "echo hi"
+        """;
+    DeploymentPlan plan = compiler.compile(withRun);
+    CompiledNode main = plan.flowStepGraph().get(0);
+    CompiledNode runScript = node(main, "run-script");
+    assertThat(runScript).isInstanceOf(StepNode.class);
+    assertThat(((StepNode) runScript).functionAppId()).contains("run-script-fn");
+  }
+
+  /**
+   * Headline requirement of design §D5: {@code tasks}/{@code task} carry the definition's own JSON
+   * verbatim: key order unchanged from the source document (which a reserialized typed-model
+   * round-trip would not preserve — Jackson would emit the Java class's own property order
+   * instead), and an unknown-to-any-fixed-schema key (inside {@code metadata}'s open map) intact.
+   */
+  @Test
+  void preservesAnUnusualTaskBodyVerbatim() throws Exception {
+    String unusual =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: verbatim
+          version: '1.0.0'
+        do:
+          - validateOrder:
+              then: end
+              metadata:
+                x-vendor-note: keep-me
+              set:
+                zebra: 1
+                apple: 2
+        """;
+    DeploymentPlan plan = compiler.compile(unusual);
+    CompiledNode main = plan.flowStepGraph().get(0);
+    CompiledNode validateOrder = node(main, "validate-order");
+    JsonNode task = JSON.readTree(validateOrder.specText()).get("task").get("validateOrder");
+
+    List<String> keys = new ArrayList<>();
+    task.fieldNames().forEachRemaining(keys::add);
+    assertThat(keys).containsExactly("then", "metadata", "set");
+    assertThat(task.at("/metadata/x-vendor-note").asText()).isEqualTo("keep-me");
+
+    List<String> setKeys = new ArrayList<>();
+    task.get("set").fieldNames().forEachRemaining(setKeys::add);
+    assertThat(setKeys).containsExactly("zebra", "apple");
+  }
 }
