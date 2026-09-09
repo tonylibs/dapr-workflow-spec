@@ -251,8 +251,9 @@ public class NodeClassifier {
     String appId = NodeNaming.appId(nodeId);
     String functionAppId =
         Optional.ofNullable(task)
-                .filter(t -> Objects.nonNull(t.getCallTask()))
-                .filter(t -> Objects.nonNull(t.getRunTask()))
+            // Disjunction, not two chained filters: a task is a call or a run, never both, so
+            // chaining them ANDs to false and every step silently loses its -fn function app ID.
+            .filter(t -> Objects.nonNull(t.getCallTask()) || Objects.nonNull(t.getRunTask()))
             .map(_ -> NodeNaming.functionAppId(appId))
             .orElse(null);
     return new StepNode(
