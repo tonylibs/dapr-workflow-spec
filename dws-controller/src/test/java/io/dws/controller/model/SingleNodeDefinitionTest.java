@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class SingleNodeDefinitionTest {
@@ -94,5 +95,75 @@ class SingleNodeDefinitionTest {
     String withoutFunction = SingleNodeDefinition.step(ENVELOPE, "validate-order", setTask, null);
     assertThat(JSON.readTree(withoutFunction).has("functionAppId")).isFalse();
     assertValid(withoutFunction);
+  }
+
+  @Test
+  void rendersAForControllersLoopConfiguration() throws Exception {
+    FlowScope scope =
+        FlowScope.of("for", List.of())
+            .withForConfig(
+                new FlowScope.ForConfig(
+                    Optional.of("item"),
+                    Optional.of(".items"),
+                    Optional.empty(),
+                    Optional.empty()));
+
+    String text =
+        SingleNodeDefinition.flow(
+            new SingleNodeDefinition.Envelope("order-fulfillment", "order-fulfillment@v1a2b3c4d"),
+            "reserve-items",
+            scope,
+            Map.of("do", "reserve-items-do"));
+
+    JsonNode node = new ObjectMapper().readTree(text);
+    assertThat(node.get("scope").asText()).isEqualTo("for");
+    assertThat(node.get("tasks")).isEmpty();
+    assertThat(node.get("each").asText()).isEqualTo("item");
+    assertThat(node.get("in").asText()).isEqualTo(".items");
+    assertThat(node.has("at")).isFalse();
+    assertThat(node.has("while")).isFalse();
+    assertThat(node.get("children").get("do").asText()).isEqualTo("reserve-items-do");
+  }
+
+  @Test
+  void rendersATryCatchControllersErrorFilterAndRetryPolicy() throws Exception {
+    ObjectMapper json = new ObjectMapper();
+    FlowScope scope =
+        FlowScope.of("try-catch", List.of())
+            .withTryCatchConfig(
+                new FlowScope.TryCatchConfig(
+                    Optional.of(json.readTree("{\"with\":{\"status\":402}}")),
+                    Optional.of(json.readTree("\"myRetryPolicy\""))))
+            .withCatch("process-payment-catch");
+
+    String text =
+        SingleNodeDefinition.flow(
+            new SingleNodeDefinition.Envelope("guarded-payment", "guarded-payment@v1a2b3c4d"),
+            "process-payment",
+            scope,
+            Map.of("try", "process-payment-try", "catch", "process-payment-catch"));
+
+    JsonNode node = json.readTree(text);
+    assertThat(node.get("scope").asText()).isEqualTo("try-catch");
+    assertThat(node.get("tasks")).isEmpty();
+    assertThat(node.get("catch").asText()).isEqualTo("process-payment-catch");
+    assertThat(node.get("errors").get("with").get("status").asInt()).isEqualTo(402);
+    assertThat(node.get("retry").asText()).isEqualTo("myRetryPolicy");
+  }
+
+  @Test
+  void omitsControllerConfigurationOnASequencer() throws Exception {
+    String text =
+        SingleNodeDefinition.flow(
+            new SingleNodeDefinition.Envelope("w", "w@v1"),
+            "w-main",
+            FlowScope.of("main", List.of()),
+            Map.of());
+
+    JsonNode node = new ObjectMapper().readTree(text);
+    for (String field :
+        List.of("each", "in", "at", "while", "errors", "retry", "catch", "forkMode")) {
+      assertThat(node.has(field)).as(field).isFalse();
+    }
   }
 }
