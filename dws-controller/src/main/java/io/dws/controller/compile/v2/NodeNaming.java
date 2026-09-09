@@ -24,8 +24,8 @@ class NodeNaming {
    * Rejects a task name containing {@code .} (Finding 1): {@link
    * io.dws.controller.model.CompiledNode#key()} returns a nodeId's last dotted segment, so a dotted
    * task name would collide with the dotted derived ids this class synthesizes for scopes the DSL
-   * itself does not name ({@link #catchNodeId}, {@link #branchNodeId}), silently dropping a sibling
-   * from the wire {@code children} map.
+   * itself does not name ({@link #catchNodeId}, {@link #forBodyNodeId}, {@link #tryBodyNodeId}),
+   * silently dropping a sibling from the wire {@code children} map.
    */
   static void requireUndottedTaskName(String taskName) {
     if (taskName.indexOf('.') >= 0) {
@@ -60,10 +60,6 @@ class NodeNaming {
    */
   static String tryBodyNodeId(String tryTaskName) {
     return tryTaskName + ".try";
-  }
-
-  static String branchNodeId(String forkTaskName, String branchRootTaskName) {
-    return forkTaskName + ".branch." + branchRootTaskName;
   }
 
   static String appId(String nodeId) {

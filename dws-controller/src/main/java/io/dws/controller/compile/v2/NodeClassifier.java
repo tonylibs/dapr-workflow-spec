@@ -48,7 +48,6 @@ public class NodeClassifier {
   private static final String SCOPE_FOR = "for";
   private static final String SCOPE_TRY_CATCH = "try-catch";
   private static final String SCOPE_FORK = "fork";
-  private static final String SCOPE_FORK_BRANCH = "forkBranch";
 
   private static final String FORK_MODE_ANY = "any";
   private static final String FORK_MODE_ALL = "all";
@@ -209,8 +208,11 @@ public class NodeClassifier {
   }
 
   /**
-   * A {@code fork} scope (ADR 0003): its own flow node with an empty task list, one branch child
-   * per {@code fork.branches} entry, and {@code forkMode} from {@code compete}.
+   * A {@code fork} scope (ADR 0003, amended by ADR 0004): its own flow node with an empty task
+   * list, {@code forkMode} from {@code compete}, and one child per {@code fork.branches} entry —
+   * the branch's root task's own node, classified exactly as it would be anywhere else. A branch
+   * rooted at a leaf task is therefore a {@link StepNode}, reached with {@code CallActivityAsync};
+   * the fork does not choose, the sealed type does.
    */
   private static CompiledNode forkFlow(
       String nodeId, ForkTask forkTask, JsonNode rawBody, Context context) {
@@ -221,7 +223,7 @@ public class NodeClassifier {
 
     List<CompiledNode> children = new ArrayList<>(branches.size());
     for (int i = 0; i < branches.size(); i++) {
-      children.add(branchFlow(nodeId, branches.get(i), rawBranches.get(i), context));
+      children.add(classifyTask(branches.get(i), rawBranches.get(i), context));
     }
     String forkMode =
         configuration.filter(ForkTaskConfiguration::isCompete).isPresent()
@@ -229,18 +231,6 @@ public class NodeClassifier {
             : FORK_MODE_ALL;
     return flow(
         context, nodeId, FlowScope.of(SCOPE_FORK, List.of()).withForkMode(forkMode), children);
-  }
-
-  /** One fork branch: its own flow node whose single child is the classified branch root task. */
-  private static CompiledNode branchFlow(
-      String forkNodeId, TaskItem branch, RawTaskItem rawBranch, Context context) {
-    String branchNodeId = NodeNaming.branchNodeId(forkNodeId, branch.getName());
-    CompiledNode root = classifyTask(branch, rawBranch, context);
-    return flow(
-        context,
-        branchNodeId,
-        FlowScope.of(SCOPE_FORK_BRANCH, List.of(rawBranch.copy())),
-        List.of(root));
   }
 
   /**

@@ -184,33 +184,24 @@ class V2StructuralCompilerTest {
   }
 
   @Test
-  void classifiesForkAsItsOwnFlowNodeWithBranchNodes() {
-    DeploymentPlan plan = compiler.compile(FORKED);
-    CompiledNode main = plan.flowStepGraph().get(0);
-
-    assertThat(main.flatten())
-        .extracting(CompiledNode::appId)
-        .containsExactly(
-            "notify-order-main",
-            "prepare-notification",
-            "notify-channels",
-            "notify-channels-branch-notify-recipients",
-            "notify-recipients",
-            "notify-recipients-do",
-            "send-email",
-            "notify-channels-branch-write-audit",
-            "write-audit");
+  void classifiesForkChildrenAsTheBranchRootsThemselves() throws Exception {
+    CompiledNode main = compiler.compile(FORKED).flowStepGraph().get(0);
 
     CompiledNode fork = node(main, "notify-channels");
-    assertThat(fork).isInstanceOf(FlowNode.class);
-    assertThat(fork.specText()).contains("\"forkMode\" : \"all\"").contains("\"tasks\" : [ ]");
-    assertThat(fork.children())
-        .extracting(CompiledNode::key)
-        .containsExactly("notifyRecipients", "writeAudit");
+    JsonNode spec = JSON.readTree(fork.specText());
+    assertThat(spec.get("scope").asText()).isEqualTo("fork");
+    assertThat(spec.get("forkMode").asText()).isEqualTo("all");
+    assertThat(spec.get("tasks")).isEmpty();
+    assertThat(spec.get("children").get("notifyRecipients").asText())
+        .isEqualTo("notify-recipients");
+    assertThat(spec.get("children").get("writeAudit").asText()).isEqualTo("write-audit");
 
-    CompiledNode branchFor = node(main, "notify-recipients");
-    assertThat(branchFor.nodeId()).isEqualTo("notifyRecipients");
-    assertThat(branchFor.key()).isEqualTo("notifyRecipients");
+    assertThat(fork.children()).hasSize(2);
+    assertThat(fork.children().get(0)).isInstanceOf(FlowNode.class);
+    assertThat(fork.children().get(1)).isInstanceOf(StepNode.class);
+    assertThat(main.flatten().stream().map(CompiledNode::appId))
+        .noneMatch(appId -> appId.contains("-branch-"));
+    assertThat(main.flatten()).hasSize(7);
   }
 
   @Test

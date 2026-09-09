@@ -33,8 +33,6 @@ class NodeNamingTest {
   void derivesUnnamedScopeIdentifiers() {
     assertThat(NodeNaming.mainNodeId("order-fulfillment")).isEqualTo("order-fulfillment.main");
     assertThat(NodeNaming.catchNodeId("fulfillOrder")).isEqualTo("fulfillOrder.catch");
-    assertThat(NodeNaming.branchNodeId("notifyChannels", "notifyRecipients"))
-        .isEqualTo("notifyChannels.branch.notifyRecipients");
   }
 
   @Test
@@ -42,8 +40,6 @@ class NodeNamingTest {
     assertThat(NodeNaming.appId("fulfillOrder.catch")).isEqualTo("fulfill-order-catch");
     assertThat(NodeNaming.appId("order-fulfillment.main")).isEqualTo("order-fulfillment-main");
     assertThat(NodeNaming.appId("reserveItems")).isEqualTo("reserve-items");
-    assertThat(NodeNaming.appId("notifyChannels.branch.notifyRecipients"))
-        .isEqualTo("notify-channels-branch-notify-recipients");
   }
 
   @Test
