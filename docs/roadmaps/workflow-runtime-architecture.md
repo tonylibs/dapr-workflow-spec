@@ -87,7 +87,7 @@ the task-specific I/O, while the workflow layer retains orchestration and retry 
 | Top-level `do` | `Flow: main` | It is the workflow's outer task-list scope (sequencer). |
 | Nested `do` | Flow | Its `do` property owns a task list, which a step never does. Its scope value is `do` (sequencer). |
 | `for` | Flow | A controller carrying `each`/`in`/`at`/`while`. Its own task list is empty; it delegates to a `do` child that owns the loop body. |
-| `try-catch` | Flow | A controller carrying `errors`/`retry`. Its own task list is empty; it delegates to a `try` child (the guarded list) and, when `catch.do` is non-empty, a `catch` child (the recovery list, derived as `<try-task>.catch`). |
+| `try-catch` | Flow | A controller carrying `errors`/`retry`/`as`/`when`/`exceptWhen`. Its own task list is empty; it delegates to a `try` child (the guarded list) and, when `catch.do` is non-empty, a `catch` child (the recovery list, derived as `<try-task>.catch`). |
 | `fork` | Flow | A controller carrying `forkMode` (`all` when `compete: false`, `any` when `compete: true`). Its own task list is empty; its children are each branch root task's own node, addressed directly rather than wrapped in a scope of its own. |
 | `call`, `run`, `set`, `switch`, `wait`, `listen`, `emit`, `raise` | Step | These tasks do not own a nested task list. |
 

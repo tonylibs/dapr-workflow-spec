@@ -201,11 +201,11 @@ carry the common envelope plus `scope` (`main` or `do`), its own source-ordered 
 `specText` SHALL carry the common envelope plus `scope` (`for`, `try-catch`, or `fork`), an empty
 `tasks` array, a `children` object keyed by role (`do` for `for`; `try` and, when present, `catch`
 for `try-catch`; each branch's task name for `fork`), and that scope's own configuration: `each`/
-`in`/`at`/`while` when `scope` is `for`; `errors`/`retry` (each present only when the DSL supplies
-it) and `catch` when `scope` is `try-catch` and a catch child is present; `forkMode` when `scope` is
-`fork`. A `StepNode`'s `specText` SHALL carry the common envelope plus its `task`, and
-`functionAppId` exactly when the task is a `call` or `run`. The envelope's `nodeId` field SHALL carry
-the node's sanitized `appId`.
+`in`/`at`/`while` when `scope` is `for`; `errors`/`retry`/`as`/`when`/`exceptWhen` (each present
+only when the DSL supplies it) and `catch` when `scope` is `try-catch` and a catch child is
+present; `forkMode` when `scope` is `fork`. A `StepNode`'s `specText` SHALL carry the common
+envelope plus its `task`, and `functionAppId` exactly when the task is a `call` or `run`. The
+envelope's `nodeId` field SHALL carry the node's sanitized `appId`.
 
 #### Scenario: a flow node renders scope, tasks, and children
 
