@@ -133,6 +133,7 @@ class V2StructuralCompilerTest {
             "validate-order",
             "fulfill-order",
             "reserve-items",
+            "reserve-items-do",
             "reserve-item",
             "fulfill-order-catch",
             "mark-order-failed");
@@ -166,6 +167,7 @@ class V2StructuralCompilerTest {
             "notify-channels",
             "notify-channels-branch-notify-recipients",
             "notify-recipients",
+            "notify-recipients-do",
             "send-email",
             "notify-channels-branch-write-audit",
             "write-audit");
@@ -187,6 +189,35 @@ class V2StructuralCompilerTest {
     for (String specText : new String[] {NESTED, FORKED}) {
       assertChildrenKeysMatchTaskNames(compiler.compile(specText).flowStepGraph().get(0));
     }
+  }
+
+  @Test
+  void classifiesAForScopeAsAControllerOverADoChild() throws Exception {
+    CompiledNode main = compiler.compile(NESTED).flowStepGraph().get(0);
+
+    CompiledNode loop = node(main, "reserve-items");
+    JsonNode spec = JSON.readTree(loop.specText());
+    assertThat(spec.get("scope").asText()).isEqualTo("for");
+    assertThat(spec.get("tasks")).isEmpty();
+    assertThat(spec.get("each").asText()).isEqualTo("item");
+    assertThat(spec.get("in").asText()).isEqualTo(".items");
+    assertThat(spec.get("children").get("do").asText()).isEqualTo("reserve-items-do");
+
+    CompiledNode body = node(main, "reserve-items-do");
+    JsonNode bodySpec = JSON.readTree(body.specText());
+    assertThat(bodySpec.get("scope").asText()).isEqualTo("do");
+    assertThat(bodySpec.get("tasks")).hasSize(1);
+    assertThat(bodySpec.get("children").get("reserveItem").asText()).isEqualTo("reserve-item");
+    assertThat(body.children()).singleElement().isInstanceOf(StepNode.class);
+  }
+
+  @Test
+  void omitsLoopFieldsTheDefinitionDoesNotWrite() throws Exception {
+    CompiledNode main = compiler.compile(NESTED).flowStepGraph().get(0);
+
+    JsonNode spec = JSON.readTree(node(main, "reserve-items").specText());
+    assertThat(spec.has("at")).isFalse();
+    assertThat(spec.has("while")).isFalse();
   }
 
   @Test

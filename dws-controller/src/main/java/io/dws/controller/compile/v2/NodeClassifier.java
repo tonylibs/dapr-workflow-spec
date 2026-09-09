@@ -131,10 +131,36 @@ public class NodeClassifier {
     return listFlow(nodeId, SCOPE_DO, doTask.getDo(), rawBody, "do", context);
   }
 
-  /** A {@code for} scope: its own flow node over the task list in {@code for.do}. */
+  /**
+   * A {@code for} scope (ADR 0004): a controller carrying the loop configuration with an empty task
+   * list, whose single {@code do} child owns the list it iterates.
+   */
   private static CompiledNode forFlow(
       String nodeId, ForTask forTask, JsonNode rawBody, Context context) {
-    return listFlow(nodeId, SCOPE_FOR, forTask.getDo(), rawBody, "do", context);
+    CompiledNode body =
+        listFlow(
+            NodeNaming.forBodyNodeId(nodeId), SCOPE_DO, forTask.getDo(), rawBody, "do", context);
+    return flow(
+        context,
+        nodeId,
+        FlowScope.of(SCOPE_FOR, List.of()).withForConfig(forConfig(rawBody)),
+        List.of(body));
+  }
+
+  /**
+   * A loop's configuration, read from the raw task body rather than the typed model: the SDK
+   * injects DSL defaults ({@code each: item}, {@code at: index}) the author never wrote, and a
+   * node's definition carries what the document said.
+   */
+  private static FlowScope.ForConfig forConfig(JsonNode rawBody) {
+    JsonNode rawFor = rawBody.path("for");
+    return new FlowScope.ForConfig(
+        text(rawFor, "each"), text(rawFor, "in"), text(rawFor, "at"), text(rawBody, "while"));
+  }
+
+  /** One optional textual field of a raw object, absent when missing or not a string. */
+  private static Optional<String> text(JsonNode parent, String field) {
+    return Optional.ofNullable(parent.get(field)).filter(JsonNode::isTextual).map(JsonNode::asText);
   }
 
   /**
