@@ -1,0 +1,29 @@
+name: release-please
+
+# Watches every push to main and, per component (see release-please-config.json),
+# maintains a standing "release PR" that accumulates Conventional Commit changes
+# under that component's path. Merging that PR is the deliberate "cut a release"
+# action: release-please bumps the component's version file, updates its
+# CHANGELOG.md, and pushes a `<component>-v<version>` tag — which is exactly the
+# tag pattern each component's own build workflow (dws-admin.yml, dws-run.yml,
+# etc.) already watches to build and publish the matching image tag.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-please-${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

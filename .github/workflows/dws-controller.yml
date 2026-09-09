@@ -3,6 +3,8 @@ name: dws-controller
 on:
   push:
     branches: [main]
+    tags:
+      - 'dws-controller-v*'
     paths:
       - 'dws-controller/**'
       - '.github/workflows/dws-controller.yml'
@@ -100,6 +102,7 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
+            type=match,pattern=^dws-controller-v(.*)$,group=1
             type=sha,prefix=,format=short
             type=raw,value=latest,enable={{is_default_branch}}
 

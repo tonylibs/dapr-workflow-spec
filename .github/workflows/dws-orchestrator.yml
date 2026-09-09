@@ -3,6 +3,8 @@ name: dws-orchestrator
 on:
   push:
     branches: [main]
+    tags:
+      - 'dws-orchestrator-v*'
     paths:
       - 'dws-orchestrator/**'
       - '.github/workflows/dws-orchestrator.yml'
@@ -73,6 +75,7 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
+            type=match,pattern=^dws-orchestrator-v(.*)$,group=1
             type=sha,prefix=,format=short
             type=raw,value=latest,enable={{is_default_branch}}
 

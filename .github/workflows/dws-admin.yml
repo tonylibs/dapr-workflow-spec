@@ -3,6 +3,8 @@ name: dws-admin
 on:
   push:
     branches: [main]
+    tags:
+      - 'dws-admin-v*'
     paths:
       - 'dws-admin/**'
       - '.github/workflows/dws-admin.yml'
@@ -107,6 +109,7 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
+            type=match,pattern=^dws-admin-v(.*)$,group=1
             type=sha,prefix=,format=short
             type=raw,value=latest,enable={{is_default_branch}}
 
