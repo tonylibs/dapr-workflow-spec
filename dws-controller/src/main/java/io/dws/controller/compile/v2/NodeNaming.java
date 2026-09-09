@@ -46,6 +46,22 @@ class NodeNaming {
     return tryTaskName + ".catch";
   }
 
+  /**
+   * A {@code for} controller's loop-body child (ADR 0004). The controller carries the loop
+   * configuration; this child carries the list it iterates.
+   */
+  static String forBodyNodeId(String forTaskName) {
+    return forTaskName + ".do";
+  }
+
+  /**
+   * A {@code try-catch} controller's guarded-body child (ADR 0004). Sibling of {@link
+   * #catchNodeId}: the controller carries {@code errors}/{@code retry}, these two carry the lists.
+   */
+  static String tryBodyNodeId(String tryTaskName) {
+    return tryTaskName + ".try";
+  }
+
   static String branchNodeId(String forkTaskName, String branchRootTaskName) {
     return forkTaskName + ".branch." + branchRootTaskName;
   }

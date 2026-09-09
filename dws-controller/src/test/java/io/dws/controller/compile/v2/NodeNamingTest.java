@@ -98,4 +98,18 @@ class NodeNamingTest {
         .isInstanceOf(CompilationException.class)
         .hasMessageContaining(symbolOnlyNodeId);
   }
+
+  @Test
+  void derivesALoopBodyIdFromItsForTask() {
+    assertThat(NodeNaming.forBodyNodeId("reserveItems")).isEqualTo("reserveItems.do");
+    assertThat(NodeNaming.appId(NodeNaming.forBodyNodeId("reserveItems")))
+        .isEqualTo("reserve-items-do");
+  }
+
+  @Test
+  void derivesAGuardedBodyIdFromItsTryTask() {
+    assertThat(NodeNaming.tryBodyNodeId("fulfillOrder")).isEqualTo("fulfillOrder.try");
+    assertThat(NodeNaming.appId(NodeNaming.tryBodyNodeId("fulfillOrder")))
+        .isEqualTo("fulfill-order-try");
+  }
 }
