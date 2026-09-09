@@ -26,6 +26,25 @@ public class SingleNodeDefinition {
     ObjectNode childObject = node.putObject("children");
     children.forEach(childObject::put);
     scope.catchAppId().ifPresent(catchAppId -> node.put("catch", catchAppId));
+    scope
+        .tryCatchConfig()
+        .ifPresent(
+            config -> {
+              config.errors().ifPresent(errors -> node.set("errors", errors));
+              config.retry().ifPresent(retry -> node.set("retry", retry));
+              config.as().ifPresent(as -> node.put("as", as));
+              config.when().ifPresent(when -> node.put("when", when));
+              config.exceptWhen().ifPresent(exceptWhen -> node.put("exceptWhen", exceptWhen));
+            });
+    scope
+        .forConfig()
+        .ifPresent(
+            config -> {
+              config.each().ifPresent(each -> node.put("each", each));
+              config.in().ifPresent(in -> node.put("in", in));
+              config.at().ifPresent(at -> node.put("at", at));
+              config.whileCondition().ifPresent(w -> node.put("while", w));
+            });
     scope.forkMode().ifPresent(forkMode -> node.put("forkMode", forkMode));
     return write(node);
   }

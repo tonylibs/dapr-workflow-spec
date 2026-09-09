@@ -9,7 +9,7 @@ public sealed partial class SingleNodeDefinitionLoader
 {
     public const string DefinitionPathEnvironmentVariable = "DWS_FLOW_DEFINITION_PATH";
 
-    private static readonly HashSet<string> ValidScopes = ["main", "for", "try", "catch", "forkBranch"];
+    private static readonly HashSet<string> ValidScopes = ["main", "do", "for", "try-catch", "fork"];
     private readonly string? definitionPath;
 
     public SingleNodeDefinitionLoader(string? definitionPath)

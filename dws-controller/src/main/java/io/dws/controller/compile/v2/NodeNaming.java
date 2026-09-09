@@ -2,7 +2,6 @@ package io.dws.controller.compile.v2;
 
 import io.dws.controller.compile.CompilationException;
 import io.dws.controller.compile.Names;
-import java.util.List;
 import java.util.regex.Pattern;
 import lombok.experimental.UtilityClass;
 
@@ -24,17 +23,16 @@ class NodeNaming {
    * Rejects a task name containing {@code .} (Finding 1): {@link
    * io.dws.controller.model.CompiledNode#key()} returns a nodeId's last dotted segment, so a dotted
    * task name would collide with the dotted derived ids this class synthesizes for scopes the DSL
-   * itself does not name ({@link #catchNodeId}, {@link #branchNodeId}), silently dropping a sibling
-   * from the wire {@code children} map.
+   * itself does not name ({@link #catchNodeId}, {@link #forBodyNodeId}, {@link #tryBodyNodeId}),
+   * silently dropping a sibling from the wire {@code children} map.
    */
   static void requireUndottedTaskName(String taskName) {
     if (taskName.indexOf('.') >= 0) {
       throw new CompilationException(
-          List.of(
-              "task '"
-                  + taskName
-                  + "' must not contain '.' in its name; a dotted name collides with this "
-                  + "compiler's derived node ids"));
+          "task '"
+              + taskName
+              + "' must not contain '.' in its name; a dotted name collides with this "
+              + "compiler's derived node ids");
     }
   }
 
@@ -46,42 +44,51 @@ class NodeNaming {
     return tryTaskName + ".catch";
   }
 
-  static String branchNodeId(String forkTaskName, String branchRootTaskName) {
-    return forkTaskName + ".branch." + branchRootTaskName;
+  /**
+   * A {@code for} controller's loop-body child (ADR 0004). The controller carries the loop
+   * configuration; this child carries the list it iterates.
+   */
+  static String forBodyNodeId(String forTaskName) {
+    return forTaskName + ".do";
+  }
+
+  /**
+   * A {@code try-catch} controller's guarded-body child (ADR 0004). Sibling of {@link
+   * #catchNodeId}: the controller carries {@code errors}/{@code retry}, these two carry the lists.
+   */
+  static String tryBodyNodeId(String tryTaskName) {
+    return tryTaskName + ".try";
   }
 
   static String appId(String nodeId) {
     String appId = Names.kebab(nodeId);
     if (appId.isEmpty()) {
       throw new CompilationException(
-          List.of(
-              "node '"
-                  + nodeId
-                  + "' produces an empty app ID; DNS-1123 labels must contain at least one "
-                  + "alphanumeric character"));
+          "node '"
+              + nodeId
+              + "' produces an empty app ID; DNS-1123 labels must contain at least one "
+              + "alphanumeric character");
     }
     if (!DNS_1123_LABEL.matcher(appId).matches()) {
       throw new CompilationException(
-          List.of(
-              "node '"
-                  + nodeId
-                  + "' derives the app ID '"
-                  + appId
-                  + "', which is not a DNS-1123 label; a node's name must use only ASCII "
-                  + "lowercase letters, digits, and dashes"));
+          "node '"
+              + nodeId
+              + "' derives the app ID '"
+              + appId
+              + "', which is not a DNS-1123 label; a node's name must use only ASCII "
+              + "lowercase letters, digits, and dashes");
     }
     if (appId.length() > DNS_1123_LABEL_MAX) {
       throw new CompilationException(
-          List.of(
-              "node '"
-                  + nodeId
-                  + "' derives the app ID '"
-                  + appId
-                  + "' ("
-                  + appId.length()
-                  + " characters), which exceeds the "
-                  + DNS_1123_LABEL_MAX
-                  + "-character DNS-1123 label limit"));
+          "node '"
+              + nodeId
+              + "' derives the app ID '"
+              + appId
+              + "' ("
+              + appId.length()
+              + " characters), which exceeds the "
+              + DNS_1123_LABEL_MAX
+              + "-character DNS-1123 label limit");
     }
     return appId;
   }
@@ -90,16 +97,15 @@ class NodeNaming {
     String functionAppId = appId + "-fn";
     if (functionAppId.length() > DNS_1123_LABEL_MAX) {
       throw new CompilationException(
-          List.of(
-              "app ID '"
-                  + appId
-                  + "' with the function suffix produces '"
-                  + functionAppId
-                  + "' ("
-                  + functionAppId.length()
-                  + " characters), which exceeds the "
-                  + DNS_1123_LABEL_MAX
-                  + "-character DNS-1123 label limit"));
+          "app ID '"
+              + appId
+              + "' with the function suffix produces '"
+              + functionAppId
+              + "' ("
+              + functionAppId.length()
+              + " characters), which exceeds the "
+              + DNS_1123_LABEL_MAX
+              + "-character DNS-1123 label limit");
     }
     return functionAppId;
   }

@@ -599,8 +599,7 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
   private StepService runStep(String taskName, RunTask run) {
     RunTaskConfigurationUnion cfg = run.getRun();
     if (cfg == null) {
-      throw new CompilationException(
-          List.of("task '" + taskName + "': run task has no configuration"));
+      throw new CompilationException("task '" + taskName + "': run task has no configuration");
     }
 
     if (cfg.getRunShell() != null) {
@@ -626,35 +625,30 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
 
     if (cfg.getRunContainer() != null) {
       throw new CompilationException(
-          List.of("task '" + taskName + "': run: container is not yet supported"));
+          "task '" + taskName + "': run: container is not yet supported");
     }
 
     if (cfg.getRunWorkflow() != null) {
-      throw new CompilationException(
-          List.of("task '" + taskName + "': run: workflow is not yet supported"));
+      throw new CompilationException("task '" + taskName + "': run: workflow is not yet supported");
     }
 
-    throw new CompilationException(
-        List.of("task '" + taskName + "': unrecognized run configuration"));
+    throw new CompilationException("task '" + taskName + "': unrecognized run configuration");
   }
 
   private StepService scriptStep(String taskName, RunScript runScript) {
     ScriptUnion union = runScript.getScript();
     if (union == null) {
-      throw new CompilationException(
-          List.of("task '" + taskName + "': run.script has no configuration"));
+      throw new CompilationException("task '" + taskName + "': run.script has no configuration");
     }
     if (union.getExternalScript() != null) {
       throw new CompilationException(
-          List.of(
-              "task '"
-                  + taskName
-                  + "': run.script external script sources are not supported; use inline 'code'"));
+          "task '"
+              + taskName
+              + "': run.script external script sources are not supported; use inline 'code'");
     }
     InlineScript inline = union.getInlineScript();
     if (inline == null) {
-      throw new CompilationException(
-          List.of("task '" + taskName + "': run.script requires inline 'code'"));
+      throw new CompilationException("task '" + taskName + "': run.script requires inline 'code'");
     }
 
     String language = inline.getLanguage() == null ? "" : inline.getLanguage().toLowerCase();
@@ -671,12 +665,11 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
       }
       default ->
           throw new CompilationException(
-              List.of(
-                  "task '"
-                      + taskName
-                      + "': run.script language '"
-                      + inline.getLanguage()
-                      + "' is not supported; use 'js' or 'python'"));
+              "task '"
+                  + taskName
+                  + "': run.script language '"
+                  + inline.getLanguage()
+                  + "' is not supported; use 'js' or 'python'");
     }
 
     Map<String, EnvValue> env = new LinkedHashMap<>();
@@ -807,17 +800,15 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
   private static void requireIdentifier(String taskName, String name, String language) {
     if (name == null || name.isEmpty() || !name.matches("[A-Za-z_][A-Za-z0-9_]*")) {
       throw new CompilationException(
-          List.of(
-              "task '" + taskName + "': argument name '" + name + "' is not a valid identifier"));
+          "task '" + taskName + "': argument name '" + name + "' is not a valid identifier");
     }
     if (RESERVED_INTERNAL_NAMES.contains(name)) {
       throw new CompilationException(
-          List.of(
-              "task '"
-                  + taskName
-                  + "': argument name '"
-                  + name
-                  + "' collides with an identifier the generated prelude uses internally"));
+          "task '"
+              + taskName
+              + "': argument name '"
+              + name
+              + "' collides with an identifier the generated prelude uses internally");
     }
     boolean reserved =
         switch (language) {
@@ -827,14 +818,13 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
         };
     if (reserved) {
       throw new CompilationException(
-          List.of(
-              "task '"
-                  + taskName
-                  + "': argument name '"
-                  + name
-                  + "' is a reserved "
-                  + (language.equals("js") ? "JavaScript" : "Python")
-                  + " keyword"));
+          "task '"
+              + taskName
+              + "': argument name '"
+              + name
+              + "' is a reserved "
+              + (language.equals("js") ? "JavaScript" : "Python")
+              + " keyword");
     }
   }
 
@@ -1069,7 +1059,7 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
   }
 
   private static CompilationException invalid(String taskName, String message) {
-    return new CompilationException(List.of("task '" + taskName + "': " + message));
+    return new CompilationException("task '" + taskName + "': " + message);
   }
 
   private static ReferenceableAuthenticationPolicy endpointAuthentication(Endpoint endpoint) {

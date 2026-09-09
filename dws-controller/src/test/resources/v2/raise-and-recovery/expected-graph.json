@@ -11,12 +11,19 @@
     "kind" : "flow",
     "functionAppId" : null,
     "children" : [ {
-      "nodeId" : "rejectPayment",
-      "appId" : "reject-payment",
-      "definitionResource" : "dws-def-guarded-payment-<versionId>-reject-payment",
-      "kind" : "step",
+      "nodeId" : "processPayment.try",
+      "appId" : "process-payment-try",
+      "definitionResource" : "dws-def-guarded-payment-<versionId>-process-payment-try",
+      "kind" : "flow",
       "functionAppId" : null,
-      "children" : [ ]
+      "children" : [ {
+        "nodeId" : "rejectPayment",
+        "appId" : "reject-payment",
+        "definitionResource" : "dws-def-guarded-payment-<versionId>-reject-payment",
+        "kind" : "step",
+        "functionAppId" : null,
+        "children" : [ ]
+      } ]
     }, {
       "nodeId" : "processPayment.catch",
       "appId" : "process-payment-catch",

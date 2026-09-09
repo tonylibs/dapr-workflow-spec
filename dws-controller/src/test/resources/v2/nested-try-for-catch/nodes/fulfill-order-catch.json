@@ -3,7 +3,7 @@
   "version" : "order-fulfillment@<versionId>",
   "nodeId" : "fulfill-order-catch",
   "kind" : "flow",
-  "scope" : "catch",
+  "scope" : "do",
   "tasks" : [ {
     "markOrderFailed" : {
       "set" : {

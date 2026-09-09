@@ -4,16 +4,10 @@
   "nodeId" : "notify-recipients",
   "kind" : "flow",
   "scope" : "for",
-  "tasks" : [ {
-    "sendEmail" : {
-      "call" : "http",
-      "with" : {
-        "method" : "post",
-        "endpoint" : "https://email.example.com/send"
-      }
-    }
-  } ],
+  "tasks" : [ ],
   "children" : {
-    "sendEmail" : "send-email"
-  }
+    "do" : "notify-recipients-do"
+  },
+  "each" : "recipient",
+  "in" : ".recipients"
 }

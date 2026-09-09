@@ -62,13 +62,81 @@ class V2GoldenTest {
 
   @Test
   void theSchemaActuallyRejectsAnInvalidNode() throws Exception {
-    Schema schema =
-        SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_7)
-            .getSchema(JSON.readTree(Files.readString(SCHEMA)));
     // kind: flow with no scope, no tasks, no children — required fields missing
     JsonNode invalid =
         JSON.readTree("{\"workflow\":\"w\",\"version\":\"v\",\"nodeId\":\"n\",\"kind\":\"flow\"}");
-    assertThat(schema.validate(invalid)).isNotEmpty();
+    assertThat(schema().validate(invalid)).isNotEmpty();
+  }
+
+  @Test
+  void theSchemaRejectsRetiredScopeValues() throws Exception {
+    for (String retired : java.util.List.of("try", "catch", "forkBranch")) {
+      JsonNode node =
+          JSON.readTree(
+              """
+              {"workflow":"w","version":"v","nodeId":"n","kind":"flow",
+               "scope":"%s","tasks":[],"children":{}}
+              """
+                  .formatted(retired));
+      assertThat(schema().validate(node)).as(retired).isNotEmpty();
+    }
+  }
+
+  @Test
+  void theSchemaRejectsANonEmptyTaskListOnAController() throws Exception {
+    JsonNode node =
+        JSON.readTree(
+            """
+            {"workflow":"w","version":"v","nodeId":"n","kind":"flow","scope":"for",
+             "in":".items","tasks":[{"someTask":{"set":{"a":1}}}],"children":{"do":"n-do"}}
+            """);
+    assertThat(schema().validate(node)).isNotEmpty();
+  }
+
+  @Test
+  void theSchemaRejectsLoopFieldsOnANonForScope() throws Exception {
+    JsonNode node =
+        JSON.readTree(
+            """
+            {"workflow":"w","version":"v","nodeId":"n","kind":"flow","scope":"do",
+             "tasks":[],"children":{},"each":"item","in":".items"}
+            """);
+    assertThat(schema().validate(node)).isNotEmpty();
+  }
+
+  @Test
+  void theSchemaRejectsErrorsOnANonTryCatchScope() throws Exception {
+    JsonNode node =
+        JSON.readTree(
+            """
+            {"workflow":"w","version":"v","nodeId":"n","kind":"flow","scope":"do",
+             "tasks":[],"children":{},"errors":{"with":{"status":402}}}
+            """);
+    assertThat(schema().validate(node)).isNotEmpty();
+  }
+
+  @Test
+  void theSchemaAcceptsBothShapes() throws Exception {
+    JsonNode sequencer =
+        JSON.readTree(
+            """
+            {"workflow":"w","version":"v","nodeId":"n","kind":"flow","scope":"do",
+             "tasks":[{"a":{"set":{"x":1}}}],"children":{"a":"a"}}
+            """);
+    JsonNode controller =
+        JSON.readTree(
+            """
+            {"workflow":"w","version":"v","nodeId":"n","kind":"flow","scope":"try-catch",
+             "tasks":[],"children":{"try":"n-try","catch":"n-catch"},"catch":"n-catch",
+             "errors":{"with":{"status":402}},"retry":"myRetryPolicy"}
+            """);
+    assertThat(schema().validate(sequencer)).isEmpty();
+    assertThat(schema().validate(controller)).isEmpty();
+  }
+
+  private static Schema schema() throws Exception {
+    return SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_7)
+        .getSchema(JSON.readTree(Files.readString(SCHEMA)));
   }
 
   /** Projects a node into the fixture's shape: identity and structure, not specText. */

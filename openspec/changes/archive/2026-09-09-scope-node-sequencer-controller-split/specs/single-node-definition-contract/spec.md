@@ -1,9 +1,4 @@
-# single-node-definition-contract Specification
-
-## Purpose
-TBD - created by archiving change phase-1-structural-classification. Update Purpose after archive.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Fork nodes declare their scope and join mode
 

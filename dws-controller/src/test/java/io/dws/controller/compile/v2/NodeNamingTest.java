@@ -33,8 +33,6 @@ class NodeNamingTest {
   void derivesUnnamedScopeIdentifiers() {
     assertThat(NodeNaming.mainNodeId("order-fulfillment")).isEqualTo("order-fulfillment.main");
     assertThat(NodeNaming.catchNodeId("fulfillOrder")).isEqualTo("fulfillOrder.catch");
-    assertThat(NodeNaming.branchNodeId("notifyChannels", "notifyRecipients"))
-        .isEqualTo("notifyChannels.branch.notifyRecipients");
   }
 
   @Test
@@ -42,8 +40,6 @@ class NodeNamingTest {
     assertThat(NodeNaming.appId("fulfillOrder.catch")).isEqualTo("fulfill-order-catch");
     assertThat(NodeNaming.appId("order-fulfillment.main")).isEqualTo("order-fulfillment-main");
     assertThat(NodeNaming.appId("reserveItems")).isEqualTo("reserve-items");
-    assertThat(NodeNaming.appId("notifyChannels.branch.notifyRecipients"))
-        .isEqualTo("notify-channels-branch-notify-recipients");
   }
 
   @Test
@@ -97,5 +93,19 @@ class NodeNamingTest {
     assertThatThrownBy(() -> NodeNaming.appId(symbolOnlyNodeId))
         .isInstanceOf(CompilationException.class)
         .hasMessageContaining(symbolOnlyNodeId);
+  }
+
+  @Test
+  void derivesALoopBodyIdFromItsForTask() {
+    assertThat(NodeNaming.forBodyNodeId("reserveItems")).isEqualTo("reserveItems.do");
+    assertThat(NodeNaming.appId(NodeNaming.forBodyNodeId("reserveItems")))
+        .isEqualTo("reserve-items-do");
+  }
+
+  @Test
+  void derivesAGuardedBodyIdFromItsTryTask() {
+    assertThat(NodeNaming.tryBodyNodeId("fulfillOrder")).isEqualTo("fulfillOrder.try");
+    assertThat(NodeNaming.appId(NodeNaming.tryBodyNodeId("fulfillOrder")))
+        .isEqualTo("fulfill-order-try");
   }
 }

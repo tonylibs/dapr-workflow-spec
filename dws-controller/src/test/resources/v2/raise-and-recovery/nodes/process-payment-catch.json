@@ -3,7 +3,7 @@
   "version" : "guarded-payment@<versionId>",
   "nodeId" : "process-payment-catch",
   "kind" : "flow",
-  "scope" : "catch",
+  "scope" : "do",
   "tasks" : [ {
     "recordFailure" : {
       "set" : {

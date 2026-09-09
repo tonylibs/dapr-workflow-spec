@@ -3,26 +3,10 @@
   "version" : "order-fulfillment@<versionId>",
   "nodeId" : "fulfill-order",
   "kind" : "flow",
-  "scope" : "try",
-  "tasks" : [ {
-    "reserveItems" : {
-      "for" : {
-        "each" : "item",
-        "in" : ".items"
-      },
-      "do" : [ {
-        "reserveItem" : {
-          "call" : "http",
-          "with" : {
-            "method" : "post",
-            "endpoint" : "https://inventory.example.com/reservations"
-          }
-        }
-      } ]
-    }
-  } ],
+  "scope" : "try-catch",
+  "tasks" : [ ],
   "children" : {
-    "reserveItems" : "reserve-items",
+    "try" : "fulfill-order-try",
     "catch" : "fulfill-order-catch"
   },
   "catch" : "fulfill-order-catch"

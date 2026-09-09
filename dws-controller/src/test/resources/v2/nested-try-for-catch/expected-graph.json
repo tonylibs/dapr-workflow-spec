@@ -18,18 +18,32 @@
     "kind" : "flow",
     "functionAppId" : null,
     "children" : [ {
-      "nodeId" : "reserveItems",
-      "appId" : "reserve-items",
-      "definitionResource" : "dws-def-order-fulfillment-<versionId>-reserve-items",
+      "nodeId" : "fulfillOrder.try",
+      "appId" : "fulfill-order-try",
+      "definitionResource" : "dws-def-order-fulfillment-<versionId>-fulfill-order-try",
       "kind" : "flow",
       "functionAppId" : null,
       "children" : [ {
-        "nodeId" : "reserveItem",
-        "appId" : "reserve-item",
-        "definitionResource" : "dws-def-order-fulfillment-<versionId>-reserve-item",
-        "kind" : "step",
-        "functionAppId" : "reserve-item-fn",
-        "children" : [ ]
+        "nodeId" : "reserveItems",
+        "appId" : "reserve-items",
+        "definitionResource" : "dws-def-order-fulfillment-<versionId>-reserve-items",
+        "kind" : "flow",
+        "functionAppId" : null,
+        "children" : [ {
+          "nodeId" : "reserveItems.do",
+          "appId" : "reserve-items-do",
+          "definitionResource" : "dws-def-order-fulfillment-<versionId>-reserve-items-do",
+          "kind" : "flow",
+          "functionAppId" : null,
+          "children" : [ {
+            "nodeId" : "reserveItem",
+            "appId" : "reserve-item",
+            "definitionResource" : "dws-def-order-fulfillment-<versionId>-reserve-item",
+            "kind" : "step",
+            "functionAppId" : "reserve-item-fn",
+            "children" : [ ]
+          } ]
+        } ]
       } ]
     }, {
       "nodeId" : "fulfillOrder.catch",

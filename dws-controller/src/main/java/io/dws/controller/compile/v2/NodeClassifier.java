@@ -20,6 +20,7 @@ import io.serverlessworkflow.api.types.TryTaskCatch;
 import io.serverlessworkflow.api.types.Workflow;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import lombok.experimental.UtilityClass;
 
@@ -28,8 +29,9 @@ import lombok.experimental.UtilityClass;
  * ADR 0003).
  *
  * <p>Classification is the table in the change's design §D2: {@code main}, each nested {@code do},
- * each {@code for}, each {@code try}, each {@code catch}, each {@code fork} and each fork branch
- * become a {@link FlowNode}; every other task kind becomes a {@link StepNode}, with no exceptions.
+ * each {@code for}, each {@code try-catch}, and each {@code fork} become a {@link FlowNode}; a
+ * fork's branch-root children are classified like any other task and may be a {@link FlowNode} or a
+ * {@link StepNode}. Every other task kind becomes a {@link StepNode}, with no exceptions.
  *
  * <p>The walk is driven by the typed model but reads every task object out of a parallel raw {@link
  * JsonNode} of the same definition text, so a node's rendered {@code tasks}/{@code task} carries
@@ -46,10 +48,8 @@ public class NodeClassifier {
   private static final String SCOPE_MAIN = "main";
   private static final String SCOPE_DO = "do";
   private static final String SCOPE_FOR = "for";
-  private static final String SCOPE_TRY = "try";
-  private static final String SCOPE_CATCH = "catch";
+  private static final String SCOPE_TRY_CATCH = "try-catch";
   private static final String SCOPE_FORK = "fork";
-  private static final String SCOPE_FORK_BRANCH = "forkBranch";
 
   private static final String FORK_MODE_ANY = "any";
   private static final String FORK_MODE_ALL = "all";
@@ -88,7 +88,7 @@ public class NodeClassifier {
       // The model's child-key invariant, re-reported as a compile error. Translated here, at the
       // walk's one entry point, rather than at each construction site — a per-site wrapper is
       // exactly what a later site (an append, say) forgets.
-      throw new CompilationException(List.of(e.getMessage()));
+      throw new CompilationException(e.getMessage());
     }
   }
 
@@ -115,7 +115,7 @@ public class NodeClassifier {
     JsonNode rawBody = rawItem.body(nodeId);
     return task.map(Task::getForTask)
         .map(forTask -> forFlow(nodeId, forTask, rawBody, context))
-        .or(() -> task.map(Task::getTryTask).map(t -> tryFlow(nodeId, t, rawBody, context)))
+        .or(() -> task.map(Task::getTryTask).map(t -> tryCatchFlow(nodeId, t, rawBody, context)))
         .or(() -> task.map(Task::getForkTask).map(t -> forkFlow(nodeId, t, rawBody, context)))
         .or(() -> task.map(Task::getDoTask).map(t -> doFlow(nodeId, t, rawBody, context)))
         .orElseGet(() -> step(nodeId, item.getTask(), rawItem, context));
@@ -131,53 +131,99 @@ public class NodeClassifier {
     return listFlow(nodeId, SCOPE_DO, doTask.getDo(), rawBody, "do", context);
   }
 
-  /** A {@code for} scope: its own flow node over the task list in {@code for.do}. */
+  /**
+   * A {@code for} scope (ADR 0004): a controller carrying the loop configuration with an empty task
+   * list, whose single {@code do} child owns the list it iterates.
+   */
   private static CompiledNode forFlow(
       String nodeId, ForTask forTask, JsonNode rawBody, Context context) {
-    return listFlow(nodeId, SCOPE_FOR, forTask.getDo(), rawBody, "do", context);
+    CompiledNode body =
+        listFlow(
+            NodeNaming.forBodyNodeId(nodeId), SCOPE_DO, forTask.getDo(), rawBody, "do", context);
+    return flow(
+            context, nodeId, FlowScope.of(SCOPE_FOR, List.of()).withForConfig(forConfig(rawBody)))
+        .withChild(body);
   }
 
   /**
-   * A {@code try} scope: its own flow node over the guarded task list, plus a sibling {@code catch}
-   * flow node when the definition supplies a non-empty {@code catch.do}. The catch node appears
-   * both in {@code children} and in the dedicated {@code catch} field (design §D5). A {@code catch}
-   * with no {@code do} (e.g. retry-only recovery) gets no catch node and no {@code catch} field.
-   *
-   * <p>Note where the recovery configuration ends up: not here. This try node's own {@code
-   * specText} carries the guarded task list but neither {@code errors} nor {@code retry} — those
-   * survive verbatim only in the <em>parent's</em> {@code tasks} entry for this try task. Whether
-   * that is correct is the unresolved scope-configuration question in the change's design (Open
-   * Questions), which blocks Phase 2.
+   * A loop's configuration, read from the raw task body rather than the typed model: the SDK
+   * injects DSL defaults ({@code each: item}, {@code at: index}) the author never wrote, and a
+   * node's definition carries what the document said.
    */
-  private static CompiledNode tryFlow(
+  private static FlowScope.ForConfig forConfig(JsonNode rawBody) {
+    JsonNode rawFor = rawBody.path("for");
+    return new FlowScope.ForConfig(
+        text(rawFor, "each"), text(rawFor, "in"), text(rawFor, "at"), text(rawBody, "while"));
+  }
+
+  /** One optional textual field of a raw object, absent when missing or not a string. */
+  private static Optional<String> text(JsonNode parent, String field) {
+    return Optional.ofNullable(parent.get(field)).filter(JsonNode::isTextual).map(JsonNode::asText);
+  }
+
+  /**
+   * A {@code try} scope (ADR 0004): a controller carrying the {@code catch} block's own
+   * configuration with an empty task list, a {@code try} child owning the guarded list, and — when
+   * the definition supplies a non-empty {@code catch.do} — a {@code catch} child owning the
+   * recovery list. Both children are {@code do} sequencers. A {@code catch} with no {@code do}
+   * (retry-only recovery) gets no catch node and no {@code catch} field, but its {@code retry}
+   * still lands on this controller.
+   */
+  private static CompiledNode tryCatchFlow(
       String nodeId, TryTask tryTask, JsonNode rawBody, Context context) {
-    RawTaskList rawTry = RawTaskList.in(rawBody, "try", tryTask.getTry());
+    CompiledNode guarded =
+        listFlow(
+            NodeNaming.tryBodyNodeId(nodeId), SCOPE_DO, tryTask.getTry(), rawBody, "try", context);
     Optional<CompiledNode> catchNode =
         Optional.ofNullable(tryTask.getCatch())
             .filter(caught -> caught.getDo() != null && !caught.getDo().isEmpty())
             .map(caught -> catchFlow(nodeId, caught, rawBody.get("catch"), context));
 
-    // The catch node is built first either way: the try node's own scope has to name its app ID.
-    FlowScope scope = FlowScope.of(SCOPE_TRY, rawTry.copies());
-    FlowNode tryNode =
-        flow(
-            context,
-            nodeId,
-            catchNode.map(CompiledNode::appId).map(scope::withCatch).orElse(scope),
-            classifyTasks(tryTask.getTry(), rawTry, context));
-    return catchNode.map(tryNode::withChild).orElse(tryNode);
-  }
+    FlowScope scope =
+        FlowScope.of(SCOPE_TRY_CATCH, List.of()).withTryCatchConfig(tryCatchConfig(rawBody));
+    FlowScope scoped = catchNode.map(CompiledNode::appId).map(scope::withCatch).orElse(scope);
 
-  /** A {@code catch} scope: its own flow node over the recovery task list in {@code catch.do}. */
-  private static CompiledNode catchFlow(
-      String tryNodeId, TryTaskCatch caught, JsonNode rawCatch, Context context) {
-    return listFlow(
-        NodeNaming.catchNodeId(tryNodeId), SCOPE_CATCH, caught.getDo(), rawCatch, "do", context);
+    List<CompiledNode> children = new ArrayList<>(2);
+    children.add(guarded);
+    catchNode.ifPresent(children::add);
+    return flow(context, nodeId, scoped, children);
   }
 
   /**
-   * A {@code fork} scope (ADR 0003): its own flow node with an empty task list, one branch child
-   * per {@code fork.branches} entry, and {@code forkMode} from {@code compete}.
+   * A try-catch controller's recovery configuration, read verbatim from {@code catch}: the error
+   * filter and retry policy, plus the {@code when}/{@code exceptWhen} guards that decide whether to
+   * recover and the {@code as} name the recovery body binds the error to. Read from the raw JSON
+   * rather than the typed model for the same reason as {@link #forConfig}, and so that a field the
+   * SDK models but this walk does not interpret still reaches the node verbatim.
+   */
+  private static FlowScope.TryCatchConfig tryCatchConfig(JsonNode rawBody) {
+    JsonNode rawCatch = rawBody.path("catch");
+    return new FlowScope.TryCatchConfig(
+        copy(rawCatch, "errors"),
+        copy(rawCatch, "retry"),
+        text(rawCatch, "as"),
+        text(rawCatch, "when"),
+        text(rawCatch, "exceptWhen"));
+  }
+
+  /** One optional field of a raw object, deep-copied so the node owns its own JSON. */
+  private static Optional<JsonNode> copy(JsonNode parent, String field) {
+    return Optional.ofNullable(parent.get(field)).map(JsonNode::deepCopy);
+  }
+
+  /** A recovery list: a {@code do} sequencer over {@code catch.do}. */
+  private static CompiledNode catchFlow(
+      String tryNodeId, TryTaskCatch caught, JsonNode rawCatch, Context context) {
+    return listFlow(
+        NodeNaming.catchNodeId(tryNodeId), SCOPE_DO, caught.getDo(), rawCatch, "do", context);
+  }
+
+  /**
+   * A {@code fork} scope (ADR 0003, amended by ADR 0004): its own flow node with an empty task
+   * list, {@code forkMode} from {@code compete}, and one child per {@code fork.branches} entry —
+   * the branch's root task's own node, classified exactly as it would be anywhere else. A branch
+   * rooted at a leaf task is therefore a {@link StepNode}, reached with {@code CallActivityAsync};
+   * the fork does not choose, the sealed type does.
    */
   private static CompiledNode forkFlow(
       String nodeId, ForkTask forkTask, JsonNode rawBody, Context context) {
@@ -188,7 +234,7 @@ public class NodeClassifier {
 
     List<CompiledNode> children = new ArrayList<>(branches.size());
     for (int i = 0; i < branches.size(); i++) {
-      children.add(branchFlow(nodeId, branches.get(i), rawBranches.get(i), context));
+      children.add(classifyTask(branches.get(i), rawBranches.get(i), context));
     }
     String forkMode =
         configuration.filter(ForkTaskConfiguration::isCompete).isPresent()
@@ -198,18 +244,6 @@ public class NodeClassifier {
         context, nodeId, FlowScope.of(SCOPE_FORK, List.of()).withForkMode(forkMode), children);
   }
 
-  /** One fork branch: its own flow node whose single child is the classified branch root task. */
-  private static CompiledNode branchFlow(
-      String forkNodeId, TaskItem branch, RawTaskItem rawBranch, Context context) {
-    String branchNodeId = NodeNaming.branchNodeId(forkNodeId, branch.getName());
-    CompiledNode root = classifyTask(branch, rawBranch, context);
-    return flow(
-        context,
-        branchNodeId,
-        FlowScope.of(SCOPE_FORK_BRANCH, List.of(rawBranch.copy())),
-        List.of(root));
-  }
-
   /**
    * Every non-structural task kind, per design §D2 — including {@code switch}, which owns no list.
    */
@@ -217,8 +251,10 @@ public class NodeClassifier {
     String appId = NodeNaming.appId(nodeId);
     String functionAppId =
         Optional.ofNullable(task)
-            .filter(t -> t.getCallTask() != null || t.getRunTask() != null)
-            .map(t -> NodeNaming.functionAppId(appId))
+            // Disjunction, not two chained filters: a task is a call or a run, never both, so
+            // chaining them ANDs to false and every step silently loses its -fn function app ID.
+            .filter(t -> Objects.nonNull(t.getCallTask()) || Objects.nonNull(t.getRunTask()))
+            .map(_ -> NodeNaming.functionAppId(appId))
             .orElse(null);
     return new StepNode(
         nodeId,
@@ -241,7 +277,7 @@ public class NodeClassifier {
       Context context) {
     RawTaskList rawTasks = RawTaskList.in(rawParent, rawField, tasks);
     List<CompiledNode> children = classifyTasks(tasks, rawTasks, context);
-    return flow(context, nodeId, FlowScope.of(scope, rawTasks.copies()), children);
+    return flow(context, nodeId, FlowScope.of(scope, rawTasks.copies())).withChildren(children);
   }
 
   /**
@@ -259,5 +295,15 @@ public class NodeClassifier {
         context.envelope(),
         scope,
         children);
+  }
+
+  private static FlowNode flow(Context context, String nodeId, FlowScope scope) {
+    String appId = NodeNaming.appId(nodeId);
+    return new FlowNode(
+        nodeId,
+        appId,
+        Names.nodeDefinitionResource(context.workflow(), context.versionId(), appId),
+        context.envelope(),
+        scope);
   }
 }
