@@ -82,6 +82,34 @@ class V2StructuralCompilerTest {
             then: end
       """;
 
+  private static final String GUARDED =
+      """
+      document:
+        dsl: '1.0.0'
+        namespace: default
+        name: guarded-payment
+        version: '1.0.0'
+      do:
+        - processPayment:
+            try:
+              - rejectPayment:
+                  raise:
+                    error:
+                      type: https://example.com/errors/payment-rejected
+                      status: 402
+                      title: Payment rejected
+                      detail: Payment authorization failed
+            catch:
+              errors:
+                with:
+                  status: 402
+              do:
+                - recordFailure:
+                    set:
+                      status: failed
+            then: end
+      """;
+
   private final V2StructuralCompiler compiler = new V2StructuralCompiler();
 
   /**
@@ -132,6 +160,7 @@ class V2StructuralCompilerTest {
             "order-fulfillment-main",
             "validate-order",
             "fulfill-order",
+            "fulfill-order-try",
             "reserve-items",
             "reserve-items-do",
             "reserve-item",
@@ -351,12 +380,16 @@ class V2StructuralCompilerTest {
   }
 
   /**
-   * Finding 2: a task named {@code catch} inside a {@code try} list shadows the dedicated catch
-   * child's key. Both must land in {@code children}, so the duplicate key is a compile error rather
-   * than a silent merge.
+   * Finding 2, superseded by ADR 0004: a task named {@code catch} inside a {@code try} list used to
+   * shadow the dedicated catch child's key because both hung off the same try node. Under ADR 0004
+   * the guarded list lives under the {@code try-catch} controller's {@code try} child (a {@code do}
+   * sequencer) while the dedicated catch node hangs off the controller itself — different parents,
+   * so the two can no longer share a key. This is the evidence: both nodes exist, under different
+   * parents, and compilation succeeds.
    */
   @Test
-  void rejectsATaskNamedCatchCollidingWithTheDedicatedCatchNode() {
+  void aTaskNamedCatchInsideTheGuardedListNoLongerCollidesWithTheDedicatedCatchNode()
+      throws Exception {
     String shadowed =
         """
         document:
@@ -376,9 +409,19 @@ class V2StructuralCompilerTest {
                       set:
                         status: failed
         """;
-    assertThatThrownBy(() -> compiler.compile(shadowed))
-        .isInstanceOf(CompilationException.class)
-        .hasMessageContaining("catch");
+
+    CompiledNode main = compiler.compile(shadowed).flowStepGraph().get(0);
+
+    JsonNode guardTrySpec = JSON.readTree(node(main, "guard-try").specText());
+    assertThat(guardTrySpec.get("children").get("catch").asText()).isEqualTo("catch");
+
+    CompiledNode guardCatch = node(main, "guard-catch");
+    JsonNode guardCatchSpec = JSON.readTree(guardCatch.specText());
+    assertThat(guardCatchSpec.get("children").get("markFailed").asText()).isEqualTo("mark-failed");
+
+    assertThat(main.flatten())
+        .extracting(CompiledNode::appId)
+        .contains("guard-try", "catch", "guard-catch", "mark-failed");
   }
 
   /**
@@ -402,48 +445,80 @@ class V2StructuralCompilerTest {
         .hasMessageContaining("foo");
   }
 
+  @Test
+  void classifiesATryScopeAsAControllerCarryingItsOwnErrorFilter() throws Exception {
+    CompiledNode main = compiler.compile(GUARDED).flowStepGraph().get(0);
+
+    CompiledNode tryCatch = node(main, "process-payment");
+    JsonNode spec = JSON.readTree(tryCatch.specText());
+    assertThat(spec.get("scope").asText()).isEqualTo("try-catch");
+    assertThat(spec.get("tasks")).isEmpty();
+    assertThat(spec.get("errors").get("with").get("status").asInt()).isEqualTo(402);
+    assertThat(spec.get("catch").asText()).isEqualTo("process-payment-catch");
+    assertThat(spec.get("children").get("try").asText()).isEqualTo("process-payment-try");
+    assertThat(spec.get("children").get("catch").asText()).isEqualTo("process-payment-catch");
+
+    JsonNode guarded = JSON.readTree(node(main, "process-payment-try").specText());
+    assertThat(guarded.get("scope").asText()).isEqualTo("do");
+    assertThat(guarded.get("children").get("rejectPayment").asText()).isEqualTo("reject-payment");
+
+    JsonNode recovery = JSON.readTree(node(main, "process-payment-catch").specText());
+    assertThat(recovery.get("scope").asText()).isEqualTo("do");
+    assertThat(recovery.get("children").get("recordFailure").asText()).isEqualTo("record-failure");
+  }
+
+  @Test
+  void aTryWithNoErrorFilterOmitsTheErrorsField() throws Exception {
+    CompiledNode main = compiler.compile(NESTED).flowStepGraph().get(0);
+
+    JsonNode spec = JSON.readTree(node(main, "fulfill-order").specText());
+    assertThat(spec.get("scope").asText()).isEqualTo("try-catch");
+    assertThat(spec.has("errors")).isFalse();
+    assertThat(spec.has("retry")).isFalse();
+    assertThat(spec.get("children").get("try").asText()).isEqualTo("fulfill-order-try");
+    assertThat(spec.get("children").get("catch").asText()).isEqualTo("fulfill-order-catch");
+  }
+
   /**
-   * Finding 4 (coordinator ruling): a retry-only {@code catch} — no {@code do} — produces no catch
-   * node at all, and the try node omits the {@code catch} field entirely. The retry configuration
-   * survives verbatim in the <em>parent's</em> {@code tasks} entry for this try task, not in the
-   * try node's own definition — see the scope-configuration entry under the change's design Open
-   * Questions, which is unresolved.
+   * A retry-only {@code catch} — no {@code do} — still produces no catch node and no {@code catch}
+   * field, but the retry policy now lands on the try-catch controller itself rather than surviving
+   * only in the parent's verbatim task entry (ADR 0004).
    */
   @Test
-  void aRetryOnlyCatchProducesNoCatchNodeOrField() throws Exception {
+  void aRetryOnlyCatchKeepsItsPolicyOnTheControllerWithNoCatchNode() throws Exception {
     String retryOnly =
         """
         document:
           dsl: '1.0.0'
           namespace: default
-          name: guarded
+          name: retry-only
           version: '1.0.0'
         do:
-          - guard:
+          - guarded:
               try:
-                - attempt:
-                    set:
-                      a: 1
+                - callOut:
+                    call: http
+                    with:
+                      method: get
+                      endpoint: https://example.com/thing
               catch:
-                errors:
-                  with: {}
                 retry: myRetryPolicy
         """;
-    DeploymentPlan plan = compiler.compile(retryOnly);
-    CompiledNode main = plan.flowStepGraph().get(0);
 
-    assertThat(main.flatten())
-        .extracting(CompiledNode::appId)
-        .containsExactly("guarded-main", "guard", "attempt");
+    CompiledNode main = compiler.compile(retryOnly).flowStepGraph().get(0);
+    JsonNode spec = JSON.readTree(node(main, "guarded").specText());
 
-    CompiledNode guard = node(main, "guard");
-    JsonNode spec = JSON.readTree(guard.specText());
+    assertThat(spec.get("scope").asText()).isEqualTo("try-catch");
+    assertThat(spec.get("retry").asText()).isEqualTo("myRetryPolicy");
     assertThat(spec.has("catch")).isFalse();
     assertThat(spec.get("children").properties()).hasSize(1);
-    assertThat(spec.at("/tasks/0/attempt/set/a").asInt()).isEqualTo(1);
+    assertThat(spec.get("children").get("try").asText()).isEqualTo("guarded-try");
   }
 
-  /** A {@code try} with no {@code catch} key at all compiles the same way — no catch node/field. */
+  /**
+   * A {@code try} with no {@code catch} key at all compiles the same way: scope {@code try-catch},
+   * no {@code errors}/{@code retry}/{@code catch} field, one child keyed {@code try}.
+   */
   @Test
   void aTryWithNoCatchAtAllHasNoCatchNodeOrField() throws Exception {
     String noCatch =
@@ -465,11 +540,16 @@ class V2StructuralCompilerTest {
 
     assertThat(main.flatten())
         .extracting(CompiledNode::appId)
-        .containsExactly("unguarded-main", "guard", "attempt");
+        .containsExactly("unguarded-main", "guard", "guard-try", "attempt");
 
     CompiledNode guard = node(main, "guard");
     JsonNode spec = JSON.readTree(guard.specText());
+    assertThat(spec.get("scope").asText()).isEqualTo("try-catch");
     assertThat(spec.has("catch")).isFalse();
+    assertThat(spec.has("errors")).isFalse();
+    assertThat(spec.has("retry")).isFalse();
+    assertThat(spec.get("children").properties()).hasSize(1);
+    assertThat(spec.get("children").get("try").asText()).isEqualTo("guard-try");
   }
 
   /**

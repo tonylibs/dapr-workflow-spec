@@ -46,8 +46,7 @@ public class NodeClassifier {
   private static final String SCOPE_MAIN = "main";
   private static final String SCOPE_DO = "do";
   private static final String SCOPE_FOR = "for";
-  private static final String SCOPE_TRY = "try";
-  private static final String SCOPE_CATCH = "catch";
+  private static final String SCOPE_TRY_CATCH = "try-catch";
   private static final String SCOPE_FORK = "fork";
   private static final String SCOPE_FORK_BRANCH = "forkBranch";
 
@@ -115,7 +114,7 @@ public class NodeClassifier {
     JsonNode rawBody = rawItem.body(nodeId);
     return task.map(Task::getForTask)
         .map(forTask -> forFlow(nodeId, forTask, rawBody, context))
-        .or(() -> task.map(Task::getTryTask).map(t -> tryFlow(nodeId, t, rawBody, context)))
+        .or(() -> task.map(Task::getTryTask).map(t -> tryCatchFlow(nodeId, t, rawBody, context)))
         .or(() -> task.map(Task::getForkTask).map(t -> forkFlow(nodeId, t, rawBody, context)))
         .or(() -> task.map(Task::getDoTask).map(t -> doFlow(nodeId, t, rawBody, context)))
         .orElseGet(() -> step(nodeId, item.getTask(), rawItem, context));
@@ -164,41 +163,49 @@ public class NodeClassifier {
   }
 
   /**
-   * A {@code try} scope: its own flow node over the guarded task list, plus a sibling {@code catch}
-   * flow node when the definition supplies a non-empty {@code catch.do}. The catch node appears
-   * both in {@code children} and in the dedicated {@code catch} field (design §D5). A {@code catch}
-   * with no {@code do} (e.g. retry-only recovery) gets no catch node and no {@code catch} field.
-   *
-   * <p>Note where the recovery configuration ends up: not here. This try node's own {@code
-   * specText} carries the guarded task list but neither {@code errors} nor {@code retry} — those
-   * survive verbatim only in the <em>parent's</em> {@code tasks} entry for this try task. Whether
-   * that is correct is the unresolved scope-configuration question in the change's design (Open
-   * Questions), which blocks Phase 2.
+   * A {@code try} scope (ADR 0004): a controller carrying {@code errors}/{@code retry} with an
+   * empty task list, a {@code try} child owning the guarded list, and — when the definition
+   * supplies a non-empty {@code catch.do} — a {@code catch} child owning the recovery list. Both
+   * children are {@code do} sequencers. A {@code catch} with no {@code do} (retry-only recovery)
+   * gets no catch node and no {@code catch} field, but its {@code retry} still lands on this
+   * controller.
    */
-  private static CompiledNode tryFlow(
+  private static CompiledNode tryCatchFlow(
       String nodeId, TryTask tryTask, JsonNode rawBody, Context context) {
-    RawTaskList rawTry = RawTaskList.in(rawBody, "try", tryTask.getTry());
+    CompiledNode guarded =
+        listFlow(
+            NodeNaming.tryBodyNodeId(nodeId), SCOPE_DO, tryTask.getTry(), rawBody, "try", context);
     Optional<CompiledNode> catchNode =
         Optional.ofNullable(tryTask.getCatch())
             .filter(caught -> caught.getDo() != null && !caught.getDo().isEmpty())
             .map(caught -> catchFlow(nodeId, caught, rawBody.get("catch"), context));
 
-    // The catch node is built first either way: the try node's own scope has to name its app ID.
-    FlowScope scope = FlowScope.of(SCOPE_TRY, rawTry.copies());
-    FlowNode tryNode =
-        flow(
-            context,
-            nodeId,
-            catchNode.map(CompiledNode::appId).map(scope::withCatch).orElse(scope),
-            classifyTasks(tryTask.getTry(), rawTry, context));
-    return catchNode.map(tryNode::withChild).orElse(tryNode);
+    FlowScope scope =
+        FlowScope.of(SCOPE_TRY_CATCH, List.of()).withTryCatchConfig(tryCatchConfig(rawBody));
+    FlowScope scoped = catchNode.map(CompiledNode::appId).map(scope::withCatch).orElse(scope);
+
+    List<CompiledNode> children = new ArrayList<>(2);
+    children.add(guarded);
+    catchNode.ifPresent(children::add);
+    return flow(context, nodeId, scoped, children);
   }
 
-  /** A {@code catch} scope: its own flow node over the recovery task list in {@code catch.do}. */
+  /** A try-catch controller's error filter and retry policy, read verbatim from {@code catch}. */
+  private static FlowScope.TryCatchConfig tryCatchConfig(JsonNode rawBody) {
+    JsonNode rawCatch = rawBody.path("catch");
+    return new FlowScope.TryCatchConfig(copy(rawCatch, "errors"), copy(rawCatch, "retry"));
+  }
+
+  /** One optional field of a raw object, deep-copied so the node owns its own JSON. */
+  private static Optional<JsonNode> copy(JsonNode parent, String field) {
+    return Optional.ofNullable(parent.get(field)).map(JsonNode::deepCopy);
+  }
+
+  /** A recovery list: a {@code do} sequencer over {@code catch.do}. */
   private static CompiledNode catchFlow(
       String tryNodeId, TryTaskCatch caught, JsonNode rawCatch, Context context) {
     return listFlow(
-        NodeNaming.catchNodeId(tryNodeId), SCOPE_CATCH, caught.getDo(), rawCatch, "do", context);
+        NodeNaming.catchNodeId(tryNodeId), SCOPE_DO, caught.getDo(), rawCatch, "do", context);
   }
 
   /**
