@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://dws.io/schemas/single-node-definition.v1.json",
   "title": "DWS single-node definition",
-  "description": "A pinned definition for exactly one Workflow Runtime v2 node. Runtimes additionally enforce that functionAppId is present if and only if task.call or task.run is present.",
+  "description": "A pinned definition for exactly one Workflow Runtime v2 node. There are two node shapes: sequencers (scope main/do) carry a task list and its children; controllers (scope for/try-catch/fork) carry their scope's own configuration (loop/error/fork fields) and an empty task list. Runtimes additionally enforce that functionAppId is present if and only if task.call or task.run is present.",
   "oneOf": [
     { "$ref": "#/definitions/flow" },
     { "$ref": "#/definitions/step" }
@@ -30,7 +30,7 @@
           "type": "object",
           "properties": {
             "kind": { "const": "flow" },
-            "scope": { "enum": ["main", "do", "for", "try", "catch", "fork", "forkBranch"] },
+            "scope": { "enum": ["main", "do", "for", "try-catch", "fork"] },
             "tasks": {
               "type": "array",
               "items": { "type": "object", "minProperties": 1 }
@@ -40,12 +40,55 @@
               "additionalProperties": { "type": "string", "minLength": 1 }
             },
             "catch": { "type": "string", "minLength": 1 },
-            "forkMode": { "enum": ["all", "any"] }
+            "forkMode": { "enum": ["all", "any"] },
+            "each": { "type": "string", "minLength": 1 },
+            "in": { "type": "string", "minLength": 1 },
+            "at": { "type": "string", "minLength": 1 },
+            "while": { "type": "string", "minLength": 1 },
+            "errors": { "type": "object" },
+            "retry": { "type": ["object", "string"] }
           },
           "required": ["scope", "tasks", "children"],
-          "if": { "properties": { "scope": { "const": "fork" } }, "required": ["scope"] },
-          "then": { "required": ["forkMode"] },
-          "else": { "not": { "required": ["forkMode"] } }
+          "allOf": [
+            {
+              "if": { "properties": { "scope": { "const": "fork" } }, "required": ["scope"] },
+              "then": { "required": ["forkMode"] },
+              "else": { "not": { "required": ["forkMode"] } }
+            },
+            {
+              "if": { "properties": { "scope": { "const": "for" } }, "required": ["scope"] },
+              "then": { "required": ["in"] },
+              "else": {
+                "not": {
+                  "anyOf": [
+                    { "required": ["each"] },
+                    { "required": ["in"] },
+                    { "required": ["at"] },
+                    { "required": ["while"] }
+                  ]
+                }
+              }
+            },
+            {
+              "if": { "properties": { "scope": { "const": "try-catch" } }, "required": ["scope"] },
+              "else": {
+                "not": {
+                  "anyOf": [
+                    { "required": ["errors"] },
+                    { "required": ["retry"] },
+                    { "required": ["catch"] }
+                  ]
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": { "scope": { "enum": ["for", "try-catch", "fork"] } },
+                "required": ["scope"]
+              },
+              "then": { "properties": { "tasks": { "maxItems": 0 } } }
+            }
+          ]
         }
       ]
     },

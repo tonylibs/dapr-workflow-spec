@@ -37,19 +37,18 @@ class SingleNodeDefinitionTest {
 
   @Test
   void rendersAFlowNodeWithChildrenAndCatch() throws Exception {
-    JsonNode task = JSON.readTree("{\"reserveItems\":{\"for\":{\"each\":\"item\"}}}");
     String rendered =
         SingleNodeDefinition.flow(
             ENVELOPE,
             "fulfill-order",
-            FlowScope.of("try", List.of(task)).withCatch("fulfill-order-catch"),
-            Map.of("reserveItems", "reserve-items", "catch", "fulfill-order-catch"));
+            FlowScope.of("try-catch", List.of()).withCatch("fulfill-order-catch"),
+            Map.of("try", "fulfill-order-try", "catch", "fulfill-order-catch"));
     JsonNode node = JSON.readTree(rendered);
     assertThat(node.get("nodeId").asText()).isEqualTo("fulfill-order");
     assertThat(node.get("kind").asText()).isEqualTo("flow");
-    assertThat(node.get("scope").asText()).isEqualTo("try");
+    assertThat(node.get("scope").asText()).isEqualTo("try-catch");
     assertThat(node.get("catch").asText()).isEqualTo("fulfill-order-catch");
-    assertThat(node.get("children").get("reserveItems").asText()).isEqualTo("reserve-items");
+    assertThat(node.get("children").get("try").asText()).isEqualTo("fulfill-order-try");
     assertThat(node.has("forkMode")).isFalse();
     assertValid(rendered);
   }
