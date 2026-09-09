@@ -6,8 +6,8 @@
   "scope" : "fork",
   "tasks" : [ ],
   "children" : {
-    "notifyRecipients" : "notify-channels-branch-notify-recipients",
-    "writeAudit" : "notify-channels-branch-write-audit"
+    "notifyRecipients" : "notify-recipients",
+    "writeAudit" : "write-audit"
   },
   "forkMode" : "all"
 }

@@ -1,0 +1,27 @@
+{
+  "workflow" : "order-fulfillment",
+  "version" : "order-fulfillment@<versionId>",
+  "nodeId" : "fulfill-order-try",
+  "kind" : "flow",
+  "scope" : "do",
+  "tasks" : [ {
+    "reserveItems" : {
+      "for" : {
+        "each" : "item",
+        "in" : ".items"
+      },
+      "do" : [ {
+        "reserveItem" : {
+          "call" : "http",
+          "with" : {
+            "method" : "post",
+            "endpoint" : "https://inventory.example.com/reservations"
+          }
+        }
+      } ]
+    }
+  } ],
+  "children" : {
+    "reserveItems" : "reserve-items"
+  }
+}

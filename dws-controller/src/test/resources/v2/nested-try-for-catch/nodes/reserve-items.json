@@ -4,16 +4,10 @@
   "nodeId" : "reserve-items",
   "kind" : "flow",
   "scope" : "for",
-  "tasks" : [ {
-    "reserveItem" : {
-      "call" : "http",
-      "with" : {
-        "method" : "post",
-        "endpoint" : "https://inventory.example.com/reservations"
-      }
-    }
-  } ],
+  "tasks" : [ ],
   "children" : {
-    "reserveItem" : "reserve-item"
-  }
+    "do" : "reserve-items-do"
+  },
+  "each" : "item",
+  "in" : ".items"
 }
