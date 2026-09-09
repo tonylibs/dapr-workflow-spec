@@ -60,7 +60,7 @@ class SingleNodeDefinitionTest {
             ENVELOPE,
             "notify-channels",
             FlowScope.of("fork", List.of()).withForkMode("all"),
-            Map.of("notifyRecipients", "notify-channels-branch-notify-recipients"));
+            Map.of("notifyRecipients", "notify-recipients"));
     JsonNode node = JSON.readTree(rendered);
     assertThat(node.get("forkMode").asText()).isEqualTo("all");
     assertThat(node.get("tasks")).isEmpty();
@@ -122,6 +122,7 @@ class SingleNodeDefinitionTest {
     assertThat(node.has("at")).isFalse();
     assertThat(node.has("while")).isFalse();
     assertThat(node.get("children").get("do").asText()).isEqualTo("reserve-items-do");
+    assertValid(text);
   }
 
   @Test
@@ -132,7 +133,10 @@ class SingleNodeDefinitionTest {
             .withTryCatchConfig(
                 new FlowScope.TryCatchConfig(
                     Optional.of(json.readTree("{\"with\":{\"status\":402}}")),
-                    Optional.of(json.readTree("\"myRetryPolicy\""))))
+                    Optional.of(json.readTree("\"myRetryPolicy\"")),
+                    Optional.of("paymentError"),
+                    Optional.of(".paymentError.status == 402"),
+                    Optional.of(".retryBudget == 0")))
             .withCatch("process-payment-catch");
 
     String text =
@@ -148,6 +152,10 @@ class SingleNodeDefinitionTest {
     assertThat(node.get("catch").asText()).isEqualTo("process-payment-catch");
     assertThat(node.get("errors").get("with").get("status").asInt()).isEqualTo(402);
     assertThat(node.get("retry").asText()).isEqualTo("myRetryPolicy");
+    assertThat(node.get("as").asText()).isEqualTo("paymentError");
+    assertThat(node.get("when").asText()).isEqualTo(".paymentError.status == 402");
+    assertThat(node.get("exceptWhen").asText()).isEqualTo(".retryBudget == 0");
+    assertValid(text);
   }
 
   @Test
@@ -161,7 +169,18 @@ class SingleNodeDefinitionTest {
 
     JsonNode node = new ObjectMapper().readTree(text);
     for (String field :
-        List.of("each", "in", "at", "while", "errors", "retry", "catch", "forkMode")) {
+        List.of(
+            "each",
+            "in",
+            "at",
+            "while",
+            "errors",
+            "retry",
+            "as",
+            "when",
+            "exceptWhen",
+            "catch",
+            "forkMode")) {
       assertThat(node.has(field)).as(field).isFalse();
     }
   }

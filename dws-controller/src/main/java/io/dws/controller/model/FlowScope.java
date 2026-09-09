@@ -20,7 +20,8 @@ import java.util.Optional;
  *     one
  * @param forkMode a {@code fork} scope's {@code any}/{@code all} completion mode
  * @param forConfig a {@code for} scope's own loop configuration
- * @param tryCatchConfig a {@code try-catch} scope's own error filter and retry policy
+ * @param tryCatchConfig a {@code try-catch} scope's own recovery configuration — error filter,
+ *     retry policy, recovery guards, and error variable name
  */
 public record FlowScope(
     String scope,
@@ -41,8 +42,20 @@ public record FlowScope(
       Optional<String> at,
       Optional<String> whileCondition) {}
 
-  /** A {@code try-catch} controller's error filter and retry policy, read verbatim. */
-  public record TryCatchConfig(Optional<JsonNode> errors, Optional<JsonNode> retry) {}
+  /**
+   * A {@code try-catch} controller's recovery configuration, read verbatim from the definition's
+   * {@code catch} block. {@code errors} filters which errors this catch matches and {@code retry}
+   * names or spells out the retry policy; {@code when} and {@code exceptWhen} are the additional
+   * guards deciding whether to recover at all, and {@code as} names the error variable the recovery
+   * body binds. Every field is optional here rather than validated, for the same reason as {@link
+   * ForConfig}: ADR 0004 defers v2 semantic validation to the single-node schema.
+   */
+  public record TryCatchConfig(
+      Optional<JsonNode> errors,
+      Optional<JsonNode> retry,
+      Optional<String> as,
+      Optional<String> when,
+      Optional<String> exceptWhen) {}
 
   public FlowScope {
     tasks = List.copyOf(tasks);
@@ -72,7 +85,7 @@ public record FlowScope(
         scope, tasks, catchAppId, forkMode, Optional.of(forConfig), tryCatchConfig);
   }
 
-  /** This scope with its error filter and retry policy attached. */
+  /** This scope with its recovery configuration attached. */
   public FlowScope withTryCatchConfig(TryCatchConfig tryCatchConfig) {
     return new FlowScope(
         scope, tasks, catchAppId, forkMode, forConfig, Optional.of(tryCatchConfig));

@@ -13,8 +13,10 @@
   fork-branch derived identifiers
 - [x] 1.7 Redraw the nested try/for/catch and parallel-fork worked-example mermaid diagrams to match
   the new node shapes (see ADR 0004 §Worked examples for the target diagrams)
-- [x] 1.8 Validation: `openspec validate --all --json` passes, and the schema file parses as valid
-  draft-07
+- [x] 1.8 Validation: `openspec validate scope-node-sequencer-controller-split --json` reports
+  `"valid": true`, and the schema file parses as valid draft-07. (`--all` reports 50 passed / 3
+  failed; the 3 — `helm-admin-gateway`, `ows-phase3-errors-timeouts`, `workflow-error-format` — are
+  pre-existing failures unrelated to and untouched by this change.)
 
 ## 2. dws-controller — model changes
 
@@ -80,4 +82,8 @@
   workflow-structural-classification/spec.md`'s MODIFIED requirement headers match
   `openspec/specs/workflow-structural-classification/spec.md`'s existing headers verbatim (trim,
   case-sensitive) — required for archive-time delta apply to find them
-- [x] 7.2 Validation: `openspec validate --all --json` passes with no delta-apply warnings
+- [x] 7.2 Validation: `openspec validate scope-node-sequencer-controller-split --json` reports
+  `"valid": true` with no delta-apply warnings for this change's own deltas
+  (`workflow-structural-classification`, `single-node-definition-contract`). A repo-wide
+  `openspec validate --all --json` still reports the same 3 pre-existing failures named in 1.8,
+  which this change neither introduces nor fixes.

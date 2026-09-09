@@ -76,7 +76,7 @@ the task-specific I/O, while the workflow layer retains orchestration and retry 
 | Entity | Meaning | Diagram treatment |
 |---|---|---|
 | Workflow | The submitted DSL document. | Root entity. It owns the top-level `main` flow. |
-| Flow | A scope node, one of two shapes. A **sequencer** (`main`, `do`) owns a task list, in source order, and no configuration. A **controller** (`for`, `try-catch`, `fork`) owns its scope's own configuration, renders an empty task list, and delegates each task list it owns to a `do` child. | Green node. A flow invokes its direct child steps and flows. |
+| Flow | A scope node, one of two shapes. A **sequencer** (`main`, `do`) owns a task list, in source order, and no configuration. A **controller** (`for`, `try-catch`, `fork`) owns its scope's own configuration, renders an empty task list, and calls its children — for `for` and `try-catch` these are derived `do` sequencers; for `fork` they are the branch root tasks' own nodes. | Green node. A flow invokes its direct child steps and flows. |
 | Step | A single task that does not own a task list. | Orange node. |
 | Fork node | The controller flow created for a `fork` task. | Green node. It calls each branch root's own node directly — a child Flow or a Step, depending on that node's kind — and performs the join or race. |
 

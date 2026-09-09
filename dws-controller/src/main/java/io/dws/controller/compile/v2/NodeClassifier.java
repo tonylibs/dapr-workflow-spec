@@ -163,12 +163,12 @@ public class NodeClassifier {
   }
 
   /**
-   * A {@code try} scope (ADR 0004): a controller carrying {@code errors}/{@code retry} with an
-   * empty task list, a {@code try} child owning the guarded list, and — when the definition
-   * supplies a non-empty {@code catch.do} — a {@code catch} child owning the recovery list. Both
-   * children are {@code do} sequencers. A {@code catch} with no {@code do} (retry-only recovery)
-   * gets no catch node and no {@code catch} field, but its {@code retry} still lands on this
-   * controller.
+   * A {@code try} scope (ADR 0004): a controller carrying the {@code catch} block's own
+   * configuration with an empty task list, a {@code try} child owning the guarded list, and — when
+   * the definition supplies a non-empty {@code catch.do} — a {@code catch} child owning the
+   * recovery list. Both children are {@code do} sequencers. A {@code catch} with no {@code do}
+   * (retry-only recovery) gets no catch node and no {@code catch} field, but its {@code retry}
+   * still lands on this controller.
    */
   private static CompiledNode tryCatchFlow(
       String nodeId, TryTask tryTask, JsonNode rawBody, Context context) {
@@ -190,10 +190,21 @@ public class NodeClassifier {
     return flow(context, nodeId, scoped, children);
   }
 
-  /** A try-catch controller's error filter and retry policy, read verbatim from {@code catch}. */
+  /**
+   * A try-catch controller's recovery configuration, read verbatim from {@code catch}: the error
+   * filter and retry policy, plus the {@code when}/{@code exceptWhen} guards that decide whether to
+   * recover and the {@code as} name the recovery body binds the error to. Read from the raw JSON
+   * rather than the typed model for the same reason as {@link #forConfig}, and so that a field the
+   * SDK models but this walk does not interpret still reaches the node verbatim.
+   */
   private static FlowScope.TryCatchConfig tryCatchConfig(JsonNode rawBody) {
     JsonNode rawCatch = rawBody.path("catch");
-    return new FlowScope.TryCatchConfig(copy(rawCatch, "errors"), copy(rawCatch, "retry"));
+    return new FlowScope.TryCatchConfig(
+        copy(rawCatch, "errors"),
+        copy(rawCatch, "retry"),
+        text(rawCatch, "as"),
+        text(rawCatch, "when"),
+        text(rawCatch, "exceptWhen"));
   }
 
   /** One optional field of a raw object, deep-copied so the node owns its own JSON. */

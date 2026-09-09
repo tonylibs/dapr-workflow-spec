@@ -458,6 +458,129 @@ class V2StructuralCompilerTest {
     assertThat(recovery.get("children").get("recordFailure").asText()).isEqualTo("record-failure");
   }
 
+  /**
+   * A {@code catch} block's guards travel with the controller that evaluates them: {@code when} and
+   * {@code exceptWhen} decide whether to recover at all, and {@code as} names the error variable
+   * the recovery body binds. Dropping any of them would leave the runtime unable to reconstruct the
+   * author's recovery condition — the same silent defect ADR 0004 exists to end.
+   */
+  @Test
+  void carriesEveryCatchGuardOntoTheTryCatchController() throws Exception {
+    String guardedCatch =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: guarded-catch
+          version: '1.0.0'
+        do:
+          - processPayment:
+              try:
+                - rejectPayment:
+                    set:
+                      a: 1
+              catch:
+                errors:
+                  with:
+                    status: 402
+                as: paymentError
+                when: .paymentError.status == 402
+                exceptWhen: .retryBudget == 0
+                do:
+                  - recordFailure:
+                      set:
+                        status: failed
+        """;
+
+    CompiledNode main = compiler.compile(guardedCatch).flowStepGraph().get(0);
+    JsonNode spec = JSON.readTree(node(main, "process-payment").specText());
+
+    assertThat(spec.get("scope").asText()).isEqualTo("try-catch");
+    assertThat(spec.get("errors").get("with").get("status").asInt()).isEqualTo(402);
+    assertThat(spec.get("as").asText()).isEqualTo("paymentError");
+    assertThat(spec.get("when").asText()).isEqualTo(".paymentError.status == 402");
+    assertThat(spec.get("exceptWhen").asText()).isEqualTo(".retryBudget == 0");
+  }
+
+  /**
+   * The whole loop configuration reaches the controller, not just the two fields the shipped
+   * fixtures happen to use: {@code at} lives inside {@code for} while {@code while} is a sibling of
+   * it on the task body, so the two are read from different raw objects.
+   */
+  @Test
+  void carriesEveryLoopFieldOntoTheForController() throws Exception {
+    String fullLoop =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: full-loop
+          version: '1.0.0'
+        do:
+          - reserveItems:
+              for:
+                each: item
+                in: .items
+                at: index
+              while: .remaining > 0
+              do:
+                - reserveItem:
+                    set:
+                      reserved: true
+        """;
+
+    CompiledNode main = compiler.compile(fullLoop).flowStepGraph().get(0);
+    JsonNode spec = JSON.readTree(node(main, "reserve-items").specText());
+
+    assertThat(spec.get("scope").asText()).isEqualTo("for");
+    assertThat(spec.get("tasks")).isEmpty();
+    assertThat(spec.get("each").asText()).isEqualTo("item");
+    assertThat(spec.get("in").asText()).isEqualTo(".items");
+    assertThat(spec.get("at").asText()).isEqualTo("index");
+    assertThat(spec.get("while").asText()).isEqualTo(".remaining > 0");
+    assertThat(spec.get("children").get("do").asText()).isEqualTo("reserve-items-do");
+  }
+
+  /**
+   * {@code retry} is a oneOf of a named-policy string and an inline policy object. The inline form
+   * is copied onto the controller verbatim rather than flattened or re-serialized through the typed
+   * model.
+   */
+  @Test
+  void carriesAnInlineRetryPolicyObjectOntoTheTryCatchControllerVerbatim() throws Exception {
+    String inlineRetry =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: inline-retry
+          version: '1.0.0'
+        do:
+          - guarded:
+              try:
+                - callOut:
+                    call: http
+                    with:
+                      method: get
+                      endpoint: https://example.com/thing
+              catch:
+                retry:
+                  limit:
+                    attempt:
+                      count: 3
+                  delay:
+                    seconds: 2
+        """;
+
+    CompiledNode main = compiler.compile(inlineRetry).flowStepGraph().get(0);
+    JsonNode spec = JSON.readTree(node(main, "guarded").specText());
+
+    assertThat(spec.get("scope").asText()).isEqualTo("try-catch");
+    assertThat(spec.get("retry").isObject()).isTrue();
+    assertThat(spec.at("/retry/limit/attempt/count").asInt()).isEqualTo(3);
+    assertThat(spec.at("/retry/delay/seconds").asInt()).isEqualTo(2);
+  }
+
   @Test
   void aTryWithNoErrorFilterOmitsTheErrorsField() throws Exception {
     CompiledNode main = compiler.compile(NESTED).flowStepGraph().get(0);

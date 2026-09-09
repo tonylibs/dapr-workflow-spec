@@ -6,9 +6,10 @@
 rooted at the top-level `do` scope, preserving source order within every task list. Every `FlowNode`
 SHALL be one of exactly two shapes: a **sequencer** (`scope` `main` or `do`), which owns its own task
 list in source order and carries no scope-specific configuration; or a **controller** (`scope` `for`,
-`try-catch`, or `fork`), which owns that scope's configuration, renders an empty `tasks` list, and
-delegates each task list it owns to a `do`-shaped child. It SHALL classify `main`, each nested `do`,
-each `for`, each `try`, each `fork`, and every other task kind — `set`, `switch`, `wait`, `listen`,
+`try-catch`, or `fork`), which owns its scope's own configuration, renders an empty `tasks` list, and
+calls its children — for `for` and `try-catch` these are derived `do` sequencers; for `fork` they are
+the branch root tasks' own nodes. It SHALL classify `main`, each nested `do`, each `for`, each `try`,
+and each `fork` as a `FlowNode`, and every other task kind — `set`, `switch`, `wait`, `listen`,
 `emit`, `raise`, `call`, `run` — as a `StepNode`, with no exceptions.
 
 #### Scenario: a nested try/for/catch definition classifies into five nodes under main

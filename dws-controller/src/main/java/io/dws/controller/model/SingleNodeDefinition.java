@@ -32,6 +32,9 @@ public class SingleNodeDefinition {
             config -> {
               config.errors().ifPresent(errors -> node.set("errors", errors));
               config.retry().ifPresent(retry -> node.set("retry", retry));
+              config.as().ifPresent(as -> node.put("as", as));
+              config.when().ifPresent(when -> node.put("when", when));
+              config.exceptWhen().ifPresent(exceptWhen -> node.put("exceptWhen", exceptWhen));
             });
     scope
         .forConfig()
