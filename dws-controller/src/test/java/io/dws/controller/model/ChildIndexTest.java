@@ -28,10 +28,11 @@ class ChildIndexTest {
   }
 
   /**
-   * The collision this rejects is reachable from a real definition: a {@code try} task whose
-   * guarded list contains a task literally named {@code catch} produces a child keyed {@code catch}
-   * alongside the dedicated catch node's {@code <try>.catch}. Merging them would leave one node
-   * unreachable through this map though both still get a Deployment.
+   * The collision this rejects is reachable from a real definition: a {@code do} task list is a
+   * YAML sequence of single-key entries, not a map, so nothing stops two sibling tasks from
+   * literally sharing the same name — both then resolve to the same {@code key()} (and the same
+   * sanitized app ID). Merging them would leave one node unreachable through this map though both
+   * still get a Deployment.
    */
   @Test
   void rejectsTwoChildrenResolvingToTheSameKey() {

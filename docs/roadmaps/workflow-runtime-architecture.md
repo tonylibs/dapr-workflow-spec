@@ -42,7 +42,7 @@ parent Flow performs all durable orchestration; a Step performs exactly one task
 
 | Component | Tasks and constructs |
 |---|---|
-| Flow service | Top-level `main` flow, `for`, `try`, `catch`, `fork`, and fork branch-flow lifecycle. When a Flow is a `fork` scope, it performs `allOf` when `compete: false` or `anyOf` when `compete: true` for its branches. |
+| Flow service | Top-level `main` flow, `do`, `for`, `try-catch`, and `fork`. When a Flow is a `fork` scope, it performs `allOf` when `compete: false` or `anyOf` when `compete: true` for its branches. |
 | Step service | `call`, `run`, `set`, `switch`, `wait`, `listen`, `emit`, and `raise`. The `call` and `run` variants delegate their concrete work to Knative functions; the remaining Step task types execute in their Java Activity implementations. |
 
 At the service boundary, a .NET Flow calls another .NET Flow through
@@ -76,22 +76,19 @@ the task-specific I/O, while the workflow layer retains orchestration and retry 
 | Entity | Meaning | Diagram treatment |
 |---|---|---|
 | Workflow | The submitted DSL document. | Root entity. It owns the top-level `main` flow. |
-| Flow | A task-list scope. | Green node. A flow invokes its direct child steps and flows. |
+| Flow | A scope node, one of two shapes. A **sequencer** (`main`, `do`) owns a task list, in source order, and no configuration. A **controller** (`for`, `try-catch`, `fork`) owns its scope's own configuration, renders an empty task list, and delegates each task list it owns to a `do` child. | Green node. A flow invokes its direct child steps and flows. |
 | Step | A single task that does not own a task list. | Orange node. |
-| Fork branch flow | The implicit scope created for every item in `fork.branches`. | Green node. All sibling branch flows start in parallel. |
-| Fork node | The flow created for a `fork` task. | Green node. It starts every branch flow and performs the join or race. |
+| Fork node | The controller flow created for a `fork` task. | Green node. It calls each branch root's own node directly — a child Flow or a Step, depending on that node's kind — and performs the join or race. |
 
 ## Classification rules
 
 | DSL construct | Classification | Reason |
 |---|---|---|
-| Top-level `do` | `Flow: main` | It is the workflow's outer task-list scope. |
-| Nested `do` | Flow | Its `do` property owns a task list, which a step never does. Its scope value is `do`. |
-| `for` | Flow | Its `do` property owns the loop body. |
-| `try` | Flow | It owns the `try` task list and may own a `catch.do` recovery list. |
-| `catch` | Flow | `catch.do` owns the recovery task list. Its identifier is derived as `<try-task>.catch`. |
-| `fork` | Flow | It owns the fan-out over `fork.branches` and the join. Its own task list is empty; `forkMode` is `all` when `compete: false` and `any` when `compete: true`. |
-| Each `fork.branches` item | Fork branch flow | It is an independently executed child scope of the fork. |
+| Top-level `do` | `Flow: main` | It is the workflow's outer task-list scope (sequencer). |
+| Nested `do` | Flow | Its `do` property owns a task list, which a step never does. Its scope value is `do` (sequencer). |
+| `for` | Flow | A controller carrying `each`/`in`/`at`/`while`. Its own task list is empty; it delegates to a `do` child that owns the loop body. |
+| `try-catch` | Flow | A controller carrying `errors`/`retry`. Its own task list is empty; it delegates to a `try` child (the guarded list) and, when `catch.do` is non-empty, a `catch` child (the recovery list, derived as `<try-task>.catch`). |
+| `fork` | Flow | A controller carrying `forkMode` (`all` when `compete: false`, `any` when `compete: true`). Its own task list is empty; its children are each branch root task's own node, addressed directly rather than wrapped in a scope of its own. |
 | `call`, `run`, `set`, `switch`, `wait`, `listen`, `emit`, `raise` | Step | These tasks do not own a nested task list. |
 
 `switch` is deliberately a **step**, not a flow. Its `then` values route execution to named
@@ -108,9 +105,10 @@ Every edge represents one of these target invocations:
 - Flow -> child Flow: cross-app `CallChildWorkflowAsync`.
 - Flow -> Step: cross-app `CallActivityAsync`.
 - I/O Step -> task-derived Knative function: Dapr service invocation using HTTP `POST /run`.
-- A parent Flow calling the fork Flow, which calls each fork branch Flow: parallel
-  `CallChildWorkflowAsync` calls. The fork Flow performs `allOf` when `compete: false` and `anyOf`
-  when `compete: true`.
+- A parent Flow calling the fork Flow, which calls each branch root's own node directly, in
+  parallel: cross-app `CallChildWorkflowAsync` for a branch rooted at a Flow, cross-app
+  `CallActivityAsync` for a branch rooted at a Step. The fork Flow performs `allOf` when
+  `compete: false` and `anyOf` when `compete: true`.
 
 The view must not add control-path edges such as `then`, switch cases, loop-back arrows, or error
 transitions. Dapr sidecars, state stores, pub/sub brokers, and Kubernetes resources belong in a
@@ -154,15 +152,17 @@ do:
 ```mermaid
 flowchart LR
   Main["Flow: main"] -->|CallActivityAsync| Validate["Step: validateOrder"]
-  Main -->|CallChildWorkflowAsync| Try["Flow (try): fulfillOrder"]
-  Try -->|CallChildWorkflowAsync| For["Flow (for): reserveItems"]
-  For -->|CallActivityAsync| Reserve["Step: reserveItem"]
+  Main -->|CallChildWorkflowAsync| TryCatch["Flow (try-catch): fulfillOrder"]
+  TryCatch -->|CallChildWorkflowAsync: try| TryDo["Flow (do): fulfillOrder.try"]
+  TryCatch -->|CallChildWorkflowAsync: catch| CatchDo["Flow (do): fulfillOrder.catch"]
+  TryDo -->|CallChildWorkflowAsync| For["Flow (for): reserveItems"]
+  For -->|CallChildWorkflowAsync: do| ForDo["Flow (do): reserveItems.do"]
+  ForDo -->|CallActivityAsync| Reserve["Step: reserveItem"]
   Reserve -->|HTTP POST /run| Http["Knative function: dws-call-http"]
-  Try -->|CallChildWorkflowAsync| Catch["Flow (catch): fulfillOrder.catch"]
-  Catch -->|CallActivityAsync| Failed["Step: markOrderFailed"]
+  CatchDo -->|CallActivityAsync| Failed["Step: markOrderFailed"]
 ```
 
-## Example: parallel fork branch flows
+## Example: parallel fork
 
 ```yaml
 document:
@@ -201,13 +201,16 @@ do:
 flowchart LR
   Main["Flow: main"] -->|CallActivityAsync| Prepare["Step: prepareNotification"]
   Main -->|CallChildWorkflowAsync| Fork["Flow (fork): notifyChannels"]
-  Fork -->|parallel CallChildWorkflowAsync| BranchNotify["Flow (fork branch): notifyChannels.branch.notifyRecipients"]
-  Fork -->|parallel CallChildWorkflowAsync| BranchAudit["Flow (fork branch): notifyChannels.branch.writeAudit"]
-  BranchNotify -->|CallChildWorkflowAsync| For["Flow (for): notifyRecipients"]
-  For -->|CallActivityAsync| Email["Step: sendEmail"]
+  Fork -->|parallel CallChildWorkflowAsync| For["Flow (for): notifyRecipients"]
+  Fork -->|parallel CallActivityAsync| Audit["Step: writeAudit"]
+  For -->|CallChildWorkflowAsync: do| ForDo["Flow (do): notifyRecipients.do"]
+  ForDo -->|CallActivityAsync| Email["Step: sendEmail"]
   Email -->|HTTP POST /run| Http["Knative function: dws-call-http"]
-  BranchAudit -->|CallActivityAsync| Audit["Step: writeAudit"]
 ```
+
+The two branches are not the same kind: `notifyRecipients` is a Flow reached with
+`CallChildWorkflowAsync`, `writeAudit` a Step reached with `CallActivityAsync`. The fork does not
+choose between them — the child's own compiled kind does.
 
 ## Example: state and decision steps
 
@@ -340,8 +343,9 @@ flowchart LR
 
 ## Example: raise and recovery steps
 
-The `try` and `catch` task lists are child Flows. `raise` and the recovery `set` remain Java
-Activity Steps invoked by the Flow that owns each task.
+The guarded and recovery task lists are `do` children of a `try-catch` controller Flow, which
+carries the `errors` filter and, when present, a `retry` policy. `raise` and the recovery `set`
+remain Java Activity Steps invoked by the `do` Flow that owns each task.
 
 ```yaml
 document:
@@ -373,10 +377,11 @@ do:
 
 ```mermaid
 flowchart LR
-  Main["Flow: main"] -->|CallChildWorkflowAsync| Try["Flow (try): processPayment"]
-  Try -->|CallActivityAsync| Raise["Step: rejectPayment"]
-  Try -->|CallChildWorkflowAsync| Catch["Flow (catch): processPayment.catch"]
-  Catch -->|CallActivityAsync| Recover["Step: recordFailure"]
+  Main["Flow: main"] -->|CallChildWorkflowAsync| TryCatch["Flow (try-catch): processPayment<br/>errors.with.status: 402"]
+  TryCatch -->|CallChildWorkflowAsync: try| TryDo["Flow (do): processPayment.try"]
+  TryCatch -->|CallChildWorkflowAsync: catch<br/>only when the filter matches| CatchDo["Flow (do): processPayment.catch"]
+  TryDo -->|CallActivityAsync| Raise["Step: rejectPayment"]
+  CatchDo -->|CallActivityAsync| Recover["Step: recordFailure"]
 ```
 
 ## Target-state acceptance criteria
@@ -386,16 +391,18 @@ The target state is achieved when all of the following are true:
 1. The controller compiles every supported definition into a structural graph of Flow and Step
    components while preserving source order within each task list.
 2. The compiler generates stable derived identifiers for scopes without an explicit DSL name:
-   `<workflow>.main`, `<try-task>.catch`, and `<fork-task>.branch.<branch-root-task>`.
+   `<workflow>.main`, `<try-task>.try`, `<try-task>.catch`, and `<for-task>.do`.
 3. Each compiled Flow is deployed as a .NET Dapr Workflow service and can be scheduled from its
    parent with a target app ID.
 4. Each compiled Step is deployed as a Java/Spring Dapr Workflow Activity service and can be
    scheduled from its parent with a target app ID.
 5. I/O Steps invoke their task-derived Knative function through Dapr service invocation and return
    its result or structured failure to the parent Flow.
-6. A `fork` task compiles to its own Flow, deployed like any other scope: it starts one child Flow
-   per branch and performs `allOf` when `compete: false` or `anyOf` when `compete: true`.
-7. The visualizer renders `fork` as its own Flow node with its branch Flows as children.
+6. A `fork` task compiles to its own Flow, deployed like any other scope: it calls each branch
+   root's own node — a child workflow for a Flow, an activity for a Step — and performs `allOf`
+   when `compete: false` or `anyOf` when `compete: true`.
+7. The visualizer renders `fork` as its own Flow node with each branch root's own node — a Flow or
+   a Step, depending on that node's kind — as its child.
 8. Structural, execution, data-flow, and deployment diagrams remain separate view modes.
 9. Duplicate task names or ambiguous derived identifiers are rejected or visibly reported,
    consistent with controller validation.

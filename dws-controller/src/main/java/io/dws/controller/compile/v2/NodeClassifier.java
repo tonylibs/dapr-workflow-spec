@@ -28,8 +28,9 @@ import lombok.experimental.UtilityClass;
  * ADR 0003).
  *
  * <p>Classification is the table in the change's design §D2: {@code main}, each nested {@code do},
- * each {@code for}, each {@code try}, each {@code catch}, each {@code fork} and each fork branch
- * become a {@link FlowNode}; every other task kind becomes a {@link StepNode}, with no exceptions.
+ * each {@code for}, each {@code try-catch}, and each {@code fork} become a {@link FlowNode}; a
+ * fork's branch-root children are classified like any other task and may be a {@link FlowNode} or a
+ * {@link StepNode}. Every other task kind becomes a {@link StepNode}, with no exceptions.
  *
  * <p>The walk is driven by the typed model but reads every task object out of a parallel raw {@link
  * JsonNode} of the same definition text, so a node's rendered {@code tasks}/{@code task} carries
