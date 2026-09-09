@@ -15,7 +15,7 @@ public class SpecParser {
   /** Rejects a definition with no text at all, before either parse is attempted. */
   public static void requireNonBlank(String specText) {
     if (specText == null || specText.isBlank()) {
-      throw new CompilationException(List.of("Definition is empty"));
+      throw new CompilationException("Definition is empty");
     }
   }
 
@@ -27,7 +27,7 @@ public class SpecParser {
     try {
       Workflow workflow = WorkflowReader.readWorkflowFromString(specText, format);
       if (workflow == null) {
-        throw new CompilationException(List.of("Definition could not be parsed"));
+        throw new CompilationException("Definition could not be parsed");
       }
       return workflow;
     } catch (CompilationException e) {

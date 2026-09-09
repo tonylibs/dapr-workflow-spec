@@ -4,7 +4,6 @@ import io.dws.controller.compile.CompilationException;
 import io.dws.controller.model.CompiledNode;
 import io.dws.controller.model.StepNode;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import lombok.experimental.UtilityClass;
 
@@ -48,7 +47,7 @@ public class AppIdRegistry {
     String previous = claimants.putIfAbsent(appId, claimant);
     if (previous != null) {
       throw new CompilationException(
-          List.of(previous + " and " + claimant + " both derive the app ID '" + appId + "'"));
+          previous + " and " + claimant + " both derive the app ID '" + appId + "'");
     }
   }
 }

@@ -1,8 +1,9 @@
 package io.dws.controller.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import org.apache.commons.collections4.ListUtils;
 
 /**
  * An internal node of the compiled Flow/Step graph (ADR 0002): a {@code flow} that dispatches its
@@ -39,6 +40,15 @@ public record FlowNode(
     ChildIndex.of(children); // rejects a duplicate key before the node exists
   }
 
+  public FlowNode(
+      String nodeId,
+      String appId,
+      String definitionResource,
+      SingleNodeDefinition.Envelope envelope,
+      FlowScope scope) {
+    this(nodeId, appId, definitionResource, envelope, scope, Collections.emptyList());
+  }
+
   /**
    * This node's single-node definition JSON (Phase 0 schema), rendered from the scope and the
    * current children.
@@ -54,9 +64,9 @@ public record FlowNode(
 
   /** This flow with {@code child} appended after its current children, in source order. */
   public FlowNode withChild(CompiledNode child) {
-    List<CompiledNode> appended = new ArrayList<>(children);
-    appended.add(child);
-    return withChildren(appended);
+    //    List<CompiledNode> appended = new ArrayList<>(children);
+    //    appended.add(child);
+    return withChildren(ListUtils.union(children, List.of(child)));
   }
 
   /** This flow with {@code children} in place of its current ones. */

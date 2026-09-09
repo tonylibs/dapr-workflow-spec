@@ -20,6 +20,7 @@ import io.serverlessworkflow.api.types.TryTaskCatch;
 import io.serverlessworkflow.api.types.Workflow;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import lombok.experimental.UtilityClass;
 
@@ -87,7 +88,7 @@ public class NodeClassifier {
       // The model's child-key invariant, re-reported as a compile error. Translated here, at the
       // walk's one entry point, rather than at each construction site — a per-site wrapper is
       // exactly what a later site (an append, say) forgets.
-      throw new CompilationException(List.of(e.getMessage()));
+      throw new CompilationException(e.getMessage());
     }
   }
 
@@ -140,10 +141,8 @@ public class NodeClassifier {
         listFlow(
             NodeNaming.forBodyNodeId(nodeId), SCOPE_DO, forTask.getDo(), rawBody, "do", context);
     return flow(
-        context,
-        nodeId,
-        FlowScope.of(SCOPE_FOR, List.of()).withForConfig(forConfig(rawBody)),
-        List.of(body));
+            context, nodeId, FlowScope.of(SCOPE_FOR, List.of()).withForConfig(forConfig(rawBody)))
+        .withChild(body);
   }
 
   /**
@@ -252,8 +251,9 @@ public class NodeClassifier {
     String appId = NodeNaming.appId(nodeId);
     String functionAppId =
         Optional.ofNullable(task)
-            .filter(t -> t.getCallTask() != null || t.getRunTask() != null)
-            .map(t -> NodeNaming.functionAppId(appId))
+                .filter(t -> Objects.nonNull(t.getCallTask()))
+                .filter(t -> Objects.nonNull(t.getRunTask()))
+            .map(_ -> NodeNaming.functionAppId(appId))
             .orElse(null);
     return new StepNode(
         nodeId,
@@ -276,7 +276,7 @@ public class NodeClassifier {
       Context context) {
     RawTaskList rawTasks = RawTaskList.in(rawParent, rawField, tasks);
     List<CompiledNode> children = classifyTasks(tasks, rawTasks, context);
-    return flow(context, nodeId, FlowScope.of(scope, rawTasks.copies()), children);
+    return flow(context, nodeId, FlowScope.of(scope, rawTasks.copies())).withChildren(children);
   }
 
   /**
@@ -294,5 +294,15 @@ public class NodeClassifier {
         context.envelope(),
         scope,
         children);
+  }
+
+  private static FlowNode flow(Context context, String nodeId, FlowScope scope) {
+    String appId = NodeNaming.appId(nodeId);
+    return new FlowNode(
+        nodeId,
+        appId,
+        Names.nodeDefinitionResource(context.workflow(), context.versionId(), appId),
+        context.envelope(),
+        scope);
   }
 }

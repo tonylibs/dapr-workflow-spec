@@ -3,9 +3,10 @@ package io.dws.controller.compile.v2;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.dws.controller.compile.CompilationException;
 import io.serverlessworkflow.api.types.TaskItem;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import one.util.streamex.StreamEx;
 
 /**
  * One scope's task list as it appears in the submitted document — the raw half of {@link
@@ -39,15 +40,14 @@ record RawTaskList(List<RawTaskItem> items) {
             .map(node -> node.get(field))
             .filter(JsonNode::isArray)
             .map(RawTaskList::elements)
-            .orElseGet(List::of);
+            .orElseGet(Collections::emptyList);
     if (rawItems.size() != typedItems.size()) {
       throw new CompilationException(
-          List.of(
-              "a task list could not be matched to its source text ("
-                  + typedItems.size()
-                  + " parsed tasks, "
-                  + rawItems.size()
-                  + " in the submitted document)"));
+          "a task list could not be matched to its source text ("
+              + typedItems.size()
+              + " parsed tasks, "
+              + rawItems.size()
+              + " in the submitted document)");
     }
     return new RawTaskList(rawItems);
   }
@@ -63,8 +63,6 @@ record RawTaskList(List<RawTaskItem> items) {
   }
 
   private static List<RawTaskItem> elements(JsonNode array) {
-    List<RawTaskItem> elements = new ArrayList<>(array.size());
-    array.forEach(element -> elements.add(new RawTaskItem(element)));
-    return elements;
+    return StreamEx.of(array.elements()).map(RawTaskItem::new).toList();
   }
 }
