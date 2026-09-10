@@ -75,7 +75,12 @@ jobs:
             --set controller.image.repository=ghcr.io/${{ github.repository_owner }}/dws-controller \
             --set controller.image.tag=ci-test \
             --set controller.service.port=9090 \
-            --set controller.images.run=ghcr.io/${{ github.repository_owner }}/dws-run:ci > /dev/null
+            --set controller.images.run.shell.repository=ghcr.io/${{ github.repository_owner }}/dws-run-shell \
+            --set controller.images.run.shell.tag=ci \
+            --set controller.images.run.scriptJs.repository=ghcr.io/${{ github.repository_owner }}/dws-run-script-js \
+            --set controller.images.run.scriptJs.tag=ci \
+            --set controller.images.run.scriptPython.repository=ghcr.io/${{ github.repository_owner }}/dws-run-script-python \
+            --set controller.images.run.scriptPython.tag=ci > /dev/null
 
       - name: Create kind cluster
         uses: helm/kind-action@v1

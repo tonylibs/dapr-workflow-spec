@@ -66,12 +66,36 @@ controller:
   tolerations: []
   affinity: {}
   # Step-image references the controller stamps into per-workflow resources
-  # (rendered as DWS_IMAGES_* env vars on the controller container).
+  # (rendered as DWS_IMAGES_* env vars on the controller container). Mirrors every
+  # dws.images.* property DwsConfig/ImageCatalog require (dws-controller/src/main/java/
+  # io/dws/controller/config/DwsConfig.java) -- all eight are mandatory config on the
+  # controller side, so every key here must stay populated.
   images:
-    callHttp: ghcr.io/tonylibs/dws-call-http:latest
-    callOpenapi: ghcr.io/tonylibs/dws-call-openapi:latest
-    run: sw-run:1.0
-    orchestrator: ghcr.io/tonylibs/dws-orchestrator:latest
+    callHttp:
+      repository: ghcr.io/tonylibs/dws-call-http
+      tag: latest
+    callOpenapi:
+      repository: ghcr.io/tonylibs/dws-call-openapi
+      tag: latest
+    callGrpc:
+      repository: ghcr.io/tonylibs/dws-call-grpc
+      tag: latest
+    callAsyncapi:
+      repository: ghcr.io/tonylibs/dws-call-asyncapi
+      tag: latest
+    run:
+      shell:
+        repository: ghcr.io/tonylibs/dws-run-shell
+        tag: latest
+      scriptJs:
+        repository: ghcr.io/tonylibs/dws-run-script-js
+        tag: latest
+      scriptPython:
+        repository: ghcr.io/tonylibs/dws-run-script-python
+        tag: latest
+    orchestrator:
+      repository: ghcr.io/tonylibs/dws-orchestrator
+      tag: latest
 
 # Dapr-native JWT authentication for the controller (dws-console auth roadmap Phase 2,
 # docs/roadmaps/dws-auth.md). Off by default so existing releases keep working; enabling

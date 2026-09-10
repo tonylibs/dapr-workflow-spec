@@ -62,13 +62,21 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: DWS_IMAGES_CALL_HTTP
-              value: {{ .Values.controller.images.callHttp | quote }}
+              value: "{{ .Values.controller.images.callHttp.repository }}:{{ .Values.controller.images.callHttp.tag }}"
             - name: DWS_IMAGES_CALL_OPENAPI
-              value: {{ .Values.controller.images.callOpenapi | quote }}
-            - name: DWS_IMAGES_RUN
-              value: {{ .Values.controller.images.run | quote }}
+              value: "{{ .Values.controller.images.callOpenapi.repository }}:{{ .Values.controller.images.callOpenapi.tag }}"
+            - name: DWS_IMAGES_CALL_GRPC
+              value: "{{ .Values.controller.images.callGrpc.repository }}:{{ .Values.controller.images.callGrpc.tag }}"
+            - name: DWS_IMAGES_CALL_ASYNCAPI
+              value: "{{ .Values.controller.images.callAsyncapi.repository }}:{{ .Values.controller.images.callAsyncapi.tag }}"
+            - name: DWS_IMAGES_RUN_SHELL
+              value: "{{ .Values.controller.images.run.shell.repository }}:{{ .Values.controller.images.run.shell.tag }}"
+            - name: DWS_IMAGES_RUN_SCRIPT_JS
+              value: "{{ .Values.controller.images.run.scriptJs.repository }}:{{ .Values.controller.images.run.scriptJs.tag }}"
+            - name: DWS_IMAGES_RUN_SCRIPT_PYTHON
+              value: "{{ .Values.controller.images.run.scriptPython.repository }}:{{ .Values.controller.images.run.scriptPython.tag }}"
             - name: DWS_IMAGES_ORCHESTRATOR
-              value: {{ .Values.controller.images.orchestrator | quote }}
+              value: "{{ .Values.controller.images.orchestrator.repository }}:{{ .Values.controller.images.orchestrator.tag }}"
           livenessProbe:
             httpGet:
               path: /q/health/live

@@ -1,0 +1,67 @@
+name: chart-release
+
+# Manually triggered: run this whenever you deliberately want to cut a chart release.
+# Collects every component's latest released tag (dws-admin-v*, dws-run-v*, ...),
+# pins whichever ones have moved into charts/dws/values.yaml in a single pass, and
+# bumps the chart's own patch version once -- one PR covering every component that
+# changed, not one per tag. See .github/scripts/chart_release.py for the logic.
+# Merging the opened PR is what cuts the actual chart release (see helm.yml's
+# `release` job, which tags and publishes on any Chart.yaml version change).
+on:
+  workflow_dispatch:
+    inputs:
+      chart_version:
+        description: 'Exact chart version to release (e.g. 1.2.0). Leave blank to auto patch-bump.'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Collect latest component tags and pin the chart
+        id: release
+        env:
+          CHART_VERSION_OVERRIDE: ${{ inputs.chart_version }}
+        run: python3 .github/scripts/chart_release.py
+
+      - name: Open a PR pinning this release
+        if: steps.release.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHART_VERSION: ${{ steps.release.outputs.chart_version }}
+          SUMMARY: ${{ steps.release.outputs.summary }}
+        run: |
+          branch="chart-release/${{ github.run_id }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add charts/dws/values.yaml charts/dws/Chart.yaml
+          git commit -m "chore(chart): release ${CHART_VERSION}"
+          git push origin "$branch"
+          {
+            echo "Pins every component that has a newer release than what's currently in \`values.yaml\`, and bumps the chart to \`${CHART_VERSION}\` (patch, by default -- bump higher here first if any of these releases were minor/major and the chart should reflect that). Merging this PR is what cuts the actual chart release -- see \`helm.yml\`'s \`release\` job."
+            echo ""
+            echo "$SUMMARY"
+            echo ""
+            echo "Note: this PR was opened with the default \`GITHUB_TOKEN\`, so \`helm.yml\`'s own PR checks may not run automatically on it (a GitHub restriction on token-opened PRs) -- push an empty commit or re-run the check manually if so."
+          } > /tmp/pr-body.md
+          gh pr create \
+            --title "chore(chart): release ${CHART_VERSION}" \
+            --body-file /tmp/pr-body.md \
+            --base main
+
+      - name: Nothing to release
+        if: steps.release.outputs.changed != 'true'
+        run: echo "Every component already matches its latest release tag -- no PR opened."
