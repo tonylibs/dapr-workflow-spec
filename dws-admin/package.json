@@ -1,6 +1,6 @@
 {
   "name": "dws-admin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DWS read-model and eventing gateway (NestJS)",
   "private": true,
   "engines": {
