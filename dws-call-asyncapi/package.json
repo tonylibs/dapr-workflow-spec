@@ -1,6 +1,6 @@
 {
   "name": "dws-call-asyncapi",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Prebuilt step image for `call: asyncapi` tasks in the DWS platform. One image serves every asyncapi call step; behavior is defined entirely by env config.",
   "type": "module",
   "engines": {
