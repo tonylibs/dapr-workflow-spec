@@ -1,6 +1,6 @@
 {
   "name": "dws-call-openapi",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Prebuilt step image for `call: openapi` tasks in the DWS platform. One image serves every openapi call step; behavior is defined entirely by env config.",
   "type": "module",
   "engines": {
