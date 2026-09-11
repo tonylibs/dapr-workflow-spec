@@ -84,6 +84,14 @@ each package's own config:
 
 Windows: Java packages use `mvnw.cmd` instead of `./mvnw`.
 
+### Releasing
+
+Component versions bump automatically (release-please), but tagging a component image and
+cutting the Helm chart are deliberate, manually-triggered steps. See
+[`docs/release-process.md`](docs/release-process.md) for the end-to-end runbook before
+touching `release-please-config.json`, the `*-release.yml` workflows, or
+`charts/dws/values.yaml` pins.
+
 <!-- OPENWIKI:START -->
 
 ## OpenWiki

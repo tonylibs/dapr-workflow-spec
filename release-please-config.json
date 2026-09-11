@@ -8,50 +8,59 @@
     "dws-admin": {
       "release-type": "node",
       "component": "dws-admin",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "skip-github-release": true
     },
     "dws-console": {
       "release-type": "node",
       "component": "dws-console",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "skip-github-release": true
     },
     "dws-controller": {
       "release-type": "maven",
       "component": "dws-controller",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "skip-github-release": true
     },
     "dws-orchestrator": {
       "release-type": "maven",
       "component": "dws-orchestrator",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "skip-github-release": true
     },
     "dws-call-http": {
       "release-type": "simple",
       "component": "dws-call-http",
       "changelog-path": "CHANGELOG.md",
-      "version-file": "version.txt"
+      "version-file": "version.txt",
+      "skip-github-release": true
     },
     "dws-call-grpc": {
       "release-type": "simple",
       "component": "dws-call-grpc",
       "changelog-path": "CHANGELOG.md",
-      "version-file": "version.txt"
+      "version-file": "version.txt",
+      "skip-github-release": true
     },
     "dws-call-openapi": {
       "release-type": "node",
       "component": "dws-call-openapi",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "skip-github-release": true
     },
     "dws-call-asyncapi": {
       "release-type": "node",
       "component": "dws-call-asyncapi",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "skip-github-release": true
     },
     "dws-run": {
       "release-type": "simple",
       "component": "dws-run",
       "changelog-path": "CHANGELOG.md",
-      "version-file": "version.txt"
+      "version-file": "version.txt",
+      "skip-github-release": true
     }
   }
 }

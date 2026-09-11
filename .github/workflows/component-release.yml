@@ -1,0 +1,111 @@
+name: component-release
+
+# Manually triggered: run this whenever you deliberately want to cut a release for
+# one component. release-please.yml already keeps each component's version file
+# and CHANGELOG.md up to date on every merge to main (see release-please-config.json
+# -- every package sets `skip-github-release: true`), but it stops there: no tag,
+# no GitHub Release, no build. This workflow pushes the `<component>-v<version>`
+# tag that the component's own build workflow (dws-admin.yml, dws-run.yml, etc.)
+# watches to build and publish the matching image -- mirroring chart-release.yml's
+# manual, deliberate trigger for the Helm chart.
+#
+# See docs/release-process.md for the end-to-end runbook.
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'Component to release'
+        required: true
+        type: choice
+        options:
+          - dws-admin
+          - dws-console
+          - dws-controller
+          - dws-orchestrator
+          - dws-call-http
+          - dws-call-grpc
+          - dws-call-openapi
+          - dws-call-asyncapi
+          - dws-run
+      version:
+        description: 'Exact version to release (e.g. 1.2.0). Leave blank to use the version already bumped in .release-please-manifest.json.'
+        required: false
+        type: string
+      force:
+        description: 'Skip the "release PR merged" guard (CHANGELOG + manifest checks). Only for bootstrap or hotfix tags.'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve version and tag
+        id: resolve
+        env:
+          COMPONENT: ${{ inputs.component }}
+          VERSION_OVERRIDE: ${{ inputs.version }}
+        run: |
+          manifest_version=$(jq -r --arg c "$COMPONENT" '.[$c]' .release-please-manifest.json)
+          version="${VERSION_OVERRIDE:-$manifest_version}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$version' is not a valid X.Y.Z semver"
+            exit 1
+          fi
+          tag="${COMPONENT}-v${version}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "manifest_version=$manifest_version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Guard -- confirm this version was actually released on main
+        # release-please bumps the manifest AND writes the CHANGELOG heading in the
+        # same PR. If either is missing for this version, the component's release PR
+        # hasn't been merged yet -- tagging now would point <component>-v<version>
+        # at a commit whose version file still says the old version, and cut an
+        # image whose CHANGELOG doesn't describe it. Refuse, unless `force` is set.
+        if: ${{ inputs.force != true }}
+        env:
+          COMPONENT: ${{ inputs.component }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+          MANIFEST_VERSION: ${{ steps.resolve.outputs.manifest_version }}
+        run: |
+          if [ "$VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "::error::Requested version '$VERSION' does not match .release-please-manifest.json ('$MANIFEST_VERSION' for $COMPONENT)."
+            echo "::error::Merge $COMPONENT's release-please PR first, or re-run with force=true if this is a deliberate bootstrap/hotfix tag."
+            exit 1
+          fi
+          changelog="${COMPONENT}/CHANGELOG.md"
+          if [ -f "$changelog" ]; then
+            if ! grep -qF "[${VERSION}]" "$changelog" && ! grep -qxF "## ${VERSION}" "$changelog"; then
+              echo "::error::$changelog has no entry for ${VERSION} -- $COMPONENT's release-please PR for this version doesn't look merged."
+              echo "::error::Merge it first, or re-run with force=true if you know what you're doing."
+              exit 1
+            fi
+          else
+            echo "::notice::$changelog does not exist yet (bootstrap component) -- skipping the CHANGELOG check; manifest match already confirmed."
+          fi
+
+      - name: Tag and push
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null 2>&1; then
+            echo "::notice::$TAG already exists on origin -- nothing to do. (If you meant to release a newer version, merge that component's pending release-please PR first.)"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "::notice::Pushed $TAG -- ${{ inputs.component }}'s build workflow will pick it up and publish the image."

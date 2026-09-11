@@ -15,6 +15,7 @@ node_modules/
 .claude/settings.local.json
 .claude/worktrees/
 .superpowers/
+_tmp_*
 
 # OS
 .DS_Store
@@ -27,3 +28,9 @@ Thumbs.db
 
 # Scripts
 .github/scripts/__pycache__/
+
+# pnpm
+.pnpm-store
+
+# obsidian
+**/.obsidian/*
