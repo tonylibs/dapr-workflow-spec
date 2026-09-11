@@ -6,6 +6,10 @@ plain YAML/JSON documents — no per-workflow code is written or generated. A de
 posted to the controller, which compiles it and deploys the corresponding Dapr-backed
 resources on the cluster; a generic orchestrator then interprets the definition at runtime.
 
+For concise setup, architecture, API, and operations guides, start with the
+[DWS wiki](https://github.com/tonylibs/dapr-workflow-spec/wiki). Component READMEs below retain
+detailed configuration and development references.
+
 ## Components
 
 | Component | Description |
