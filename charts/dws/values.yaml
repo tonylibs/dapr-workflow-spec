@@ -73,26 +73,26 @@ controller:
   images:
     callHttp:
       repository: ghcr.io/tonylibs/dws-call-http
-      tag: latest
+      tag: "0.2.0"
     callOpenapi:
       repository: ghcr.io/tonylibs/dws-call-openapi
-      tag: latest
+      tag: "1.1.0"
     callGrpc:
       repository: ghcr.io/tonylibs/dws-call-grpc
-      tag: latest
+      tag: "0.2.0"
     callAsyncapi:
       repository: ghcr.io/tonylibs/dws-call-asyncapi
-      tag: latest
+      tag: "1.1.0"
     run:
       shell:
         repository: ghcr.io/tonylibs/dws-run-shell
-        tag: latest
+        tag: "0.2.0"
       scriptJs:
         repository: ghcr.io/tonylibs/dws-run-script-js
-        tag: latest
+        tag: "0.2.0"
       scriptPython:
         repository: ghcr.io/tonylibs/dws-run-script-python
-        tag: latest
+        tag: "0.2.0"
     orchestrator:
       repository: ghcr.io/tonylibs/dws-orchestrator
       tag: latest
@@ -229,7 +229,7 @@ admin:
   replicaCount: 1
   image:
     repository: ghcr.io/tonylibs/dws-admin
-    tag: "1.0"
+    tag: "0.2.0"
     pullPolicy: IfNotPresent
   service:
     port: 3000
@@ -305,7 +305,7 @@ console:
   replicaCount: 1
   image:
     repository: ghcr.io/tonylibs/dws-console
-    tag: "1.0"
+    tag: "0.2.0"
     pullPolicy: IfNotPresent
   service:
     port: 80
