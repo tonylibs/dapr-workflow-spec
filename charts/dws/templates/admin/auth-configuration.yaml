@@ -1,8 +1,26 @@
 {{- /*
-  Dapr Configuration that wires the admin's bearer middleware into the sidecar's inbound
-  HTTP pipeline (auth roadmap Phase 4). Rendered only when auth.enabled=true. Named
-  consistently with dws.admin.auth.configName so the admin Pod's dapr.io/config annotation
-  can name it.
+  Dapr Configuration that wires the admin's bearer middleware into the sidecar's own
+  Dapr HTTP API pipeline (spec.httpPipeline), NOT spec.appHttpPipeline. Rendered only when
+  auth.enabled=true. Named consistently with dws.admin.auth.configName so the admin Pod's
+  dapr.io/config annotation can name it.
+
+  DELIBERATELY DIFFERENT from templates/controller/auth-configuration.yaml, which stays on
+  spec.appHttpPipeline. Do not "tidy up" this divergence back to matching — it is the fix,
+  not a mistake (auth roadmap dws-auth.md "Decision (2026-09-13)"):
+
+  - httpPipeline gates the sidecar's own Dapr HTTP API — the surface APISIX and the browser
+    actually call for reads/writes/SSE, and the leg where a bearer token is present.
+  - It does NOT gate daprd's internal app-channel calls (spec.appHttpPipeline does), so Dapr's
+    own GET /dapr/subscribe discovery and dws.events pub/sub delivery reach Nest un-gated.
+    That is what unblocks the read model / SSE feed under auth.enabled=true.
+
+  Trade-offs this placement introduces, accepted for this phase:
+  - Every call the admin app makes to its OWN sidecar now needs a valid JWT. Today only the
+    Phase 3 controller-relay does, and it forwards the user's token verbatim
+    (dws-admin/src/controller-relay/controller-relay.service.ts). A future publish/state/binding
+    call from dws-admin will 401 unless it too carries a token.
+  - POST /dapr/events/dws on the admin app-port is reachable unauthenticated by any pod-network
+    peer. Closed by roadmap Phase 10 (Dapr API token + App API token), not here.
 */}}
 {{- if and .Values.admin.enabled .Values.auth.enabled }}
 apiVersion: dapr.io/v1alpha1
@@ -13,7 +31,7 @@ metadata:
   labels:
     {{- include "dws.admin.selectorLabels" . | nindent 4 }}
 spec:
-  appHttpPipeline:
+  httpPipeline:
     handlers:
       - name: {{ include "dws.admin.auth.componentName" . }}
         type: middleware.http.bearer
