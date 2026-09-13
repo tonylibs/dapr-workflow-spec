@@ -51,6 +51,7 @@ flowchart TD
 | **8** | Make the bundled development IdP satisfy the browser client contract: adopt a released Dex version/configuration (or another in-chart IdP) with non-interactive `prompt=none` browser sessions and advertised RP-initiated logout; then verify token-expiry renewal, clean renewal failure, authenticated storage, logout, route restoration, and two-tab convergence | Phases 0, 1 | ❌ deferred — Dex 2.44.0 lacks the required browser-session and `end_session_endpoint` behavior; owns deferred checklist tasks 6.1, 6.2, 7.2, and 8.3 |
 | **9** | Content/version management (CMS layer) in `dws-admin`: own the workflow draft → active → archived lifecycle and version history as `dws-admin`'s own authored data, not a projection of controller events. Controller-reported deployment status (`applied`/`failed`/`drained`/`collected`) becomes a nested, controller-owned status on whichever version is `active` — never a competing lifecycle. Foundation for later per-user read/edit permissions on content (extends Phase 7's role model) | Phase 3 | ❌ not started — deliberately deferred; scoped down 2026-08-26 so Phase 3 ships as a plain stateless forward first |
 | **10** | **Dapr API token + App API token (added 2026-09-13)**: Dapr's own machine-auth pair, both on the `dapr-api-token` header so they compose with the bearer JWT rather than competing for `Authorization`. `dapr.io/api-token-secret` (`DAPR_API_TOKEN`) so only holders of the shared secret may call a sidecar's HTTP API — APISIX must inject it; `dapr.io/app-token-secret` (`APP_API_TOKEN`) so each app can verify a request genuinely came from its own sidecar. The app-side guard also closes the pod-IP direct-app-port bypass (§4) app-side and CNI-independently, and must exempt the kubelet-probed health route. Machine identity, never a replacement for user identity | Phase 4 + the pipeline-placement change | ❌ not started — scoped 2026-09-13 as its own later phase so the pubsub unblock can ship on its own |
+| **11** | **Service mesh (Istio) as the gate — evaluated 2026-09-13, not scheduled (see §2e)**: replace Dapr's `middleware.http.bearer` with Istio `RequestAuthentication` + `AuthorizationPolicy` on the mesh sidecar. Solves the `/dapr/subscribe` conflict *by construction* (envoy never intercepts daprd's intra-pod loopback calls) and closes §4's pod-IP bypass as a side effect — but it is an architecture change, not a swap: the `dws-admin` → `dws-controller` hop becomes workload-identity-gated rather than user-JWT-gated, Dapr or Istio (not both) must own mTLS, and Istio's own Gateway API support overlaps the APISIX dependency adopted in Phase 4 | Phases 4, 10 (would likely subsume 10) | ❌ not started — exploratory; needs its own ADR before any commitment |
 
 ### Current progress (2026-09-01)
 
@@ -530,6 +531,49 @@ asserts the live matrix. Full command evidence, exit codes, and per-scenario res
   see the follow-up item in §4.
 - Wired into CI as job `integration-gateway-sse` in `.github/workflows/helm.yml`, gating the
   `release` job the same way `integration-oauth-path-filter` already does.
+
+## 2e. Service mesh (Istio) as an alternative gate — evaluated 2026-09-13, deferred to Phase 11
+
+Raised as: could an Istio `AuthorizationPolicy` replace `middleware.http.bearer` and gate every
+backend service (`dws-admin`, `dws-controller`, …) without the pipeline-placement problems behind
+the 2026-09-13 decision? Evaluated against Dapr's own service-mesh guidance
+(`https://docs.dapr.io/concepts/faq/service-mesh/`), which confirms Dapr and a mesh can run side by
+side — Dapr application-level, the mesh network-level — and recommends that only one of the two
+perform mTLS.
+
+**Why it would work.** Istio's sidecar intercepts traffic crossing the *pod boundary* only. Every
+call that causes today's blocker — daprd → app `GET /dapr/subscribe`, pubsub delivery, and the app's
+own calls back to `127.0.0.1:3500` — is intra-pod loopback and is never intercepted. The exemption
+Dapr refuses to provide (`dapr/dapr#6658`) exists in a mesh by construction. The same property
+closes §4's pod-IP direct-app-port bypass: a pod-network peer dialling the app port crosses the pod
+boundary, so the policy applies. Two open items, one mechanism.
+
+**Why it is not a swap.**
+- `dws-admin` → `dws-controller` travels as Dapr's own internal gRPC (`CallLocal`), so Istio sees a
+	Dapr internal method, not `POST /workflows` — no L7 path policy on the real route, and whether
+	`RequestAuthentication` can validate a user JWT carried as Dapr gRPC metadata is unverified. The
+	realistic shape is user identity at the edge plus **workload identity** (service-account based)
+	on the internal hop — a deliberate change to what the controller proves, not a like-for-like
+	replacement of §3's "the controller must already be gated before the relay reaches it" rule.
+- Dapr mTLS and Istio mTLS must not both be on; with Dapr mTLS enabled that hop is opaque TLS to
+	Istio regardless.
+- Istio implements Gateway API itself, overlapping the APISIX dependency adopted in Phase 4 — two
+	ingress stacks for one job unless one is retired.
+- Three sidecars per pod (app + daprd + istio-proxy) introduces a startup ordering race: daprd
+	initializing components before envoy is ready (`holdApplicationUntilProxyStarts`).
+- This roadmap's ground rule "JWT/role verification is Dapr-only" would need explicit amendment.
+	Istio satisfies its spirit — verification stays in infrastructure, never hand-rolled in app code
+	— but not its letter.
+
+**Relationship to Phase 10.** A mesh would likely *subsume* the API-token phase rather than follow
+it: workload identity from mesh-issued certificates is strictly stronger than a shared static
+`dapr-api-token`. Don't ship Phase 10 and then adopt a mesh without re-asking whether Phase 10 still
+earns its keep.
+
+**Status.** Recorded as Phase 11, exploratory. Deliberately decoupled from the 2026-09-13 pipeline
+move, which is a one-line unblock that can ship now; this is an architecture decision touching
+ingress, mTLS and the Phase 2/3 trust model, and needs its own ADR — including the prior question of
+whether a service mesh is wanted here at all.
 
 ## 3. Rationale for ordering
 
