@@ -50,6 +50,7 @@ flowchart TD
 | **7** | User management: an admin-only console screen to create users and assign one of a small set of built-in roles (e.g. `admin`/`operator`/`viewer`). New `dws-admin` route, reusing Phase 4's gateway + Dapr role check (only `admin`-role tokens may call it), which manages users through **Dex's own gRPC management API** — no user/password storage or hashing added to DWS's own database | Phases 0, 4 | ❌ not started — further-out, exploratory; see §4 for a real open risk before committing to this shape |
 | **8** | Make the bundled development IdP satisfy the browser client contract: adopt a released Dex version/configuration (or another in-chart IdP) with non-interactive `prompt=none` browser sessions and advertised RP-initiated logout; then verify token-expiry renewal, clean renewal failure, authenticated storage, logout, route restoration, and two-tab convergence | Phases 0, 1 | ❌ deferred — Dex 2.44.0 lacks the required browser-session and `end_session_endpoint` behavior; owns deferred checklist tasks 6.1, 6.2, 7.2, and 8.3 |
 | **9** | Content/version management (CMS layer) in `dws-admin`: own the workflow draft → active → archived lifecycle and version history as `dws-admin`'s own authored data, not a projection of controller events. Controller-reported deployment status (`applied`/`failed`/`drained`/`collected`) becomes a nested, controller-owned status on whichever version is `active` — never a competing lifecycle. Foundation for later per-user read/edit permissions on content (extends Phase 7's role model) | Phase 3 | ❌ not started — deliberately deferred; scoped down 2026-08-26 so Phase 3 ships as a plain stateless forward first |
+| **10** | **Dapr API token + App API token (added 2026-09-13)**: Dapr's own machine-auth pair, both on the `dapr-api-token` header so they compose with the bearer JWT rather than competing for `Authorization`. `dapr.io/api-token-secret` (`DAPR_API_TOKEN`) so only holders of the shared secret may call a sidecar's HTTP API — APISIX must inject it; `dapr.io/app-token-secret` (`APP_API_TOKEN`) so each app can verify a request genuinely came from its own sidecar. The app-side guard also closes the pod-IP direct-app-port bypass (§4) app-side and CNI-independently, and must exempt the kubelet-probed health route. Machine identity, never a replacement for user identity | Phase 4 + the pipeline-placement change | ❌ not started — scoped 2026-09-13 as its own later phase so the pubsub unblock can ship on its own |
 
 ### Current progress (2026-09-01)
 
@@ -225,6 +226,94 @@ list. In parallel, the two "not blocking, but tracked" items are: applying the s
 on a live cluster, confirmed by probe), and closing the pod-IP:8080 direct-app-port bypass.
 Once the pubsub fix lands, Phase 7 (user management) and Phase 9 (content/version CMS) are the
 two remaining un-started phases, both already unblocked by Phase 4 being live.
+
+### Current progress (2026-09-13)
+
+- **Nothing has landed on this roadmap since the 2026-09-03 Phase 4/6 merge.** The status table
+	above is still accurate; this entry records a re-check, not new work.
+- **Top blocker unchanged — Dapr bearer vs. `GET /dapr/subscribe`.** No openspec change has been
+	drafted for it, and `charts/dws/templates/admin/auth-component.yaml` /
+	`auth-configuration.yaml` are byte-unchanged since 2026-08-26, so no path exemption,
+	pipeline relocation, or alternative gate exists yet. `auth.enabled=true` +
+	`apiGateway.enabled=true` therefore remains unsafe with real `dws.events` traffic.
+- **`dapr.io/sidecar-listen-addresses` still missing on `dws-controller`.**
+	`templates/controller/deployment.yaml` was edited on 2026-09-10 (Redis wait init-container),
+	but its pod annotations are still only `dapr.io/enabled`, `app-id`, `app-port` and the
+	conditional `dapr.io/config` — the loopback-binding fix applied to the admin pod on 2026-09-03
+	was not carried over. Confirmed by reading the template, not inferred.
+- **Pod-IP:8080 direct-app-port bypass**: unchanged, still open (§4).
+- **Phase 1 status corrected to done.** `openspec/changes/oidc-client/tasks.md` has 15 of 19 tasks
+	checked; all 4 unchecked (6.1, 6.2, 7.2, 8.3) carry an explicit
+	`DEFERRED TO ROADMAP PHASE 8` marker and are owned by the Phase 8 row. The Notion tracker row
+	said `In Progress`, which contradicted this document's own Phase 1 `✅ done`; the tracker has
+	been corrected.
+- **Where the effort went instead (2026-09-05 → 09-11)**, all outside this roadmap: Definition
+	Submission Phases 2–3 (archived `2026-09-05-submission-preview-validation`,
+	`2026-09-05-submission-file-upload`), Workflow Runtime Architecture Phase 1 (archived
+	`2026-09-06-phase-1-compiler-strategy-split`, `2026-09-08-phase-1-structural-classification`,
+	`2026-09-09-scope-node-sequencer-controller-split`), and the component release-process rework
+	(`docs/release-process.md`).
+
+**Next up (2026-09-13):** unchanged in substance from 2026-09-03 — the pubsub-discovery fix is the
+only thing between today's state and a production-safe `auth.enabled=true`. It has now been the
+sole blocker for 10 days with no spike started, so the first step is a short spike comparing four
+candidate shapes before any proposal is drafted:
+
+1. **Move the handler from `spec.appHttpPipeline` to `spec.httpPipeline`.** `appHttpPipeline` is
+	exactly the daprd→app direction that `GET /dapr/subscribe` travels, which is why discovery is
+	being gated; `httpPipeline` gates the sidecar's own Dapr HTTP API instead — the surface APISIX
+	actually calls. Cheapest change, but it must be verified that it does not also gate
+	`dws-admin`'s *own* outbound sidecar calls (the Phase 3 relay forwards a bearer token, so that
+	one is fine; any unauthenticated publish/state call from the app to its sidecar would not be).
+2. **Gate at APISIX instead** (its `openid-connect`/`jwt-auth` plugin), keeping Dapr ungated for
+	this path. Not hand-rolled JWT code, so it does not break the spirit of this roadmap's
+	Dapr-only ground rule, but it does relocate the documented gate — needs an explicit decision
+	recorded here, not a silent switch.
+3. **Split the subscription endpoint back onto its own app-id/sidecar** without the middleware.
+	Correct but reverses the Phase 4 consolidation that made the single app-port work.
+4. **Dapr streaming subscriptions** (no HTTP route to gate at all). Previously rejected as
+	undocumented in the Node.js SDK — worth a 10-minute re-check against the current SDK before
+	discarding again.
+
+Follow-ups, still not blocking: apply `dapr.io/sidecar-listen-addresses` to `dws-controller`; close
+the pod-IP:8080 bypass (`quarkus.http.host=127.0.0.1` preferred); add `DAPR_CONTROLLER_APP_ID` to
+`dws-admin`'s chart Deployment.
+
+### Decision (2026-09-13) — bearer moves to `httpPipeline`, callers forward the token, API tokens become Phase 10
+
+- **Decided.** The bearer handler moves from `spec.appHttpPipeline` to `spec.httpPipeline`, and every
+	caller forwards the bearer token on its outgoing Dapr invocation — APISIX and `dws-admin`'s Phase 3
+	relay alike. This is the placement the bearer component's own reference documents, and it takes
+	daprd's internal `GET /dapr/subscribe` and pubsub delivery calls out from behind the gate, which is
+	what unblocks `dws.events`.
+- **Decided.** Dapr API token / App API token machine auth is worth having but ships as its own
+	**Phase 10** (§2, above), not folded into this change.
+- **Resolved 2026-09-13 — the change is asymmetric: `dws-admin` moves to `httpPipeline`,
+	`dws-controller` STAYS on `appHttpPipeline`.** Two findings decided it:
+	1. `dws-admin` reaches the controller by Dapr service invocation, which arrives at the controller's
+		sidecar over **internal gRPC** and therefore never traverses its `httpPipeline`. Dapr's own docs
+		put the receiving side's middleware on `appHttpPipeline` for exactly this case. Moving it would
+		silently delete the Phase 2 gate — no error, `helm lint` green, and only a no-token request
+		would reveal it.
+	2. The controller publishes events through its own sidecar (`events/EventPublisher.java`,
+		`events/DaprClientProducer.java`). If that client speaks HTTP, the move 401s its event
+		publishing on a background path. Transport unverified — Dapr's Java SDK defaults to gRPC, which
+		HTTP middleware does not gate, so this may be a non-issue; confirm, don't assume.
+	The two `auth-configuration.yaml` templates therefore deliberately diverge and
+	their "mirrors the other exactly" header comments must be rewritten to state why — otherwise a
+	future tidy-up reopens the hole.
+- **Accepted risk for this phase.** Once the gate leaves the app channel, `POST /dapr/events/dws` on
+	`dws-admin`'s app port is reachable unauthenticated by any pod-network peer — same class as the
+	§4 pod-IP bypass, and an event-injection path into the read model. Phase 10's App API token closes
+	it. Accepted knowingly, not overlooked.
+- **Re-verification owed**, because every existing piece of evidence was produced with the gate on the
+	other pipeline: the full negative-bearer matrix on both apps, the §2d non-buffered SSE proof (the
+	middleware now wraps a different leg), and APISIX's upstream health checks — they hit the
+	now-gated port and would start returning 401, marking the upstream unhealthy.
+- **Constraint this shape introduces**, worth a comment in the chart: with the gate on `httpPipeline`,
+	*every* call the app makes to its own sidecar needs a valid JWT. Today only the relay does, and it
+	forwards the user's. The day someone adds a publish, state-store or binding call from `dws-admin`,
+	it will 401 with a confusing error unless it carries a token.
 
 ## 2a. Phase 0 detail — bootstrap admin user
 
