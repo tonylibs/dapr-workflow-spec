@@ -67,6 +67,14 @@ GATEWAY_PF_PORT="${GW_E2E_GATEWAY_PORT:-18080}"
 ADMIN_PF_PORT="${GW_E2E_ADMIN_PORT:-18081}"
 PF_PIDS=()
 
+# Include the dws-controller in the run (its Deployment + the controller-side bearer matrix).
+# Default on, so a manual run (e.g. Docker Desktop) exercises both apps. Set to 0 where no
+# dws-controller image is available for the cluster to pull -- notably CI, which builds only the
+# dws-admin/dws-console images from this worktree; there the controller side is covered by the
+# manual live evidence recorded in openspec/changes/admin-auth-httppipeline-pubsub-fix/verify.md.
+INCLUDE_CONTROLLER="${GW_E2E_INCLUDE_CONTROLLER:-1}"
+if [ "$INCLUDE_CONTROLLER" = 1 ]; then CONTROLLER_ENABLED=true; else CONTROLLER_ENABLED=false; fi
+
 PASS_COUNT=0
 pass() { PASS_COUNT=$((PASS_COUNT + 1)); echo "PASS: $1"; }
 fail_and_exit() { echo "FAIL: $1" >&2; exit 1; }
@@ -393,7 +401,7 @@ helm install "$RELEASE" "$CHART_DIR" \
   --namespace "$NAMESPACE" \
   --timeout 10m \
   --set dapr.enabled=false \
-  --set controller.enabled=true \
+  --set controller.enabled=${CONTROLLER_ENABLED} \
   --set postgresql.enabled=true \
   --set admin.enabled=true \
   --set admin.image.repository=dws-admin \
@@ -453,9 +461,13 @@ admin_pod="$(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=adm
 [ -n "$admin_pod" ] || fail_and_exit "no admin pod found"
 echo "admin pod: $admin_pod"
 
-# Configuration is startup-only: restart BOTH apps after every install/upgrade, before assertions.
-kubectl -n "$NAMESPACE" rollout restart deployment/"${RELEASE}-admin" deployment/"${RELEASE}-controller"
-for app in admin controller; do
+# Configuration is startup-only: restart the app(s) after every install/upgrade, before assertions.
+restart_apps=(admin)
+[ "$INCLUDE_CONTROLLER" = 1 ] && restart_apps+=(controller)
+for app in "${restart_apps[@]}"; do
+  kubectl -n "$NAMESPACE" rollout restart deployment/"${RELEASE}-$app"
+done
+for app in "${restart_apps[@]}"; do
   kubectl -n "$NAMESPACE" rollout status deployment/"${RELEASE}-$app" --timeout=6m
 done
 admin_pod="$(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=admin --field-selector=status.phase=Running -o json | jq -r '.items[] | select(.metadata.deletionTimestamp == null) | .metadata.name')"
@@ -614,7 +626,9 @@ echo "GET (direct-to-sidecar, valid bearer, APISIX bypassed) -> HTTP $code_valid
 pass "direct-to-sidecar requests (APISIX entirely bypassed via a second port-forward straight to the admin Service) reproduce the identical 401/200 behavior -- Dapr's bearer middleware is the enforcement point, APISIX adds none of its own"
 
 # All five negative cases and a positive control on each independent enforcement path.
-for app in admin controller; do
+matrix_apps=(admin)
+[ "$INCLUDE_CONTROLLER" = 1 ] && matrix_apps+=(controller)
+for app in "${matrix_apps[@]}"; do
   for variant in no-auth malformed tampered wrong-aud wrong-iss valid; do
     headers=()
     expected=401

@@ -434,6 +434,14 @@ jobs:
         # `helm repo add`-ed first -- it re-resolves and re-fetches from Chart.yaml's own
         # repository URLs, matching the verify/integration jobs above. `build` fails here with
         # "no repository definition for https://charts.dexidp.io, ...apisix-helm-chart".
+        #
+        # GW_E2E_INCLUDE_CONTROLLER=0: this job builds only the dws-admin/dws-console images from
+        # the worktree, so there is no dws-controller image for the kind cluster to pull. The
+        # admin side -- the surface this change actually moves to spec.httpPipeline -- is fully
+        # exercised here; the controller-side bearer matrix is covered by the manual live evidence
+        # in openspec/changes/admin-auth-httppipeline-pubsub-fix/verify.md.
+        env:
+          GW_E2E_INCLUDE_CONTROLLER: '0'
         run: |
           helm dependency update ${{ env.CHART_DIR }}
           bash ./scripts/verify-gateway-sse-path.sh
