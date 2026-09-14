@@ -26,7 +26,7 @@ class SingleNodeDefinitionTest {
   // the jar. Adapted to the 2.0.0 API below; behavior (load the real schema file, validate the
   // rendered JSON, assert no errors) is unchanged.
   private static Schema schema() throws Exception {
-    Path path = Path.of("..", "openspec", "schemas", "single-node-definition.schema.json");
+    Path path = Path.of("src", "test", "resources", "single-node-definition.schema.json");
     JsonNode schemaNode = JSON.readTree(Files.readString(path));
     return SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_7).getSchema(schemaNode);
   }

@@ -23,7 +23,7 @@ class V2GoldenTest {
   private static final ObjectMapper JSON = new ObjectMapper();
   private static final Path EXAMPLES = Path.of("src", "test", "resources", "v2");
   private static final Path SCHEMA =
-      Path.of("..", "openspec", "schemas", "single-node-definition.schema.json");
+      Path.of("src", "test", "resources", "single-node-definition.schema.json");
 
   @ParameterizedTest
   @ValueSource(
