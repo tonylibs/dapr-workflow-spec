@@ -21,10 +21,10 @@ Every existing piece of evidence predates the pipeline move, so it must be re-pr
 cited. daprd reloads `Configuration` only at startup, so each step requires restarting the admin
 and controller pods after `helm upgrade` (a bare upgrade leaves a half-state).
 
-- [ ] 4.1 On a live cluster with `auth.enabled=true` + `apiGateway.enabled=true`: restart pods, then confirm the subscription registers, a `dws.events` message reaches the read model, and SSE is still non-buffered end-to-end (roadmap §2d). (Environment-blocked: no live cluster in this session.)
-- [ ] 4.2 Full negative-bearer matrix on BOTH apps (no-auth / malformed / tampered-sig / wrong-aud / wrong-iss → 401), since the middleware now wraps a different leg on the admin side. (Environment-blocked.)
-- [ ] 4.3 APISIX upstream health checks now hit a gated port — confirm they do not 401 the upstream into unhealthy (adjust the health-check probe/route to an ungated path if needed). (Environment-blocked.)
-- [ ] 4.4 Record all live evidence, exit codes, and pod-restart steps in `verify.md`. (Environment-blocked.)
+- [x] 4.1 On a live cluster with `auth.enabled=true` + `apiGateway.enabled=true`: restart pods, then confirm the subscription registers, a `dws.events` message reaches the read model, and SSE is still non-buffered end-to-end (roadmap §2d).
+- [x] 4.2 Full negative-bearer matrix on BOTH apps (no-auth / malformed / tampered-sig / wrong-aud / wrong-iss → 401), since the middleware now wraps a different leg on the admin side.
+- [x] 4.3 APISIX upstream health checks now hit a gated port — confirm they do not 401 the upstream into unhealthy.
+- [x] 4.4 Record all live evidence, exit codes, and pod-restart steps in `verify.md`.
 
 ## 5. Accepted / deferred (do NOT fix here)
 

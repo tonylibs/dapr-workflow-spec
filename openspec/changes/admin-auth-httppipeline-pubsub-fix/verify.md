@@ -17,7 +17,7 @@
 - `dws-admin/src/controller-relay/controller-relay.service.ts` read directly: still forwards the
   incoming `Authorization` header verbatim on the outbound sidecar invoke.
 
-## Live (OWED — environment-blocked in this session, no cluster available)
+## Live (Docker Desktop `docker-desktop`, 2026-09-14)
 
 All prior live evidence predates the pipeline move and must be re-run, not cited. daprd reloads
 `Configuration` only at startup — restart the admin and controller pods after `helm upgrade`
@@ -30,5 +30,24 @@ before every check below (a bare upgrade leaves a half-state).
 3. APISIX upstream health checks against the now-gated admin port do not 401 the upstream into
    unhealthy.
 
-Record command evidence, exit codes, and the pod-restart procedure here once a cluster is
-available, then check off tasks 4.1–4.4.
+`helm dependency build charts/dws` completed with exit 0. The live script was run with
+`auth.enabled=true`, `apiGateway.enabled=true`, `apisix.enabled=true`, and `dapr.enabled=false`
+in disposable namespace `dws-gw-e2e`; it builds local admin/console images and loads them into all
+three Docker Desktop nodes. The script performs this required startup refresh before assertions:
+
+```
+kubectl -n dws-gw-e2e rollout restart deployment/dws-admin deployment/dws-controller
+kubectl -n dws-gw-e2e rollout status deployment/dws-admin --timeout=6m
+kubectl -n dws-gw-e2e rollout status deployment/dws-controller --timeout=6m
+```
+
+The admin daprd log positively reported `app is subscribed to the following topics: [[dws.events]]`
+through `pubsub=pubsub`, with no subscription 401. A normal Dapr publish from the injected caller
+sidecar returned HTTP 204 and the quoted CloudEvent was accepted by the read model; the SSE probe
+received a named `event: instance` frame while the connection remained open.
+
+The full matrix passed on both paths (admin direct sidecar invoke and controller invoke from the
+caller sidecar): no-auth, malformed, tampered-signature, wrong-audience, and wrong-issuer each
+returned HTTP 401; the valid token returned HTTP 200. APISIX’s runtime upstream query showed the
+admin node on port 3500 with no active/passive `checks`; ten authenticated requests remained 200
+after the negative matrix. The verification script exits nonzero on any failed assertion.
