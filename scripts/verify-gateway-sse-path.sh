@@ -187,6 +187,9 @@ pass "Gateway API v1 CRDs and APISIX apisix.apache.org/v1alpha1 CRDs are Establi
 # ================================================================================================
 echo
 echo "=== 2. Building local images from the current worktree ==="
+if [ "${GW_E2E_SKIP_IMAGES:-0}" = 1 ]; then
+  pass "using prebuilt images already loaded into cluster nodes (GW_E2E_SKIP_IMAGES=1)"
+else
 docker build -q -t "dws-admin:${ADMIN_IMAGE_TAG}" "$REPO_ROOT/dws-admin" >"$WORKDIR/docker-build-admin.log" 2>&1 \
   || { cat "$WORKDIR/docker-build-admin.log" >&2; fail_and_exit "docker build dws-admin failed"; }
 docker build -q -t "dws-console:${CONSOLE_IMAGE_TAG}" "$REPO_ROOT/dws-console" >"$WORKDIR/docker-build-console.log" 2>&1 \
@@ -218,6 +221,7 @@ load_image_into_cluster_nodes() {
 load_image_into_cluster_nodes "dws-admin:${ADMIN_IMAGE_TAG}"
 load_image_into_cluster_nodes "dws-console:${CONSOLE_IMAGE_TAG}"
 pass "dws-admin:${ADMIN_IMAGE_TAG} and dws-console:${CONSOLE_IMAGE_TAG} loaded into every cluster node's containerd content store"
+fi
 
 # ================================================================================================
 # 3. Disposable namespace, Redis, and mock JWKS IdP.
@@ -313,6 +317,8 @@ fs.writeFileSync(
   `${outDir}/discovery.json`,
   JSON.stringify({ issuer, jwks_uri: `${issuer}/keys.json` }),
 );
+fs.writeFileSync(`${outDir}/wrong-aud.token`, sign({ ...basePayload, aud: 'wrong-audience' }));
+fs.writeFileSync(`${outDir}/wrong-iss.token`, sign({ ...basePayload, iss: 'https://wrong-issuer.invalid' }));
 fs.writeFileSync(`${outDir}/valid.token`, valid);
 fs.writeFileSync(`${outDir}/tampered.token`, tampered);
 console.log('minted RSA keypair, JWKS document, and test tokens');
@@ -387,7 +393,7 @@ helm install "$RELEASE" "$CHART_DIR" \
   --namespace "$NAMESPACE" \
   --timeout 10m \
   --set dapr.enabled=false \
-  --set controller.enabled=false \
+  --set controller.enabled=true \
   --set postgresql.enabled=true \
   --set admin.enabled=true \
   --set admin.image.repository=dws-admin \
@@ -447,30 +453,46 @@ admin_pod="$(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=adm
 [ -n "$admin_pod" ] || fail_and_exit "no admin pod found"
 echo "admin pod: $admin_pod"
 
-# ================================================================================================
-# Finding (not one of the four required assertions, but directly relevant): does Dapr's own
-# internal subscription discovery survive the bearer gate, as spec `helm-admin-auth-middleware`
-# requires ("Dapr's internal programmatic-subscription discovery and pub/sub callback delivery
-# SHALL continue to reach the app without requiring a browser bearer token")? Dapr's
-# `appHttpPipeline` applies to EVERY inbound sidecar->app call, including daprd's own internal
-# `GET /dapr/subscribe` discovery call -- which carries no Authorization header. Check the
-# daprd log for the specific failure signature and report it plainly either way.
-# ================================================================================================
-if kubectl -n "$NAMESPACE" logs "$admin_pod" -c daprd --tail=500 2>/dev/null \
-  | grep -q 'app returned http status code 401 from subscription endpoint'; then
-  echo
-  echo "FINDING: Dapr's own internal 'GET /dapr/subscribe' discovery call was rejected with 401" >&2
-  echo "by the admin sidecar's own bearer middleware (see daprd log line above/below). This" >&2
-  echo "means the bearer Configuration, as currently wired into spec.appHttpPipeline, gates" >&2
-  echo "Dapr's internal subscription discovery too -- contradicting the requirement in spec" >&2
-  echo "'helm-admin-auth-middleware' that pubsub discovery/delivery stay reachable without a" >&2
-  echo "bearer token. Dapr's built-in middleware.http.bearer has no path-exemption option (only" >&2
-  echo "audience/issuer/jwksURL), so there is no values-only workaround. This is reported as a" >&2
-  echo "finding, not fixed here -- fixing it needs a design change (e.g. splitting the pubsub" >&2
-  echo "callback onto an unauthenticated path Dapr's ACL can scope separately, or moving" >&2
-  echo "discovery/delivery off the gated pipeline some other way)." >&2
-  kubectl -n "$NAMESPACE" logs "$admin_pod" -c daprd --tail=500 2>/dev/null | grep 'subscription endpoint' >&2
+# Configuration is startup-only: restart BOTH apps after every install/upgrade, before assertions.
+kubectl -n "$NAMESPACE" rollout restart deployment/"${RELEASE}-admin" deployment/"${RELEASE}-controller"
+for app in admin controller; do
+  kubectl -n "$NAMESPACE" rollout status deployment/"${RELEASE}-$app" --timeout=6m
+done
+admin_pod="$(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=admin --field-selector=status.phase=Running -o json | jq -r '.items[] | select(.metadata.deletionTimestamp == null) | .metadata.name')"
+kubectl -n "$NAMESPACE" logs "$admin_pod" -c daprd >"$WORKDIR/admin-daprd.log"
+if grep -q 'app returned http status code 401 from subscription endpoint' "$WORKDIR/admin-daprd.log"; then
+  fail_and_exit "subscription discovery was bearer-gated"
 fi
+grep -Ei 'subscrib.*dws.events|dws.events.*subscrib' "$WORKDIR/admin-daprd.log" \
+  || fail_and_exit "no positive dws.events subscription registration in daprd logs"
+pass "restarted admin/controller; admin daprd registered dws.events without subscription 401"
+
+# A caller with NO bearer Configuration proves the receiving controller enforces its own gate.
+kubectl -n "$NAMESPACE" apply -f - <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bearer-caller
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: bearer-caller}
+  template:
+    metadata:
+      labels: {app: bearer-caller}
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "bearer-caller"
+    spec:
+      containers:
+        - name: caller
+          image: curlimages/curl:8.12.1
+          command: ["sleep", "3600"]
+EOF
+kubectl -n "$NAMESPACE" rollout status deployment/bearer-caller --timeout=3m
+kubectl -n "$NAMESPACE" get pods -l app=bearer-caller -o json \
+  | jq -e '.items | length == 1 and all(.[]; any(.spec.containers[]; .name == "daprd"))' >/dev/null \
+  || fail_and_exit "caller has no injected daprd container"
 
 # ================================================================================================
 # 5. Port-forward the APISIX gateway data-plane Service and, separately, the admin Service
@@ -591,6 +613,51 @@ echo "GET (direct-to-sidecar, valid bearer, APISIX bypassed) -> HTTP $code_valid
 
 pass "direct-to-sidecar requests (APISIX entirely bypassed via a second port-forward straight to the admin Service) reproduce the identical 401/200 behavior -- Dapr's bearer middleware is the enforcement point, APISIX adds none of its own"
 
+# All five negative cases and a positive control on each independent enforcement path.
+for app in admin controller; do
+  for variant in no-auth malformed tampered wrong-aud wrong-iss valid; do
+    headers=()
+    expected=401
+    case "$variant" in
+      no-auth) ;;
+      malformed) headers=(-H "Authorization: Bearer not-a-jwt") ;;
+      *) headers=(-H "Authorization: Bearer $(cat "$WORKDIR/idp/$variant.token")") ;;
+    esac
+    [ "$variant" != valid ] || expected=200
+    if [ "$app" = admin ]; then
+      code="$(curl --max-time 20 -sS -o "$WORKDIR/matrix-body" -w '%{http_code}' "${headers[@]}" \
+        "${ADMIN_DIRECT}/v1.0/invoke/${RELEASE}-admin/method/instances")"
+    else
+      code="$(MSYS_NO_PATHCONV=1 kubectl -n "$NAMESPACE" exec deployment/bearer-caller -c caller -- \
+        curl --max-time 20 -sS -o /dev/null -w '%{http_code}' "${headers[@]}" \
+        "http://127.0.0.1:3500/v1.0/invoke/${RELEASE}-controller/method/workflows")"
+    fi
+    echo "$app $variant -> HTTP $code (expected $expected)"
+    [ "$code" = "$expected" ] || fail_and_exit "$app $variant: expected $expected, got $code"
+    pass "$app $variant -> $code"
+  done
+done
+
+# Inspect the actual APISIX upstream, not just Helm values. Bundled mode currently has
+# no active/passive health checks. Fail if that changes so a gated HTTP probe cannot
+# silently eject the admin upstream. A future health policy needs an explicit probe test.
+MSYS_NO_PATHCONV=1 kubectl -n "$NAMESPACE" exec deployment/bearer-caller -c caller -- \
+  curl --fail --max-time 20 -sS -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' \
+  "http://${RELEASE}-apisix-admin:9180/apisix/admin/upstreams" >"$WORKDIR/apisix-upstreams.json"
+jq '[.list[].value | select(any(.nodes[]; .port == 3500))]' \
+  "$WORKDIR/apisix-upstreams.json" >"$WORKDIR/admin-upstreams.json"
+jq -e 'length > 0 and all(.[]; (.checks == null or .checks == {}))' \
+  "$WORKDIR/admin-upstreams.json" >/dev/null \
+  || fail_and_exit "admin upstream missing or health checks configured: inspect probe authentication"
+cat "$WORKDIR/admin-upstreams.json"
+for attempt in $(seq 1 10); do
+  code="$(curl --max-time 10 -sS -o /dev/null -w '%{http_code}' \
+    -H "Authorization: Bearer $VALID_TOKEN" "${GW}/dws-admin/instances")"
+  [ "$code" = 200 ] || fail_and_exit "admin upstream unavailable after negative requests: $code"
+  sleep 1
+done
+pass "APISIX admin upstream has no active/passive health checks; ten authenticated requests remain 200 after negative matrix"
+
 # ================================================================================================
 # 8. Assertion 3: SSE delivers a named event frame while the connection is still open (i.e. it
 #    is not buffered/batched until close) through Gateway -> APISIX -> Dapr invoke -> Nest.
@@ -650,14 +717,12 @@ const req = http.request(
       }
     });
     res.on('end', () => {
-      if (!result.firstEventAt) {
-        result.error = 'stream ended before any event frame arrived';
-        finish(1);
-      }
+      result.error = 'server ended stream before the client deliberately closed it';
+      finish(1);
     });
     res.on('error', (err) => {
-      if (!result.firstEventAt) {
-        result.error = `stream error before any event frame arrived: ${err}`;
+      if (!result.closedAt) {
+        result.error = `stream error before deliberate client close: ${err}`;
         finish(1);
       }
     });
@@ -689,30 +754,33 @@ for _ in $(seq 1 30); do
 done
 [ -f "${SSE_RESULT}.connected" ] || { kill "$SSE_PID" >/dev/null 2>&1 || true; dump_debug_state; fail_and_exit "SSE probe never connected"; }
 
-# Trigger the event with a directly-authenticated POST to the Dapr subscription DELIVERY route,
-# through the SAME Gateway -> APISIX -> Dapr-invoke path already proven above, rather than
-# through Dapr's own automatic pubsub delivery. This is deliberate, not a shortcut: the "Finding"
-# block above already showed daprd's own internal (unauthenticated) subscription-discovery call
-# gets 401'd by this same bearer gate, so Dapr's automatic delivery to POST /dapr/events/dws
-# would be 401'd too and never reach Nest -- that is a separate, already-reported defect, not
-# the SSE-transport/buffering question this assertion exists to answer. Posting the identical
-# transport-CloudEvent shape Dapr would have sent (`{"data": <our envelope>}`), but WITH a valid
-# bearer attached, isolates that transport/buffering question from the pubsub-registration defect.
-echo "SSE probe connected; POSTing an io.dws.instance.started transport event through the Gateway (valid bearer, bypassing the broken automatic pubsub delivery -- see the Finding above)..."
+# Publish through an independent Dapr sidecar: discovery and delivery must both work.
+echo "SSE connected; publishing dws.events through caller Dapr pub/sub..."
 
 INSTANCE_ID="gw-e2e-inst-$(date +%s)"
 NOW="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
 INNER_ENVELOPE=$(printf '{"id":"%s","source":"gw-e2e","type":"io.dws.instance.started","time":"%s","datacontenttype":"application/json","data":{"instanceId":"%s","workflow":"gw-e2e","version":"v1","appId":"gw-e2e","startedAt":"%s"}}' \
   "$INSTANCE_ID" "$NOW" "$INSTANCE_ID" "$NOW")
-TRANSPORT_BODY=$(printf '{"data":%s}' "$INNER_ENVELOPE")
-deliver_code="$(curl -sS -o "$WORKDIR/a3-deliver-body.json" -w '%{http_code}' \
-  -X POST -H "Authorization: Bearer $VALID_TOKEN" -H 'Content-Type: application/json' \
-  -d "$TRANSPORT_BODY" "${GW}/dws-admin/dapr/events/dws")"
-echo "POST /dws-admin/dapr/events/dws (valid bearer, via Gateway) -> HTTP $deliver_code"
-cat "$WORKDIR/a3-deliver-body.json"; echo
-# Nest's default POST status is 201 (no @HttpCode override on DaprSubscriptionController.deliver);
-# Dapr's own subscription-delivery contract only cares that the response is 2xx (SUCCESS).
-[[ "$deliver_code" =~ ^20[0-9]$ ]] || { dump_debug_state; fail_and_exit "delivering io.dws.instance.started via the Gateway-routed dapr/events/dws endpoint failed (HTTP $deliver_code)"; }
+deliver_code="$(MSYS_NO_PATHCONV=1 kubectl -n "$NAMESPACE" exec deployment/bearer-caller -c caller -- \
+  curl --max-time 20 -sS -o /dev/null -w '%{http_code}' -X POST \
+  -H 'Content-Type: application/json' -d "$(printf '%s' "$INNER_ENVELOPE" | jq -R -s .)" \
+  "http://127.0.0.1:3500/v1.0/publish/pubsub/dws.events")"
+echo "Dapr publish pubsub/dws.events -> HTTP $deliver_code"
+[ "$deliver_code" = 204 ] || fail_and_exit "Dapr publish failed: $deliver_code"
+for attempt in $(seq 1 120); do
+  curl --fail --max-time 10 -sS -H "Authorization: Bearer $VALID_TOKEN" \
+    "${GW}/dws-admin/instances" >"$WORKDIR/published-instances.json"
+  jq -e --arg id "$INSTANCE_ID" '.items[] | select(.instanceId == $id)' \
+    "$WORKDIR/published-instances.json" && break
+  sleep 1
+done
+jq -e --arg id "$INSTANCE_ID" '.items[] | select(.instanceId == $id)' \
+  "$WORKDIR/published-instances.json" >/dev/null || {
+    kubectl -n "$NAMESPACE" logs "$(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=admin -o jsonpath='{.items[0].metadata.name}')" -c admin --tail=100 >&2 || true
+    kubectl -n "$NAMESPACE" logs "$(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=admin -o jsonpath='{.items[0].metadata.name}')" -c daprd --tail=100 >&2 || true
+    fail_and_exit "published instance missing from read model"
+  }
+pass "real Dapr pub/sub message reached the instances read model"
 
 wait "$SSE_PID" || true
 echo "--- SSE probe result ---"
@@ -729,6 +797,7 @@ sse_first_event_raw="$(jq -r '.firstEventRaw' "$SSE_RESULT")"
 [ "$sse_status" = "200" ] || { dump_debug_state; fail_and_exit "SSE request did not get HTTP 200 (got $sse_status, error: $sse_error)"; }
 [ "$sse_error" = "null" ] || { dump_debug_state; fail_and_exit "SSE probe reported an error: $sse_error"; }
 [ "$sse_first_event_at" != "null" ] || { dump_debug_state; fail_and_exit "no SSE event frame ever arrived (stream may be fully buffered until close, or never delivered)"; }
+echo "$sse_first_event_raw" | grep -Fq "$INSTANCE_ID" || fail_and_exit "SSE event does not match published instance"
 echo "$sse_first_event_raw" | grep -q '^event: instance' \
   || fail_and_exit "first SSE frame is not a named 'instance' event: $sse_first_event_raw"
 

@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - 'charts/**'
+      - 'scripts/verify-gateway-sse-path.sh'
       - '.github/workflows/helm.yml'
   pull_request:
     paths:
       - 'charts/**'
+      - 'scripts/verify-gateway-sse-path.sh'
       - '.github/workflows/helm.yml'
   workflow_dispatch:
     inputs:
@@ -428,7 +430,9 @@ jobs:
             --version "${{ env.DAPR_VERSION }}" --wait --timeout 5m
 
       - name: Verify live Gateway -> APISIX -> Dapr invoke -> Nest SSE path
-        run: bash ./scripts/verify-gateway-sse-path.sh
+        run: |
+          helm dependency build charts/dws
+          bash ./scripts/verify-gateway-sse-path.sh
 
   release:
     name: package & push (OCI)

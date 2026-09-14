@@ -31,7 +31,10 @@ export function configureBodyParsers(app: NestExpressApplication): void {
   // event-delivery endpoints are handed decoded CloudEvents. The limit is raised
   // only because a JSON definition submitted to the relay is parsed here too, and
   // the parsers default to 100 kB.
-  app.useBodyParser('json', { limit: MAX_BODY_BYTES });
+  // Dapr delivers pub/sub CloudEvents as `application/cloudevents+json`.
+  // Express's JSON parser otherwise ignores that structured-suffix media type,
+  // leaving @Body() undefined even though the subscription reached the app.
+  app.useBodyParser('json', { limit: MAX_BODY_BYTES, type: ['application/json', 'application/*+json'] });
 
   // Nest captures raw JSON when rawBody is enabled, but it has no built-in parser
   // for YAML. Parse it as bytes so the controller relay can preserve it verbatim.
