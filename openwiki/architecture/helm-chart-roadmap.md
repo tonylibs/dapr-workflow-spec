@@ -9,7 +9,7 @@ tags: [dws, helm, kubernetes, controller, admin, postgresql, dapr, redis, dex, a
 
 `charts/dws` is the DWS application chart. It packages the persistent control-plane services—the `dws-controller` API and the `dws-admin` [administrative read model](../integrations/admin-read-model.md)—plus optional `dws-console` and `admin-gateway` workloads and conditional infrastructure dependencies, rather than the per-workflow runtime. The controller continues to create the pinned orchestrator and step services for each submitted definition; that lifecycle is described in [deployed workflow lifecycle](deployed-workflow.md).
 
-The chart defaults to one controller replica, one admin replica, an in-chart standalone PostgreSQL instance, Dapr and its Redis backing services. It installs into the Helm release namespace unless `namespaceOverride` is set. Dex is available as a disabled-by-default optional in-chart identity provider. When the separate `auth.enabled` controller setting is enabled, the chart can derive the controller's JWT-validation settings from Dex; otherwise Dex only supports the optional browser login described in [console OIDC login](console-auth.md). The current chart metadata and values live in `charts/dws/Chart.yaml` and `charts/dws/values.yaml`.
+The chart defaults to one controller replica, one admin replica, an in-chart standalone PostgreSQL instance, Dapr and its Redis backing services. It installs into the Helm release namespace unless `namespaceOverride` is set. Dex is available as a disabled-by-default optional in-chart identity provider. When the separate `auth.enabled` setting is enabled, the chart can derive the controller and admin sidecars' JWT-validation settings from Dex; otherwise Dex only supports the optional browser login described in [console OIDC login](console-auth.md). The current chart metadata and values live in `charts/dws/Chart.yaml` and `charts/dws/values.yaml`.
 
 ## Installed components
 
@@ -47,7 +47,9 @@ Dex supplies the optional console's browser login and can supply the issuer conf
 
 ## Controller bearer middleware
 
-With `auth.enabled=true`, the chart adds a `middleware.http.bearer` Dapr Component scoped to the controller app ID and a Dapr Configuration that places it in the controller sidecar's inbound HTTP pipeline. The controller Deployment always declares `dapr.io/app-port: "8080"`; it receives the configuration annotation only when auth is enabled. The Service then targets the sidecar HTTP port (`3500`) rather than the controller container port, so callers must use Dapr service invocation and carry a JWT whose issuer and audience match the middleware configuration.
+With `auth.enabled=true`, the chart adds separate `middleware.http.bearer` Dapr Components scoped to the controller and admin app IDs, using the resolved issuer, audience, and optional JWKS URL. The two configurations are intentionally asymmetric. The controller's handler stays in `spec.appHttpPipeline`: `dws-admin` reaches it through Dapr service invocation over internal gRPC, which does not traverse `httpPipeline`. The controller Deployment always declares `dapr.io/app-port: "8080"`; it receives the configuration annotation only when auth is enabled. The Service then targets the sidecar HTTP port (`3500`) rather than the controller container port, so callers must use Dapr service invocation and carry a JWT whose issuer and audience match the middleware configuration.
+
+The admin handler instead uses `spec.httpPipeline`, which gates the sidecar HTTP API used by the Gateway's `/dws-admin` route while leaving Dapr's internal `GET /dapr/subscribe` discovery and pub/sub delivery to the [administrative read model](../integrations/admin-read-model.md) ungated. This placement restores its [lifecycle-event](../integrations/lifecycle-events.md) projection when authentication is enabled; it is not interchangeable with the controller configuration. The admin Deployment's auth-enabled sidecar is configured to listen beyond loopback because its Service fronts port `3500`; in Gateway mode that Service exposes only the sidecar, keeping the Nest port out of the browser-facing route.
 
 ```mermaid
 sequenceDiagram
@@ -73,7 +75,7 @@ The Service bypass is closed in the enabled path, but this is not complete pod-n
 
 The console does not yet exercise this route. The planned `dws-admin` relay is the first intended caller; it will forward the browser authorization header through its own sidecar. Until that phase exists, enabling controller auth changes the contract only for operators or in-cluster callers that invoke the controller directly.
 
-For changes, keep the controller Deployment `dapr.io/config` annotation, the auth Component, and the Configuration handler names synchronized. Validate both disabled and external/Dex-enabled render modes with `helm lint charts/dws` and `helm template`; the chart's Helm test includes an unauthenticated Dapr invocation that must receive `401`.
+For changes, keep each workload's Deployment `dapr.io/config` annotation, auth Component, and Configuration handler names synchronized. Do not normalize the controller and admin pipelines to match: `charts/dws/tests/auth-pipeline-placement-test.sh` pins controller `appHttpPipeline` and admin `httpPipeline`. Validate disabled and external/Dex-enabled render modes with `helm lint charts/dws` and `helm template`; the chart's Helm test includes an unauthenticated Dapr invocation that must receive `401`.
 
 ## Verification and release
 
