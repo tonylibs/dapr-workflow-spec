@@ -430,8 +430,12 @@ jobs:
             --version "${{ env.DAPR_VERSION }}" --wait --timeout 5m
 
       - name: Verify live Gateway -> APISIX -> Dapr invoke -> Nest SSE path
+        # `update` (not `build`) so this doesn't require each dependency's repo to be
+        # `helm repo add`-ed first -- it re-resolves and re-fetches from Chart.yaml's own
+        # repository URLs, matching the verify/integration jobs above. `build` fails here with
+        # "no repository definition for https://charts.dexidp.io, ...apisix-helm-chart".
         run: |
-          helm dependency build charts/dws
+          helm dependency update ${{ env.CHART_DIR }}
           bash ./scripts/verify-gateway-sse-path.sh
 
   release:
