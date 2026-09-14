@@ -1,12 +1,14 @@
 {{- /*
   Bearer JWT middleware for the dws-admin sidecar (auth roadmap Phase 4).
-  Mirrors templates/controller/auth-component.yaml exactly — same values plumbing,
-  same Dex-derived fallback — but scoped to the dws-admin app-id so it only gates
-  Phase 3's write-relay path and not the controller.
+  Same values plumbing and Dex-derived fallback as templates/controller/auth-component.yaml,
+  scoped to the dws-admin app-id so it only gates admin traffic and not the controller.
 
-  The paired Configuration in auth-configuration.yaml references this Component by
-  name in spec.appHttpPipeline.handlers, and the admin Pod's dapr.io/config
-  annotation names that Configuration — the three files must stay in sync.
+  The Component definition matches the controller's, but the paired Configurations do NOT:
+  the admin Configuration references this Component from spec.httpPipeline.handlers (the
+  sidecar's own Dapr HTTP API), whereas the controller uses spec.appHttpPipeline. That
+  divergence is deliberate — see auth-configuration.yaml's header and dws-auth.md
+  "Decision (2026-09-13)". The admin Pod's dapr.io/config annotation names that Configuration
+  — the three files must stay in sync.
 */}}
 {{- if and .Values.admin.enabled .Values.auth.enabled }}
 apiVersion: dapr.io/v1alpha1
