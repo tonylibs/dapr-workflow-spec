@@ -42,26 +42,41 @@ task-failure and instance-failure path as any other task.
 
 ### Requirement: Runtime error object carries the DSL's five error fields
 `dws-orchestrator` SHALL represent a caught failure as a JSON object with the fields `type`,
-`status`, `instance`, `title`, and `detail`. `type` SHALL identify the failure class — a
-transform/validation failure, a step-service communication failure, or any other runtime failure —
-`status` SHALL carry the upstream HTTP status when one is recoverable and a per-class default
-otherwise, `instance` SHALL identify the failing task's location in the definition, and `detail`
-SHALL carry the failure detail. RFC 7807 Problem Details formatting and the standard Open Workflow
-Specification error-type catalogue are out of scope for this capability.
+`status`, `instance`, `title`, and `detail`. `type` SHALL be a URI under the standard Open Workflow
+Specification error-type catalogue's namespace (`https://serverlessworkflow.io/spec/1.0.0/errors/`)
+identifying the failure's kind: `validation` (a transform/validation failure), `communication` (a
+step-service communication failure), `timeout` (a task, workflow, or retry-attempt deadline
+elapsing), or — for a failure this runtime does not classify into one of the standard kinds it
+currently produces — its own `runtime` kind, published under the same namespace. `status` SHALL
+carry the upstream HTTP status when one is recoverable and a per-kind default otherwise (`400` for
+`validation`, `502` for `communication`, `408` for `timeout`, `500` for `runtime`), `instance`
+SHALL identify the failing task's location in the definition, and `detail` SHALL carry the failure
+detail. The catalogue also defines `authorization` (`403`) and `expression` (`400`) kinds, which
+`catch.errors.with.type` MAY filter against, but this capability does not classify any failure into
+either — authorization failures are out of scope until authentication exists, and
+expression/transform failures continue to classify as `validation` per the scenario below.
 
 #### Scenario: Step-service failure is a communication error
 - **WHEN** a `call` task inside `try` fails because its step service returned an upstream failure
-- **THEN** the error object's `type` identifies a communication failure
+- **THEN** the error object's `type` identifies a communication failure under the standard
+  namespace
 - **AND** its `status` is the upstream HTTP status when one is recoverable
 
 #### Scenario: Data-flow failure is a validation error
 - **WHEN** a task inside `try` fails its `output.schema` validation
-- **THEN** the error object's `type` identifies a validation failure
+- **THEN** the error object's `type` identifies a validation failure under the standard namespace
 - **AND** its `detail` names the offending field
 
 #### Scenario: Error identifies the failing task
 - **WHEN** any task inside `try` fails
 - **THEN** the error object's `instance` identifies that task rather than the enclosing `try` task
+
+#### Scenario: Unclassified failure is the runtime kind under the standard namespace
+- **WHEN** a task inside `try` fails in a way this capability does not classify as `validation`,
+  `communication`, or `timeout`
+- **THEN** the error object's `type` identifies the `runtime` kind under the
+  `https://serverlessworkflow.io/spec/1.0.0/errors/` namespace
+- **AND** its `status` defaults to `500`
 
 ### Requirement: Static error filtering by `catch.errors.with`
 `dws-orchestrator` SHALL catch an error only when every field present in `catch.errors.with` equals
@@ -163,8 +178,12 @@ be made so that it is stable across workflow replay.
 and `exponential` SHALL double it per attempt. When `jitter` is declared, a random duration drawn
 from `[jitter.from, jitter.to]` SHALL be added. Retrying SHALL stop when `limit.attempt.count`
 attempts have been made or when the elapsed time since the first failure exceeds `limit.duration`.
-An attempt count of `0` SHALL be treated as absent. `limit.attempt.duration` is a per-attempt timeout
-and SHALL be rejected with a message naming it as unsupported rather than silently ignored.
+An attempt count of `0` SHALL be treated as absent. `limit.attempt.duration` bounds a single
+attempt's own duration and, when it elapses before the attempt completes, that attempt SHALL be
+treated as failed with a `timeout` error and counted toward `limit.attempt.count` and
+`limit.duration` identically to any other attempt failure; the detailed timeout behavior is
+specified by the `workflow-timeouts` capability's "Retry per-attempt timeout bounds a single
+attempt" requirement.
 
 #### Scenario: Exponential backoff grows the delay
 - **WHEN** a policy declares `exponential` backoff and a base delay
@@ -182,9 +201,10 @@ and SHALL be rejected with a message naming it as unsupported rather than silent
 - **WHEN** a workflow instance with a jittered retry is replayed
 - **THEN** the same delay is used as on the original execution
 
-#### Scenario: Per-attempt duration limit is rejected
+#### Scenario: Per-attempt duration limit is enforced, not rejected
 - **WHEN** a retry policy declares `limit.attempt.duration`
-- **THEN** the task fails with a message naming it as an unsupported knob
+- **THEN** the policy is accepted, and an attempt exceeding that duration is treated as a failed
+  attempt rather than causing the task to fail with an unsupported-configuration error
 
 ### Requirement: Recovery block runs when retries are exhausted
 When the error is caught and no further retry applies, `dws-orchestrator` SHALL run the task list
