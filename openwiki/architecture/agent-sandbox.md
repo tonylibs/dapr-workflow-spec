@@ -35,7 +35,7 @@ This diagram shows the sandbox image, session mounts, and CI validation sharing 
 
 Normal local use requires `OPENSANDBOX_SERVER_API_KEY`. `OPENSANDBOX_INSECURE_SERVER=YES` is only for a strictly local experiment without that key; a public bind address or public exposure is outside this profile's safe operating boundary.
 
-The same image exposes port 22 and starts `sshd-start` by default. It generates fresh host keys for every container and starts SSH with password and keyboard-interactive authentication disabled; a caller must provide an authorized public key at `/root/.ssh/authorized_keys` and map port 22 through the Docker/OpenSandbox deployment. Keep that mapping on localhost or a protected VPN/mesh network: the repository does not supply a key-injection or port-mapping manifest, so those details remain runtime-specific.
+The same image exposes port 22 and starts `sshd-start` by default. Before starting SSH, that script clones the DWS repository into an empty `/workspace`; it reuses an existing checkout only when its `origin` matches the configured repository URL, and otherwise refuses to overwrite the workspace. `DWS_REPOSITORY_URL` and `DWS_REPOSITORY_DIR` override those defaults. It then generates fresh host keys for every container and starts SSH with password and keyboard-interactive authentication disabled; a caller must provide an authorized public key at `/root/.ssh/authorized_keys` and map port 22 through the Docker/OpenSandbox deployment. Keep that mapping on localhost or a protected VPN/mesh network: key injection and port mapping remain runtime-specific.
 
 ```mermaid
 flowchart TD
@@ -60,7 +60,7 @@ The workflow validates image builds for pull requests but publishes to `ghcr.io/
 
 ## Cluster prerequisites and boundaries
 
-Before applying the template, confirm the installed `sandboxes.agents.x-k8s.io` CRD version. The checked-in manifest currently uses `agents.x-k8s.io/v1beta1`, while the repository notes that agent-sandbox v0.4.x serves only `v1alpha1` and has no conversion webhook. Also resolve the image registry/tag, namespace and service-account RBAC, storage class, an available gVisor or Kata runtime class if required, and the way the empty workspace is populated (for example, a git-clone init container or a persistent repository volume).
+Before applying the template, confirm the installed `sandboxes.agents.x-k8s.io` CRD version. The checked-in manifest currently uses `agents.x-k8s.io/v1beta1`, while the repository notes that agent-sandbox v0.4.x serves only `v1alpha1` and has no conversion webhook. Also resolve the image registry/tag, namespace and service-account RBAC, storage class, an available gVisor or Kata runtime class if required, and the way the empty workspace is populated. The Docker image's `sshd-start` can clone a repository into its workspace, but the Kubernetes template still needs an explicit hydration design such as a git-clone init container or a persistent repository volume.
 
 The image deliberately does not include `kubectl`, the Dapr CLI, or in-session image-building tools. Add them only when a live-cluster workflow requires them. Source: `agent-sandbox/README.md`, `agent-sandbox/sandbox.yaml`, and `agent-sandbox/cache-pvcs.yaml`.
 
