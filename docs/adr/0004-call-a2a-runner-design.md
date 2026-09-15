@@ -63,6 +63,19 @@ runner therefore always resolves the card itself via `A2ACardResolver` over a ru
 then passes the resulting `AgentCard`. This is the only place card-fetch credentials can be applied
 (Decision 4), so the bare-URL form is prohibited.
 
+**`parameters` has two forms, and both must be supported.** The OWS schema types it
+`oneOf: [object (minProperties 1), string]`, and the reference notes it "supports runtime
+expressions". So an author may supply either a single jq expression string evaluated against the
+workflow data, or an object whose *values* carry embedded expressions. `dws-call-openapi` already
+solved this shape — its `evaluateParameters` in `jq.ts` walks the object form and evaluates embedded
+expressions — and the a2a runner reuses that approach rather than inventing a third convention.
+
+Note the guard asymmetry this inherits. `dws-call-openapi` explicitly rejects a non-object jq result
+before use; `dws-call-asyncapi` deliberately dropped that check because its ajv payload validator
+catches a malformed shape anyway. `call: a2a` has **no schema validation at all** — `parameters` is
+passed through to the agent unvalidated — so the runner needs the `dws-call-openapi`-style guard
+back, or a malformed expression result reaches the agent as a nonsense JSON-RPC params value.
+
 ## Decision 2: `message/send` and `tasks/get` only
 
 Of the 11 methods in the OWS enum, this version supports `message/send` and `tasks/get`. Everything
@@ -112,6 +125,11 @@ credentials are obtained "through an out-of-band process" and sent "in protocol-
 or metadata for every A2A request". OWS's `authentication` block is that out-of-band channel. A card
 therefore cannot be a credential source, only a statement of requirements.
 
+The OWS reference says as much directly, in the note under the A2A call's property table: "The
+`security` and `securitySchemes` fields of the AgentCard contain authentication **requirements** and
+schemes for when communicating with the agent." Requirements and schemes — not credentials. That is
+the whole basis for treating the card as a validator rather than a credential source.
+
 The alternative — resolve the OWS policy onto a card-declared scheme name and drive the SDK's
 `AuthInterceptor`, which looks credentials up by scheme name through a `CredentialService` — was
 rejected on four grounds: `AuthInterceptor` emits Bearer and apiKey-in-header only and will not emit
@@ -157,13 +175,42 @@ subset, require exactly one of `agentCard`/`server` (treating `agentCard` as ign
 is set, per the OWS schema), project credentials as secret references, and pin the step's
 environment.
 
-## Decision 6: Result shaping — strip `history`, return non-terminal states as data
+## Decision 6: Result shaping — don't carry `history`, return non-terminal states as data
 
-A returned `Task` carries `status`, `artifacts[]`, and `history[]`. `history` is omitted from the
-runner's output unless explicitly opted into, for two reasons: it replays the dispatched message,
-which — if `parameters` were built with Phase 4's `$secrets` jq extension — would place credentials
-into the workflow data document and into `dws-admin`'s read model; and artifacts plus history can
-carry base64 file parts, and the whole object becomes workflow state in the Dapr state store.
+Note the layering first: OWS defines only the *call* surface (`method`, `agentCard`/`server`,
+`parameters`) and says the output is "the JSON-RPC result". It says nothing about that result's
+shape. `Task` — and its optional `history` field — is defined by the **A2A protocol**, not by OWS.
+What the runner hands the workflow is therefore a DWS policy choice, not an OWS conformance question.
+
+The policy: **an OWS `a2a` step is a one-time invocation, so the conversation transcript has no role
+in it.** The runner never reads `history`; no branch, shaping rule, or error decision depends on it.
+`status.state` drives the author's `switch`, `status.message` carries an agent's `input-required`
+ask, and `artifacts` carry the output. Even the multi-turn patterns need nothing from it — the agent
+owns conversation state, keyed by `taskId`/`contextId`, so a resumed task continues correctly
+whether or not the workflow ever saw the transcript.
+
+So the runner does not carry it. Primary mechanism is **not requesting it**: `TaskQueryParams`
+exposes `historyLength`, so `tasks/get` asks for `historyLength: 0`. Stripping the field from the
+result is the backstop, since `message/send` may return history regardless and not every agent will
+honour the hint.
+
+Two consequences follow rather than motivate: whatever business payload the step dispatched is not
+duplicated into the workflow data document and projected into `dws-admin`'s read model, and the
+workflow state stored in Dapr stays smaller — `history` and `artifacts` can both carry base64 file
+parts.
+
+`INCLUDE_HISTORY=true` opts back in. It is a **debugging affordance**, not a feature: nothing in a
+workflow can consume a transcript meaningfully, but when an agent misbehaves the transcript exists
+nowhere else on the DWS side. Document it as such so it is not mistaken for a supported data source.
+
+An earlier draft justified this decision as preventing credential echo via Phase 4's `$secrets` jq
+extension. That framing was wrong on two counts: `$secrets` is scoped to `set` and `switch` (per
+`workflow-auth` task 3.2, "thread secret variables through `set` and `switch` evaluation paths"), so
+a call task's `with` cannot reference it directly; and the decision never needed a security
+justification in the first place. Note, though, that a definition *can* launder a secret into a call
+by `set`-ing it into workflow data and reading it back through `parameters` — the leakage §5a of the
+OWS roadmap already warns about. That makes not carrying `history` a useful mitigation for a known
+hazard, but it remains a consequence of the scoping decision, not its reason.
 
 A task whose `status.state` is `input-required` or `auth-required` is returned as a **successful
 result**, not a step failure. Neither is a JSON-RPC failure, so per OWS the result object is the
@@ -182,6 +229,58 @@ behavior, and cached at boot — a changed card requires a pod restart, as with 
 `A2ACardResolver.get_agent_card()` also accepts a `signature_verifier` callable for the card's JWS
 `signatures`. Verifying card signatures is a follow-up, not part of this decision.
 
+## Decision 8: A deterministic `messageId` gives retries a dedupe key
+
+Two mechanisms re-invoke a step: the author's OWS `try`/`retry`, and the step-service contract's
+`502` → orchestrator retry. Either can call the agent more than once for one logical step.
+
+A timeout is **ambiguous** — the runner cannot distinguish "the agent never received it" from "the
+agent received it and is slow". With a fresh `messageId` on the second attempt, a conforming agent
+sees an unrelated request and starts a second task: the work runs twice, is billed twice, any side
+effects (a filed ticket, a sent mail, a downstream API call) happen twice, and the first task is
+orphaned while the workflow polls only the second.
+
+On a fresh `message/send` (no `taskId`), `messageId` is the only client-supplied identifier in the
+request, so it is the only field that can link two attempts. It is a **protocol** field —
+`Message.messageId` in the A2A wire types — which OWS also names normatively: runtimes "must default
+`message.messageId` to a uuid".
+
+**Decision: derive it deterministically.**
+
+```
+messageId = uuid5(DWS_NAMESPACE, f"{workflowInstanceId}/{taskName}/{iterationIndex}")
+```
+
+Three properties matter:
+
+- **Stable across attempts of one logical invocation** — this is the whole point. The derivation
+  must NOT include an attempt counter; an earlier draft of this ADR said it should, which would
+  produce a different id per attempt and defeat the mechanism entirely.
+- **Distinct across invocations** — the `for` iteration index is required, or 500 items sharing a
+  task name would collide.
+- **Conformant** — OWS says "a uuid", not "a random uuid". A uuid5 is a valid RFC 4122 UUID, so a
+  deterministic value satisfies the rule with no spec tension.
+
+The runner must set the field **explicitly** when constructing the `Message`: both the OWS rule and
+the SDK helpers default it to a fresh uuid, so letting the default fire reintroduces the problem. An
+author-supplied `messageId` in `parameters` wins — OWS specifies a *default*, which applies only
+when the field is absent.
+
+An idempotency key carried in `message.metadata` was considered as an alternative. It is arguably
+cleaner — `metadata` is an explicit extension point, where `messageId` is an identity field being
+overloaded — but it is non-standard, so an agent would have to know our key specifically, whereas
+`messageId` is somewhere a conforming agent might already look.
+
+**The honest limit:** A2A defines no dedupe requirement. A deterministic `messageId` gives a
+cooperative agent the *ability* to recognise a retry; it does not make anything idempotent by
+itself. We can offer the key, not enforce its use. The derivation is therefore documented so agent
+authors can rely on it.
+
+**Open sub-question — default retry posture.** Because the key only works with agent cooperation,
+should `call: a2a` steps default to no retry, so a failure surfaces to the author's `try`/`catch`
+rather than being silently re-dispatched? That is the only behavior that is correct without agent
+cooperation, at the cost of losing automatic recovery from genuine transport blips. Not decided.
+
 ## Consequences
 
 - **A sixth language stack.** Python brings its own toolchain choice, package `CLAUDE.md`, gate
@@ -198,14 +297,14 @@ behavior, and cached at boot — a changed card requires a pod restart, as with 
   fake A2A server for multi-turn state, and — importantly — a conformance job running the official
   `a2a-sdk` server. That third tier exists because a hand-written mock encodes the same
   misreading as the runner and goes green; the SDK is the only oracle that breaks that circularity.
-- **Open: retry idempotency.** OWS `try`/`retry` re-invokes the step. A fresh `messageId` per
-  attempt most likely makes the agent start a **new task**, so a retried step can run the agent's
-  work — and bill for it — twice. The spec requires defaulting `messageId` to a uuid but does not
-  say whether it must be fresh per attempt. Candidates: a fresh uuid (simplest, duplicates on
-  retry); a deterministic `messageId` derived from workflow instance, task name, and attempt, giving
-  agents a dedupe key; or a `tasks/get` probe before resend, which costs a round trip and needs a
-  `taskId` the runner does not carry across attempts. **Not decided by this ADR** — it must be
-  settled before the request path is written.
+- **Open: agent-call concurrency.** A `for` over a large collection with a `call: a2a` body fans out
+  to one agent invocation per item, and Knative will scale out to meet it. Unlike the HTTP APIs the
+  sibling runners target, agent calls are slow, metered, and commonly rate-limited, so an unbounded
+  fan-out is a cost and throttling incident rather than just load. Whether the controller caps a2a
+  step services (`maxScale`/`containerConcurrency`) or leaves pacing to the author's `for`/`fork`
+  shape is **not decided by this ADR**.
+- **Retry idempotency is addressed by Decision 8**, with one sub-question — the default retry
+  posture for a2a steps — left open there.
 
 ## Non-goals
 

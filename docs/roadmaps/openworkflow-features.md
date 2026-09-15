@@ -209,6 +209,11 @@ fresh `messageId` per attempt most likely makes the agent start a duplicate task
 three candidates and recommends a deterministic `messageId`; it must be settled before the runner's
 request path is written.
 
+**Open, not blocking:** agent-call concurrency. A `for` over a large collection fans out to one
+agent invocation per item and Knative scales to meet it; agent calls are metered and rate-limited in
+a way the other protocols' targets are not. Whether the controller caps a2a step services or leaves
+pacing to the author is undecided — see ADR 0004's consequences.
+
 Unlike Phases 4 and 5, Phase 5.5 needs **no live cluster** — a mock transport, an in-repo fake A2A
 server, and a CI conformance job against the official `a2a-sdk` server cover it end to end.
 
