@@ -146,7 +146,7 @@
             <scope>test</scope>
         </dependency>
         <!-- Used by the v2 compiler's tests to validate rendered single-node definitions against
-             openspec/schemas/single-node-definition.schema.json. Also arrives transitively via
+             src/test/resources/single-node-definition.schema.json. Also arrives transitively via
              serverlessworkflow-api; declared so an SDK bump cannot remove it silently. -->
         <dependency>
             <groupId>com.networknt</groupId>
