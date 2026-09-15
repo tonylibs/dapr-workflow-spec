@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import lombok.experimental.UtilityClass;
+import one.util.streamex.StreamEx;
 
 /**
  * Recursive descent over a parsed definition, producing the v2 Flow/Step graph (ADR 0001, ADR 0002,
@@ -95,12 +96,9 @@ public class NodeClassifier {
   /** Classifies one scope's task list, in source order, into that scope's child nodes. */
   private static List<CompiledNode> classifyTasks(
       List<TaskItem> tasks, RawTaskList rawTasks, Context context) {
-    List<TaskItem> items = Optional.ofNullable(tasks).orElseGet(List::of);
-    List<CompiledNode> children = new ArrayList<>(items.size());
-    for (int i = 0; i < items.size(); i++) {
-      children.add(classifyTask(items.get(i), rawTasks.get(i), context));
-    }
-    return List.copyOf(children);
+    return StreamEx.zip(
+            tasks, rawTasks.items(), (task, rawTask) -> classifyTask(task, rawTask, context))
+        .toList();
   }
 
   /**

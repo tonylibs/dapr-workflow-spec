@@ -1,0 +1,33 @@
+{
+  "name": "dws-controller",
+  "image": "ghcr.io/tonylibs/dws-agent-sandbox:latest",
+  "remoteUser": "root",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind",
+  "mounts": [
+    "source=dws-controller-maven-cache,target=/root/.m2,type=volume"
+  ],
+  "forwardPorts": [8080, 5005],
+  "portsAttributes": {
+    "8080": {
+      "label": "Quarkus application",
+      "onAutoForward": "notify"
+    },
+    "5005": {
+      "label": "Java debugger",
+      "onAutoForward": "silent"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "redhat.java",
+        "vscjava.vscode-java-debug",
+        "vscjava.vscode-maven",
+        "redhat.vscode-quarkus"
+      ]
+    }
+  }
+}
+
+
+
