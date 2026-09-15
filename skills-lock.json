@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "a2a-protocol": {
+      "source": "terminalskills/skills",
+      "sourceType": "github",
+      "skillPath": "skills/a2a-protocol/SKILL.md",
+      "computedHash": "892089905bd91aa37202a6a7df741ceb3ff605e9c63114ed7ada49a23d2cd5d1"
+    },
     "dapr": {
       "source": "membranedev/application-skills",
       "sourceType": "github",
@@ -30,6 +36,12 @@
       "sourceType": "github",
       "skillPath": "backend/event-driven-architect/SKILL.md",
       "computedHash": "93f5ff4ae967cc7641d68fd0cb7d4e07438cb33b7d4b14179ba059449eda457f"
+    },
+    "fastapi": {
+      "source": "fastapi/fastapi",
+      "sourceType": "github",
+      "skillPath": "fastapi/.agents/skills/fastapi/SKILL.md",
+      "computedHash": "187b2e06c41cdb6c6beeab15e6db4aeb1bf62f57735974646ad5646af8aacc66"
     },
     "find-skills": {
       "source": "vercel-labs/skills",
@@ -78,6 +90,18 @@
       "sourceType": "github",
       "skillPath": "skills/nestjs-patterns/SKILL.md",
       "computedHash": "838807825d825b067786a83ad714872139cb53123acf6cf11335fd23f8f75c4e"
+    },
+    "python-design-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/python-development/skills/python-design-patterns/SKILL.md",
+      "computedHash": "a8f1eebda28a169f366da393b6a2f836583022b4ca3f2c330eabde1e5cccb08b"
+    },
+    "python-testing-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/python-development/skills/python-testing-patterns/SKILL.md",
+      "computedHash": "f4de9bdbf2db1c1f8e8211e6af463ad49956f15aa604e2f08ae716c71e71f64b"
     },
     "quarkus-patterns": {
       "source": "affaan-m/ecc",
