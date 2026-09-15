@@ -14,8 +14,8 @@ Two different readiness axes get conflated below — worth separating:
 | `call` (http) | ✅ | StepService via `dws-call-http` (built) |
 | `call` (openapi) | ✅ | StepService via `dws-call-openapi` (built) |
 | `call` (grpc) | ✅ | StepService via `dws-call-grpc` (built); shipped in `dws-call-grpc` (Phase 5 slice 1) |
-| `call` (asyncapi) | 🚧 | Phase 5 slice 2 underway — StepService via `dws-call-asyncapi` (Dapr output binding); controller `call: asyncapi` branch + binding Component synthesis (`openspec/changes/dws-call-asyncapi`) |
-| `call` (a2a) | ❌ | not started — split into its own **Phase 5.5**, deferred until after AsyncAPI (see §4d) |
+| `call` (asyncapi) | ✅ | StepService via `dws-call-asyncapi` (Dapr output binding, `action: send` only); controller `call: asyncapi` branch + version-scoped `bindings.*` Component synthesis; shipped in `dws-call-asyncapi` (Phase 5 slice 2), archived as `openspec/changes/archive/2026-08-26-dws-call-asyncapi` — one deferred task, the live Dapr+Kafka integration test (see §4e) |
+| `call` (a2a) | ❌ | not started — its own **Phase 5.5**; AsyncAPI has shipped, so this is unblocked. Design settled in [ADR 0004](../adr/0004-call-a2a-runner-design.md), summarized in §4f |
 | `run` (shell/script) | ✅ | StepService via `dws-run` (`dws-run-shell`/`dws-run-script-js`/`dws-run-script-python`); shipped in `2026-07-26-dws-run` |
 | `run` (container/workflow) | ❌ | rejected at compile time — no deployable image for either |
 | `switch` | ✅ | jq eval in a local in-process activity, no image needed |
@@ -57,9 +57,9 @@ flowchart TD
   P1 --> P3[Phase 3: Fault Tolerance<br/>Problem Details, timeouts ✅]
   P2d --> P3
   P3 --> P4[Phase 4: Authentication + Secrets<br/>⚠️ impl done, verification blocked]
-  P4 --> P5[Phase 5: Protocol Expansion<br/>gRPC ✅, AsyncAPI 🚧<br/>current]
-  P5 --> P55[Phase 5.5: A2A protocol<br/>deferred — later]
-  P1 --> P6[Phase 6: Scheduling<br/>cron/every/after/on]
+  P4 --> P5[Phase 5: Protocol Expansion<br/>gRPC ✅, AsyncAPI ✅]
+  P5 --> P55[Phase 5.5: A2A protocol<br/>next — design settled, ADR 0004]
+  P1 --> P6[Phase 6: Scheduling<br/>cron/every/after/on<br/>next — unblocked]
   P4 --> P7[Phase 7: Catalogs + Extensions]
 ```
 
@@ -75,9 +75,9 @@ Data flow is the foundation: retry/catch, extensions, and error handling all rea
 | **2** ✅ | `try`/`catch`/`retry`, `raise`, `for`, `fork` (parallel), nested `do` | orchestrator, controller | done — `try-catch-retry`, `raise-task`, `for-task`, `fork-task` |
 | **3** ✅ | RFC 7807 error model, standard error types, task/workflow timeouts | orchestrator | complete |
 | **4** ⚠️ | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi | opsx — `workflow-auth`, 19/21 tasks done, code committed; blocked on live-cluster verification (see §4b) |
-| **5** (current) | gRPC ✅, AsyncAPI call protocols | new `dws-call-grpc` ✅ /`dws-call-asyncapi` images | opsx — new components; slice 1 (`dws-call-grpc`) done, slice 2 (`dws-call-asyncapi`) underway |
-| **5.5** (deferred) | A2A (Agent2Agent) call protocol | new `dws-call-a2a` image | split out of Phase 5 — see §4d for why |
-| **6** | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) | opsx — new capability |
+| **5** ✅ | gRPC, AsyncAPI call protocols | new `dws-call-grpc`, `dws-call-asyncapi` images | done — both slices archived (`2026-08-25-dws-call-grpc`, `2026-08-26-dws-call-asyncapi`); live-cluster integration test deferred, see §4e |
+| **5.5** (next) | A2A (Agent2Agent) call protocol | new `dws-call-a2a` image | design settled — [ADR 0004](../adr/0004-call-a2a-runner-design.md), §4f; not yet implemented |
+| **6** (next, parallel) | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) | not started — independent of Phases 4/5, can run alongside 5.5 |
 | **7** | Catalogs, custom functions, extensions (`before`/`after`), external resources | controller, orchestrator | opsx — new capability |
 | **8** ✅ | `dws-admin` consumes lifecycle events into read model, exposes read API | dws-admin | done — Epics 2–3, merged |
 
@@ -104,11 +104,12 @@ alongside `VALIDATION`/`COMMUNICATION`/`RUNTIME`. Task- and workflow-level timeo
 `ForkBranchWorkflow`/`ScopeRunnerWorkflow` child instance against a Dapr timer via `ctx.anyOf`;
 retry per-attempt timeout (`limit.attempt.duration`) reuses the same `ScopeRunnerWorkflow` pattern.
 
-Implementation is complete and merged; the change folder has **not yet been run through
-`/opsx:archive`** (unlike Phase 2's slices, which all archived cleanly — see §4a). A sibling stub,
-`openspec/changes/workflow-error-format` (only a `.openspec.yaml`, no proposal/tasks/specs), appears
-to be an abandoned earlier attempt at the same scope, superseded by `ows-phase3-errors-timeouts` —
-worth deleting once confirmed, so it doesn't get mistaken for open work.
+Implementation is complete, merged, and now archived as
+`openspec/changes/archive/2026-09-15-ows-phase3-errors-timeouts` (30/30 tasks checked). A sibling
+stub, `openspec/changes/workflow-error-format` (still only a `.openspec.yaml`, no
+proposal/tasks/specs), is an abandoned earlier attempt at the same scope, superseded by
+`ows-phase3-errors-timeouts` — **still present and still worth deleting**, so it doesn't get
+mistaken for open work.
 
 ## 4c. Phase 4 status
 
@@ -163,6 +164,53 @@ the design work above — no building-block analysis, no stack decision, no open
 its shape is genuinely different (agent task/artifact lifecycle, not a single request/response or
 publish), so bundling it in would have meant starting Phase 5.5's design from zero mid-Phase-5 rather
 than after AsyncAPI ships. Revisit once `dws-call-asyncapi` is done.
+
+## 4e. Phase 5 status — both slices shipped
+
+Phase 5 is done. Slice 1 (`dws-call-grpc`) archived as
+`openspec/changes/archive/2026-08-25-dws-call-grpc`; slice 2 (`dws-call-asyncapi`) archived as
+`openspec/changes/archive/2026-08-26-dws-call-asyncapi` with **18/19 tasks checked**, and the
+`dws-call-asyncapi` component now exists at the repo root alongside its CI workflow.
+
+The one unchecked task is **8.2 — an integration test against a real Dapr sidecar + Kafka binding**,
+deferred for the same reason Phase 4's tasks 6.2/6.3 are (§4c): no disposable cluster to run it on.
+
+**Live-cluster verification is the single shared blocker across Phases 4 and 5** — it holds
+Phase 4's archive (tasks 6.2/6.3) and Phase 5's last task (8.2). One disposable kind/Docker
+environment clears both. Phase 5.5 and Phase 6 are both free of it.
+
+## 4f. Phase 5.5 design (A2A) — settled
+
+Full rationale in [ADR 0004](../adr/0004-call-a2a-runner-design.md). Reading the actual
+specifications inverted §4d's assumption that A2A was the hardest slice: the OWS `a2a` call is a
+**thin JSON-RPC passthrough** (`method` + free-form `parameters`), with no document parsing, no
+payload schema validation, and — alone among the call kinds — **no Kubernetes resource to
+synthesize**. There is no runtime-managed task lifecycle either: OWS binds one RPC per invocation,
+so polling, resumption after `input-required`, and escalation on `auth-required` are composed by the
+author from `switch`/`wait`/`then: <taskName>` that Phases 2–3 already shipped.
+
+The decisions:
+
+| # | Decision |
+|---|---|
+| 1 | Python 3 / FastAPI, plain `POST /run` + `GET /healthz`, no Dapr Workflow SDK, official `a2a-sdk` client; the agent card is resolved explicitly, never by passing a bare URL to `create_client` |
+| 2 | `message/send` + `tasks/get` only; `message/stream`/`tasks/resubscribe` deferred (SSE aggregation) and rejected at compile time |
+| 3 | Dialect normalized — the JSON-RPC **wire** enum is lowercase (`"working"`, `"input-required"`, `"auth-required"`, `"unknown"`); `TASK_STATE_*`/`ROLE_USER` are language-binding surface only |
+| 4 | Auth: the OWS policy supplies credentials, the agent card validates them — a card declares required schemes but never carries credentials |
+| 5 | No Dapr Component, HTTPEndpoint, or Configuration synthesized for `call: a2a` |
+| 6 | `history` stripped from output by default (secret echo + state bloat); `input-required`/`auth-required` returned as data, never as step failures |
+| 7 | The agent card is not integrity-pinned — it is a live discovery document, unlike a versioned API contract |
+
+This is the first image built under the "new function images are born plain-HTTP" corollary in
+[workflow-runtime-architecture-roadmap.md](workflow-runtime-architecture-roadmap.md).
+
+**Open, blocking implementation:** retry idempotency. OWS `try`/`retry` re-invokes the step, and a
+fresh `messageId` per attempt most likely makes the agent start a duplicate task. ADR 0004 lists
+three candidates and recommends a deterministic `messageId`; it must be settled before the runner's
+request path is written.
+
+Unlike Phases 4 and 5, Phase 5.5 needs **no live cluster** — a mock transport, an in-repo fake A2A
+server, and a CI conformance job against the official `a2a-sdk` server cover it end to end.
 
 ## 5. Rationale for ordering
 

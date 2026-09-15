@@ -60,6 +60,18 @@ window that Phase 5 needs for side-by-side parity testing. So: add the plain-HTT
 Phase 2 without removing the activity-worker registration yet; only delete the now-unused
 activity-worker code as a cleanup step once Phase 5 retires `dws-orchestrator` for good.
 
+**Corollary for new function images — they are born plain-HTTP.** This decision is forward-looking,
+not only a migration plan for the existing six. Any prebuilt function image added from now on
+implements `POST /run` + `GET /healthz` only, with no Dapr Workflow SDK dependency and no `Run`
+activity-worker registration — it starts in the shape the other five are migrating *toward*, and
+skips the activity-worker round trip entirely. There is no v1 dispatch path to preserve for an image
+that never had one: `dws-orchestrator`'s `CallServiceActivity` already invokes plain-HTTP functions
+(that is how it drives `dws-call-openapi`/`dws-call-asyncapi` today), so a new plain-HTTP image works
+under v1 and v2 without the dual-interface window the Sequencing hazard above describes.
+
+`dws-call-a2a` (`call: a2a`, OWS Feature Coverage Phase 5.5) is the first image under this rule —
+Python/FastAPI, `POST /run`, no workflow SDK. Decided 2026-09-15.
+
 ## Design decision: one Dapr app per graph node
 
 _Recorded in [ADR 0001](../adr/0001-workflow-runtime-v2-decisions.md#decision-1-one-dapr-app-per-graph-node), including the app-ID naming-collision resolution below._
