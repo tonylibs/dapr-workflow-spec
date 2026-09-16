@@ -160,7 +160,7 @@ async def test_run_tasks_get() -> None:
     from dws_call_a2a.config import ObjectParameters
 
     config = make_config(
-        method="tasks/get", parameters=ObjectParameters(expressions={"id": ".taskId"})
+        method="tasks/get", parameters=ObjectParameters(value={"id": "${ .taskId }"})
     )
     app = create_app(config)
     async with await _app_client(

@@ -48,7 +48,7 @@ uv run pytest test/unit/test_config.py -k test_auth_scheme_basic  # single test
 ```
 
 **Gate**: `uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest`.
-All green as of this writing (117 tests, 92% line coverage on `src/`).
+All green as of this writing (163 tests, 94% line coverage on `src/`).
 
 `uv` wasn't available as a system binary in the environment this package was authored in; the
 commands above were verified against an equivalent `pip`-managed venv with pinned versions
@@ -177,14 +177,29 @@ Decision 8's formula is `uuid5(DWS_NAMESPACE, f"{workflowInstanceId}/{taskName}/
 This package does **not** invent a workaround that pretends to be correct. `message_id.py` defines
 the identifiers the formula needs as two optional inbound headers this runner is *willing* to read
 — `X-Dws-Workflow-Instance-Id` / `X-Dws-Iteration-Index` — a documented, forward-compatible
-extension point. When both are present, the derivation is exactly Decision 8's formula (stable
-across retries, distinct across iterations — see `test/unit/test_message_id.py`). When either is
-missing, `derive_message_id` falls back to a fresh random `uuid4()` per call and logs a warning —
-deliberately *not* a deterministic fallback derived from just the task name, which would be
-actively worse than random: it would produce the *same* `messageId` for every invocation of a task
-with that name across every workflow instance and every iteration, causing an agent that does
+extension point.
+
+`derive_message_id` only *requires* `workflow_instance_id` to derive deterministically —
+`iteration_index` folds into the seed when present, and a fixed `"-"` placeholder segment stands in
+for it when absent, so the seed is always `f"{instance}/{task}/{segment}"` either way (stable across
+retries, distinct across iterations, and distinct from a call that *does* carry a real index — see
+`test/unit/test_message_id.py`). `"-"` is a safe sentinel because a real header value is always a
+dot-joined string of non-negative integers (`DispatchContext.iterationIndexEncoded()`, e.g. `"0"`,
+`"1.0"`), never empty and never `"-"`. This is deliberately *not* requiring both headers the way an
+earlier version of this module did: a call not nested in any `for` loop (the common case — a
+top-level `call: a2a` wrapped directly in `try`/`catch.retry`) genuinely, correctly never receives
+`X-Dws-Iteration-Index` at all, and for that case `(workflow_instance_id, task_name)` alone is
+already sufficient — no loop means no "many items share a task name" collision risk, so there is no
+reason to give up on dedupe entirely just because one optional header is absent.
+
+Only a missing `workflow_instance_id` falls back to a fresh random `uuid4()` per call, logging a
+warning — deliberately *not* a deterministic fallback derived from just the task name, which would
+be actively worse than random: it would produce the *same* `messageId` for every invocation of a
+task with that name across every workflow instance and every iteration, causing an agent that does
 dedupe on `messageId` to conflate unrelated invocations. A random fallback is honest about "dedupe
-doesn't work yet" instead of silently pretending it does.
+doesn't work yet" instead of silently pretending it does. In practice `workflow_instance_id` is
+never actually missing (see below), so this branch is a defensive fallback, not a real operating
+mode.
 
 `dws-orchestrator`'s `CallServiceActivity` now sends both headers on every outbound call it
 dispatches (verified against the code, not assumed):
@@ -203,18 +218,23 @@ What that means for the two headers in practice, precisely — don't overstate e
 - `X-Dws-Workflow-Instance-Id` is **always populated**: it comes from
   `WorkflowContext.getInstanceId()`, which is never null, so this header is present on every call
   this package receives from `dws-orchestrator`.
-- `X-Dws-Iteration-Index` is populated **only** when the call task is nested inside a `for` loop
-  that uses the *default* `for.at` jq-variable binding name (`"index"` —
-  `InterpreterWorkflow.DEFAULT_AT_VARIABLE`). It is `null`/absent in two cases: a top-level call not
-  nested in any `for` loop (expected — there is no iteration index), and — this is the real
-  residual limitation — a call nested inside a `for` loop whose task declares a custom `for.at`
-  name. `iterationIndexOf` only recognizes the default binding name; threading a custom `at` name
-  down through the dispatch chain for this one header was judged not worth the plumbing (see the
-  method's doc comment in `InterpreterWorkflow.java`). A custom-`at`-name loop therefore still hits
-  this package's existing missing-header fallback (random UUID4, dedupe disabled, warning logged)
-  even though the call genuinely is inside a loop — no code change needed on this side, since that
-  fallback already handles "index absent" correctly; just don't assume every call inside every
-  `for` loop carries this header.
+- `X-Dws-Iteration-Index` is populated whenever the call task is nested inside ANY `for` loop,
+  regardless of what jq variable name the author binds the index under (`for.at: index` or a custom
+  name) — confirmed by re-reading the current, already-committed
+  `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/DispatchContext.java` and
+  `InterpreterWorkflow.dispatchFor`: the header is no longer derived by looking up a fixed jq
+  variable name at all (that was an earlier cut of the mechanism, since replaced). `DispatchContext`
+  now carries a structural `iterationPath` — the sequence of loop positions the current dispatch is
+  nested inside, appended purely positionally by `dispatchFor` at each nesting level, independent of
+  `for.at` naming entirely. `InterpreterWorkflowIntegrationTest.
+  innerLoopWithCustomAtNameStillProducesDistinctIterationIndices` (in the already-committed
+  orchestrator code) is the regression test proving this: a custom `at` name nested inside a
+  default-named outer loop still produces four distinct encoded indices (`"0.0"`, `"0.1"`, `"1.0"`,
+  `"1.1"`), not a missing header. So there is no "custom `at` name" collision case on this package's
+  side — the only two states are "absent" (top-level, not nested in any `for` loop at all — handled
+  correctly by the `"-"` placeholder above) and "present" (any `for` loop nesting, any `at` name,
+  always a distinct dot-joined path). Don't assume a missing header means anything other than
+  "genuinely not nested in a `for` loop" — that assumption now holds unconditionally.
 
 ## Env var contract
 
@@ -255,7 +275,32 @@ any of them transfers to another:
 - `METHOD` — exactly `message/send` or `tasks/get` (ADR Decision 2). Validated defensively at boot
   even though the controller compile-time-rejects anything else.
 - `PARAMETERS` — JSON-encoded string of the raw `with.parameters` DSL value (object or string form).
-  See `jq_eval.py`; ported from `dws-call-openapi`'s `evaluateParameters`.
+  **Always set now**: `dws-controller`'s `V1OrchestratorCompiler.a2aParameters` emits it
+  unconditionally, using the `"{}"` literal when `with.parameters` is absent — `_parse_parameters`
+  accepts an empty object, it is not a `ConfigError`.
+  - **String form** (`StringParameters`) is an unmodified port of `dws-call-openapi`'s
+    `evaluateParameters`: the whole configured string *is* one jq program, and its result *is* the
+    entire params object. No `${...}` wrapper convention applies here — the ADR says the entire
+    string form is a jq expression directly.
+  - **Object form** (`ObjectParameters`) is *not* the same porting choice, and getting this wrong
+    was a real bug caught after the fact: `dws-call-openapi`'s `HEADERS`/`QUERY` type every
+    top-level value as a full jq-expression string by schema construction (compiled that way by
+    `dws-controller`'s `V1OpenApiCompiler`), so combining every value into one jq program and
+    running it once was correct there. a2a's `with.parameters` schema (`WithA2AParameters`) permits
+    arbitrary literal JSON instead — `V1OrchestratorCompiler.a2aParameters` emits a **verbatim
+    nested JSON dump** of `with.parameters`, not a flattened map of expression strings (the standard
+    `message/send` shape is
+    `{"message": {"role": "user", "parts": [{"kind": "text", "text": "${ .userQuestion }"}]}}` —
+    `"role": "user"` is a literal sitting right next to an expression two levels deep). `config.py`'s
+    `ObjectParameters.value: dict[str, object]` stores that structure verbatim, and
+    `jq_eval.py`'s `evaluate_parameters` recursively walks it: a string leaf is evaluated as jq
+    *only* if the **entire string**, anchored, is `${ ... }` (this repo's runtime-expression
+    convention — see `dws-controller`'s `SECRET_REFERENCE` regex, which anchors the same way; *not*
+    partial/template interpolation — a string that merely contains `${` without wrapping the whole
+    value stays a literal, unchanged), and the jq result (any JSON type) replaces it; every other
+    leaf (plain literal strings, numbers, booleans, `null`) passes through unchanged. The
+    `env`/`$ENV` boot-time guard (`validate_no_env_access`) walks the same recursive structure, so
+    an expression nested at any depth is still caught, not just at the top level.
 - `AUTH_SCHEME`/`AUTH_USERNAME`/`AUTH_PASSWORD`/`AUTH_TOKEN`/`OAUTH_ENDPOINT`/`DAPR_HTTP_PORT` — same
   shape and names as `dws-call-openapi`'s generated-auth contract (`parseGeneratedAuth` in
   `dws-call-openapi/src/config/config.ts`), ported faithfully including HTTP Basic support the

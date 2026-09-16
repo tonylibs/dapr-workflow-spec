@@ -1,8 +1,25 @@
 """Evaluates the configured PARAMETERS jq expression(s) against the request
-input. Ports `dws-call-openapi/src/jq.ts`'s `evaluateParameters` -- object form
-combines every expression into a single jq program so one jq invocation
-covers all parameters; string form evaluates the whole expression as one
-program and its result *is* the whole params object.
+input.
+
+String form (`StringParameters`) evaluates the whole configured string as one
+jq program, and its result *is* the whole params object -- ported unchanged
+from `dws-call-openapi/src/jq.ts`'s `evaluateParameters`, since the ADR says
+the entire string form *is* a jq expression directly, no ambiguity there.
+
+Object form (`ObjectParameters`) is NOT a port of that same approach applied
+per-field: `dws-call-openapi`'s `HEADERS`/`QUERY` type every value as a full
+jq-expression string by schema construction, but a2a's `with.parameters`
+schema (`WithA2AParameters`) permits arbitrary literal JSON with select
+`${...}`-wrapped strings nested at any depth. So instead of combining every
+top-level value into one jq program, `evaluate_parameters` recursively walks
+`ObjectParameters.value`: dicts and lists are walked and rebuilt with the
+same shape; a string leaf is evaluated as a jq program *only* if it matches
+`${...}` as a whole-string, anchored wrapper (this repo's runtime-expression
+convention -- see `dws-controller`'s `SECRET_REFERENCE` regex, and
+`_WRAPPED_EXPRESSION_RE` below), and the jq result (any JSON type) replaces
+the string; every other leaf -- including a plain literal string that merely
+*contains* `${` somewhere without wrapping the whole value -- passes through
+unchanged. There is deliberately no partial/template interpolation.
 
 `call: a2a` has no schema validation at all (ADR 0004 Decision 1), so the
 guard here -- reject a non-object result before it reaches the agent -- is
@@ -17,12 +34,14 @@ see `validate_no_env_access`). Without this guard, a DSL author's
 credentials (`AUTH_TOKEN`, `AUTH_PASSWORD`, ...) and place them directly in
 the outbound JSON-RPC request, or echo them back into the workflow's data
 document -- bypassing the `use.secrets`/`$secrets` scoping this repository
-otherwise enforces for `call` tasks (ADR 0004 Decision 6).
+otherwise enforces for `call` tasks (ADR 0004 Decision 6). Because object-form
+expressions can now be nested at any depth, this guard walks the same
+recursive structure `evaluate_parameters` does, checking every
+`${...}`-wrapped string's inner text at every depth, not just the top level.
 """
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 
@@ -56,6 +75,23 @@ _ENV_VAR_RE = re.compile(r"\$ENV\b")
 # safe direction for a security guard.
 _ENV_BUILTIN_RE = re.compile(r"(?<![.\w])env\b(?!\s*:)")
 
+# Matches a string that is *entirely* `${ <anything, including newlines> }` --
+# fullmatch means the wrapper must span the whole value, not just appear
+# somewhere inside it. This is this repo's runtime-expression convention
+# (whole-string wrapper, not partial/template interpolation), matching
+# `dws-controller`'s `SECRET_REFERENCE` regex, which anchors the same way.
+_WRAPPED_EXPRESSION_RE = re.compile(r"\$\{(.*)\}", re.DOTALL)
+
+
+def _match_wrapped_expression(value: str) -> str | None:
+    """Returns the inner jq-expression text if `value` is entirely
+    `${ ... }` (anchored, whole-string match), else `None` -- including for
+    a string that merely *contains* `${...}` without the wrapper spanning
+    the whole value (e.g. `"cost is ${.price} dollars"`), which is a literal
+    and must NOT be partially substituted."""
+    match = _WRAPPED_EXPRESSION_RE.fullmatch(value)
+    return match.group(1) if match is not None else None
+
 
 def _find_env_access(expression: str) -> str | None:
     """Returns the offending token (`"$ENV"` or `"env"`) if `expression`'s
@@ -88,42 +124,82 @@ def validate_no_env_access(spec: ParametersSpec) -> None:
             )
         return
     if isinstance(spec, ObjectParameters):
-        for name, expr in spec.expressions.items():
-            token = _find_env_access(expr)
-            if token is not None:
-                raise ConfigError(
-                    f"PARAMETERS.{name} jq expression references {token!r}, which reads this "
-                    "step's real process environment (including its own runtime credentials) "
-                    "-- this is not permitted; rewrite the expression to not use env/$ENV"
-                )
+        _validate_no_env_access_nested(spec.value, path="")
         return
     raise TypeError(f"unknown parameters spec: {spec!r}")  # pragma: no cover -- exhaustive union
 
 
-def evaluate_parameters(spec: ParametersSpec, input_data: Any) -> dict[str, Any]:
-    """Returns the evaluated params object, or raises `RequestValidationError`
-    if the jq program fails or the result isn't a JSON object."""
-    if isinstance(spec, StringParameters):
-        program = spec.expression
-    elif isinstance(spec, ObjectParameters):
-        if not spec.expressions:
-            return {}
-        fields = ", ".join(
-            f"{json.dumps(name)}: ({expr})" for name, expr in spec.expressions.items()
+def _validate_no_env_access_nested(value: object, *, path: str) -> None:
+    """Recursively walks an `ObjectParameters.value` structure, checking every
+    `${...}`-wrapped string leaf's inner text for `env`/`$ENV` references at
+    any nesting depth. `path` accumulates a dotted/bracketed description of
+    the leaf's location for the error message (e.g. `.message.parts[0].text`)."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            _validate_no_env_access_nested(item, path=f"{path}.{key}")
+        return
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            _validate_no_env_access_nested(item, path=f"{path}[{index}]")
+        return
+    if not isinstance(value, str):
+        return  # number/bool/None leaf -- nothing to check
+    inner = _match_wrapped_expression(value)
+    if inner is None:
+        return  # a literal string, not a jq expression -- nothing to check
+    token = _find_env_access(inner)
+    if token is not None:
+        raise ConfigError(
+            f"PARAMETERS{path} jq expression references {token!r}, which reads this "
+            "step's real process environment (including its own runtime credentials) "
+            "-- this is not permitted; rewrite the expression to not use env/$ENV"
         )
-        program = f"{{ {fields} }}"
-    else:  # pragma: no cover -- exhaustive union
-        raise TypeError(f"unknown parameters spec: {spec!r}")
 
+
+def _run_jq_program(program: str, input_data: Any) -> Any:
+    """Compiles and runs `program` against `input_data`, returning the first
+    result, or raising `RequestValidationError` if the program fails to
+    compile/run or produces no output."""
     try:
         compiled = _jq.compile(program)
-        result = compiled.input_value(input_data).first()
+        return compiled.input_value(input_data).first()
     except StopIteration as exc:
         raise RequestValidationError(
             "PARAMETERS jq program produced no output against the current workflow data"
         ) from exc
     except ValueError as exc:
         raise RequestValidationError(f"failed to evaluate PARAMETERS jq expression: {exc}") from exc
+
+
+def _evaluate_nested(value: object, input_data: Any) -> Any:
+    """Recursively walks an `ObjectParameters.value` structure: dicts/lists
+    are walked and rebuilt with the same shape; a string leaf that is
+    entirely `${ ... }` is replaced by the jq result of running its inner
+    text against `input_data` (any JSON type, not necessarily a string);
+    every other leaf -- literal strings (including ones merely containing
+    `${` without wrapping the whole value), numbers, booleans, `None` --
+    passes through unchanged."""
+    if isinstance(value, dict):
+        return {key: _evaluate_nested(item, input_data) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_evaluate_nested(item, input_data) for item in value]
+    if not isinstance(value, str):
+        return value
+    inner = _match_wrapped_expression(value)
+    if inner is None:
+        return value
+    return _run_jq_program(inner, input_data)
+
+
+def evaluate_parameters(spec: ParametersSpec, input_data: Any) -> dict[str, Any]:
+    """Returns the evaluated params object, or raises `RequestValidationError`
+    if a jq program fails or the final result isn't a JSON object."""
+    if isinstance(spec, StringParameters):
+        result = _run_jq_program(spec.expression, input_data)
+    elif isinstance(spec, ObjectParameters):
+        result = _evaluate_nested(spec.value, input_data)
+    else:  # pragma: no cover -- exhaustive union
+        raise TypeError(f"unknown parameters spec: {spec!r}")
 
     if not isinstance(result, dict):
         raise RequestValidationError(

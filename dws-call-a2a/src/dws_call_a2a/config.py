@@ -88,11 +88,31 @@ CardAuthConfig = NoAuth | BasicAuth | BearerAuth
 
 @dataclass(frozen=True, slots=True)
 class ObjectParameters:
-    """`with.parameters` was an object: each value is a jq expression string,
-    evaluated and assembled into one params object (dws-call-openapi's
-    `evaluateParameters` approach, ported)."""
+    """`with.parameters` was an object: an arbitrary nested JSON structure
+    (dicts, lists, strings, numbers, booleans, `None`) taken verbatim from
+    the compiled `with.parameters` value, where select string leaves are
+    exactly `${ <jq expression> }` -- the *entire* string, anchored, not a
+    partial/template substitution (this repo's runtime-expression
+    convention; see `dws-controller`'s `SECRET_REFERENCE` regex). Those are
+    evaluated as jq programs against the request input and replaced by the
+    jq result; every other leaf -- including a plain literal string that
+    merely contains `${` without wrapping the whole value -- passes through
+    unchanged. See `jq_eval.py`'s `evaluate_parameters` for the recursive
+    walk that implements this.
 
-    expressions: dict[str, str]
+    This is deliberately *not* a direct port of `dws-call-openapi`'s
+    `HEADERS`/`QUERY` model (every value a full jq-expression string): that
+    package's schema types every value as a full expression by construction,
+    but a2a's `with.parameters` (`WithA2AParameters`) permits arbitrary
+    literal JSON with select `${...}`-wrapped strings nested at any depth
+    (e.g. the standard `message/send` shape
+    `{"message": {"role": "user", "parts": [{"kind": "text", "text": "${ .userQuestion }"}]}}`),
+    matching what `dws-controller`'s `V1OrchestratorCompiler.a2aParameters`
+    actually emits -- a verbatim nested JSON dump of `with.parameters`, not a
+    flattened map of expression strings.
+    """
+
+    value: dict[str, object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,14 +255,12 @@ def _parse_parameters(env: dict[str, str]) -> ParametersSpec:
     if isinstance(parsed, str):
         spec: ParametersSpec = StringParameters(expression=parsed)
     elif isinstance(parsed, dict) and not isinstance(parsed, bool):
-        if len(parsed) == 0:
-            raise ConfigError("PARAMETERS object form must have at least one property")
-        expressions: dict[str, str] = {}
-        for key, value in parsed.items():
-            if not isinstance(value, str):
-                raise ConfigError(f"PARAMETERS.{key} must be a jq expression string")
-            expressions[key] = value
-        spec = ObjectParameters(expressions=expressions)
+        # Accepted verbatim, including empty (`dws-controller` now always
+        # emits PARAMETERS, using `"{}"` when `with.parameters` is absent) --
+        # every value may be arbitrary nested JSON; see `ObjectParameters`'s
+        # docstring for why this isn't constrained to flat expression
+        # strings the way `dws-call-openapi`'s HEADERS/QUERY are.
+        spec = ObjectParameters(value=parsed)
     else:
         raise ConfigError("PARAMETERS must decode to a JSON object or a JSON string")
 

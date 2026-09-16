@@ -48,7 +48,7 @@ def _config_for(
     parameters: ParametersSpec | None = None,
 ) -> Config:
     resolved_auth = auth if auth is not None else NoAuth()
-    resolved_parameters = parameters or ObjectParameters(expressions={"message": "."})
+    resolved_parameters = parameters or ObjectParameters(value={"message": "${ . }"})
     return make_config(
         target=AgentCardTarget(agent_card_url="https://agent.example.com", agent_card_sha256=None),
         method=method,
@@ -144,7 +144,7 @@ async def test_history_is_kept_with_include_history() -> None:
     fake_app = build_fake_agent_app()
     config = make_config(
         target=AgentCardTarget(agent_card_url="https://agent.example.com", agent_card_sha256=None),
-        parameters=ObjectParameters(expressions={"message": "."}),
+        parameters=ObjectParameters(value={"message": "${ . }"}),
         include_history=True,
     )
     response = await _call(config, fake_app, {"parts": [{"kind": "text", "text": "start please"}]})
@@ -162,7 +162,7 @@ async def test_tasks_get_after_send() -> None:
     task_id = first.json()["id"]
 
     get_config = _config_for(
-        method="tasks/get", parameters=ObjectParameters(expressions={"id": ".taskId"})
+        method="tasks/get", parameters=ObjectParameters(value={"id": "${ .taskId }"})
     )
     response = await _call(get_config, fake_app, {"taskId": task_id})
     assert response.status_code == 200
@@ -259,7 +259,7 @@ async def test_server_url_target_skips_card_resolution_entirely() -> None:
     fake_app = build_fake_agent_app()
     config = make_config(
         target=ServerTarget(server_url="https://agent.example.com/rpc"),
-        parameters=ObjectParameters(expressions={"message": "."}),
+        parameters=ObjectParameters(value={"message": "${ . }"}),
     )
     response = await _call(config, fake_app, {"parts": [{"kind": "text", "text": "start please"}]})
     assert response.status_code == 200

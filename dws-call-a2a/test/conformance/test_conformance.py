@@ -23,7 +23,7 @@ from test.conftest import make_config
 def _config_for(
     *, method: str = "message/send", parameters: ParametersSpec | None = None
 ) -> Config:
-    resolved_parameters = parameters or ObjectParameters(expressions={"message": "."})
+    resolved_parameters = parameters or ObjectParameters(value={"message": "${ . }"})
     return make_config(
         target=AgentCardTarget(
             agent_card_url="https://conformance-agent.example.com", agent_card_sha256=None
@@ -107,7 +107,7 @@ async def test_tasks_get_against_real_sdk_server() -> None:
     task_id = first.json()["id"]
 
     get_config = _config_for(
-        method="tasks/get", parameters=ObjectParameters(expressions={"id": ".taskId"})
+        method="tasks/get", parameters=ObjectParameters(value={"id": "${ .taskId }"})
     )
     response = await _call(get_config, sdk_app, {"taskId": task_id})
     assert response.status_code == 200

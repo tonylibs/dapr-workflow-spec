@@ -89,7 +89,31 @@ def test_method_must_be_message_send_or_tasks_get() -> None:
 def test_parameters_object_form() -> None:
     env = raw_env(PARAMETERS='{"message": ".foo", "extra": ".bar"}')
     config = load_config(env)
-    assert config.parameters == ObjectParameters(expressions={"message": ".foo", "extra": ".bar"})
+    assert config.parameters == ObjectParameters(value={"message": ".foo", "extra": ".bar"})
+
+
+def test_parameters_object_form_allows_nested_json_not_just_flat_expression_strings() -> None:
+    """`with.parameters`'s object form allows arbitrary nested JSON, not just
+    a flat map of jq-expression strings -- a2a's schema (unlike
+    `dws-call-openapi`'s HEADERS/QUERY) doesn't constrain every value to be a
+    full expression."""
+    raw_parameters: dict[str, object] = {
+        "message": {
+            "role": "user",
+            "parts": [{"kind": "text", "text": "${ .userQuestion }"}],
+        }
+    }
+    env = raw_env(PARAMETERS=json.dumps(raw_parameters))
+    config = load_config(env)
+    assert config.parameters == ObjectParameters(value=raw_parameters)
+
+
+def test_parameters_object_form_empty_is_allowed() -> None:
+    """`dws-controller` now always emits PARAMETERS, using the `"{}"` literal
+    when `with.parameters` is absent -- this must load cleanly, not raise."""
+    env = raw_env(PARAMETERS="{}")
+    config = load_config(env)
+    assert config.parameters == ObjectParameters(value={})
 
 
 def test_parameters_string_form() -> None:
@@ -104,10 +128,14 @@ def test_parameters_must_decode_to_object_or_string() -> None:
         load_config(env)
 
 
-def test_parameters_object_values_must_be_strings() -> None:
-    env = raw_env(PARAMETERS='{"message": 123}')
-    with pytest.raises(ConfigError, match="PARAMETERS"):
-        load_config(env)
+def test_parameters_object_values_may_be_non_string_json() -> None:
+    """Object-form values are no longer required to be jq-expression
+    strings -- literal numbers/booleans/null are valid leaves too."""
+    env = raw_env(PARAMETERS='{"message": 123, "enabled": true, "missing": null}')
+    config = load_config(env)
+    assert config.parameters == ObjectParameters(
+        value={"message": 123, "enabled": True, "missing": None}
+    )
 
 
 def test_parameters_not_json_at_all() -> None:
@@ -223,16 +251,27 @@ def test_parameters_string_form_rejects_env_builtin() -> None:
 
 
 def test_parameters_object_form_rejects_env_access_in_one_expression() -> None:
-    env = raw_env(PARAMETERS=json.dumps({"safe": ".input.msg", "leaky": "env.AUTH_TOKEN"}))
+    env = raw_env(
+        PARAMETERS=json.dumps({"safe": "${ .input.msg }", "leaky": "${ env.AUTH_TOKEN }"})
+    )
     with pytest.raises(ConfigError, match=r"PARAMETERS\.leaky"):
         load_config(env)
 
 
+def test_parameters_object_form_rejects_env_access_nested_two_levels_deep() -> None:
+    """Regression test at the config-load boundary for the object-form
+    restructuring: `env`/`$ENV` access nested inside objects/arrays must
+    still be caught, not just at the top level."""
+    env = raw_env(PARAMETERS=json.dumps({"message": {"parts": [{"text": "${ env.AUTH_TOKEN }"}]}}))
+    with pytest.raises(ConfigError, match=r"PARAMETERS\.message\.parts\[0\]\.text"):
+        load_config(env)
+
+
 def test_parameters_object_form_allows_env_literal_key() -> None:
-    env = raw_env(PARAMETERS=json.dumps({"message": ".input.msg", "env": "{env: .foo}"}))
+    env = raw_env(PARAMETERS=json.dumps({"message": "${ .input.msg }", "env": "${ {env: .foo} }"}))
     config = load_config(env)
     assert config.parameters == ObjectParameters(
-        expressions={"message": ".input.msg", "env": "{env: .foo}"}
+        value={"message": "${ .input.msg }", "env": "${ {env: .foo} }"}
     )
 
 

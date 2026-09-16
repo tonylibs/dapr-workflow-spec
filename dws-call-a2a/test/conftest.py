@@ -19,7 +19,7 @@ def make_config(**overrides: Any) -> Config:
             agent_card_url="https://agent.example.com", agent_card_sha256=None
         ),
         "method": "message/send",
-        "parameters": ObjectParameters(expressions={"message": ".message"}),
+        "parameters": ObjectParameters(value={"message": "${ .message }"}),
         "rpc_auth": NoAuth(),
         "card_auth": None,
         "include_history": False,
