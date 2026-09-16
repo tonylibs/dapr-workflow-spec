@@ -1,0 +1,14 @@
+document:
+  dsl: 1.0.0
+  namespace: examples
+  name: a2a-workflow
+  version: '1.0.0'
+do:
+  - dispatchAgent:
+      call: a2a
+      with:
+        server: http://agent-service
+        method: message/send
+        parameters:
+          text: hello
+      then: end

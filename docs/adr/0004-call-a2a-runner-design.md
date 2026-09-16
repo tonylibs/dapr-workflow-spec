@@ -134,10 +134,13 @@ The alternative — resolve the OWS policy onto a card-declared scheme name and 
 `AuthInterceptor`, which looks credentials up by scheme name through a `CredentialService` — was
 rejected on four grounds: `AuthInterceptor` emits Bearer and apiKey-in-header only and will not emit
 HTTP **Basic**, which OWS's `authenticationPolicy` permits; Phase 4 already routes OAuth2
-`client_credentials` through Dapr middleware, so the runner sees an injected token and an
-interceptor would contend for the same header; a card declaring two schemes of one type leaves the
-choice ambiguous; and it inverts this repo's established shape, in which the compiler decides auth
-and the runner applies it.
+`client_credentials` through Dapr sidecar middleware for `call: http`/`call: openapi`, whose RPC
+calls go through Dapr service invocation and so pick up an injected token there — but `call: a2a`
+talks to the agent directly over `httpx` and never goes through the sidecar at all (Decision 5), so
+there is no injected token to contend with and oauth2 is rejected outright for a2a rather than
+delegated to an SDK-side interceptor; a card declaring two schemes of one type leaves the choice
+ambiguous; and it inverts this repo's established shape, in which the compiler decides auth and the
+runner applies it.
 
 Card validation is a boot-time decision table:
 
@@ -276,10 +279,16 @@ cooperative agent the *ability* to recognise a retry; it does not make anything 
 itself. We can offer the key, not enforce its use. The derivation is therefore documented so agent
 authors can rely on it.
 
-**Open sub-question — default retry posture.** Because the key only works with agent cooperation,
-should `call: a2a` steps default to no retry, so a failure surfaces to the author's `try`/`catch`
-rather than being silently re-dispatched? That is the only behavior that is correct without agent
-cooperation, at the cost of losing automatic recovery from genuine transport blips. Not decided.
+**Decided — default retry posture: no automatic activity-level retry.** Because the dedupe key
+only works with agent cooperation, and a timeout is ambiguous (the runner cannot tell "the agent
+never received it" from "the agent received it and is slow"), `call: a2a` steps get exactly one
+attempt by default: `dws-orchestrator` dispatches them with a fixed no-retry activity policy
+instead of the shared default, so a failure surfaces to the author's own `try`/`catch` rather than
+being silently re-dispatched with a fresh `messageId`. That is the only behavior that is correct
+without agent cooperation, at the cost of losing automatic recovery from genuine transport blips.
+An author who wants retry can still declare it explicitly with OWS `try`/`catch.retry`, which
+re-executes the whole try block through its own mechanism — unaffected by this default, and the
+one lever available to opt back into automatic recovery.
 
 ## Consequences
 
@@ -289,9 +298,63 @@ cooperation, at the cost of losing automatic recovery from genuine transport bli
 - **Knative cold start is worse than Go or Node.** Step services scale to zero, so cold start is
   per-step latency. It must be measured, with `minScale: 1` as the documented mitigation if
   unacceptable.
-- **`dws-orchestrator` needs no change.** OWS mandates the standard `runtime` error type for `a2a`
-  failures, which the existing step-service `502`/`500` split already produces — unlike
-  `call: asyncapi`, which required a new `ErrorKind.VALIDATION` marker.
+- **`dws-orchestrator` needs two changes, independent of each other.**
+  1. A2a-specific no-default-retry. OWS mandates the standard `runtime` error type for `a2a`
+     failures, which the existing step-service `502`/`500` split already produces unchanged —
+     unlike `call: asyncapi`, which required a new `ErrorKind.VALIDATION` marker. But per
+     Decision 8's now-resolved retry-posture sub-question, `InterpreterWorkflow`'s
+     call-service-invocation path dispatches `call: a2a` with a fixed max-attempts=1
+     `WorkflowTaskOptions` (`WorkflowSupport.noRetryTaskOptions()`) instead of the shared
+     `dws.retry.*`-derived default every other call kind still uses. Author-declared
+     `try`/`catch.retry` is untouched — it re-executes the try block at a separate, higher layer.
+  2. Sending the `messageId` derivation's inputs as outbound headers. Decision 8's deterministic
+     `messageId` (`uuid5(DWS_NAMESPACE, f"{workflowInstanceId}/{taskName}/{iterationIndex}")`) is
+     useless in production unless the workflow instance id and iteration index actually reach
+     `dws-call-a2a`. `CallServiceActivity` now carries them as `X-Dws-Workflow-Instance-Id`
+     (always) and `X-Dws-Iteration-Index` (only when the call task is nested inside a `for` loop)
+     on every outbound service-invocation call it dispatches — not only for `a2a`, since it costs
+     nothing for the sibling call kinds on the same path (openapi/grpc/asyncapi) and needs no
+     further orchestrator change if a future runner wants the same headers. `dws-call-a2a` already
+     reads these two header names and falls back to a random `messageId` (dedupe disabled) when
+     either is absent — this change is what makes that fallback the exception instead of the rule.
+
+     Two follow-up corrections to how those two inputs are derived, made after the change above
+     first shipped:
+
+     a. **The iteration index is no longer looked up by a fixed jq variable name.** The first cut
+        read the current `for` loop's index back out of the merged scope variables under a single
+        hardcoded name (`"index"`, the default `for.at` binding). That collides whenever two
+        different loops bind their index under a name this lookup could not tell apart: two nested
+        `for` loops both using the default `at` name (the inner binding shadows the outer, so the
+        outer position is lost), or an inner loop using a custom `at` name nested inside an outer
+        default-named loop (the inner loop never rebinds `"index"`, so the lookup keeps returning
+        the outer's value, unchanged, across every inner iteration). `InterpreterWorkflow` now
+        threads a small `DispatchContext` record through every dispatch, carrying an
+        `iterationPath` — the sequence of `for` indices the current task is nested inside,
+        appended to positionally by `dispatchFor` at each nesting level it enters, independent of
+        whatever jq variable name the author chose. Two dispatches at different logical positions
+        now always produce different encoded paths.
+     b. **A guarded task's child instance no longer derives its own instance id.** A task-level
+        `timeout` guard and a `try`/`catch.retry` per-attempt-duration guard each run the guarded
+        work as its own `ForkBranchWorkflow`/`ScopeRunnerWorkflow` child instance, and durabletask
+        derives a fresh, genuinely different instance id for every child it creates. The first cut
+        read `ctx.getInstanceId()` directly inside the child to populate the outbound
+        `X-Dws-Workflow-Instance-Id` header — which meant a retried attempt, or the guarded attempt
+        racing a timeout timer, got a *different* id than the original attempt, defeating dedupe on
+        exactly the case Decision 8 exists for. `DispatchContext` now also carries the root
+        workflow instance id, captured exactly once in `InterpreterWorkflow.execute` and threaded
+        unchanged into every child instance it spawns, so every attempt of one logical invocation
+        reports the same root id regardless of which child instance actually ran it.
+
+     **The honest limit this round does not solve:** nothing currently distinguishes "an
+     author-orchestrated repeat via `then:`" from "a retry of one logical invocation". An author
+     who uses `then:` to deliberately re-invoke the same `call: a2a` task more than once within a
+     single loop iteration gets the same derived `messageId` for each of those deliberate
+     re-invocations, because both produce an identical `(rootInstanceId, taskName, iterationPath)`
+     tuple — `DispatchContext` has no notion of "this is attempt 2 of a retry" versus "this is the
+     second deliberate dispatch of the same task name". This is a known, accepted limitation, not
+     something this round claims to fix, matching Decision 8's own "honest limit" framing for the
+     agent-cooperation caveat.
 - **Fully verifiable without a cluster.** Unlike Phase 4's tasks 6.2/6.3 and Phase 5's task 8.2,
   every behavior above can be tested in CI: unit tests with a mock transport, an in-repo scripted
   fake A2A server for multi-turn state, and — importantly — a conformance job running the official
@@ -303,12 +366,14 @@ cooperation, at the cost of losing automatic recovery from genuine transport bli
   fan-out is a cost and throttling incident rather than just load. Whether the controller caps a2a
   step services (`maxScale`/`containerConcurrency`) or leaves pacing to the author's `for`/`fork`
   shape is **not decided by this ADR**.
-- **Retry idempotency is addressed by Decision 8**, with one sub-question — the default retry
-  posture for a2a steps — left open there.
+- **Retry idempotency is addressed by Decision 8**, including its default-retry-posture
+  sub-question, now resolved: `dws-orchestrator` gives `call: a2a` a single attempt by default.
 
 ## Non-goals
 
 Does not implement `message/stream`/`tasks/resubscribe` or SSE aggregation. Does not implement
 push-notification configuration, task cancellation, or the authenticated extended card. Does not
-verify agent-card JWS signatures. Does not resolve retry idempotency. Does not change
-`dws-orchestrator`, the OWS error taxonomy, or any existing runner's behavior.
+verify agent-card JWS signatures. Does not change the OWS error taxonomy or any existing runner's
+behavior. Changes `dws-orchestrator` in exactly two respects — Decision 8's default retry posture,
+and sending the workflow-instance-id/iteration-index headers Decision 8's `messageId` derivation
+needs; see Consequences.

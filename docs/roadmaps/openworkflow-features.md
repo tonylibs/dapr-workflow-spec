@@ -204,10 +204,16 @@ The decisions:
 This is the first image built under the "new function images are born plain-HTTP" corollary in
 [workflow-runtime-architecture-roadmap.md](workflow-runtime-architecture-roadmap.md).
 
-**Open, blocking implementation:** retry idempotency. OWS `try`/`retry` re-invokes the step, and a
-fresh `messageId` per attempt most likely makes the agent start a duplicate task. ADR 0004 lists
-three candidates and recommends a deterministic `messageId`; it must be settled before the runner's
-request path is written.
+**Resolved:** retry idempotency. OWS `try`/`retry` re-invokes the step, and a fresh `messageId` per
+attempt most likely makes the agent start a duplicate task. ADR 0004 Decision 8 settles this with a
+deterministic `messageId` (`uuid5` over instance/task/iteration) so a cooperative agent can
+recognise a retry, plus a no-default-retry activity policy in `dws-orchestrator`: `call: a2a` gets
+exactly one attempt unless the workflow author wraps it in an explicit `try`/`catch.retry`, which
+still re-executes the step at that separate, higher layer. `dws-orchestrator` now also sends the
+derivation's two inputs as outbound headers (`X-Dws-Workflow-Instance-Id` always,
+`X-Dws-Iteration-Index` when the call is nested in a `for` loop) on every `CallServiceActivity`
+dispatch, closing the gap `dws-call-a2a`'s own `CLAUDE.md` used to flag: the headers it reads and
+falls back safely without were previously never actually sent by the orchestrator.
 
 **Open, not blocking:** agent-call concurrency. A `for` over a large collection fans out to one
 agent invocation per item and Knative scales to meet it; agent calls are metered and rate-limited in
