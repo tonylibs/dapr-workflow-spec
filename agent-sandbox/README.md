@@ -75,7 +75,8 @@ profile, run:
 The helper calls `osb sandbox create`, provisions only `~/.ssh/dws_sandbox.pub`, and creates a
 localhost-only TCP bridge on port `22222`. Edit `agent-sandbox/ssh-sandbox.psd1` to change the
 image, resource limits, lifetime, or local SSH port. Only one active sandbox can claim the fixed
-port at a time; the helper fails rather than replacing an existing bridge.
+port at a time; the helper fails rather than replacing an existing bridge. The default profile
+uses manual cleanup (`none`/`null` timeout), so remember to kill the sandbox when finished.
 
 The equivalent Python command is:
 

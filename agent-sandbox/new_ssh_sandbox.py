@@ -146,11 +146,17 @@ def main() -> int:
             domain=config["server_domain"],
             protocol=config["server_protocol"],
         )
+        timeout_seconds = config.get("timeout_seconds")
+        timeout = (
+            None
+            if timeout_seconds is None
+            else timedelta(seconds=int(timeout_seconds))
+        )
         sandbox = SandboxSync.create(
             config["image"],
             connection_config=connection,
             entrypoint=list(config["entrypoint"]),
-            timeout=timedelta(seconds=int(config["timeout_seconds"])),
+            timeout=timeout,
             resource={"cpu": config["cpu"], "memory": config["memory"]},
             skip_health_check=True,
         )

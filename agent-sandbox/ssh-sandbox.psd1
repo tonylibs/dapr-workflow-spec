@@ -1,7 +1,7 @@
 @{
     Image = "dws-agent-sandbox:kubectl"
     EntryPoint = @("/usr/local/bin/sshd-start")
-    Timeout = "1h"
+    Timeout = "none"
     Cpu = "2"
     Memory = "4Gi"
     SshHost = "127.0.0.1"

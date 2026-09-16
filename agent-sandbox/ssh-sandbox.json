@@ -1,7 +1,7 @@
 {
   "image": "dws-agent-sandbox:kubectl",
   "entrypoint": ["/usr/local/bin/sshd-start"],
-  "timeout_seconds": 3600,
+  "timeout_seconds": null,
   "cpu": "2",
   "memory": "4Gi",
   "server_domain": "localhost:8080",
