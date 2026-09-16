@@ -31,6 +31,7 @@ class WorkflowCompilerTest {
           "sw-call-openapi:1.0",
           "sw-call-grpc:1.0",
           "sw-call-asyncapi:1.0",
+          "sw-call-a2a:1.0",
           "sw-run-shell:1.0",
           "sw-run-script-js:1.0",
           "sw-run-script-python:1.0",
@@ -1517,6 +1518,403 @@ class WorkflowCompilerTest {
     assertThatThrownBy(() -> compiler.compile(yaml))
         .isInstanceOf(CompilationException.class)
         .hasMessageContaining("oauth2 authentication is not supported for gRPC calls");
+  }
+
+  @Test
+  @DisplayName("a2a call with 'server' compiles to a CALL_A2A step with SERVER_URL and METHOD")
+  void a2aServerFormCompiles() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: a2a-server
+          version: '1.0.0'
+        do:
+          - dispatchTask:
+              call: a2a
+              with:
+                server: https://agent.example.test/rpc
+                method: message/send
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+    StepService step = step(plan, "dispatch-task");
+
+    assertThat(step.kind()).isEqualTo(TaskKind.CALL_A2A);
+    assertThat(step.image()).isEqualTo("sw-call-a2a:1.0");
+    assertThat(step.env())
+        .containsEntry("SERVER_URL", new Literal("https://agent.example.test/rpc"))
+        .containsEntry("METHOD", new Literal("message/send"))
+        .containsEntry("TASK", new Literal("dispatchTask"))
+        .doesNotContainKey("AGENT_CARD_URL")
+        .doesNotContainKey("AUTH_SCHEME");
+  }
+
+  @Test
+  @DisplayName("a2a call with 'agentCard' compiles to AGENT_CARD_URL instead of SERVER_URL")
+  void a2aAgentCardFormCompiles() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: a2a-agent-card
+          version: '1.0.0'
+        do:
+          - pollTask:
+              call: a2a
+              with:
+                agentCard:
+                  endpoint: https://agent.example.test/.well-known/agent-card.json
+                method: tasks/get
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+    StepService step = step(plan, "poll-task");
+
+    assertThat(step.env())
+        .containsEntry(
+            "AGENT_CARD_URL", new Literal("https://agent.example.test/.well-known/agent-card.json"))
+        .containsEntry("METHOD", new Literal("tasks/get"))
+        .doesNotContainKey("SERVER_URL");
+  }
+
+  @Test
+  @DisplayName("'server' wins silently over 'agentCard' when both are declared")
+  void a2aServerWinsOverAgentCard() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: a2a-both
+          version: '1.0.0'
+        do:
+          - dispatchTask:
+              call: a2a
+              with:
+                agentCard:
+                  endpoint: https://agent.example.test/.well-known/agent-card.json
+                server: https://agent.example.test/rpc
+                method: message/send
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(step(plan, "dispatch-task").env())
+        .containsEntry("SERVER_URL", new Literal("https://agent.example.test/rpc"))
+        .doesNotContainKey("AGENT_CARD_URL");
+  }
+
+  @Test
+  @DisplayName("a2a call requires exactly one of 'agentCard' or 'server'")
+  void a2aRequiresAgentCardOrServer() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: a2a-neither
+          version: '1.0.0'
+        do:
+          - dispatchTask:
+              call: a2a
+              with:
+                method: message/send
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("exactly one of")
+        .hasMessageContaining("agentCard")
+        .hasMessageContaining("server");
+  }
+
+  @ParameterizedTest(name = "a2a method {0} is rejected")
+  @ValueSource(
+      strings = {
+        "message/stream",
+        "tasks/list",
+        "tasks/cancel",
+        "tasks/resubscribe",
+        "tasks/pushNotificationConfig/set",
+        "agent/getAuthenticatedExtendedCard"
+      })
+  @DisplayName("a2a methods outside message/send and tasks/get are rejected at compile time")
+  void a2aUnsupportedMethodRejected(String method) {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: a2a-unsupported-method
+          version: '1.0.0'
+        do:
+          - dispatchTask:
+              call: a2a
+              with:
+                server: https://agent.example.test/rpc
+                method: %s
+        """
+            .formatted(method);
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining(method)
+        .hasMessageContaining("not supported");
+  }
+
+  @Test
+  @DisplayName("a2a server basic authentication resolves declared scalar secrets")
+  void a2aServerBasicAuthResolvesSecrets() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: a2a-basic
+          version: '1.0.0'
+        use:
+          secrets: [agentuser, agentpassword]
+        do:
+          - dispatchTask:
+              call: a2a
+              with:
+                server:
+                  uri: https://agent.example.test/rpc
+                  authentication:
+                    basic:
+                      username: ${ $secrets.agentuser }
+                      password: ${ $secrets.agentpassword }
+                method: message/send
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(step(plan, "dispatch-task").env())
+        .containsEntry("AUTH_SCHEME", new Literal("basic"))
+        .containsEntry("AUTH_USERNAME", new SecretKeyRef("agentuser", "value"))
+        .containsEntry("AUTH_PASSWORD", new SecretKeyRef("agentpassword", "value"));
+  }
+
+  @Test
+  @DisplayName(
+      "a2a agentCard bearer authentication resolves declared secrets and never projects a"
+          + " separate CARD_AUTH_* credential")
+  void a2aAgentCardBearerAuthResolvesSecretsWithNoSeparateCardAuth() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: a2a-bearer
+          version: '1.0.0'
+        use:
+          secrets: [agenttoken]
+        do:
+          - pollTask:
+              call: a2a
+              with:
+                agentCard:
+                  endpoint:
+                    uri: https://agent.example.test/.well-known/agent-card.json
+                    authentication:
+                      bearer:
+                        token: ${ $secrets.agenttoken }
+                method: tasks/get
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(step(plan, "poll-task").env())
+        .containsEntry("AUTH_SCHEME", new Literal("bearer"))
+        .containsEntry("AUTH_TOKEN", new SecretKeyRef("agenttoken", "value"))
+        .doesNotContainKey("CARD_AUTH_SCHEME")
+        .doesNotContainKey("CARD_AUTH_TOKEN");
+  }
+
+  @Test
+  @DisplayName("a2a authentication rejects an oauth2 policy at compile time")
+  void a2aOauth2Rejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: a2a-oauth
+          version: '1.0.0'
+        use:
+          secrets: [oauthclientid, oauthclientsecret]
+        do:
+          - dispatchTask:
+              call: a2a
+              with:
+                server:
+                  uri: https://agent.example.test/rpc
+                  authentication:
+                    oauth2:
+                      authority: https://identity.example.test
+                      grant: client_credentials
+                      client:
+                        id: ${ $secrets.oauthclientid }
+                        secret: ${ $secrets.oauthclientsecret }
+                      scopes: [agent.invoke]
+                method: message/send
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("oauth2 authentication is not supported for a2a calls");
+  }
+
+  @Test
+  @DisplayName("a2a call synthesizes no OAuth2 endpoint or binding component (ADR 0004 Decision 5)")
+  void a2aSynthesizesNoExtraResources() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: a2a-no-extra-resources
+          version: '1.0.0'
+        use:
+          secrets: [agenttoken]
+        do:
+          - dispatchTask:
+              call: a2a
+              with:
+                server:
+                  uri: https://agent.example.test/rpc
+                  authentication:
+                    bearer:
+                      token: ${ $secrets.agenttoken }
+                method: message/send
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(plan.oauthEndpoints()).isEmpty();
+    assertThat(plan.bindingComponents()).isEmpty();
+  }
+
+  @Test
+  @DisplayName("a2a 'parameters' object form is JSON-serialized verbatim")
+  void a2aParametersObjectFormSerialized() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: a2a-parameters-object
+          version: '1.0.0'
+        do:
+          - dispatchTask:
+              call: a2a
+              with:
+                server: https://agent.example.test/rpc
+                method: message/send
+                parameters:
+                  message:
+                    role: user
+                    parts:
+                      - kind: text
+                        text: hello
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(literal(step(plan, "dispatch-task"), "PARAMETERS"))
+        .contains("\"role\":\"user\"")
+        .contains("\"text\":\"hello\"");
+  }
+
+  @Test
+  @DisplayName("a2a 'parameters' string (runtime expression) form is JSON-encoded, not raw")
+  void a2aParametersStringFormIsJsonEncoded() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: a2a-parameters-string
+          version: '1.0.0'
+        do:
+          - dispatchTask:
+              call: a2a
+              with:
+                server: https://agent.example.test/rpc
+                method: message/send
+                parameters: '${ .taskParameters }'
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    // The runner's PARAMETERS env goes through json.loads at boot -- a raw, unquoted string
+    // would fail to parse. JSON-encoding it round-trips back to the exact original string.
+    assertThat(literal(step(plan, "dispatch-task"), "PARAMETERS"))
+        .isEqualTo("\"${ .taskParameters }\"");
+  }
+
+  @Test
+  @DisplayName("a2a call with no 'with.parameters' still emits PARAMETERS as an empty object")
+  void a2aParametersAbsentDefaultsToEmptyObject() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: a2a-parameters-absent
+          version: '1.0.0'
+        do:
+          - dispatchTask:
+              call: a2a
+              with:
+                server: https://agent.example.test/rpc
+                method: message/send
+        """;
+
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    // dws-call-a2a requires PARAMETERS at boot with no fallback (config.py's _required), unlike
+    // openApiStep's optional-with-fallback treatment -- absent 'with.parameters' must still
+    // produce a valid JSON value, not a missing env var.
+    assertThat(literal(step(plan, "dispatch-task"), "PARAMETERS")).isEqualTo("{}");
+  }
+
+  @Test
+  @DisplayName(
+      "a2a call rejects declaring both 'agentCard' and 'server' when agentCard's authentication"
+          + " would be silently dropped")
+  void a2aBothAgentCardAndServerWithAuthenticationRejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: a2a-both-with-auth
+          version: '1.0.0'
+        use:
+          secrets: [agenttoken]
+        do:
+          - dispatchTask:
+              call: a2a
+              with:
+                agentCard:
+                  endpoint:
+                    uri: https://agent.example.test/.well-known/agent-card.json
+                    authentication:
+                      bearer:
+                        token: ${ $secrets.agenttoken }
+                server: https://agent.example.test/rpc
+                method: message/send
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("agentCard")
+        .hasMessageContaining("server")
+        .hasMessageContaining("silently dropped");
   }
 
   private static StepService step(DeploymentPlan plan, String name) {

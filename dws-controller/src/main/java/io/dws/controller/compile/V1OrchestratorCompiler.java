@@ -16,12 +16,14 @@ import io.dws.controller.model.StepService;
 import io.dws.controller.model.TaskKind;
 import io.dws.controller.model.TopicBinding;
 import io.serverlessworkflow.api.WorkflowFormat;
+import io.serverlessworkflow.api.types.A2AArguments;
 import io.serverlessworkflow.api.types.AsyncApiArguments;
 import io.serverlessworkflow.api.types.AuthenticationPolicyUnion;
 import io.serverlessworkflow.api.types.BasicAuthenticationPolicy;
 import io.serverlessworkflow.api.types.BasicAuthenticationProperties;
 import io.serverlessworkflow.api.types.BearerAuthenticationPolicy;
 import io.serverlessworkflow.api.types.BearerAuthenticationProperties;
+import io.serverlessworkflow.api.types.CallA2A;
 import io.serverlessworkflow.api.types.CallAsyncAPI;
 import io.serverlessworkflow.api.types.CallGRPC;
 import io.serverlessworkflow.api.types.CallHTTP;
@@ -32,6 +34,7 @@ import io.serverlessworkflow.api.types.EmitTask;
 import io.serverlessworkflow.api.types.Endpoint;
 import io.serverlessworkflow.api.types.EndpointConfiguration;
 import io.serverlessworkflow.api.types.EndpointUri;
+import io.serverlessworkflow.api.types.ExternalResource;
 import io.serverlessworkflow.api.types.ForTask;
 import io.serverlessworkflow.api.types.ForkTask;
 import io.serverlessworkflow.api.types.GRPCArguments;
@@ -42,6 +45,7 @@ import io.serverlessworkflow.api.types.OAuth2AuthenticationDataClient;
 import io.serverlessworkflow.api.types.OAuth2AuthenticationPolicy;
 import io.serverlessworkflow.api.types.OAuth2ConnectAuthenticationProperties;
 import io.serverlessworkflow.api.types.OpenAPIArguments;
+import io.serverlessworkflow.api.types.Parameters;
 import io.serverlessworkflow.api.types.ReferenceableAuthenticationPolicy;
 import io.serverlessworkflow.api.types.RunScript;
 import io.serverlessworkflow.api.types.RunShell;
@@ -269,6 +273,8 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
         steps.add(grpcStep(taskName, call.getCallGRPC(), context));
       } else if (call != null && call.getCallAsyncAPI() != null) {
         steps.add(asyncApiStep(taskName, call.getCallAsyncAPI(), context));
+      } else if (call != null && call.getCallA2A() != null) {
+        steps.add(a2aStep(taskName, call.getCallA2A(), context));
       } else if (task.getRunTask() != null) {
         steps.add(runStep(taskName, task.getRunTask()));
       } else if (task.getEmitTask() != null) {
@@ -551,6 +557,151 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
 
   private record BindingType(
       String daprType, String hostKey, String destinationKey, String userKey, String passwordKey) {}
+
+  /**
+   * Supported {@code with.method} values for {@code call: a2a} (ADR 0004 Decision 2). Everything
+   * else in the 11-value OWS enum -- the streaming pair, task administration, and the
+   * authenticated-extended-card method -- is rejected at compile time rather than at runner boot.
+   */
+  private static final Set<A2AArguments.WithA2AMethod> SUPPORTED_A2A_METHODS =
+      Set.of(A2AArguments.WithA2AMethod.MESSAGE_SEND, A2AArguments.WithA2AMethod.TASKS_GET);
+
+  /**
+   * Compiles a {@code call: a2a} task. Per ADR 0004 Decision 5, this is the only call kind that
+   * synthesizes <em>no</em> Kubernetes resource beyond the ordinary {@link StepService} -- no
+   * binding {@code Component} (unlike {@link #asyncApiStep}), and no OAuth2 {@code HTTPEndpoint} /
+   * middleware {@code Component} / scoped {@code Configuration} (unlike {@link #httpStep}/{@link
+   * #openApiStep}): the agent card is resolved by the runner itself at boot over ordinary HTTPS,
+   * and the runner talks to the agent directly over {@code httpx}, never through Dapr service
+   * invocation at all -- so there is no invocation path for a Dapr sidecar middleware to attach to,
+   * regardless of whether the RPC host is statically known. oauth2 is therefore rejected for a2a's
+   * own authentication (see {@link #resolveA2AAuth}), the same way {@link #resolveGrpcAuth} rejects
+   * it for gRPC, just for a different underlying reason.
+   */
+  private StepService a2aStep(String taskName, CallA2A call, CompileContext context) {
+    A2AArguments with = call.getWith();
+    if (with == null) {
+      throw invalid(taskName, "a2a call requires 'with' arguments");
+    }
+    A2AArguments.WithA2AMethod method = with.getMethod();
+    if (method == null) {
+      throw invalid(taskName, "a2a call requires 'with.method'");
+    }
+    if (!SUPPORTED_A2A_METHODS.contains(method)) {
+      throw invalid(
+          taskName,
+          "a2a method '"
+              + method.value()
+              + "' is not supported; only 'message/send' and 'tasks/get' are (ADR 0004 Decision"
+              + " 2)");
+    }
+
+    ExternalResource agentCard = with.getAgentCard();
+    Endpoint server = with.getServer();
+    if (agentCard == null && server == null) {
+      throw invalid(taskName, "a2a call requires exactly one of 'with.agentCard' or 'with.server'");
+    }
+    // The OWS schema doesn't forbid declaring both -- 'server' wins silently and 'agentCard' is
+    // ignored entirely (no card is fetched, so no AGENT_CARD_URL/CARD_AUTH_* either). That's
+    // harmless when agentCard carries no authentication, but silently dropping declared card
+    // authentication is a real hazard: a runtime 401 with no compile-time signal, and it skips
+    // the boot-time auth-requirement check entirely since no card is ever fetched in this case.
+    // Reject only when there is real authentication to lose.
+    if (agentCard != null
+        && server != null
+        && endpointAuthentication(agentCard.getEndpoint()) != null) {
+      throw invalid(
+          taskName,
+          "a2a call declares both 'agentCard' and 'server'; 'server' wins and 'agentCard's"
+              + " authentication would be silently dropped -- remove one or drop agentCard's"
+              + " authentication if you intend server to take precedence");
+    }
+
+    Map<String, EnvValue> env = new LinkedHashMap<>();
+    // dws-call-a2a requires TASK at boot (config.py's _required, no operationId-style fallback
+    // like openApiStep's OPERATION_ID) -- it's used for /healthz/logging and as the taskName
+    // component of the ADR 0004 Decision 8 messageId derivation. Raw taskName, not
+    // Names.kebab(taskName): the runner treats it as an opaque string, not the app-id.
+    env.put("TASK", new EnvValue.Literal(taskName));
+    // Per the OWS schema, 'server' wins silently when both are declared -- 'agentCard' is then
+    // ignored entirely (no card is fetched, so no AGENT_CARD_URL/CARD_AUTH_* either). Rejected
+    // above when that would silently drop agentCard's declared authentication.
+    Endpoint rpcEndpoint;
+    if (server != null) {
+      rpcEndpoint = server;
+    } else {
+      rpcEndpoint = agentCard.getEndpoint();
+      if (rpcEndpoint == null) {
+        throw invalid(taskName, "a2a call's 'with.agentCard' requires an 'endpoint'");
+      }
+    }
+    String rpcEndpointUrl = resolveEndpoint(rpcEndpoint);
+    putIfPresent(env, server != null ? "SERVER_URL" : "AGENT_CARD_URL", rpcEndpointUrl);
+    applyAuth(env, resolveA2AAuth(taskName, rpcEndpoint, rpcEndpointUrl, context));
+
+    env.put("METHOD", new EnvValue.Literal(method.value()));
+    // Always emit PARAMETERS -- the runner requires it with no fallback, unlike PARAMETERS'
+    // optional-with-fallback treatment in openApiStep. Absent `with.parameters` -> an empty
+    // object, matching what an author who declared no parameters actually means (none).
+    if (with.getParameters() == null) {
+      env.put("PARAMETERS", new EnvValue.Literal("{}"));
+    } else {
+      env.put("PARAMETERS", new EnvValue.Literal(a2aParameters(with.getParameters())));
+    }
+    if (call.getTimeout() != null) {
+      putIfPresent(env, "TIMEOUT", toJson(call.getTimeout()));
+    }
+
+    return new StepService(Names.kebab(taskName), TaskKind.CALL_A2A, images.callA2a(), env);
+  }
+
+  /**
+   * {@code with.parameters} is a oneOf of the free-form object form ({@link
+   * io.serverlessworkflow.api.types.WithA2AParameters}) and a bare runtime-expression string, the
+   * same shape {@code call: http}'s {@code headers}/{@code query} already normalize -- see {@link
+   * #httpStep}. The object form is JSON-serialized verbatim (the runner recursively evaluates any
+   * {@code ${...}} runtime expression nested inside it, the same convention {@code
+   * SECRET_REFERENCE} uses elsewhere in this file). The string form (a jq expression) must also be
+   * JSON-encoded -- not passed through raw -- so the runner's {@code json.loads} decodes it back
+   * into exactly the original string rather than failing on unquoted text.
+   */
+  private String a2aParameters(Parameters parameters) {
+    if (parameters.getWithA2AParameters() != null) {
+      return toJson(parameters.getWithA2AParameters().getAdditionalProperties());
+    }
+    return toJson(parameters.getString());
+  }
+
+  /**
+   * Resolves the a2a RPC endpoint's authentication to the established generated-auth env contract,
+   * supporting basic and bearer only. oauth2 is rejected: the runner talks to the agent directly
+   * over {@code httpx}, never through Dapr service invocation at all, so Dapr sidecar OAuth2
+   * middleware would never see that traffic -- there is consequently no HTTPEndpoint/middleware
+   * Component/Configuration for a policy to be scoped to in the first place (unlike {@link
+   * #resolveAuth}'s httpStep/openApiStep callers, which do synthesize one and whose traffic does go
+   * through the sidecar). This holds even for the {@code server} form, which has a statically-known
+   * host -- the direct {@code httpx} call bypasses the sidecar regardless. Mirrors {@link
+   * #resolveGrpcAuth}'s shape for a different but equally valid reason: gRPC has no Dapr
+   * invocation-OAuth2 middleware at all.
+   */
+  private ResolvedAuth resolveA2AAuth(
+      String taskName, Endpoint endpoint, String endpointUrl, CompileContext context) {
+    ReferenceableAuthenticationPolicy reference = endpointAuthentication(endpoint);
+    if (reference == null) {
+      return ResolvedAuth.NONE;
+    }
+    AuthenticationPolicyUnion policy = policyOf(taskName, reference, context);
+    if (policy.getOAuth2AuthenticationPolicy() != null) {
+      throw invalid(taskName, "oauth2 authentication is not supported for a2a calls");
+    }
+    return resolveAuthPolicy(
+        taskName,
+        () -> {
+          throw invalid(taskName, "oauth2 authentication is not supported for a2a calls");
+        },
+        policy,
+        context);
+  }
 
   private StepService grpcStep(String taskName, CallGRPC call, CompileContext context) {
     GRPCArguments with = call.getWith();
