@@ -13,8 +13,13 @@ Docker Desktop or Docker Engine must be running. Start the lifecycle service bef
 
 ```powershell
 $env:OPENSANDBOX_INSECURE_SERVER = "YES"
-uvx opensandbox-server --config agent-sandbox/opensandbox/docker.toml
+./agent-sandbox/start-opensandbox.ps1
 ```
+
+On Windows, use the checked-in launcher: it materializes the host kubeconfig path into a
+temporary config because OpenSandbox TOML does not expand environment variables. It mounts
+only `~/.kube/config` read-only into each sandbox. Starting the server directly with
+`agent-sandbox/opensandbox/docker.toml` leaves its host-path placeholder unresolved.
 
 Insecure mode is acceptable only for this profile while it remains bound to `127.0.0.1`. For a durable or exposed service, configure `OPENSANDBOX_SERVER_API_KEY` instead and make the same key available to the MCP process through `OPEN_SANDBOX_API_KEY`; set it before starting Codex so the MCP process inherits it. Never print either key.
 
