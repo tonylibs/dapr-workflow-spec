@@ -16,13 +16,14 @@ index: a package map plus rules that apply across every package. Each package al
 | [`dws-run`](dws-run) | Go 1.26 | `run: shell` / `run: script` step images (3 variants, 1 codebase). |
 | [`dws-call-openapi`](dws-call-openapi) | Node 24, TypeScript, Fastify | `call: openapi` step image. |
 | [`dws-call-asyncapi`](dws-call-asyncapi) | Node 24, TypeScript, Fastify | `call: asyncapi` step image. |
+| [`dws-call-a2a`](dws-call-a2a) | Python 3.13, FastAPI | Prebuilt step image for `call: a2a` tasks. |
 | [`dws-admin`](dws-admin) | Node, TypeScript, NestJS, Drizzle | Admin/query API + lifecycle-event projection. |
 | [`dws-console`](dws-console) | TypeScript, React, TanStack Start/Router, Vite | Admin console frontend. |
 | [`dws-flow`](dws-flow) | .NET 10 | Generic `kind: flow` single-node host (early phase, no CI yet). |
 
-`dws-call-grpc`, `dws-call-asyncapi`, `dws-admin`, `dws-console`, and `dws-flow` are not yet listed
-in `AGENTS.md`'s component table — that table predates them. Don't treat its absence as "this
-package doesn't exist."
+`dws-call-grpc`, `dws-call-asyncapi`, `dws-call-a2a`, `dws-admin`, `dws-console`, and `dws-flow` are
+not yet listed in `AGENTS.md`'s component table — that table predates them. Don't treat its absence
+as "this package doesn't exist."
 
 ## Cross-cutting style rules
 
@@ -78,6 +79,7 @@ each package's own config:
 | `dws-run` | `make lint && make test` |
 | `dws-call-openapi` | `pnpm lint && pnpm test && pnpm build` |
 | `dws-call-asyncapi` | `pnpm lint && pnpm test && pnpm build` |
+| `dws-call-a2a` | `uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest` |
 | `dws-admin` | `pnpm lint && pnpm test && pnpm build` |
 | `dws-console` | `pnpm check && pnpm typecheck && pnpm test && pnpm build` (`check` = Biome lint+format) |
 | `dws-flow` | `dotnet test` (no lint/format gate configured yet — no `.editorconfig`, no analyzers) |

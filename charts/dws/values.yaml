@@ -68,7 +68,7 @@ controller:
   # Step-image references the controller stamps into per-workflow resources
   # (rendered as DWS_IMAGES_* env vars on the controller container). Mirrors every
   # dws.images.* property DwsConfig/ImageCatalog require (dws-controller/src/main/java/
-  # io/dws/controller/config/DwsConfig.java) -- all eight are mandatory config on the
+  # io/dws/controller/config/DwsConfig.java) -- all nine are mandatory config on the
   # controller side, so every key here must stay populated.
   images:
     callHttp:
@@ -83,6 +83,9 @@ controller:
     callAsyncapi:
       repository: ghcr.io/tonylibs/dws-call-asyncapi
       tag: "1.1.0"
+    callA2a:
+      repository: ghcr.io/tonylibs/dws-call-a2a
+      tag: "latest"
     run:
       shell:
         repository: ghcr.io/tonylibs/dws-run-shell
