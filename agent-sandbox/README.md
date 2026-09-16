@@ -65,6 +65,27 @@ to `/root/.kube-local/config`, rewrites Docker Desktop's `127.0.0.1`/`localhost`
 to the host-gateway IPv4 address behind the certificate-valid hostname `kubernetes`, and sets
 `KUBECONFIG` to that copy. The host kubeconfig remains read-only and untouched.
 
+To create a fully configured local SSH sandbox with the fixed Orca port from the checked-in
+profile, run:
+
+```powershell
+.\agent-sandbox\new-ssh-sandbox.ps1
+```
+
+The helper calls `osb sandbox create`, provisions only `~/.ssh/dws_sandbox.pub`, and creates a
+localhost-only TCP bridge on port `22222`. Edit `agent-sandbox/ssh-sandbox.psd1` to change the
+image, resource limits, lifetime, or local SSH port. Only one active sandbox can claim the fixed
+port at a time; the helper fails rather than replacing an existing bridge.
+
+The equivalent Python command is:
+
+```powershell
+py -3 .\agent-sandbox\new_ssh_sandbox.py
+```
+
+Its settings are in `agent-sandbox/ssh-sandbox.json`. It uses the OpenSandbox Python SDK for
+lifecycle and sandbox file operations, and Docker only for the localhost-only SSH bridge.
+
 ## Confirm before use
 
 - Installed CRD version: `kubectl get crd sandboxes.agents.x-k8s.io -o jsonpath='{.spec.versions[*].name}'`
