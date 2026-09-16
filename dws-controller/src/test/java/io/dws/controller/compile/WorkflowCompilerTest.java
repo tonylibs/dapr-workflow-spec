@@ -1735,8 +1735,9 @@ class WorkflowCompilerTest {
   }
 
   @Test
-  @DisplayName("a2a authentication rejects an oauth2 policy at compile time")
-  void a2aOauth2Rejected() {
+  @DisplayName(
+      "a2a 'with.server' oauth2 authentication synthesizes the same middleware triple as http")
+  void a2aServerOauth2Compiles() {
     String yaml =
         """
         document:
@@ -1763,13 +1764,58 @@ class WorkflowCompilerTest {
                 method: message/send
         """;
 
-    assertThatThrownBy(() -> compiler.compile(yaml))
-        .isInstanceOf(CompilationException.class)
-        .hasMessageContaining("oauth2 authentication is not supported for a2a calls");
+    DeploymentPlan plan = compiler.compile(yaml);
+
+    assertThat(plan.oauthEndpoints()).hasSize(1);
+    OAuthEndpoint endpoint = plan.oauthEndpoints().getFirst();
+    assertThat(endpoint.baseUrl()).isEqualTo("https://agent.example.test");
+    assertThat(endpoint.paths()).containsExactly("/rpc");
+    assertThat(endpoint.appIds()).containsExactly("dispatch-task");
+    assertThat(endpoint.middleware().scopes()).containsExactly("agent.invoke");
+    assertThat(step(plan, "dispatch-task").env())
+        .containsEntry("AUTH_SCHEME", new Literal("oauth2"))
+        .containsEntry("OAUTH_ENDPOINT", new Literal(endpoint.name()))
+        .doesNotContainKey("AUTH_USERNAME")
+        .doesNotContainKey("AUTH_TOKEN");
   }
 
   @Test
-  @DisplayName("a2a call synthesizes no OAuth2 endpoint or binding component (ADR 0004 Decision 5)")
+  @DisplayName("a2a 'with.agentCard' rejects an oauth2 policy on the RPC endpoint at compile time")
+  void a2aAgentCardOauth2Rejected() {
+    String yaml =
+        """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: a2a-oauth-agent-card
+          version: '1.0.0'
+        use:
+          secrets: [oauthclientid, oauthclientsecret]
+        do:
+          - dispatchTask:
+              call: a2a
+              with:
+                agentCard:
+                  endpoint:
+                    uri: https://agent.example.test/.well-known/agent-card.json
+                    authentication:
+                      oauth2:
+                        authority: https://identity.example.test
+                        grant: client_credentials
+                        client:
+                          id: ${ $secrets.oauthclientid }
+                          secret: ${ $secrets.oauthclientsecret }
+                        scopes: [agent.invoke]
+                method: message/send
+        """;
+
+    assertThatThrownBy(() -> compiler.compile(yaml))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("oauth2 authentication for a2a requires 'with.server'");
+  }
+
+  @Test
+  @DisplayName("a2a call synthesizes no OAuth2 endpoint or binding component for basic/bearer auth")
   void a2aSynthesizesNoExtraResources() {
     String yaml =
         """

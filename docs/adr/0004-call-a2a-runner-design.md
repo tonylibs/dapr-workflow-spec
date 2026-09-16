@@ -133,12 +133,13 @@ the whole basis for treating the card as a validator rather than a credential so
 The alternative — resolve the OWS policy onto a card-declared scheme name and drive the SDK's
 `AuthInterceptor`, which looks credentials up by scheme name through a `CredentialService` — was
 rejected on four grounds: `AuthInterceptor` emits Bearer and apiKey-in-header only and will not emit
-HTTP **Basic**, which OWS's `authenticationPolicy` permits; Phase 4 already routes OAuth2
-`client_credentials` through Dapr sidecar middleware for `call: http`/`call: openapi`, whose RPC
-calls go through Dapr service invocation and so pick up an injected token there — but `call: a2a`
-talks to the agent directly over `httpx` and never goes through the sidecar at all (Decision 5), so
-there is no injected token to contend with and oauth2 is rejected outright for a2a rather than
-delegated to an SDK-side interceptor; a card declaring two schemes of one type leaves the choice
+HTTP **Basic**, which OWS's `authenticationPolicy` permits; oauth2 `client_credentials` for
+`call: a2a` follows the exact same Dapr sidecar middleware routing Phase 4 already established for
+`call: http`/`call: openapi` (see Decision 5's amendment) rather than an SDK-side interceptor — the
+compiler synthesizes the `HTTPEndpoint`/middleware `Component`/scoped `Configuration` and the runner
+reroutes the RPC call through the sidecar's service-invocation proxy to pick up the injected token,
+exactly like the HTTP-shaped call kinds, so there is no separate SDK-`AuthInterceptor`-based oauth2
+path to build in the first place; a card declaring two schemes of one type leaves the choice
 ambiguous; and it inverts this repo's established shape, in which the compiler decides auth and the
 runner applies it.
 
@@ -166,17 +167,34 @@ protects its card protects both with the same token, so the runner reuses the RP
 card fetch unless card-specific credentials are explicitly declared — a documented default rather
 than an accident.
 
-## Decision 5: `call: a2a` synthesizes no Kubernetes resource
+## Decision 5: `call: a2a` synthesizes no Kubernetes resource, except the oauth2 middleware triple for `with.server`
 
 `call: asyncapi` synthesizes a version-scoped Dapr binding `Component`; `call: http`/`call: openapi`
 under an OAuth2 policy synthesize an `HTTPEndpoint`, a middleware `Component`, and a scoped
-`Configuration`. `call: a2a` synthesizes none of these. The agent card is resolved by the runner at
-boot over ordinary HTTPS, and nothing about the protocol requires a cluster-side object.
+`Configuration`. `call: a2a` synthesizes none of the former (no binding `Component`, in any case),
+and none of the latter for the `with.agentCard` RPC target either — the actual RPC interface is
+selected from the card's `supportedInterfaces` at runtime, so there is no compile-time-known base
+URL for an `HTTPEndpoint` to name, and oauth2 is rejected at compile time for that RPC target.
 
-The controller's compile branch therefore does only: validate the method against Decision 2's
-subset, require exactly one of `agentCard`/`server` (treating `agentCard` as ignored when `server`
-is set, per the OWS schema), project credentials as secret references, and pin the step's
-environment.
+**Amendment (see the controller's `resolveA2AAuth`):** for the `with.server` RPC target, the base
+URL *is* known at compile time, and nothing protocol-specific stops the same Dapr sidecar oauth2
+routing Phase 4 built for `call: http`/`call: openapi` from applying here too. An earlier cut of
+this ADR asserted flatly that "the runner talks to the agent directly over `httpx`, never through
+Dapr service invocation at all" and used that to reject oauth2 outright for every a2a RPC target.
+That holds for `dws-call-a2a`'s transport in general — it still calls the agent directly over
+`httpx`, not through a Dapr Workflow SDK activity — but not for the oauth2 case specifically:
+`dws-call-a2a`'s `auth.py::rpc_target_url` reroutes the RPC URL through the Dapr sidecar's
+service-invocation proxy (`http://localhost:{DAPR_HTTP_PORT}/v1.0/invoke/{OAUTH_ENDPOINT}/method...`)
+exactly as `dws-call-openapi`'s `daprInvocationUrl` does, precisely so the sidecar's injected token
+attaches. The controller now synthesizes the same `HTTPEndpoint`/middleware `Component`/scoped
+`Configuration` triple for a `with.server` + oauth2 a2a call that it does for `call: http`/`call:
+openapi`, scoped to the a2a step's own app-id the same way. The `with.agentCard` RPC target is
+unaffected by this amendment and still synthesizes nothing and still rejects oauth2.
+
+The controller's compile branch therefore does: validate the method against Decision 2's subset,
+require exactly one of `agentCard`/`server` (treating `agentCard` as ignored when `server` is set,
+per the OWS schema), project credentials as secret references — synthesizing the oauth2 middleware
+triple above when `with.server` carries an oauth2 policy — and pin the step's environment.
 
 ## Decision 6: Result shaping — don't carry `history`, return non-terminal states as data
 

@@ -184,8 +184,10 @@ environment clears both. Phase 5.5 and Phase 6 are both free of it.
 Full rationale in [ADR 0004](../adr/0004-call-a2a-runner-design.md). Reading the actual
 specifications inverted §4d's assumption that A2A was the hardest slice: the OWS `a2a` call is a
 **thin JSON-RPC passthrough** (`method` + free-form `parameters`), with no document parsing, no
-payload schema validation, and — alone among the call kinds — **no Kubernetes resource to
-synthesize**. There is no runtime-managed task lifecycle either: OWS binds one RPC per invocation,
+payload schema validation, and — for the `with.agentCard` RPC target — **no Kubernetes resource to
+synthesize** (the `with.server` RPC target synthesizes the same oauth2 middleware triple as `call:
+http`/`call: openapi` when the policy is oauth2; see ADR 0004 Decision 5's amendment). There is no
+runtime-managed task lifecycle either: OWS binds one RPC per invocation,
 so polling, resumption after `input-required`, and escalation on `auth-required` are composed by the
 author from `switch`/`wait`/`then: <taskName>` that Phases 2–3 already shipped.
 
@@ -197,7 +199,7 @@ The decisions:
 | 2 | `message/send` + `tasks/get` only; `message/stream`/`tasks/resubscribe` deferred (SSE aggregation) and rejected at compile time |
 | 3 | Dialect normalized — the JSON-RPC **wire** enum is lowercase (`"working"`, `"input-required"`, `"auth-required"`, `"unknown"`); `TASK_STATE_*`/`ROLE_USER` are language-binding surface only |
 | 4 | Auth: the OWS policy supplies credentials, the agent card validates them — a card declares required schemes but never carries credentials |
-| 5 | No Dapr Component, HTTPEndpoint, or Configuration synthesized for `call: a2a` |
+| 5 | No Dapr Component, HTTPEndpoint, or Configuration synthesized for the `with.agentCard` RPC target; the `with.server` RPC target synthesizes the same oauth2 middleware triple as `call: http`/`call: openapi` under an oauth2 policy |
 | 6 | `history` stripped from output by default (secret echo + state bloat); `input-required`/`auth-required` returned as data, never as step failures |
 | 7 | The agent card is not integrity-pinned — it is a live discovery document, unlike a versioned API contract |
 

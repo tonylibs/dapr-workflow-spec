@@ -567,16 +567,19 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
       Set.of(A2AArguments.WithA2AMethod.MESSAGE_SEND, A2AArguments.WithA2AMethod.TASKS_GET);
 
   /**
-   * Compiles a {@code call: a2a} task. Per ADR 0004 Decision 5, this is the only call kind that
-   * synthesizes <em>no</em> Kubernetes resource beyond the ordinary {@link StepService} -- no
-   * binding {@code Component} (unlike {@link #asyncApiStep}), and no OAuth2 {@code HTTPEndpoint} /
-   * middleware {@code Component} / scoped {@code Configuration} (unlike {@link #httpStep}/{@link
-   * #openApiStep}): the agent card is resolved by the runner itself at boot over ordinary HTTPS,
-   * and the runner talks to the agent directly over {@code httpx}, never through Dapr service
-   * invocation at all -- so there is no invocation path for a Dapr sidecar middleware to attach to,
-   * regardless of whether the RPC host is statically known. oauth2 is therefore rejected for a2a's
-   * own authentication (see {@link #resolveA2AAuth}), the same way {@link #resolveGrpcAuth} rejects
-   * it for gRPC, just for a different underlying reason.
+   * Compiles a {@code call: a2a} task. Per ADR 0004 Decision 5, this call kind synthesizes no
+   * binding {@code Component} (unlike {@link #asyncApiStep}) and, for the {@code with.agentCard}
+   * RPC target, no OAuth2 {@code HTTPEndpoint} / middleware {@code Component} / scoped {@code
+   * Configuration} either. For the {@code with.server} RPC target, though, those three OAuth2
+   * resources <em>are</em> synthesized under an oauth2 policy, exactly like {@link #httpStep}/
+   * {@link #openApiStep}: {@code dws-call-a2a} reroutes that RPC call through the Dapr sidecar's
+   * service-invocation proxy (the same {@code http://localhost:{DAPR_HTTP_PORT}/v1.0/invoke/...}
+   * indirection {@code dws-call-openapi} uses) so the sidecar's OAuth2 middleware injects the token
+   * -- the runner does go through Dapr service invocation for that case, contrary to an earlier
+   * draft of this comment. {@code with.agentCard} has no compile-time-known RPC base URL (the
+   * actual interface is selected from the card's {@code supportedInterfaces} at runtime), so there
+   * is nothing for an {@code HTTPEndpoint} to name and oauth2 is rejected there instead (see {@link
+   * #resolveA2AAuth}).
    */
   private StepService a2aStep(String taskName, CallA2A call, CompileContext context) {
     A2AArguments with = call.getWith();
@@ -637,7 +640,7 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
     }
     String rpcEndpointUrl = resolveEndpoint(rpcEndpoint);
     putIfPresent(env, server != null ? "SERVER_URL" : "AGENT_CARD_URL", rpcEndpointUrl);
-    applyAuth(env, resolveA2AAuth(taskName, rpcEndpoint, rpcEndpointUrl, context));
+    applyAuth(env, resolveA2AAuth(taskName, rpcEndpoint, rpcEndpointUrl, server != null, context));
 
     env.put("METHOD", new EnvValue.Literal(method.value()));
     // Always emit PARAMETERS -- the runner requires it with no fallback, unlike PARAMETERS'
@@ -674,33 +677,39 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
 
   /**
    * Resolves the a2a RPC endpoint's authentication to the established generated-auth env contract,
-   * supporting basic and bearer only. oauth2 is rejected: the runner talks to the agent directly
-   * over {@code httpx}, never through Dapr service invocation at all, so Dapr sidecar OAuth2
-   * middleware would never see that traffic -- there is consequently no HTTPEndpoint/middleware
-   * Component/Configuration for a policy to be scoped to in the first place (unlike {@link
-   * #resolveAuth}'s httpStep/openApiStep callers, which do synthesize one and whose traffic does go
-   * through the sidecar). This holds even for the {@code server} form, which has a statically-known
-   * host -- the direct {@code httpx} call bypasses the sidecar regardless. Mirrors {@link
-   * #resolveGrpcAuth}'s shape for a different but equally valid reason: gRPC has no Dapr
-   * invocation-OAuth2 middleware at all.
+   * supporting basic, bearer, and oauth2. oauth2 is allowed only when {@code isServer} -- i.e. the
+   * RPC target came from {@code with.server} rather than {@code with.agentCard} -- because an
+   * OAuth2 {@code HTTPEndpoint} needs a base URL known at compile time, and {@code with.server}'s
+   * URL is exactly that; {@code with.agentCard} instead resolves the actual RPC interface from the
+   * card's {@code supportedInterfaces} at runtime, so there is no compile-time base URL for an
+   * {@code HTTPEndpoint} to name. When allowed, this delegates to the same {@link
+   * #resolveAuthPolicy} machinery {@link #resolveAuth}'s httpStep/openApiStep callers use, so a
+   * {@code with.server} + oauth2 call synthesizes the identical {@code HTTPEndpoint} / middleware
+   * {@code Component} / scoped {@code Configuration} triple, and {@code dws-call-a2a} reroutes that
+   * RPC call through the Dapr sidecar's service-invocation proxy so the sidecar's OAuth2 middleware
+   * injects the token -- see {@code dws-call-a2a}'s {@code auth.py::rpc_target_url}. Unlike {@link
+   * #resolveGrpcAuth}, which rejects oauth2 unconditionally because Dapr has no gRPC-invocation
+   * OAuth2 middleware at all, a2a's rejection is specific to the {@code agentCard} RPC target, not
+   * to the call kind as a whole.
    */
   private ResolvedAuth resolveA2AAuth(
-      String taskName, Endpoint endpoint, String endpointUrl, CompileContext context) {
+      String taskName,
+      Endpoint endpoint,
+      String endpointUrl,
+      boolean isServer,
+      CompileContext context) {
     ReferenceableAuthenticationPolicy reference = endpointAuthentication(endpoint);
     if (reference == null) {
       return ResolvedAuth.NONE;
     }
     AuthenticationPolicyUnion policy = policyOf(taskName, reference, context);
-    if (policy.getOAuth2AuthenticationPolicy() != null) {
-      throw invalid(taskName, "oauth2 authentication is not supported for a2a calls");
+    if (policy.getOAuth2AuthenticationPolicy() != null && !isServer) {
+      throw invalid(
+          taskName,
+          "oauth2 authentication for a2a requires 'with.server'; 'with.agentCard' resolves the RPC"
+              + " endpoint from the agent card at runtime, so it is not known at compile time");
     }
-    return resolveAuthPolicy(
-        taskName,
-        () -> {
-          throw invalid(taskName, "oauth2 authentication is not supported for a2a calls");
-        },
-        policy,
-        context);
+    return resolveAuthPolicy(taskName, () -> endpointUrl, policy, context);
   }
 
   private StepService grpcStep(String taskName, CallGRPC call, CompileContext context) {
