@@ -50,10 +50,9 @@ uv run pytest test/unit/test_config.py -k test_auth_scheme_basic  # single test
 **Gate**: `uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest`.
 All green as of this writing (163 tests, 94% line coverage on `src/`).
 
-`uv` wasn't available as a system binary in the environment this package was authored in; the
-commands above were verified against an equivalent `pip`-managed venv with pinned versions
-matching `pyproject.toml` exactly. If `uv sync` behaves differently once actually run, trust `uv`'s
-lockfile resolution over this note.
+Verified with `uv` 0.11.7 (the version CI pins in `.github/workflows/dws-call-a2a.yml`) after
+`uv sync --frozen`. CI runs the conformance tier as a separate job (`pytest -m conformance`) from
+unit + fake-server (`pytest -m "not conformance"`).
 
 ## ADR verification notes
 
