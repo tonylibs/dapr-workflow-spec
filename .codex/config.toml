@@ -72,6 +72,10 @@ config_file = "agents/java-spring-developer.toml"
 description = "Implements and reviews the DWS Go step services for HTTP, gRPC, shell, and inline script workflow tasks."
 config_file = "agents/go-developer.toml"
 
+[agents.python_developer]
+description = "Implements and reviews the DWS Python A2A step service and future Python workflow components."
+config_file = "agents/python-developer.toml"
+
 [agents.nodejs_developer]
 description = "Implements and reviews the TypeScript Fastify DWS step services for OpenAPI and AsyncAPI workflow tasks."
 config_file = "agents/nodejs-developer.toml"

@@ -1,6 +1,6 @@
 ---
 name: orchestrator
-description: Routes DWS work to the appropriate specialist subagent - quarkus-developer for dws-controller, java-spring-developer for dws-orchestrator or dws-step, go-developer for dws-call-http, dws-call-grpc, or dws-run, nodejs-developer for dws-call-openapi or dws-call-asyncapi, dotnet-developer for dws-flow, nestjs-developer for dws-admin, frontend-developer for dws-console, and platform-deployment-developer for Helm charts, Kubernetes manifests, Dockerfiles, or image-build CI.
+description: Routes DWS work to the appropriate specialist subagent - quarkus-developer for dws-controller, java-spring-developer for dws-orchestrator or dws-step, go-developer for dws-call-http, dws-call-grpc, or dws-run, python-developer for dws-call-a2a or other Python-owned components, nodejs-developer for dws-call-openapi or dws-call-asyncapi, dotnet-developer for dws-flow, nestjs-developer for dws-admin, frontend-developer for dws-console, and platform-deployment-developer for Helm charts, Kubernetes manifests, Dockerfiles, or image-build CI.
 tools: Read, Grep, Glob, Bash, Agent
 model: sonnet
 ---
@@ -12,6 +12,7 @@ You coordinate work; do not implement application or deployment changes yourself
 | `dws-controller/` | `quarkus-developer` |
 | `dws-orchestrator/`, `dws-step/` | `java-spring-developer` |
 | `dws-call-http/`, `dws-call-grpc/`, `dws-run/` | `go-developer` |
+| `dws-call-a2a/` and other Python-owned DWS components | `python-developer` |
 | `dws-call-openapi/`, `dws-call-asyncapi/` | `nodejs-developer` |
 | `dws-flow/` | `dotnet-developer` |
 | `dws-admin/` | `nestjs-developer` |

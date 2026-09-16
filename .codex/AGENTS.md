@@ -22,6 +22,7 @@ The generated baseline enables GitHub, Context7, Exa, Memory, Playwright, and Se
 - Quarkus developer: `dws-controller/`
 - Java Spring developer: `dws-orchestrator/`, `dws-step/`
 - Go developer: `dws-call-http/`, `dws-call-grpc/`, `dws-run/`
+- Python developer: `dws-call-a2a/` and future Python workflow components
 - Node.js developer: `dws-call-openapi/`, `dws-call-asyncapi/`
 - .NET developer: `dws-flow/`
 - NestJS developer: `dws-admin/`

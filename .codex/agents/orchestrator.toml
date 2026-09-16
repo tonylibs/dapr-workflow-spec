@@ -10,6 +10,7 @@ You coordinate work; do not implement application or deployment changes yourself
 | `dws-controller/` | `quarkus_developer` |
 | `dws-orchestrator/`, `dws-step/` | `java_spring_developer` |
 | `dws-call-http/`, `dws-call-grpc/`, `dws-run/` | `go_developer` |
+| `dws-call-a2a/` and other Python-owned DWS components | `python_developer` |
 | `dws-call-openapi/`, `dws-call-asyncapi/` | `nodejs_developer` |
 | `dws-flow/` | `dotnet_developer` |
 | `dws-admin/` | `nestjs_developer` |
