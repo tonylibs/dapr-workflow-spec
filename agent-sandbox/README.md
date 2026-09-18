@@ -20,6 +20,7 @@ runtime option: it creates containers through the local Docker daemon and does n
 | `sandbox.yaml` | `Sandbox` CRD manifest for one agent session | skeleton — confirm installed CRD apiVersion first |
 | `cache-pvcs.yaml` | PVCs for `~/.m2`, Go module cache, pnpm store | skeleton — confirm storageClass |
 | `opensandbox/docker.toml` | OpenSandbox lifecycle-server profile for local Docker-backed sandboxes | local profile — Docker Desktop/Engine required |
+| `start-opensandbox.ps1` | Windows launcher that injects the host kubeconfig path into the local Docker profile | use this instead of starting the server with the TOML directly |
 | `sshd-start.sh` | Key-only SSH daemon entrypoint for Docker-backed remote-development sandboxes | clones the DWS repository into an empty `/workspace`, reuses an existing matching checkout unchanged, and generates unique host keys at each container start |
 
 ## Local Docker runtime
@@ -29,8 +30,13 @@ Docker profile:
 
 ```powershell
 $env:OPENSANDBOX_SERVER_API_KEY = "replace-with-a-local-secret"
-uvx opensandbox-server --config agent-sandbox/opensandbox/docker.toml
+./agent-sandbox/start-opensandbox.ps1
 ```
+
+The launcher resolves the host's `~/.kube/config`, generates a temporary server
+configuration, and mounts that single file read-only at `/root/.kube/config` in every
+sandbox. Starting `uvx opensandbox-server` directly with the checked-in TOML leaves its
+placeholder bind path unresolved.
 
 The server listens only on `127.0.0.1:8080`. Each `POST /v1/sandboxes` creates one Docker
 container. The profile uses bridge networking, drops dangerous Linux capabilities, prevents
@@ -54,8 +60,32 @@ Supply an authorized public key at runtime in `/root/.ssh/authorized_keys`, then
 declared port 22 through the Docker/OpenSandbox deployment. Do not expose the SSH port publicly;
 use a localhost mapping, VPN, or mesh network.
 
-The published GHCR image will contain this capability after the updated Dockerfile passes the
-agent-sandbox CI workflow and is published from `main`.
+The sandbox image includes `kubectl`. On startup, `sshd-start` copies the mounted kubeconfig
+to `/root/.kube-local/config`, rewrites Docker Desktop's `127.0.0.1`/`localhost` API endpoint
+to the host-gateway IPv4 address behind the certificate-valid hostname `kubernetes`, and sets
+`KUBECONFIG` to that copy. The host kubeconfig remains read-only and untouched.
+
+To create a fully configured local SSH sandbox with the fixed Orca port from the checked-in
+profile, run:
+
+```powershell
+.\agent-sandbox\new-ssh-sandbox.ps1
+```
+
+The helper calls `osb sandbox create`, provisions only `~/.ssh/dws_sandbox.pub`, and creates a
+localhost-only TCP bridge on port `22222`. Edit `agent-sandbox/ssh-sandbox.psd1` to change the
+image, resource limits, lifetime, or local SSH port. Only one active sandbox can claim the fixed
+port at a time; the helper fails rather than replacing an existing bridge. The default profile
+uses manual cleanup (`none`/`null` timeout), so remember to kill the sandbox when finished.
+
+The equivalent Python command is:
+
+```powershell
+py -3 .\agent-sandbox\new_ssh_sandbox.py
+```
+
+Its settings are in `agent-sandbox/ssh-sandbox.json`. It uses the OpenSandbox Python SDK for
+lifecycle and sandbox file operations, and Docker only for the localhost-only SSH bridge.
 
 ## Confirm before use
 
@@ -68,7 +98,7 @@ agent-sandbox CI workflow and is published from `main`.
 
 - RBAC/namespace scoping for the sandbox service account
 - Image build tooling inside the sandbox itself (buildah/kaniko), if Dockerfile validation is needed in-session
-- `kubectl`/`dapr` CLI in the image (deferred — add only once the agent needs to validate against a live cluster)
+- `dapr` CLI in the image (not needed for kubectl access to the host cluster)
 
 `.github/workflows/agent-sandbox.yml` builds the image on every push/PR touching this directory
 (the Dockerfile's smoke-test `RUN` step fails the build if a toolchain is missing or the wrong

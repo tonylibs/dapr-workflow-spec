@@ -17,6 +17,7 @@ ARG CODEX_ACP_NPM_VERSION=1.4.0
 ARG CLAUDE_CODE_NPM_VERSION=2.1.220
 ARG OPENSPEC_NPM_VERSION=1.6.0
 ARG OPENWIKI_NPM_VERSION=0.2.3
+ARG KUBECTL_VERSION=v1.36.1
 
 # gcc/libc6-dev: `go test -race` (dws-call-http, dws-run CI gate) needs cgo, which needs a C
 # compiler on PATH -- Go auto-disables cgo without one.
@@ -39,6 +40,17 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
     && apt-get update \
     && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
+
+# --- kubectl ---
+# The sandbox talks to the host's Docker Desktop Kubernetes API through the
+# read-only kubeconfig bind mounted by opensandbox/docker.toml. Keep the
+# client version explicit and verify the downloaded binary before installing it.
+ARG TARGETARCH
+RUN curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl" -o /usr/local/bin/kubectl \
+    && curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl.sha256" -o /tmp/kubectl.sha256 \
+    && echo "$(cat /tmp/kubectl.sha256)  /usr/local/bin/kubectl" | sha256sum --check --status \
+    && chmod 755 /usr/local/bin/kubectl \
+    && rm -f /tmp/kubectl.sha256
 
 # --- JDK 25 (dws-controller, dws-orchestrator use ./mvnw, no separate Maven install needed;
 #     dws-controller's cdk8s import step also needs Node at build time, see Node section below) ---
@@ -107,21 +119,20 @@ RUN pipx install clawteam
 # let one sandbox impersonate another. Root access is key-only because the image's tool
 # caches and agent configuration intentionally live under /root.
 RUN mkdir -p /run/sshd /root/.ssh /etc/ssh/sshd_config.d \
+    && mkdir -p /root/.kube \
     && chmod 700 /root/.ssh \
     && printf '%s\n' \
         'PasswordAuthentication no' \
         'KbdInteractiveAuthentication no' \
         'PermitRootLogin prohibit-password' \
         'PubkeyAuthentication yes' \
+        'SetEnv KUBECONFIG=/root/.kube-local/config' \
         'X11Forwarding no' \
         'PrintMotd no' \
         > /etc/ssh/sshd_config.d/99-agent-sandbox.conf \
     && rm -f /etc/ssh/ssh_host_*
 COPY sshd-start.sh /usr/local/bin/sshd-start
 RUN chmod 755 /usr/local/bin/sshd-start
-
-# --- optional: kubectl + dapr CLI, only if agent needs to validate against a live cluster ---
-# Deferred -- see agent-sandbox/README.md "Not scaffolded yet".
 
 # --- smoke test: fail the build if any toolchain is missing or the wrong version ---
 RUN set -eux; \
@@ -130,6 +141,7 @@ RUN set -eux; \
     node -v | grep -q '^v24\.'; \
     pnpm -v | grep -q '^11\.10\.0$'; \
     jq --version | grep -q '^jq-1'; \
+    kubectl version --client=true --output=yaml >/dev/null; \
     gh --version | grep -q '^gh version'; \
     git --version; \
     make --version | head -1; \

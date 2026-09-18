@@ -4,6 +4,36 @@ set -eu
 repository_url=${DWS_REPOSITORY_URL:-https://github.com/tonylibs/dapr-workflow-spec.git}
 repository_dir=${DWS_REPOSITORY_DIR:-/workspace}
 
+# Docker Desktop exposes the host through host.docker.internal. The
+# Kubernetes API server certificate trusts "kubernetes" (and not that Docker
+# hostname), so use the host-gateway IPv4 address behind a certificate-valid
+# alias, matching .devcontainer/post-start.sh.
+kube_host_alias=${DWS_KUBE_HOST_ALIAS:-kubernetes}
+host_gateway_ipv4=$(getent ahostsv4 host.docker.internal 2>/dev/null | awk '{print $1; exit}' || true)
+if [ -z "$host_gateway_ipv4" ]; then
+    host_gateway_ipv4=$(getent ahostsv4 kubernetes.docker.internal 2>/dev/null | awk '{print $1; exit}' || true)
+fi
+
+if [ -n "$host_gateway_ipv4" ]; then
+    { grep -v "[[:space:]]${kube_host_alias}$" /etc/hosts || true; printf '%s %s\n' "$host_gateway_ipv4" "$kube_host_alias"; } \
+        | tee /etc/hosts >/dev/null
+else
+    echo "WARN: could not resolve a Docker Desktop host-gateway IPv4 address; kubectl setup skipped." >&2
+fi
+
+kubeconfig_source=${DWS_KUBECONFIG_SOURCE:-/root/.kube/config}
+kubeconfig_local=${DWS_KUBECONFIG_LOCAL:-/root/.kube-local/config}
+if [ -f "$kubeconfig_source" ] && [ -n "$host_gateway_ipv4" ]; then
+    mkdir -p "$(dirname "$kubeconfig_local")"
+    sed "s/127\.0\.0\.1/${kube_host_alias}/g; s/localhost/${kube_host_alias}/g" \
+        "$kubeconfig_source" > "$kubeconfig_local"
+    chmod 600 "$kubeconfig_local"
+    export KUBECONFIG="$kubeconfig_local"
+    echo "kubectl: using $kubeconfig_local via $kube_host_alias ($host_gateway_ipv4)"
+else
+    echo "WARN: $kubeconfig_source is not available; kubectl will not be configured for the host cluster." >&2
+fi
+
 if [ -e "$repository_dir/.git" ]; then
     existing_origin=$(git -C "$repository_dir" remote get-url origin 2>/dev/null || true)
     if [ "$existing_origin" != "$repository_url" ]; then
