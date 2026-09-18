@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = (Join-Path $PSScriptRoot "ssh-sandbox.psd1")
+    [string]$ConfigPath = (Join-Path $PSScriptRoot "ssh-sandbox.psd1"),
+    [switch]$PullImage
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,7 +13,14 @@ foreach ($commandName in @("osb", "docker", "ssh-keygen", "ssh")) {
     }
 }
 
-$userHome = if ($env:USERPROFILE) { $env:USERPROFILE } else { $env:HOME }
+    if ($PullImage) {
+        & docker pull $config.Image
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not refresh sandbox image $($config.Image)."
+        }
+    }
+
+    $userHome = if ($env:USERPROFILE) { $env:USERPROFILE } else { $env:HOME }
 $privateKeyPath = Join-Path $userHome $config.PrivateKey
 $publicKeyPath = Join-Path $userHome $config.PublicKey
 $keyDirectory = Split-Path -Parent $privateKeyPath

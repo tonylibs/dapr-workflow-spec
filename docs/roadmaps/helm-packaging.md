@@ -13,7 +13,7 @@ Only the long-running platform components are chart-managed:
 | `dws-controller` | Yes | Persistent control-plane Deployment |
 | `dws-admin` | Yes | Persistent read-model service, needs Postgres |
 | Postgres (for `dws-admin`) | Yes, optional built-in | Bitnami PostgreSQL subchart by default; swappable for an external DB |
-| Redis (backs Dapr Components: `dws-definitions` Configuration store today, actor/workflow state store once `dws-orchestrator` calls the Dapr Workflow runtime) | Yes, optional built-in — **not yet added** | Same pattern as Postgres: Bitnami Redis subchart by default (`redis.enabled`), swappable for external Redis. See Phase 5 |
+| Redis (backs Dapr Components: `dws-definitions` and `dws-controller-config` Configuration stores today, actor/workflow state store once `dws-orchestrator` calls the Dapr Workflow runtime) | Yes, built-in — **done** (Phase 5) | Bitnami Redis subchart, but unlike Postgres it has no independent toggle: `condition: dapr.enabled`, since it exists solely to back the Dapr Redis Components. External Redis via `redis.external.host` (retargets the Components; does not uninstall the subchart — see open items) |
 | `dws-console` | Yes, optional | Deployment/Service rendered against `ghcr.io/tonylibs/dws-console`, gated behind `console.enabled` (default `false`). Routing moved to the shared `apiGateway.*` Gateway API front door; the console-only Ingress was removed. See [`dws-console` roadmap](dws-console.md) |
 | `dws-orchestrator` | No | Deployed dynamically, per-workflow, by the controller at runtime — not a static install target |
 | `dws-call-http` / `dws-call-openapi` / `dws-run-*` | No | Same as above — controller stamps these out per workflow |
@@ -40,8 +40,11 @@ Both cluster-wide prerequisites are offered, not assumed:
 
 ```
 charts/dws/
-├── Chart.yaml                # dependencies: postgresql, dapr, redis, dex (all conditional;
-│                             # redis follows dapr.enabled — no independent toggle)
+├── Chart.yaml                # dependencies: postgresql, dapr, redis, dex, apisix (all
+│                             # conditional; redis follows dapr.enabled — no independent toggle,
+│                             # apisix follows its own apisix.enabled)
+├── README.md                 # partial, Phase 10 — operator docs: pre-Gateway Ingress→Gateway API
+│                             # migration runbook + "validating changes to this chart"
 ├── values.yaml
 └── templates/
     ├── controller/           # serviceaccount, rbac (role+rolebinding), deployment, service
@@ -57,10 +60,10 @@ charts/dws/
     │                                    # actorStateStore: "true"); provisioned ahead of
     │                                    # dws-orchestrator adopting the Dapr Workflow runtime,
     │                                    # toggle: dapr.enabled
-    ├── console/              # done, Phase 6 — deployment/service/ingress against
+    ├── console/              # done, Phase 6 — deployment + service against
     │                         # ghcr.io/tonylibs/dws-console, toggle: console.enabled
-    │                         # (default false); ingress rule is console-only (see Phase 6
-    │                         # follow-ups on the admin-URL story)
+    │                         # (default false); the Phase 6 console-only ingress.yaml was
+    │                         # REMOVED — routing now comes from api-gateway/ below
     ├── dex/secrets.yaml      # done, dws-auth Phase 0 — chart-managed bootstrap-admin Secret
     │                         # (generated password + bcrypt hash for Dex's staticPasswords),
     │                         # toggle: dex.enabled (default false); see dws-auth.md
@@ -69,9 +72,23 @@ charts/dws/
     │                         # Dapr sidecar injection on the admin Pod, toggle: dapr.enabled
     ├── preflight.yaml + _preflight.tpl  # done, Phase 4 — fails install/upgrade fast if
     │                                    # dapr.enabled=false but Dapr CRDs aren't present
-    ├── tests/admin-db-connection.yaml   # done, Phase 8 — `helm test` DB connectivity check
+    ├── api-gateway/          # done — shared Gateway API front door (gatewayclass, gateway,
+    │                         # gatewayproxy, console-httproute, admin-httproute with the
+    │                         # /dws-admin → admin Dapr sidecar rewrite), toggle: apiGateway.enabled;
+    │                         # backed by the bundled APISIX dependency or an external GatewayProxy
+    ├── admin/auth-{component,configuration}.yaml     # done, dws-auth — bearer middleware +
+    ├── controller/auth-{component,configuration}.yaml  # sidecar Configuration CRDs, toggle: auth.enabled
+    ├── controller/config-component.yaml  # done — `dws-controller-config` (configuration.redis),
+    │                                     # carries the v1/v2 compiler flag (see ADR 0002)
+    ├── NOTES.txt             # post-install operator hints
+    ├── tests/admin-db-connection.yaml        # done, Phase 8 — `helm test` DB connectivity check
+    ├── tests/controller-auth-negative.yaml   # done, dws-auth — `helm test` unauthenticated-reject check
     └── _helpers.tpl          # includes dws.redis.host / secretName / secretKey — resolve to
-                              # in-chart Bitnami Redis by default, or redis.external.* when set
+                              # in-chart Bitnami Redis by default, or redis.external.* when set;
+                              # also dws.console.legacyIngress.validate (the Phase 6 Ingress trap)
+
+charts/dws/tests/            # shell render-assertions run in CI: api-gateway-render-test.sh,
+                             # auth-pipeline-placement-test.sh, values-schema-test.sh
 ```
 
 Both the admin and controller Deployments carry `dapr.io/enabled`/`dapr.io/app-id` pod
@@ -84,9 +101,14 @@ via its Dapr sidecar and never receives Dapr-routed inbound traffic.
 
 ## Phased roadmap
 
-Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 2026-08-27 — Phase 7
-(values design) completed with shared chart-owned Deployment resource/scheduling defaults and an
-explicit runtime-config-shim deferral for console/admin ingress routing.
+Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 2026-09-19 — Phase 10
+(docs) reclassified ❌ → ⚠️: a substantial operator-facing `charts/dws/README.md` has since landed
+(pre-Gateway upgrade/migration runbook + chart-validation guide) and `CLAUDE.md` gained a
+"Releasing" section pointing at `docs/release-process.md`, but the repository root `README.md`
+still contains no `helm` reference at all — no install/upgrade/uninstall quickstart, no values
+table. Phase 11 (Knative) remains untouched: no `knative-*` template, value or Chart.yaml entry
+exists. Chart layout below refreshed to include the API Gateway / auth templates added since the
+previous update.
 
 | Phase | Status | Goal | Key tasks |
 |---|---|---|---|
@@ -100,7 +122,7 @@ explicit runtime-config-shim deferral for console/admin ingress routing.
 | 7. Values design | ✅ | Finalize `values.yaml` | `defaults.{resources,nodeSelector,tolerations,affinity}` now consistently configures every chart-owned Deployment (controller, admin, console), with deep-merged per-component overrides and a rendered CI assertion. PostgreSQL retains the matching upstream `postgresql.primary.*` StatefulSet schema. Controller deliberately has no route because it is outbound-only. Console/admin routing is now chart-owned via the optional `apiGateway.*` Gateway API front door (same-origin `/dws-admin` rewrite to the admin Dapr sidecar), which settles the previously deferred routing question independently of the `VITE_DWS_ADMIN_URL` runtime-config shim. |
 | 8. Testing | ✅ | `helm lint`, `helm template`, install test on kind | `.github/workflows/helm.yml`: lint + template (default/disabled/overridden) + kind server-dry-run in `verify`; a real kind install of admin+postgres+Dapr with `helm test` in `integration` (a hand-rolled kind pipeline instead of the `ct` tool, but covers the same ground) |
 | 9. Publish | ✅ | OCI chart repo | `release` job in `helm.yml` packages and pushes to `oci://ghcr.io/tonylibs/charts` on merge to `main` |
-| 10. Docs | ❌ | Update README + CLAUDE.md | Not started — no helm install/upgrade/uninstall commands or values reference table in either file yet |
+| 10. Docs | ⚠️ | Update README + CLAUDE.md | **Partial.** Landed: `charts/dws/README.md` — chart-scoped operator docs covering the pre-Gateway `Ingress` → Gateway API migration (bundled vs. external APISIX, the bundled-etcd `pre-upgrade`-hook deadlock on `helm upgrade`, required values, upgrade/rollback steps, cross-linked to `scripts/verify-console-ingress-migration.sh`) plus a "Validating changes to this chart" section; `CLAUDE.md` §Releasing points at `docs/release-process.md` for chart cutting and the `charts/dws/values.yaml` pins. Still owed: root `README.md` has **zero** helm mentions — needs a `helm install oci://ghcr.io/tonylibs/charts/dws` quickstart (install/upgrade/uninstall + `helm test`) and a values reference table for the top-level toggles (`dapr.enabled`, `postgresql.enabled`, `console.enabled`, `dex.enabled`, `apisix.enabled`, `apiGateway.*`, `auth.*`, `redis.external.*`, `defaults.*`) |
 | 11. Knative prerequisite | ❌ | Knative Serving via hook Job | Not started — split out of the original combined "Phase 4: Prerequisites" so Dapr (needed by Phase 5) isn't blocked on Knative design work. `knative-install-job.yaml` (post-install/post-upgrade hook Job), `knative.enabled`/`knative.version` values, preflight CRD check for Knative. Independent of every other phase — can land whenever, in parallel with anything above |
 
 ## Open items
@@ -117,4 +139,7 @@ explicit runtime-config-shim deferral for console/admin ingress routing.
 - `dws-orchestrator/k8s/configuration-component.yaml` — the hand-applied Redis-backed `dws-definitions` Component from before this chart existed — is intentionally kept in that repo for non-chart / local deployments. The chart's `templates/definitions-component.yaml` is the equivalent for chart-managed installs; the two describe the same Component shape against potentially different Redis hosts, with no shared templating.
 - **External Redis when Dapr is enabled**: setting `redis.external.host` retargets the three Dapr Component templates but does not disable the in-chart Bitnami Redis subchart (Helm dependency `condition:` fields can't AND two values). An operator running production against a managed Redis therefore still gets an unused in-chart Redis instance unless they separately trim its footprint; documented, accepted trade-off.
 - Knative install-via-Job (Phase 11) needs a pinned release version (`knative.version`) kept in sync with the `serving-crds.yaml` bundle already checked into `dws-controller/k8s/`. Not started; deliberately deprioritized behind Dapr since nothing else in the roadmap currently depends on it.
-- **Next up:** Phase 10 (docs — README/CLAUDE.md `helm install` reference), Phase 11 (Knative — independent, on its own timeline), or the remaining console follow-up called out above (runtime-config shim for `VITE_DWS_ADMIN_URL`; the unified console-plus-admin routing follow-up is resolved by the API Gateway change). Phases 5 and 6 completed; the actor-statestore Component ships ready but unused until `dws-orchestrator` adopts the Dapr Workflow runtime (tracked separately, not on this roadmap).
+- **Next up (as of 2026-09-19):** only two phases remain open, and they are independent of each other.
+  1. **Finish Phase 10** — the smallest remaining slice of this roadmap. `charts/dws/README.md` already covers migration and chart-dev validation; what is missing is a *first-install* story in the repository root `README.md`: `helm install` from `oci://ghcr.io/tonylibs/charts`, the `helm upgrade`/`uninstall`/`helm test` commands, and a values reference table for the top-level toggles. Recommended first, because it is self-contained, unblocks nothing else, and closes the gap between what the chart can do and what an operator can discover.
+  2. **Phase 11 (Knative)** — still entirely unstarted: no `knative-install-job.yaml`, no `knative.enabled`/`knative.version`, no Knative preflight branch in `_preflight.tpl`, no Knative reference anywhere under `charts/`. Needs a pinned release version kept in sync with `dws-controller/k8s/serving-crds.yaml`. Nothing else in the roadmap depends on it.
+  - Also still open, outside the phase list: the console runtime-config shim for `VITE_DWS_ADMIN_URL` (Phase 6 follow-up above). The unified console-plus-admin routing follow-up is resolved by the API Gateway change. The actor-statestore Component ships ready but unused until `dws-orchestrator` adopts the Dapr Workflow runtime (tracked separately, not on this roadmap).

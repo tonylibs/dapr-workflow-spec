@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import subprocess
@@ -139,8 +140,21 @@ def command_failure_details(command: Any) -> str:
     return "\n".join(output) if output else "The sandbox command returned no output."
 
 
+def refresh_mutable_image(image: str) -> None:
+    run(["docker", "pull", image])
+
+
 def main() -> int:
-    config_path = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else DEFAULT_CONFIG
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--pull-image",
+        action="store_true",
+        help="Pull the configured image before creating the sandbox.",
+    )
+    parser.add_argument("config", nargs="?", type=Path, default=DEFAULT_CONFIG)
+    arguments = parser.parse_args()
+
+    config_path = arguments.config.resolve()
     config: dict[str, Any] = json.loads(config_path.read_text(encoding="utf-8"))
     home = Path(os.environ.get("USERPROFILE") or os.environ["HOME"])
     private_key = (home / config["private_key"]).resolve()
@@ -148,6 +162,8 @@ def main() -> int:
     ensure_key_pair(private_key, public_key)
 
     remove_stale_bridge(int(config["ssh_port"]))
+    if arguments.pull_image:
+        refresh_mutable_image(config["image"])
     sandbox: SandboxSync | None = None
     bridge_name: str | None = None
     try:

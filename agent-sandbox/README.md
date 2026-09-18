@@ -77,6 +77,13 @@ localhost-only TCP bridge on port `22222`. Edit `agent-sandbox/ssh-sandbox.psd1`
 image, resource limits, lifetime, or local SSH port. Only one active sandbox can claim the fixed
 port at a time; the helper fails rather than replacing an existing bridge. The default profile
 uses manual cleanup (`none`/`null` timeout), so remember to kill the sandbox when finished.
+By default, both helpers reuse the local image. Pass `-PullImage` to the PowerShell helper or
+`--pull-image` to the Python helper to refresh the configured image before creating a sandbox:
+
+```powershell
+.\agent-sandbox\new-ssh-sandbox.ps1 -PullImage
+py -3 .\agent-sandbox\new_ssh_sandbox.py --pull-image
+```
 
 The equivalent Python command is:
 

@@ -20,6 +20,7 @@ index: a package map plus rules that apply across every package. Each package al
 | [`dws-admin`](dws-admin) | Node, TypeScript, NestJS, Drizzle | Admin/query API + lifecycle-event projection. |
 | [`dws-console`](dws-console) | TypeScript, React, TanStack Start/Router, Vite | Admin console frontend. |
 | [`dws-flow`](dws-flow) | .NET 10 | Generic `kind: flow` single-node host (early phase, no CI yet). |
+| [`charts/dws`](charts/dws) | Helm | Chart packaging the control plane (`dws-controller`, `dws-admin` + Postgres, optional console/Dapr/Redis/Dex/APISIX). Not a code package — see its own [`README.md`](charts/dws/README.md). |
 
 `dws-call-grpc`, `dws-call-asyncapi`, `dws-call-a2a`, `dws-admin`, `dws-console`, and `dws-flow` are
 not yet listed in `AGENTS.md`'s component table — that table predates them. Don't treat its absence
@@ -85,6 +86,22 @@ each package's own config:
 | `dws-flow` | `dotnet test` (no lint/format gate configured yet — no `.editorconfig`, no analyzers) |
 
 Windows: Java packages use `mvnw.cmd` instead of `./mvnw`.
+
+`charts/dws` has no build, but it has its own gate — run it from the repository root before
+calling a chart change done:
+
+```sh
+helm lint charts/dws
+helm template dws charts/dws
+bash charts/dws/tests/values-schema-test.sh charts/dws
+bash charts/dws/tests/api-gateway-render-test.sh charts/dws
+bash charts/dws/tests/auth-pipeline-placement-test.sh charts/dws
+```
+
+`helm lint`/`helm template` do not run Kubernetes' apimachinery validation, so a manifest that
+renders cleanly can still be rejected by a real API server (this has bitten the APISIX Service's
+`externalTrafficPolicy` before). For anything touching the Gateway/auth path, rehearse against a
+live cluster with `scripts/verify-console-ingress-migration.sh`.
 
 ### Releasing
 
