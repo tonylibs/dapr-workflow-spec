@@ -63,10 +63,16 @@ _ENV_VAR_RE = re.compile(r"\$ENV\b")
 #     `.`) or a longer identifier like `.environment`/`.envelope`/`envx`
 #     (preceded by a word character, or the `env` is immediately followed by
 #     another word character so `\b` doesn't fire)
-#   - an object-construction KEY literally named `env`, either the `env:
-#     .foo` explicit-value form or the `{env}` field-access shorthand --
-#     both are excluded by requiring that `env` is not immediately followed
-#     by optional whitespace and then `:`.
+#   - an object-construction KEY literally named `env` in its explicit-value
+#     form (`env: .foo`), excluded by requiring that `env` is not immediately
+#     followed by optional whitespace and then `:`. The `{env}` field-access
+#     shorthand (jq's sugar for `{env: .env}`, which reads the *input*, not
+#     the process environment) is NOT excluded and is rejected -- a false
+#     positive, kept deliberately since over-rejecting is the safe direction
+#     here and the shorthand has an accepted rewrite (`{env: .env}`).
+#   - a local variable binding spelled `$env` (`... as $env | $env.host`),
+#     excluded via `$` in the lookbehind; a jq variable cannot reach the
+#     process environment, only the bare `env` builtin and `$ENV` can.
 # jq has no `eval`/dynamic-name dispatch, so the only way a program can
 # invoke this builtin is for the literal token `env` to appear in its source
 # text -- a static text check is therefore sound (no false negatives from
