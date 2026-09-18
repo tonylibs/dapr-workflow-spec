@@ -16,6 +16,7 @@ DWS (`dapr-workflow-spec`) is a config-driven workflow platform for Kubernetes. 
 - [Administrative read model](integrations/admin-read-model.md) explains how `dws-admin` turns that stream into a durable Postgres query view and read-only APIs.
 - [HTTP step runner](integrations/http-step-runner.md) explains the generic `call: http` activity worker's request, authentication, and retryability contract.
 - [OpenAPI step runner](integrations/openapi-step-runner.md) explains the generic `call: openapi` service's pinned-document startup, request transformation, and generated authentication contract.
+- [A2A step runner](integrations/a2a-step-runner.md) explains the generic `call: a2a` service's supported JSON-RPC operations, agent discovery, and retry-safety contract.
 - [OWS DSL feature roadmap](architecture/roadmap.md) tracks DSL 1.0 task-type and cross-cutting feature coverage against the current implementation, phased into build order.
 - [Agent sandbox](architecture/agent-sandbox.md) explains the CI-validated development image, cluster-hosted session templates, and local Docker-backed alternative for persistent agent work.
 - [Console OIDC login](architecture/console-auth.md) explains the additive browser PKCE login, its Helm Dex configuration agreement, and the deferred bundled-provider acceptance gap.
@@ -29,6 +30,7 @@ The repository has four independently built components; run builds and tests fro
 | `dws-orchestrator` | Spring Boot Dapr Workflow interpreter for one pinned definition per pod | `./mvnw verify` |
 | `dws-call-http` | Go step image for `call: http` tasks | `make test` |
 | `dws-call-openapi` | TypeScript/Fastify step image for `call: openapi` tasks | `pnpm lint && pnpm test && pnpm build` |
+| `dws-call-a2a` | Python/FastAPI step image for supported `call: a2a` tasks | `uv run ruff check . && uv run pyright && uv run pytest` |
 | `dws-run` | Go step images for `run: shell` and inline JavaScript/Python `run: script` tasks | `make lint && make test` |
 | `dws-admin` | NestJS/Postgres projection and query API for lifecycle events | `pnpm db:migrate && pnpm lint && pnpm test && pnpm build` |
 
@@ -42,5 +44,5 @@ The GitHub Actions workflow at `.github/workflows/openwiki-update.yml` refreshes
 
 ## Backlog
 
-- **Run step-runner internals** — `dws-run/`: the platform-level task-to-step-service contract is documented, while its individual request/response and configuration details remain deferred. The comparable HTTP and OpenAPI runners are documented in [HTTP step runner](integrations/http-step-runner.md) and [OpenAPI step runner](integrations/openapi-step-runner.md).
+- **Run step-runner internals** — `dws-run/`: the platform-level task-to-step-service contract is documented, while its individual request/response and configuration details remain deferred. The comparable HTTP, OpenAPI, and A2A runners are documented in [HTTP step runner](integrations/http-step-runner.md), [OpenAPI step runner](integrations/openapi-step-runner.md), and [A2A step runner](integrations/a2a-step-runner.md).
 - **Administrative console detail** — `dws-console/`: its browser OIDC sign-in behavior and the Helm/Dex agreement are documented in [console OIDC login](architecture/console-auth.md), and it reads `dws-admin` with live instance SSE updates. Browser-side route, cache, and deployment details remain deferred; the server-side contract and its single-replica constraint are documented in the [administrative read model](integrations/admin-read-model.md).

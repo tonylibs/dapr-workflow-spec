@@ -1,5 +1,6 @@
 # Files
 
+- [A2A step runner](a2a-step-runner.md) - Runtime and deployment contract for dws-call-a2a, the generic FastAPI service that executes supported DWS call a2a operations against an agent.
 - [DWS administrative read model](admin-read-model.md) - DWS admin subscribes to lifecycle events and projects workflow definitions, deployments, instances, and task events into an idempotent Postgres query model.
 - [HTTP step runner](http-step-runner.md) - Runtime, configuration, authentication, and failure contract for dws-call-http, the generic Dapr Workflow activity worker for DWS call http tasks.
 - [DWS lifecycle events](lifecycle-events.md) - Shared Dapr pub/sub contract for advisory controller deployment and orchestrator instance/task lifecycle events.
