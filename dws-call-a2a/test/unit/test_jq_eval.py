@@ -49,6 +49,45 @@ def test_string_merely_containing_wrapper_syntax_is_not_partially_substituted() 
     assert result == {"note": "cost is ${.price} dollars"}
 
 
+def test_multi_placeholder_string_stays_literal() -> None:
+    """`"${firstName} ${lastName}"` is not a single whole-string `${...}`
+    wrapper -- it must pass through as a literal, not be treated as
+    `${firstName} ${lastName` (a greedy first-`{`-to-last-`}` match) and fail
+    jq compilation."""
+    spec = ObjectParameters(value={"greeting": "${firstName} ${lastName}"})
+    result = evaluate_parameters(spec, {"firstName": "Ada", "lastName": "Lovelace"})
+    assert result == {"greeting": "${firstName} ${lastName}"}
+
+
+def test_host_port_style_multi_placeholder_stays_literal() -> None:
+    spec = ObjectParameters(value={"endpoint": "${host}:${port}"})
+    result = evaluate_parameters(spec, {"host": "example.com", "port": 8080})
+    assert result == {"endpoint": "${host}:${port}"}
+
+
+def test_object_construction_wrapper_with_nested_braces_still_evaluates() -> None:
+    """A single whole-string wrapper containing a nested jq object-
+    construction expression must keep evaluating -- the multi-placeholder fix
+    must not regress this by rejecting any nested `{`/`}`."""
+    spec = ObjectParameters(value={"payload": '${ {role: "user", text: .msg} }'})
+    result = evaluate_parameters(spec, {"msg": "hi"})
+    assert result == {"payload": {"role": "user", "text": "hi"}}
+
+
+def test_object_construction_wrapper_env_key_still_evaluates() -> None:
+    spec = ObjectParameters(value={"payload": "${ {env: .foo} }"})
+    result = evaluate_parameters(spec, {"foo": "bar"})
+    assert result == {"payload": {"env": "bar"}}
+
+
+def test_brace_inside_quoted_string_literal_does_not_confuse_depth_scan() -> None:
+    """A `}` inside a jq double-quoted string literal must not be counted as
+    closing the outer wrapper early."""
+    spec = ObjectParameters(value={"payload": '${ {a: "}"} }'})
+    result = evaluate_parameters(spec, {})
+    assert result == {"payload": {"a": "}"}}
+
+
 def test_nested_expression_two_levels_deep_is_evaluated_sibling_literals_untouched() -> None:
     spec = ObjectParameters(
         value={
@@ -178,6 +217,21 @@ def test_object_form_rejects_env_access_nested_two_levels_deep() -> None:
     ],
 )
 def test_allows_expressions_that_merely_look_like_env_access(expression: str) -> None:
+    spec = StringParameters(expression=expression)
+    validate_no_env_access(spec)  # must not raise
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        ".environment as $env | $env.endpoint",
+        "$env.host",
+    ],
+)
+def test_allows_dollar_env_local_variable_bindings(expression: str) -> None:
+    """`$env` is an ordinary user-defined jq local variable (bound via
+    `... as $env`) with no access to the real process environment -- only
+    bare `env` and `$ENV` do. It must not trip the guard."""
     spec = StringParameters(expression=expression)
     validate_no_env_access(spec)  # must not raise
 

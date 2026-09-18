@@ -72,6 +72,23 @@ def test_build_send_message_request_guard_rejects_missing_parts() -> None:
         )
 
 
+@pytest.mark.parametrize("bad_message", ["hello", 123, True, ["text"]])
+def test_build_send_message_request_non_dict_message_is_request_validation_error(
+    bad_message: object,
+) -> None:
+    """A truthy, non-dict `message` (str/int/bool/list) used to crash `dict(...)`
+    with a bare `ValueError`/`TypeError` before pydantic ever saw it, escaping
+    `RequestValidationError` entirely. It must instead reach pydantic unchanged
+    and fail validation there."""
+    with pytest.raises(RequestValidationError):
+        build_send_message_request(
+            {"message": bad_message},
+            task_name="t",
+            workflow_instance_id=None,
+            iteration_index=None,
+        )
+
+
 def test_build_get_task_request_forces_history_length_zero_by_default() -> None:
     request = build_get_task_request({"id": "task-1"}, include_history=False)
     assert request.id == "task-1"
@@ -80,6 +97,31 @@ def test_build_get_task_request_forces_history_length_zero_by_default() -> None:
 
 def test_build_get_task_request_include_history_lets_author_value_through() -> None:
     request = build_get_task_request({"id": "task-1", "historyLength": 5}, include_history=True)
+    assert request.history_length == 5
+
+
+def test_build_get_task_request_forces_history_length_field_present_by_default() -> None:
+    """`history_length` is an optional protobuf field -- explicitly sending 0
+    (`HasField` True) tells the agent to omit history, which is exactly the
+    forced-suppression behavior `include_history=False` wants."""
+    request = build_get_task_request({"id": "task-1"}, include_history=False)
+    assert request.HasField("history_length")
+    assert request.history_length == 0
+
+
+def test_build_get_task_request_include_history_true_leaves_field_unset_when_omitted() -> None:
+    """With `INCLUDE_HISTORY=true` and no author-supplied `historyLength`
+    (the normal `tasks/get` shape), the field must be left unset so the
+    agent decides its own default -- sending `historyLength: 0` explicitly
+    (`HasField` True) would tell the agent to omit history regardless."""
+    request = build_get_task_request({"id": "task-1"}, include_history=True)
+    assert request.id == "task-1"
+    assert not request.HasField("history_length")
+
+
+def test_build_get_task_request_include_history_true_with_explicit_value_sets_field() -> None:
+    request = build_get_task_request({"id": "task-1", "historyLength": 5}, include_history=True)
+    assert request.HasField("history_length")
     assert request.history_length == 5
 
 

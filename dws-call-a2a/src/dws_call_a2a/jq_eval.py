@@ -16,7 +16,7 @@ top-level value into one jq program, `evaluate_parameters` recursively walks
 same shape; a string leaf is evaluated as a jq program *only* if it matches
 `${...}` as a whole-string, anchored wrapper (this repo's runtime-expression
 convention -- see `dws-controller`'s `SECRET_REFERENCE` regex, and
-`_WRAPPED_EXPRESSION_RE` below), and the jq result (any JSON type) replaces
+`_match_wrapped_expression` below), and the jq result (any JSON type) replaces
 the string; every other leaf -- including a plain literal string that merely
 *contains* `${` somewhere without wrapping the whole value -- passes through
 unchanged. There is deliberately no partial/template interpolation.
@@ -73,24 +73,58 @@ _ENV_VAR_RE = re.compile(r"\$ENV\b")
 # runtime string construction), though it can be over-broad on things like
 # `env` appearing inside a string literal or comment; over-rejecting is the
 # safe direction for a security guard.
-_ENV_BUILTIN_RE = re.compile(r"(?<![.\w])env\b(?!\s*:)")
-
-# Matches a string that is *entirely* `${ <anything, including newlines> }` --
-# fullmatch means the wrapper must span the whole value, not just appear
-# somewhere inside it. This is this repo's runtime-expression convention
-# (whole-string wrapper, not partial/template interpolation), matching
-# `dws-controller`'s `SECRET_REFERENCE` regex, which anchors the same way.
-_WRAPPED_EXPRESSION_RE = re.compile(r"\$\{(.*)\}", re.DOTALL)
+_ENV_BUILTIN_RE = re.compile(r"(?<![.\w$])env\b(?!\s*:)")
 
 
 def _match_wrapped_expression(value: str) -> str | None:
     """Returns the inner jq-expression text if `value` is entirely
-    `${ ... }` (anchored, whole-string match), else `None` -- including for
+    `${ ... }` (anchored, whole-string wrapper), else `None` -- including for
     a string that merely *contains* `${...}` without the wrapper spanning
     the whole value (e.g. `"cost is ${.price} dollars"`), which is a literal
-    and must NOT be partially substituted."""
-    match = _WRAPPED_EXPRESSION_RE.fullmatch(value)
-    return match.group(1) if match is not None else None
+    and must NOT be partially substituted.
+
+    This is a brace-depth scan, not a regex: a regex anchored with `fullmatch`
+    against `\\$\\{(.*)\\}` is *greedy* -- on a multi-placeholder literal like
+    `"${firstName} ${lastName}"` it still matches the whole string (there's a
+    `{` near the start and a `}` at the end), incorrectly treating it as one
+    wrapper with inner text `firstName} ${lastName`. A non-greedy `.*?` doesn't
+    fix this either under `fullmatch`, since `fullmatch` still forces the
+    match to consume the entire string. What actually distinguishes "one
+    whole-string wrapper" from "a literal that starts with `${` and ends with
+    `}` but isn't one wrapper" is brace *nesting depth*: the first `{` must
+    close (return to depth 0) exactly at the final character, not partway
+    through. Braces inside a jq double-quoted string literal (honoring `\\"`
+    escapes) don't count towards nesting, so object-construction wrappers
+    like `${ {role: "user", text: .msg} }` -- and one with a literal `}`
+    inside a quoted string, `${ {a: "}"} }` -- still evaluate correctly.
+    """
+    if len(value) < 3 or not value.startswith("${") or not value.endswith("}"):
+        return None
+
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(1, len(value)):
+        char = value[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                # The opening `${`'s brace closed here. Only a whole-string
+                # wrapper if this is also the string's last character.
+                return value[2:index] if index == len(value) - 1 else None
+    return None
 
 
 def _find_env_access(expression: str) -> str | None:

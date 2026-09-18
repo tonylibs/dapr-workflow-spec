@@ -45,11 +45,24 @@ def build_send_message_request(
     when the author didn't supply them, then converts to the core pb2 request
     the `Client` speaks.
     """
-    message = dict(evaluated_params.get("message") or {})
-    message.setdefault("role", _DEFAULT_ROLE)
-    if not message.get("messageId"):
-        message["messageId"] = derive_message_id(task_name, workflow_instance_id, iteration_index)
-    params = {**evaluated_params, "message": message}
+    raw_message = evaluated_params.get("message")
+    if raw_message is None or isinstance(raw_message, dict):
+        message = dict(raw_message or {})
+        message.setdefault("role", _DEFAULT_ROLE)
+        if not message.get("messageId"):
+            message["messageId"] = derive_message_id(
+                task_name, workflow_instance_id, iteration_index
+            )
+        params = {**evaluated_params, "message": message}
+    else:
+        # A truthy, non-dict `message` (str/int/bool/list, ...) is left
+        # exactly as the author's PARAMETERS produced it -- `dict(...)` would
+        # raise a bare `ValueError`/`TypeError` here (e.g. `dict("hello")`),
+        # which is not a `pydantic.ValidationError` and would escape the
+        # `except` below, surfacing as an unhandled 500 instead of the 400
+        # this is supposed to be. Passing it through unchanged lets pydantic
+        # reject it the normal way.
+        params = evaluated_params
 
     try:
         parsed = wire.MessageSendParams.model_validate(params)
@@ -84,7 +97,18 @@ def build_get_task_request(
             f"PARAMETERS is not a valid tasks/get params object: {exc}"
         ) from exc
 
-    return GetTaskRequest(id=parsed.id, history_length=parsed.history_length or 0)
+    # `history_length` is an optional protobuf field: passing it at all marks
+    # it present (`HasField` True) even when the value is 0, and a present
+    # `historyLength: 0` tells the agent to omit history explicitly. Only
+    # pass it when there's an actual value to send -- `include_history=False`
+    # forced one above via `params["historyLength"] = 0`, so `parsed.
+    # history_length` is only `None` here when `include_history=True` and the
+    # author's params didn't request a specific length, in which case the
+    # field must stay unset so the agent applies its own default instead of
+    # being told "send zero history".
+    if parsed.history_length is None:
+        return GetTaskRequest(id=parsed.id)
+    return GetTaskRequest(id=parsed.id, history_length=parsed.history_length)
 
 
 def shape_task_result(task: Task, *, include_history: bool) -> dict[str, Any]:

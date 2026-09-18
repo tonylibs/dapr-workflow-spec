@@ -88,6 +88,22 @@ async def test_run_malformed_parameters_is_400() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("bad_message", ["hello", 123, True, ["text"]])
+async def test_run_non_dict_message_is_400_not_500(bad_message: object) -> None:
+    """Reproduces the finding through the real route, not just the unit under
+    test: a truthy, non-dict evaluated `message` (str/int/bool/list) must
+    surface as a 400 `RequestValidationError`, not escape to the FastAPI
+    catch-all as a 500."""
+    config = make_config()  # default PARAMETERS: {"message": "${ .message }"}
+    app = create_app(config)
+    async with await _app_client(
+        app, AppState(config=config, client=FakeClient(), httpx_client=httpx.AsyncClient())
+    ) as client:
+        response = await client.post("/run", json={"message": bad_message})
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_run_upstream_failure_is_502() -> None:
     config = make_config()
     fake_client = FakeClient(raises=httpx.ConnectError("connection refused"))

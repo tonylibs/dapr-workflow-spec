@@ -48,7 +48,7 @@ uv run pytest test/unit/test_config.py -k test_auth_scheme_basic  # single test
 ```
 
 **Gate**: `uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest`.
-All green as of this writing (163 tests, 94% line coverage on `src/`).
+All green as of this writing (182 tests, 94% line coverage on `src/`).
 
 Verified with `uv` 0.11.7 (the version CI pins in `.github/workflows/dws-call-a2a.yml`) after
 `uv sync --frozen`. CI runs the conformance tier as a separate job (`pytest -m conformance`) from

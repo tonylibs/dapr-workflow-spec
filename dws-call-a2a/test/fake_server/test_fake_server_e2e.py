@@ -153,6 +153,35 @@ async def test_history_is_kept_with_include_history() -> None:
 
 @pytest.mark.fake_server
 @pytest.mark.asyncio
+async def test_tasks_get_returns_history_when_include_history_true_and_length_omitted() -> None:
+    """Regression test for the finding that `INCLUDE_HISTORY=true` still
+    suppressed history on `tasks/get` when the author's params omit
+    `historyLength` (the normal shape): `build_get_task_request` used to
+    always send `historyLength: 0` (an explicitly-present optional protobuf
+    field), which this fake agent's `_handle_get_task` reads as "give me no
+    history" regardless of `include_history`. Note `test_history_is_kept_
+    with_include_history` above does NOT cover this -- it uses `message/send`,
+    which never goes through `build_get_task_request` at all."""
+    fake_app = build_fake_agent_app()
+    send_config = _config_for()
+    first = await _call(
+        send_config, fake_app, {"parts": [{"kind": "text", "text": "start please"}]}
+    )
+    task_id = first.json()["id"]
+
+    get_config = make_config(
+        target=AgentCardTarget(agent_card_url="https://agent.example.com", agent_card_sha256=None),
+        method="tasks/get",
+        parameters=ObjectParameters(value={"id": "${ .taskId }"}),
+        include_history=True,
+    )
+    response = await _call(get_config, fake_app, {"taskId": task_id})
+    assert response.status_code == 200
+    assert "history" in response.json()
+
+
+@pytest.mark.fake_server
+@pytest.mark.asyncio
 async def test_tasks_get_after_send() -> None:
     fake_app = build_fake_agent_app()
     send_config = _config_for()
