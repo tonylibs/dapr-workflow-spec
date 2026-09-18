@@ -1,5 +1,5 @@
 @{
-    Image = "dws-agent-sandbox:kubectl"
+    Image = "ghcr.io/tonylibs/dws-agent-sandbox:latest"
     EntryPoint = @("/usr/local/bin/sshd-start")
     Timeout = "none"
     Cpu = "2"
