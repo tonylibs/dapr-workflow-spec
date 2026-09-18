@@ -21,7 +21,7 @@ Two readiness axes matter here. Control-flow tasks run in-process in the orchest
 | `call` (openapi) | Done | StepService via `dws-call-openapi` |
 | `call` (grpc) | Done | StepService via `dws-call-grpc`; unary calls use its remote Dapr Workflow activity |
 | `call` (asyncapi) | In progress | StepService via `dws-call-asyncapi`, which dispatches AsyncAPI 3.0 `send` operations through a Dapr output binding |
-| `call` (a2a) | Not started | Deferred until after AsyncAPI |
+| `call` (a2a) | Done | StepService via `dws-call-a2a`; supports `message/send` and `tasks/get` against an agent card or direct server. See [A2A step runner](../integrations/a2a-step-runner.md). |
 | `run` (shell / inline JS / inline Python) | Done | StepService backed by the matching `dws-run` image; `run: container`, `run: workflow`, and external script sources remain unsupported |
 | `switch` | Done | local replay-safe jq evaluation activity; no image needed |
 | `set` | Done | local replay-safe jq evaluation activity; no image needed |
@@ -62,7 +62,7 @@ flowchart TD
   P1 --> P3[Phase 3: Fault tolerance done]
   P2 --> P3
   P3 --> P4[Phase 4: Authentication and secrets done]
-  P4 --> P5[Phase 5: Protocol expansion<br/>gRPC done, AsyncAPI in progress, A2A deferred]
+  P4 --> P5[Phase 5: Protocol expansion<br/>gRPC, AsyncAPI, and A2A done]
   P1 --> P6[Phase 6: Scheduling<br/>cron/every/after/on]
   P4 --> P7[Phase 7: Catalogs and extensions]
 ```
@@ -78,7 +78,7 @@ Data flow (Phase 1) is the foundation: retry/catch, extensions, and error handli
 | 2 | `try`/`catch`/`retry`, `raise`, `for`, `fork` (parallel), and generalized nested `do` | orchestrator, controller | Done |
 | 3 | RFC 7807 error model, standard error types, and task/workflow timeouts | orchestrator | Done |
 | 4 | `basic`/`bearer`/OAuth2 client-credentials auth and scalar secret resolution | controller, orchestrator, call-http, call-openapi | Done; live OAuth path-isolation validation remains environment-blocked |
-| 5 | gRPC, AsyncAPI, A2A call protocols | `dws-call-grpc`, `dws-call-asyncapi`, future `dws-call-a2a` | gRPC done; AsyncAPI in progress; A2A deferred |
+| 5 | gRPC, AsyncAPI, A2A call protocols | `dws-call-grpc`, `dws-call-asyncapi`, `dws-call-a2a` | Done — A2A supports `message/send` and `tasks/get`; see [A2A step runner](../integrations/a2a-step-runner.md). |
 | 6 | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) | Not started |
 | 7 | Catalogs, custom functions, extensions (`before`/`after`), external resources | controller, orchestrator | Not started |
 | 8 | `dws-admin` consumes lifecycle events into read model | dws-admin | Done |
