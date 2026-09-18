@@ -130,6 +130,15 @@ def wait_for_ssh(host: str, port: int, private_key: Path) -> None:
     raise RuntimeError("The SSH bridge did not accept a key-only SSH connection")
 
 
+def command_failure_details(command: Any) -> str:
+    output = [
+        message.text.rstrip()
+        for message in [*command.logs.stdout, *command.logs.stderr]
+        if message.text.strip()
+    ]
+    return "\n".join(output) if output else "The sandbox command returned no output."
+
+
 def main() -> int:
     config_path = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else DEFAULT_CONFIG
     config: dict[str, Any] = json.loads(config_path.read_text(encoding="utf-8"))
@@ -180,7 +189,11 @@ def main() -> int:
             "&& kubectl get nodes -o name --request-timeout=15s"
         )
         if verification.exit_code != 0:
-            raise RuntimeError("Sandbox key or kubectl verification failed")
+            raise RuntimeError(
+                "Sandbox key or kubectl verification failed "
+                f"(exit code {verification.exit_code}):\n"
+                f"{command_failure_details(verification)}"
+            )
 
         bridge_name = f"dws-ssh-forward-{sandbox.id}"
         run(

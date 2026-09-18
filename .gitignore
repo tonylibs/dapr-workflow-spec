@@ -27,7 +27,7 @@ Thumbs.db
 !.env.example
 
 # Scripts
-.github/scripts/__pycache__/
+**/__pycache__/
 
 # pnpm
 .pnpm-store
