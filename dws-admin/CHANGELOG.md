@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-admin-v0.2.1...dws-admin-v0.2.2) (2026-09-18)
+
+
+### Bug Fixes
+
+* **chart:** move dws-admin bearer middleware to httpPipeline to unblock dws.events ([9a8d097](https://github.com/tonylibs/dapr-workflow-spec/commit/9a8d0973f3b0675bd4c1fb4bee32167f89bd60a6))
+
 ## [0.2.1](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-admin-v0.2.0...dws-admin-v0.2.1) (2026-09-14)
 
 
