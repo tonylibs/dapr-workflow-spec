@@ -36,6 +36,7 @@ public class Labels {
       case CALL_OPENAPI -> "call-openapi";
       case CALL_GRPC -> "call-grpc";
       case CALL_ASYNCAPI -> "call-asyncapi";
+      case CALL_A2A -> "call-a2a";
       case RUN_SHELL -> "run-shell";
       case RUN_SCRIPT_JS -> "run-script-js";
       case RUN_SCRIPT_PYTHON -> "run-script-python";

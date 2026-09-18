@@ -12,6 +12,16 @@ import java.util.Map;
  * lookup in this codebase relies on), so {@link
  * io.dws.orchestrator.workflow.activity.DefinitionLookup#taskByName} resolves it from the pod's own
  * pinned definition, identically to how any in-process activity resolves its target.
+ *
+ * <p>{@code dispatchContext} carries the root workflow instance id and iteration path across this
+ * child-instance boundary unchanged (see {@link DispatchContext}) — this type is also used to guard
+ * a task-level {@code timeout}, and the branch/guarded task must not pick up this child instance's
+ * own, freshly-derived {@code ctx.getInstanceId()} in place of it.
  */
 public record ForkBranchInput(
-    String taskName, JsonNode data, JsonNode context, Map<String, JsonNode> variables, int depth) {}
+    String taskName,
+    JsonNode data,
+    JsonNode context,
+    Map<String, JsonNode> variables,
+    int depth,
+    DispatchContext dispatchContext) {}

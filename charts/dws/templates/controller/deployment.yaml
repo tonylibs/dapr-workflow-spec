@@ -69,6 +69,8 @@ spec:
               value: "{{ .Values.controller.images.callGrpc.repository }}:{{ .Values.controller.images.callGrpc.tag }}"
             - name: DWS_IMAGES_CALL_ASYNCAPI
               value: "{{ .Values.controller.images.callAsyncapi.repository }}:{{ .Values.controller.images.callAsyncapi.tag }}"
+            - name: DWS_IMAGES_CALL_A2A
+              value: "{{ .Values.controller.images.callA2a.repository }}:{{ .Values.controller.images.callA2a.tag }}"
             - name: DWS_IMAGES_RUN_SHELL
               value: "{{ .Values.controller.images.run.shell.repository }}:{{ .Values.controller.images.run.shell.tag }}"
             - name: DWS_IMAGES_RUN_SCRIPT_JS

@@ -106,7 +106,8 @@ class ForkBranchWorkflowTest {
                 mapper.readTree("{\"seed\":1}"),
                 mapper.createObjectNode(),
                 Map.of(),
-                1));
+                1,
+                DispatchContext.root("inst-1/raiseAlarm/callNurse")));
     when(ctx.callActivity(
             eq(EvaluateSetActivity.class.getName()),
             any(),
@@ -159,7 +160,12 @@ class ForkBranchWorkflowTest {
     when(ctx.getInput(ForkBranchInput.class))
         .thenReturn(
             new ForkBranchInput(
-                "guarded", mapper.readTree("{}"), mapper.createObjectNode(), Map.of(), 1));
+                "guarded",
+                mapper.readTree("{}"),
+                mapper.createObjectNode(),
+                Map.of(),
+                1,
+                DispatchContext.root("inst-1/raiseAlarm/callNurse")));
     when(ctx.callActivity(
             eq(io.dws.orchestrator.workflow.activity.RaiseErrorActivity.class.getName()),
             any(),

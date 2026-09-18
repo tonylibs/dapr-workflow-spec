@@ -27,6 +27,7 @@ on:
           - dws-call-openapi
           - dws-call-asyncapi
           - dws-run
+          - dws-call-a2a
       version:
         description: 'Exact version to release (e.g. 1.2.0). Leave blank to use the version already bumped in .release-please-manifest.json.'
         required: false

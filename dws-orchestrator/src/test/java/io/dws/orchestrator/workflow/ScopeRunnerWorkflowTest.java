@@ -106,7 +106,12 @@ class ScopeRunnerWorkflowTest {
     when(ctx.getInput(ScopeRunnerInput.class))
         .thenReturn(
             new ScopeRunnerInput(
-                null, mapper.readTree("{}"), mapper.createObjectNode(), Map.of(), 0));
+                null,
+                mapper.readTree("{}"),
+                mapper.createObjectNode(),
+                Map.of(),
+                0,
+                DispatchContext.root("inst-1/scopeRunner")));
 
     workflow.execute(ctx);
 
@@ -141,7 +146,12 @@ class ScopeRunnerWorkflowTest {
     when(ctx.getInput(ScopeRunnerInput.class))
         .thenReturn(
             new ScopeRunnerInput(
-                "guarded", mapper.readTree("{}"), mapper.createObjectNode(), Map.of(), 1));
+                "guarded",
+                mapper.readTree("{}"),
+                mapper.createObjectNode(),
+                Map.of(),
+                1,
+                DispatchContext.root("inst-1/scopeRunner")));
 
     workflow.execute(ctx);
 

@@ -54,7 +54,8 @@ public class ForkBranchWorkflow implements Workflow {
                 input.variables(),
                 input.depth(),
                 events,
-                mapper);
+                mapper,
+                input.dispatchContext());
     ctx.complete(result);
   }
 }

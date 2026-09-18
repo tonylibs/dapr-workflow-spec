@@ -42,6 +42,14 @@ public class InterpreterWorkflow implements Workflow {
   /** Fallback wait for a LISTEN task that does not constrain a timeout. */
   private static final Duration DEFAULT_LISTEN_TIMEOUT = Duration.ofDays(1);
 
+  /**
+   * Default {@code for.at} jq variable binding name, used by {@link #dispatchFor} for author-facing
+   * jq expression evaluation only. It plays no part in the internal iteration signal threaded via
+   * {@link DispatchContext} — that signal is a structural position, independent of whatever name
+   * (or names, at different nesting levels) the author binds it under.
+   */
+  private static final String DEFAULT_AT_VARIABLE = "index";
+
   @Override
   public WorkflowStub create() {
     return this::execute;
@@ -67,6 +75,12 @@ public class InterpreterWorkflow implements Workflow {
     // so replay stays deterministic, and it is not part of the instance's completion output.
     JsonNode context = mapper.createObjectNode();
 
+    // Captured exactly once, here, and threaded unchanged through every dispatch — including into
+    // ForkBranchWorkflow/ScopeRunnerWorkflow child instances — so a task-level timeout guard or a
+    // try/catch.retry attempt never substitutes its own child instance's freshly-derived
+    // ctx.getInstanceId() for the root's. See DispatchContext.
+    DispatchContext dispatchContext = DispatchContext.root(ctx.getInstanceId());
+
     publish(ctx, events.instanceStarted());
 
     Duration workflowTimeout =
@@ -77,8 +91,8 @@ public class InterpreterWorkflow implements Workflow {
       // `exit`, or `end` — completing the outermost scope is completing the instance.
       ScopeResult result =
           workflowTimeout == null
-              ? runTaskList(ctx, items, data, context, Map.of(), 0, events, mapper)
-              : runGuardedTopLevelScope(ctx, data, context, workflowTimeout);
+              ? runTaskList(ctx, items, data, context, Map.of(), 0, events, mapper, dispatchContext)
+              : runGuardedTopLevelScope(ctx, data, context, workflowTimeout, dispatchContext);
       publish(ctx, events.instanceCompleted());
       ctx.complete(result.data());
     } catch (RuntimeException e) {
@@ -98,11 +112,15 @@ public class InterpreterWorkflow implements Workflow {
    * catch} block turns into the standard {@code instanceFailed} publish and rethrow, unchanged.
    */
   private ScopeResult runGuardedTopLevelScope(
-      WorkflowContext ctx, JsonNode data, JsonNode context, Duration timeout) {
+      WorkflowContext ctx,
+      JsonNode data,
+      JsonNode context,
+      Duration timeout,
+      DispatchContext dispatchContext) {
     io.dapr.durabletask.Task<ScopeResult> scope =
         ctx.callChildWorkflow(
             ScopeRunnerWorkflow.NAME,
-            new ScopeRunnerInput(null, data, context, Map.of(), 0),
+            new ScopeRunnerInput(null, data, context, Map.of(), 0, dispatchContext),
             ScopeResult.class);
     java.time.ZonedDateTime deadline =
         ctx.getCurrentInstant().plus(timeout).atZone(java.time.ZoneOffset.UTC);
@@ -129,6 +147,8 @@ public class InterpreterWorkflow implements Workflow {
    * @param variables scope-local jq variable bindings (the caught error inside a {@code catch.do});
    *     empty at the top level
    * @param depth current nesting depth, 0 for the top-level {@code do}
+   * @param dispatchContext the root instance id and iteration path threaded through every dispatch
+   *     in this scope; see {@link DispatchContext}
    */
   ScopeResult runTaskList(
       WorkflowContext ctx,
@@ -138,7 +158,8 @@ public class InterpreterWorkflow implements Workflow {
       Map<String, JsonNode> variables,
       int depth,
       AdminEventBuilder events,
-      ObjectMapper mapper) {
+      ObjectMapper mapper,
+      DispatchContext dispatchContext) {
     if (depth > MAX_DEPTH) {
       throw new IllegalStateException(
           "workflow exceeded the maximum task nesting depth of " + MAX_DEPTH);
@@ -167,7 +188,8 @@ public class InterpreterWorkflow implements Workflow {
       FlowOutcome then;
       try {
         Dispatch result =
-            dispatchWithTimeout(ctx, task, name, data, context, variables, depth, events, mapper);
+            dispatchWithTimeout(
+                ctx, task, name, data, context, variables, depth, events, mapper, dispatchContext);
         data = result.data();
         context = result.context();
         then = result.then();
@@ -240,17 +262,19 @@ public class InterpreterWorkflow implements Workflow {
       Map<String, JsonNode> variables,
       int depth,
       AdminEventBuilder events,
-      ObjectMapper mapper) {
+      ObjectMapper mapper,
+      DispatchContext dispatchContext) {
     TaskBase base = DataFlowPipeline.baseOf(task);
     Duration timeout = base == null ? null : WorkflowSupport.taskTimeoutOf(base.getTimeout());
     if (timeout == null) {
-      return dispatch(ctx, task, name, data, context, variables, depth, events, mapper);
+      return dispatch(
+          ctx, task, name, data, context, variables, depth, events, mapper, dispatchContext);
     }
 
     io.dapr.durabletask.Task<Dispatch> body =
         ctx.callChildWorkflow(
             ForkBranchWorkflow.NAME,
-            new ForkBranchInput(name, data, context, variables, depth),
+            new ForkBranchInput(name, data, context, variables, depth, dispatchContext),
             Dispatch.class);
     io.dapr.durabletask.Task<Void> timer = ctx.createTimer(timeout);
     List<io.dapr.durabletask.Task<?>> race = new java.util.ArrayList<>();
@@ -282,7 +306,8 @@ public class InterpreterWorkflow implements Workflow {
       Map<String, JsonNode> variables,
       int depth,
       AdminEventBuilder events,
-      ObjectMapper mapper) {
+      ObjectMapper mapper,
+      DispatchContext dispatchContext) {
     TaskBase base = DataFlowPipeline.baseOf(task);
     boolean hasInput = base != null && base.getInput() != null;
     boolean hasOutput = base != null && (base.getOutput() != null || base.getExport() != null);
@@ -298,7 +323,9 @@ public class InterpreterWorkflow implements Workflow {
               .await();
     }
 
-    Body body = dispatchBody(ctx, task, name, input, context, variables, depth, events, mapper);
+    Body body =
+        dispatchBody(
+            ctx, task, name, input, context, variables, depth, events, mapper, dispatchContext);
 
     if (!hasOutput) {
       return new Dispatch(body.data(), body.context(), body.then(), body.end());
@@ -326,7 +353,8 @@ public class InterpreterWorkflow implements Workflow {
       Map<String, JsonNode> variables,
       int depth,
       AdminEventBuilder events,
-      ObjectMapper mapper) {
+      ObjectMapper mapper,
+      DispatchContext dispatchContext) {
     return StreamEx.of(
             task.getSwitchTask(),
             task.getCallTask(),
@@ -343,7 +371,16 @@ public class InterpreterWorkflow implements Workflow {
         .map(
             concreteTask ->
                 dispatchConcreteTask(
-                    ctx, concreteTask, name, data, context, variables, depth, events, mapper))
+                    ctx,
+                    concreteTask,
+                    name,
+                    data,
+                    context,
+                    variables,
+                    depth,
+                    events,
+                    mapper,
+                    dispatchContext))
         .findFirst()
         .orElseThrow(
             () -> new IllegalStateException("task '" + name + "' has an unsupported type"));
@@ -365,7 +402,8 @@ public class InterpreterWorkflow implements Workflow {
       Map<String, JsonNode> variables,
       int depth,
       AdminEventBuilder events,
-      ObjectMapper mapper) {
+      ObjectMapper mapper,
+      DispatchContext dispatchContext) {
     return switch (concreteTask) {
       case SwitchTask _ ->
           ctx.callActivity(
@@ -382,7 +420,8 @@ public class InterpreterWorkflow implements Workflow {
         FlowOutcome then = FlowOutcome.of(thenOf(callTask.get()));
         yield callTask.getCallHTTP() != null
             ? dispatchStepActivity(ctx, name, data, context, then)
-            : invokeStepService(ctx, name, data, context, then);
+            : invokeStepService(
+                ctx, name, data, context, then, callTask.getCallA2A() != null, dispatchContext);
       }
       case RunTask runTask ->
           // Both run: shell and run: script are Go activity workers; run: container / run: workflow
@@ -419,7 +458,8 @@ public class InterpreterWorkflow implements Workflow {
               .thenApply(ignored -> Body.leaf(data, context, FlowOutcome.of(emitTask.getThen())))
               .await();
       case TryTask tryTask ->
-          dispatchTry(ctx, tryTask, name, data, context, variables, depth, events, mapper);
+          dispatchTry(
+              ctx, tryTask, name, data, context, variables, depth, events, mapper, dispatchContext);
       case RaiseTask _ ->
           ctx.callActivity(
                   RaiseErrorActivity.class.getName(),
@@ -429,9 +469,20 @@ public class InterpreterWorkflow implements Workflow {
               .thenApply(InterpreterWorkflow::raiseError)
               .await();
       case ForTask forTask ->
-          dispatchFor(ctx, forTask, name, data, context, variables, depth, events, mapper);
+          dispatchFor(
+              ctx, forTask, name, data, context, variables, depth, events, mapper, dispatchContext);
       case ForkTask forkTask ->
-          dispatchFork(ctx, forkTask, name, data, context, variables, depth, events, mapper);
+          dispatchFork(
+              ctx,
+              forkTask,
+              name,
+              data,
+              context,
+              variables,
+              depth,
+              events,
+              mapper,
+              dispatchContext);
       default -> throw new IllegalStateException("task '" + name + "' has an unsupported type");
     };
   }
@@ -455,15 +506,45 @@ public class InterpreterWorkflow implements Workflow {
 
   /**
    * Invokes a step over Dapr service invocation via {@link CallServiceActivity} ({@code POST
-   * /run}). This is the unmigrated path {@code call: openapi} still takes — its Node image is not
-   * an activity worker (the JS Workflow SDK lacks multi-app activities).
+   * /run}). This is the unmigrated path {@code call: openapi}/{@code call: asyncapi}/{@code call:
+   * a2a} take, plus {@code call: grpc} — whose routing here is a separate, pre-existing question
+   * this method does not address (unlike its siblings, {@code call: grpc} is dispatched as an
+   * activity-invoked Go worker per {@code StackSynthesizer.isActivityInvoked} in {@code
+   * dws-controller}; that mismatch predates this change).
+   *
+   * <p>{@code call: a2a} is carved out of the shared default retry policy: unlike its siblings, it
+   * gets exactly one attempt ({@link WorkflowSupport#noRetryTaskOptions()}) unless the workflow
+   * author wraps it in an explicit {@code try}/{@code catch.retry} block. A fresh {@code messageId}
+   * on every retry attempt (ADR 0004 Decision 8) most likely makes a cooperative agent start a
+   * duplicate task, so silently re-dispatching on a timeout is unsafe — the failure must surface to
+   * the author instead. Author-declared retry is unaffected: {@code dispatchTry} is a separate,
+   * higher-layer mechanism that reruns the whole try list itself rather than relying on this
+   * method's {@link WorkflowTaskOptions}.
+   *
+   * <p>{@code dispatchContext}'s root instance id and encoded iteration path ride along in the
+   * {@link CallRequest} so {@link CallServiceActivity} can carry them as outbound headers — the
+   * other half of ADR 0004 Decision 8's {@code messageId} derivation, which otherwise has nothing
+   * to key off on the runner side. See {@link DispatchContext}.
    */
   private Body invokeStepService(
-      WorkflowContext ctx, String name, JsonNode data, JsonNode context, FlowOutcome then) {
+      WorkflowContext ctx,
+      String name,
+      JsonNode data,
+      JsonNode context,
+      FlowOutcome then,
+      boolean isA2a,
+      DispatchContext dispatchContext) {
+    WorkflowTaskOptions options =
+        isA2a ? WorkflowSupport.noRetryTaskOptions() : WorkflowSupport.defaultTaskOptions();
     return ctx.callActivity(
             CallServiceActivity.class.getName(),
-            new CallRequest(TaskNaming.toKebabCase(name), "run", data),
-            WorkflowSupport.defaultTaskOptions(),
+            new CallRequest(
+                TaskNaming.toKebabCase(name),
+                "run",
+                data,
+                dispatchContext.rootInstanceId(),
+                dispatchContext.iterationIndexEncoded()),
+            options,
             JsonNode.class)
         .thenApply(next -> Body.leaf(next, context, then))
         .await();
@@ -507,18 +588,37 @@ public class InterpreterWorkflow implements Workflow {
       Map<String, JsonNode> variables,
       int depth,
       AdminEventBuilder events,
-      ObjectMapper mapper) {
+      ObjectMapper mapper,
+      DispatchContext dispatchContext) {
     long firstFailureMillis = 0L;
     Duration attemptTimeout = CatchPolicy.perAttemptTimeout(tryTask.getCatch());
 
     for (int attempt = 1; ; attempt++) {
       try {
+        // The same dispatchContext is passed to every attempt, guarded or not: a retry is one more
+        // attempt at the same logical call the author declared, so it must keep the same root
+        // instance id and iteration path, not derive fresh ones from a new child instance.
         ScopeResult body =
             attemptTimeout == null
                 ? runTaskList(
-                    ctx, tryTask.getTry(), data, context, variables, depth + 1, events, mapper)
+                    ctx,
+                    tryTask.getTry(),
+                    data,
+                    context,
+                    variables,
+                    depth + 1,
+                    events,
+                    mapper,
+                    dispatchContext)
                 : runGuardedTryAttempt(
-                    ctx, name, data, context, variables, depth + 1, attemptTimeout);
+                    ctx,
+                    name,
+                    data,
+                    context,
+                    variables,
+                    depth + 1,
+                    attemptTimeout,
+                    dispatchContext);
         return new Body(body.data(), body.context(), FlowOutcome.of(tryTask.getThen()), body.end());
       } catch (RuntimeException failure) {
         long now = ctx.getCurrentInstant().toEpochMilli();
@@ -551,7 +651,17 @@ public class InterpreterWorkflow implements Workflow {
           ctx.createTimer(Duration.ofMillis(decision.delayMillis())).await();
           continue;
         }
-        return recover(ctx, tryTask, data, context, decision, variables, depth, events, mapper);
+        return recover(
+            ctx,
+            tryTask,
+            data,
+            context,
+            decision,
+            variables,
+            depth,
+            events,
+            mapper,
+            dispatchContext);
       }
     }
   }
@@ -572,11 +682,12 @@ public class InterpreterWorkflow implements Workflow {
       JsonNode context,
       Map<String, JsonNode> variables,
       int depth,
-      Duration timeout) {
+      Duration timeout,
+      DispatchContext dispatchContext) {
     io.dapr.durabletask.Task<ScopeResult> attempt =
         ctx.callChildWorkflow(
             ScopeRunnerWorkflow.NAME,
-            new ScopeRunnerInput(tryTaskName, data, context, variables, depth),
+            new ScopeRunnerInput(tryTaskName, data, context, variables, depth, dispatchContext),
             ScopeResult.class);
     io.dapr.durabletask.Task<Void> timer = ctx.createTimer(timeout);
     List<io.dapr.durabletask.Task<?>> race = new java.util.ArrayList<>();
@@ -608,7 +719,8 @@ public class InterpreterWorkflow implements Workflow {
       Map<String, JsonNode> variables,
       int depth,
       AdminEventBuilder events,
-      ObjectMapper mapper) {
+      ObjectMapper mapper,
+      DispatchContext dispatchContext) {
     FlowOutcome then = FlowOutcome.of(forTask.getThen());
 
     JsonNode collection =
@@ -625,7 +737,7 @@ public class InterpreterWorkflow implements Workflow {
 
     ForTaskConfiguration config = forTask.getFor();
     String eachName = nameOr(config == null ? null : config.getEach(), "item");
-    String atName = nameOr(config == null ? null : config.getAt(), "index");
+    String atName = nameOr(config == null ? null : config.getAt(), DEFAULT_AT_VARIABLE);
     boolean hasWhile = forTask.getWhile() != null && !forTask.getWhile().isBlank();
 
     JsonNode iterationData = data;
@@ -648,6 +760,9 @@ public class InterpreterWorkflow implements Workflow {
         }
       }
 
+      // Appended here, not looked up later from `scoped` by name: this is the one place that
+      // knows the true nesting position, independent of eachName/atName. See DispatchContext.
+      DispatchContext iterationDispatchContext = dispatchContext.withIteration(index);
       ScopeResult result =
           runTaskList(
               ctx,
@@ -657,7 +772,8 @@ public class InterpreterWorkflow implements Workflow {
               scoped,
               depth + 1,
               events,
-              mapper);
+              mapper,
+              iterationDispatchContext);
       iterationData = result.data();
       iterationContext = result.context();
       if (result.end() == ScopeEnd.END) {
@@ -691,7 +807,8 @@ public class InterpreterWorkflow implements Workflow {
       Map<String, JsonNode> variables,
       int depth,
       AdminEventBuilder events,
-      ObjectMapper mapper) {
+      ObjectMapper mapper,
+      DispatchContext dispatchContext) {
     FlowOutcome then = FlowOutcome.of(forkTask.getThen());
     List<TaskItem> branches = forkTask.getFork() == null ? null : forkTask.getFork().getBranches();
     if (branches == null || branches.isEmpty()) {
@@ -700,8 +817,12 @@ public class InterpreterWorkflow implements Workflow {
 
     List<io.dapr.durabletask.Task<Dispatch>> handles = new java.util.ArrayList<>();
     for (TaskItem branch : branches) {
+      // Branches are concurrent siblings, not loop iterations, so they all share the same
+      // dispatchContext unchanged — distinct branch task names already keep their dispatches
+      // distinct, per-branch iteration bookkeeping would be spurious.
       ForkBranchInput input =
-          new ForkBranchInput(branch.getName(), data, context, variables, depth + 1);
+          new ForkBranchInput(
+              branch.getName(), data, context, variables, depth + 1, dispatchContext);
       // No explicit child instance id: the same fork task can execute more than once within one
       // instance (nested in a `for.do`, or re-attempted by a retrying `try`), and a static id would
       // collide across those distinct child creations. The 3-arg overload lets DurableTask derive a
@@ -748,7 +869,8 @@ public class InterpreterWorkflow implements Workflow {
       Map<String, JsonNode> variables,
       int depth,
       AdminEventBuilder events,
-      ObjectMapper mapper) {
+      ObjectMapper mapper,
+      DispatchContext dispatchContext) {
     TryTaskCatch clause = tryTask.getCatch();
     FlowOutcome then = FlowOutcome.of(tryTask.getThen());
     if (clause == null || clause.getDo() == null || clause.getDo().isEmpty()) {
@@ -759,7 +881,8 @@ public class InterpreterWorkflow implements Workflow {
     Map<String, JsonNode> scoped = new HashMap<>(variables);
     scoped.put(decision.errorVariable(), decision.error());
     ScopeResult recovered =
-        runTaskList(ctx, clause.getDo(), data, context, scoped, depth + 1, events, mapper);
+        runTaskList(
+            ctx, clause.getDo(), data, context, scoped, depth + 1, events, mapper, dispatchContext);
     return new Body(recovered.data(), recovered.context(), then, recovered.end());
   }
 

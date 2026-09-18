@@ -1,0 +1,66 @@
+[project]
+name = "dws-call-a2a"
+version = "0.1.0"
+description = "Prebuilt step image for `call: a2a` tasks in the DWS platform. One image serves every a2a call step; behavior is defined entirely by env config."
+requires-python = ">=3.13"
+license = { text = "Apache-2.0" }
+dependencies = [
+  # Pinned exact per docs/adr/0004-call-a2a-runner-design.md Decision 1. Verified
+  # against the real PyPI package on 2026-09-16 (see dws-call-a2a/CLAUDE.md).
+  "a2a-sdk[fastapi]==1.1.2",
+  "fastapi==0.141.1",
+  "uvicorn[standard]==0.53.0",
+  "httpx==0.28.1",
+  # jq.py: bundles libjq statically, ships manylinux/macOS/win wheels, no C
+  # toolchain needed in the runtime image. See CLAUDE.md "Toolchain" for why
+  # this was chosen over shelling out to a system `jq` binary.
+  "jq==1.12.0",
+]
+
+[dependency-groups]
+dev = [
+  "ruff==0.14.5",
+  "pyright==1.1.407",
+  "pytest==9.1.1",
+  "pytest-asyncio==1.4.0",
+  "pytest-cov==7.1.0",
+  "respx==0.23.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dws_call_a2a"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["dws_call_a2a"]
+
+[tool.pyright]
+include = ["src", "test"]
+pythonVersion = "3.13"
+typeCheckingMode = "standard"
+reportMissingImports = true
+# a2a-sdk's protobuf-generated `a2a_pb2` module has no inline type stubs;
+# attribute access on pb2 messages is dynamic by design (descriptor-driven).
+reportAttributeAccessIssue = "warning"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["test"]
+markers = [
+  "conformance: exercises a real a2a-sdk server process/app (tier c)",
+  "fake_server: exercises the hand-written scripted fake agent (tier b)",
+]
+
+[tool.coverage.run]
+source = ["src/dws_call_a2a"]

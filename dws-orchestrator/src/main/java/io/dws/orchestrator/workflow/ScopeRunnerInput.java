@@ -13,10 +13,19 @@ import java.util.Map;
  * names a {@code try} task whose {@code try} list is resolved via {@link
  * io.dws.orchestrator.workflow.activity.DefinitionLookup#taskByName} from the pod's own pinned
  * definition, identically to how any in-process activity resolves its target.
+ *
+ * <p>{@code dispatchContext} carries the root workflow instance id and iteration path across this
+ * child-instance boundary unchanged (see {@link DispatchContext}). This type guards both the
+ * workflow-level {@code timeout} over the top-level {@code do} list and a {@code try} task's
+ * per-attempt {@code retry.limit.attempt.duration} — for the latter, every retried attempt is its
+ * own fresh child instance, so carrying the same {@code dispatchContext} across attempts (rather
+ * than each attempt deriving its own from its own {@code ctx.getInstanceId()}) is what keeps a
+ * retried {@code call: a2a} invocation's dedupe key stable across attempts.
  */
 public record ScopeRunnerInput(
     String tryTaskName,
     JsonNode data,
     JsonNode context,
     Map<String, JsonNode> variables,
-    int depth) {}
+    int depth,
+    DispatchContext dispatchContext) {}

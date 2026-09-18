@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -136,7 +137,8 @@ class TimeoutInterpreterTest {
                       input.variables(),
                       input.depth(),
                       AdminEventBuilder.forContext(ctx),
-                      mapper);
+                      mapper,
+                      input.dispatchContext());
               return completed(result);
             });
 
@@ -159,7 +161,8 @@ class TimeoutInterpreterTest {
                       input.variables(),
                       input.depth(),
                       AdminEventBuilder.forContext(ctx),
-                      mapper);
+                      mapper,
+                      input.dispatchContext());
               return completed(result);
             });
   }
@@ -340,6 +343,81 @@ class TimeoutInterpreterTest {
     assertThat(output.get("reason").textValue()).contains("guarded").contains("timed out after");
   }
 
+  /**
+   * Two independent task-level {@code timeout} guards — each dispatched via its own {@link
+   * ForkBranchWorkflow} child instance — must carry the SAME root workflow instance id on their
+   * {@code call: a2a} requests (MEDIUM-1). {@link DispatchContext#rootInstanceId} is threaded from
+   * the single value captured once in {@link InterpreterWorkflow#execute}, never re-derived from
+   * whatever {@code ctx.getInstanceId()} a child instance would report for itself. A distinct
+   * sequential value is stubbed on every {@code ctx.getInstanceId()} call precisely so a regression
+   * back to "read it again inside the child" would show up here as two different ids instead of the
+   * same one.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void taskLevelTimeoutGuardsCarryTheSameRootInstanceIdAcrossIndependentGuardedCalls()
+      throws Exception {
+    seedYaml(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: timeout-workflow
+          version: '1.0.0'
+        do:
+          - guardedFirst:
+              call: a2a
+              with:
+                server: http://agent-service
+                method: message/send
+                parameters:
+                  text: hello
+              timeout:
+                after:
+                  seconds: 5
+          - guardedSecond:
+              call: a2a
+              with:
+                server: http://agent-service
+                method: message/send
+                parameters:
+                  text: hello again
+              timeout:
+                after:
+                  seconds: 5
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInstanceId())
+        .thenReturn(
+            "seq-1", "seq-2", "seq-3", "seq-4", "seq-5", "seq-6", "seq-7", "seq-8", "seq-9");
+    Task<Void> timerTask = completed(null);
+    when(ctx.createTimer(any(Duration.class))).thenReturn(timerTask);
+    stubRace(ctx, () -> 0);
+    Task<JsonNode> callTask = completed(mapper.readTree("{\"ok\":true}"));
+    when(ctx.callActivity(
+            eq(io.dws.orchestrator.workflow.activity.CallServiceActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenReturn(callTask);
+
+    workflow.execute(ctx);
+
+    ArgumentCaptor<Object> requests = ArgumentCaptor.forClass(Object.class);
+    verify(ctx, times(2))
+        .callActivity(
+            eq(io.dws.orchestrator.workflow.activity.CallServiceActivity.class.getName()),
+            requests.capture(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class));
+    List<io.dws.orchestrator.workflow.activity.CallRequest> reqs =
+        requests.getAllValues().stream()
+            .map(io.dws.orchestrator.workflow.activity.CallRequest.class::cast)
+            .toList();
+    assertThat(reqs.get(0).workflowInstanceId()).isEqualTo(reqs.get(1).workflowInstanceId());
+  }
+
   // ---- workflow-level timeout ------------------------------------------------
 
   private static final String WORKFLOW_TIMEOUT_YAML =
@@ -478,6 +556,87 @@ class TimeoutInterpreterTest {
 
     // Two body executions allowed: attempt 1 times out (counts as a failed attempt), attempt 2 is
     // the fixture's own step failure, then the limit is exhausted and recovery runs.
+    JsonNode output = completionOutput(ctx);
+    assertThat(output.get("reason").textValue()).isNotNull();
+  }
+
+  /**
+   * A {@code call: a2a} body wrapped in {@code try}/{@code catch.retry} with a {@code
+   * limit.attempt.duration} guard — so every attempt runs as its own {@link ScopeRunnerWorkflow}
+   * child instance — must carry the SAME root workflow instance id on every attempt's request
+   * (MEDIUM-1). As in the task-level-timeout guard test above, a distinct sequential value is
+   * stubbed on every {@code ctx.getInstanceId()} call so a regression back to "each attempt derives
+   * its own fresh id" would surface as two different ids across the two attempts, instead of one
+   * stable {@link DispatchContext#rootInstanceId}.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void retriedAttemptViaScopeRunnerWorkflowKeepsTheSameRootInstanceIdAcrossAttempts()
+      throws Exception {
+    seedYaml(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: timeout-workflow
+          version: '1.0.0'
+        do:
+          - guarded:
+              try:
+                - dispatchAgent:
+                    call: a2a
+                    with:
+                      server: http://agent-service
+                      method: message/send
+                      parameters:
+                        text: hello
+              catch:
+                errors:
+                  with:
+                    status: 503
+                retry:
+                  delay:
+                    seconds: 1
+                  limit:
+                    attempt:
+                      count: 2
+                      duration:
+                        seconds: 5
+                do:
+                  - repair:
+                      set:
+                        reason: '${ $error.detail }'
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInstanceId())
+        .thenReturn(
+            "seq-1", "seq-2", "seq-3", "seq-4", "seq-5", "seq-6", "seq-7", "seq-8", "seq-9");
+    when(ctx.callActivity(
+            eq(io.dws.orchestrator.workflow.activity.CallServiceActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenThrow(new StepInvocationException("dispatch-agent", 503, "agent down", null));
+    Task<Void> timerTask = completed(null);
+    when(ctx.createTimer(any(Duration.class))).thenReturn(timerTask);
+    stubRace(ctx, () -> 0);
+
+    workflow.execute(ctx);
+
+    ArgumentCaptor<Object> requests = ArgumentCaptor.forClass(Object.class);
+    verify(ctx, times(2))
+        .callActivity(
+            eq(io.dws.orchestrator.workflow.activity.CallServiceActivity.class.getName()),
+            requests.capture(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class));
+    List<io.dws.orchestrator.workflow.activity.CallRequest> reqs =
+        requests.getAllValues().stream()
+            .map(io.dws.orchestrator.workflow.activity.CallRequest.class::cast)
+            .toList();
+    assertThat(reqs.get(0).workflowInstanceId()).isEqualTo(reqs.get(1).workflowInstanceId());
+
     JsonNode output = completionOutput(ctx);
     assertThat(output.get("reason").textValue()).isNotNull();
   }

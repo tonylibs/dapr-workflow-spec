@@ -532,6 +532,343 @@ class InterpreterWorkflowIntegrationTest {
   }
 
   /**
+   * Non-a2a call kinds on the {@link CallServiceActivity} path (openapi, grpc, asyncapi) must keep
+   * using the shared default retry policy — a regression guard for the a2a-specific carve-out in
+   * {@code InterpreterWorkflow#invokeStepService}.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void nonA2aCallServiceInvocationCarriesTheDefaultRetryPolicy() throws Exception {
+    Workflow definition = WorkflowReader.readWorkflowFromClasspath("openapi.yaml");
+    WorkflowTaskOptions defaultOptions = mock(WorkflowTaskOptions.class);
+    WorkflowSupport.init(
+        definition,
+        definition.getDocument().getName(),
+        "openapi-workflow",
+        "openapi-workflow@v1",
+        new JqEvaluator(mapper),
+        mapper,
+        null,
+        defaultOptions,
+        "pubsub");
+
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{\"sku\":\"abc\"}"));
+
+    Task<JsonNode> callTask = taskWithThenApply();
+    when(callTask.await()).thenReturn(mapper.readTree("{\"price\":9.99}"));
+    when(ctx.callActivity(
+            eq(CallServiceActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenReturn(callTask);
+
+    workflow.execute(ctx);
+
+    ArgumentCaptor<WorkflowTaskOptions> options =
+        ArgumentCaptor.forClass(WorkflowTaskOptions.class);
+    verify(ctx)
+        .callActivity(
+            eq(CallServiceActivity.class.getName()), any(), options.capture(), eq(JsonNode.class));
+    assertThat(options.getValue()).isSameAs(defaultOptions);
+  }
+
+  /**
+   * {@code call: a2a} gets no automatic activity-level retry by default (ADR 0004 Decision 8's
+   * now-resolved "default retry posture" sub-question): a fresh {@code messageId} on every retry
+   * attempt most likely makes a cooperative agent start a duplicate task, so a failure gets exactly
+   * one attempt and surfaces to the author's own {@code try}/{@code catch} instead of being
+   * silently re-dispatched.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void a2aCallActivityFailureIsNotRetriedByTheActivityLevelPolicy() throws Exception {
+    Workflow definition = WorkflowReader.readWorkflowFromClasspath("a2a.yaml");
+    WorkflowSupport.init(
+        definition,
+        definition.getDocument().getName(),
+        "a2a-workflow",
+        "a2a-workflow@v1",
+        new JqEvaluator(mapper),
+        mapper,
+        null,
+        mock(WorkflowTaskOptions.class),
+        "pubsub");
+
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{}"));
+    when(ctx.callActivity(
+            eq(CallServiceActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenThrow(
+            new io.dws.orchestrator.error.StepInvocationException(
+                "dispatch-agent", 502, "agent down", null));
+
+    assertThatThrownBy(() -> workflow.execute(ctx)).isInstanceOf(RuntimeException.class);
+
+    // Exactly one invocation: the interpreter itself never loops for retry (that is Dapr's own
+    // engine, driven off the WorkflowTaskOptions below); this asserts the fixed no-retry options
+    // it hands the activity so the runtime never schedules a second attempt for a2a.
+    verify(ctx, times(1))
+        .callActivity(
+            eq(CallServiceActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class));
+
+    ArgumentCaptor<WorkflowTaskOptions> options =
+        ArgumentCaptor.forClass(WorkflowTaskOptions.class);
+    verify(ctx)
+        .callActivity(
+            eq(CallServiceActivity.class.getName()), any(), options.capture(), eq(JsonNode.class));
+    assertThat(options.getValue()).isSameAs(WorkflowSupport.noRetryTaskOptions());
+    assertThat(options.getValue().getRetryPolicy().getMaxNumberOfAttempts()).isEqualTo(1);
+  }
+
+  /**
+   * Every {@link CallServiceActivity} dispatch must carry the workflow's own instance id (never
+   * null — {@code ctx.getInstanceId()} always returns one), and a top-level call (not nested inside
+   * a {@code for} loop) must carry a {@code null} iteration index — the "no header" fallback case
+   * {@code dws-call-a2a}'s {@code messageId} derivation documents for a non-looped call.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void callServiceInvocationCarriesWorkflowInstanceIdAndNullIterationIndexAtTopLevel()
+      throws Exception {
+    Workflow definition = WorkflowReader.readWorkflowFromClasspath("openapi.yaml");
+    WorkflowSupport.init(
+        definition,
+        definition.getDocument().getName(),
+        "openapi-workflow",
+        "openapi-workflow@v1",
+        new JqEvaluator(mapper),
+        mapper,
+        null,
+        mock(WorkflowTaskOptions.class),
+        "pubsub");
+
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{\"sku\":\"abc\"}"));
+
+    Task<JsonNode> callTask = taskWithThenApply();
+    when(callTask.await()).thenReturn(mapper.readTree("{\"price\":9.99}"));
+    when(ctx.callActivity(
+            eq(CallServiceActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenReturn(callTask);
+
+    workflow.execute(ctx);
+
+    ArgumentCaptor<Object> requests = ArgumentCaptor.forClass(Object.class);
+    verify(ctx)
+        .callActivity(
+            eq(CallServiceActivity.class.getName()),
+            requests.capture(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class));
+    CallRequest req = (CallRequest) requests.getValue();
+    assertThat(req.workflowInstanceId()).isEqualTo("inst-1");
+    assertThat(req.iterationIndex()).isNull();
+  }
+
+  /**
+   * A call task nested inside a {@code for} loop (using the default {@code at} binding name) must
+   * carry the loop's own per-iteration index on each dispatch.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void callServiceInvocationCarriesTheIterationIndexWhenNestedInsideFor() throws Exception {
+    seedInline(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: for-openapi-workflow
+          version: '1.0.0'
+        do:
+          - loop:
+              for:
+                each: item
+                in: .items
+              do:
+                - lookupPrice:
+                    call: openapi
+                    with:
+                      document:
+                        endpoint: http://catalog-service/openapi.json
+                      operationId: getPrice
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.readTree("{\"items\":[\"a\",\"b\"]}"));
+
+    Task<JsonNode> callTask = taskWithThenApply();
+    when(callTask.await())
+        .thenReturn(mapper.readTree("{\"price\":1}"), mapper.readTree("{\"price\":2}"));
+    when(ctx.callActivity(
+            eq(CallServiceActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenReturn(callTask);
+
+    workflow.execute(ctx);
+
+    ArgumentCaptor<Object> requests = ArgumentCaptor.forClass(Object.class);
+    verify(ctx, times(2))
+        .callActivity(
+            eq(CallServiceActivity.class.getName()),
+            requests.capture(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class));
+    List<CallRequest> reqs = requests.getAllValues().stream().map(CallRequest.class::cast).toList();
+    assertThat(reqs).extracting(CallRequest::iterationIndex).containsExactly("0", "1");
+    assertThat(reqs)
+        .extracting(CallRequest::workflowInstanceId)
+        .containsExactly("inst-1", "inst-1");
+  }
+
+  /**
+   * Two nested {@code for} loops, both using the default {@code at} binding name ({@code "index"}),
+   * must each produce a distinct dot-joined {@link DispatchContext#iterationIndexEncoded} for every
+   * (outer, inner) combination. This is the HIGH-3 regression case: the earlier mechanism looked
+   * the iteration index up by the fixed jq variable name {@code "index"} in the merged scope
+   * variables, so the inner loop's own binding under that same name shadowed the outer loop's —
+   * losing the outer position entirely and colliding across outer iterations. Threading {@link
+   * DispatchContext#withIteration} explicitly at each nesting level, independent of any jq variable
+   * name, makes every one of the four combinations distinct.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void nestedForLoopsWithDefaultAtNamesProduceDistinctIterationIndicesPerCombination()
+      throws Exception {
+    seedInline(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: for-openapi-workflow
+          version: '1.0.0'
+        do:
+          - outerLoop:
+              for:
+                each: outerItem
+                in: '[1, 2]'
+              do:
+                - innerLoop:
+                    for:
+                      each: innerItem
+                      in: '[1, 2]'
+                    do:
+                      - lookupPrice:
+                          call: openapi
+                          with:
+                            document:
+                              endpoint: http://catalog-service/openapi.json
+                            operationId: getPrice
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.createObjectNode());
+
+    Task<JsonNode> callTask = taskWithThenApply();
+    when(callTask.await()).thenReturn(mapper.readTree("{\"price\":1}"));
+    when(ctx.callActivity(
+            eq(CallServiceActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenReturn(callTask);
+
+    workflow.execute(ctx);
+
+    ArgumentCaptor<Object> requests = ArgumentCaptor.forClass(Object.class);
+    verify(ctx, times(4))
+        .callActivity(
+            eq(CallServiceActivity.class.getName()),
+            requests.capture(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class));
+    List<CallRequest> reqs = requests.getAllValues().stream().map(CallRequest.class::cast).toList();
+    assertThat(reqs)
+        .extracting(CallRequest::iterationIndex)
+        .containsExactly("0.0", "0.1", "1.0", "1.1");
+  }
+
+  /**
+   * An inner {@code for} loop that declares a custom {@code at} binding name, nested inside an
+   * outer loop that uses the default {@code at} name ({@code "index"}), must still produce a
+   * distinct iteration index for every inner iteration. This is the other half of the HIGH-3
+   * regression case: because the inner loop never rebinds the name {@code "index"}, the earlier
+   * fixed-name lookup would have kept returning the outer loop's binding unchanged across every
+   * inner iteration, collapsing all inner iterations under one outer iteration onto the same value.
+   */
+  @Test
+  @SuppressWarnings("unchecked")
+  void innerLoopWithCustomAtNameStillProducesDistinctIterationIndices() throws Exception {
+    seedInline(
+        """
+        document:
+          dsl: 1.0.0
+          namespace: examples
+          name: for-openapi-workflow
+          version: '1.0.0'
+        do:
+          - outerLoop:
+              for:
+                each: outerItem
+                in: '[1, 2]'
+              do:
+                - innerLoop:
+                    for:
+                      each: innerItem
+                      at: customIndex
+                      in: '[1, 2]'
+                    do:
+                      - lookupPrice:
+                          call: openapi
+                          with:
+                            document:
+                              endpoint: http://catalog-service/openapi.json
+                            operationId: getPrice
+        """);
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    when(ctx.getInput(JsonNode.class)).thenReturn(mapper.createObjectNode());
+
+    Task<JsonNode> callTask = taskWithThenApply();
+    when(callTask.await()).thenReturn(mapper.readTree("{\"price\":1}"));
+    when(ctx.callActivity(
+            eq(CallServiceActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenReturn(callTask);
+
+    workflow.execute(ctx);
+
+    ArgumentCaptor<Object> requests = ArgumentCaptor.forClass(Object.class);
+    verify(ctx, times(4))
+        .callActivity(
+            eq(CallServiceActivity.class.getName()),
+            requests.capture(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class));
+    List<CallRequest> reqs = requests.getAllValues().stream().map(CallRequest.class::cast).toList();
+    assertThat(reqs)
+        .extracting(CallRequest::iterationIndex)
+        .containsExactly("0.0", "0.1", "1.0", "1.1");
+  }
+
+  /**
    * Seeds {@link WorkflowSupport} with the {@code dataflow.yaml} fixture and stubs both data-flow
    * phases so the real pipeline logic runs, exactly as {@code stubContext} does for switch/set.
    */

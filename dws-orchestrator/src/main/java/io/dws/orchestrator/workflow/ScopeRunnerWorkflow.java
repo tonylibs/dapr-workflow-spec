@@ -52,7 +52,8 @@ public class ScopeRunnerWorkflow implements Workflow {
                 input.variables(),
                 input.depth(),
                 events,
-                mapper);
+                mapper,
+                input.dispatchContext());
     ctx.complete(result);
   }
 

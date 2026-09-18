@@ -1,0 +1,42 @@
+document:
+  dsl: 1.0.0
+  namespace: examples
+  name: try-order-workflow
+  version: '1.0.0'
+use:
+  retries:
+    # Referenced by name from guarded's catch, proving the author's declared retry count still
+    # applies to a call: a2a body task, unaffected by the activity-level no-default-retry posture.
+    thrice:
+      delay:
+        seconds: 2
+      backoff:
+        exponential: {}
+      limit:
+        attempt:
+          count: 3
+do:
+  - guarded:
+      try:
+        - dispatchAgent:
+            call: a2a
+            with:
+              server: http://agent-service
+              method: message/send
+              parameters:
+                text: hello
+      catch:
+        errors:
+          with:
+            type: https://serverlessworkflow.io/spec/1.0.0/errors/communication
+            status: 503
+        as: failure
+        retry: thrice
+        do:
+          - recordFailure:
+              set:
+                recovered: '"yes"'
+                reason: '$failure.detail'
+  - finish:
+      set:
+        done: '"yes"'

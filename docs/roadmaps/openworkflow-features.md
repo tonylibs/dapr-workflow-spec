@@ -184,8 +184,10 @@ environment clears both. Phase 5.5 and Phase 6 are both free of it.
 Full rationale in [ADR 0004](../adr/0004-call-a2a-runner-design.md). Reading the actual
 specifications inverted §4d's assumption that A2A was the hardest slice: the OWS `a2a` call is a
 **thin JSON-RPC passthrough** (`method` + free-form `parameters`), with no document parsing, no
-payload schema validation, and — alone among the call kinds — **no Kubernetes resource to
-synthesize**. There is no runtime-managed task lifecycle either: OWS binds one RPC per invocation,
+payload schema validation, and — for the `with.agentCard` RPC target — **no Kubernetes resource to
+synthesize** (the `with.server` RPC target synthesizes the same oauth2 middleware triple as `call:
+http`/`call: openapi` when the policy is oauth2; see ADR 0004 Decision 5's amendment). There is no
+runtime-managed task lifecycle either: OWS binds one RPC per invocation,
 so polling, resumption after `input-required`, and escalation on `auth-required` are composed by the
 author from `switch`/`wait`/`then: <taskName>` that Phases 2–3 already shipped.
 
@@ -197,17 +199,23 @@ The decisions:
 | 2 | `message/send` + `tasks/get` only; `message/stream`/`tasks/resubscribe` deferred (SSE aggregation) and rejected at compile time |
 | 3 | Dialect normalized — the JSON-RPC **wire** enum is lowercase (`"working"`, `"input-required"`, `"auth-required"`, `"unknown"`); `TASK_STATE_*`/`ROLE_USER` are language-binding surface only |
 | 4 | Auth: the OWS policy supplies credentials, the agent card validates them — a card declares required schemes but never carries credentials |
-| 5 | No Dapr Component, HTTPEndpoint, or Configuration synthesized for `call: a2a` |
+| 5 | No Dapr Component, HTTPEndpoint, or Configuration synthesized for the `with.agentCard` RPC target; the `with.server` RPC target synthesizes the same oauth2 middleware triple as `call: http`/`call: openapi` under an oauth2 policy |
 | 6 | `history` stripped from output by default (secret echo + state bloat); `input-required`/`auth-required` returned as data, never as step failures |
 | 7 | The agent card is not integrity-pinned — it is a live discovery document, unlike a versioned API contract |
 
 This is the first image built under the "new function images are born plain-HTTP" corollary in
 [workflow-runtime-architecture-roadmap.md](workflow-runtime-architecture-roadmap.md).
 
-**Open, blocking implementation:** retry idempotency. OWS `try`/`retry` re-invokes the step, and a
-fresh `messageId` per attempt most likely makes the agent start a duplicate task. ADR 0004 lists
-three candidates and recommends a deterministic `messageId`; it must be settled before the runner's
-request path is written.
+**Resolved:** retry idempotency. OWS `try`/`retry` re-invokes the step, and a fresh `messageId` per
+attempt most likely makes the agent start a duplicate task. ADR 0004 Decision 8 settles this with a
+deterministic `messageId` (`uuid5` over instance/task/iteration) so a cooperative agent can
+recognise a retry, plus a no-default-retry activity policy in `dws-orchestrator`: `call: a2a` gets
+exactly one attempt unless the workflow author wraps it in an explicit `try`/`catch.retry`, which
+still re-executes the step at that separate, higher layer. `dws-orchestrator` now also sends the
+derivation's two inputs as outbound headers (`X-Dws-Workflow-Instance-Id` always,
+`X-Dws-Iteration-Index` when the call is nested in a `for` loop) on every `CallServiceActivity`
+dispatch, closing the gap `dws-call-a2a`'s own `CLAUDE.md` used to flag: the headers it reads and
+falls back safely without were previously never actually sent by the orchestrator.
 
 **Open, not blocking:** agent-call concurrency. A `for` over a large collection fans out to one
 agent invocation per item and Knative scales to meet it; agent calls are metered and rate-limited in

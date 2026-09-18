@@ -20,6 +20,7 @@ import io.dws.orchestrator.error.StepInvocationException;
 import io.dws.orchestrator.expr.JqEvaluator;
 import io.dws.orchestrator.workflow.activity.AdminEventActivity;
 import io.dws.orchestrator.workflow.activity.AdminEventRequest;
+import io.dws.orchestrator.workflow.activity.CallServiceActivity;
 import io.dws.orchestrator.workflow.activity.CatchDecisionActivity;
 import io.dws.orchestrator.workflow.activity.CatchDecisionRequest;
 import io.dws.orchestrator.workflow.activity.CatchPolicy;
@@ -175,6 +176,19 @@ class TryCatchInterpreterTest {
   }
 
   /**
+   * The {@link CallServiceActivity} service-invocation path (the one {@code call: a2a} takes)
+   * always fails with {@code status}.
+   */
+  private void stubServiceCallAlwaysFailing(WorkflowContext ctx, String appId, int status) {
+    when(ctx.callActivity(
+            eq(CallServiceActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class)))
+        .thenThrow(new StepInvocationException(appId, status, "agent down", null));
+  }
+
+  /**
    * A mock durable task that also honours {@code thenApply}, matching Dapr's real task API — the
    * interpreter maps continuations rather than awaiting and then constructing.
    */
@@ -228,6 +242,36 @@ class TryCatchInterpreterTest {
     verify(ctx, times(3))
         .callActivity(
             eq(StepActivity.NAME), any(), any(WorkflowTaskOptions.class), eq(JsonNode.class));
+
+    JsonNode output = completionOutput(ctx);
+    assertThat(output.get("recovered").textValue()).isEqualTo("yes");
+    assertThat(output.get("done").textValue()).isEqualTo("yes");
+  }
+
+  /**
+   * The author's declared {@code catch.retry} count still applies to a {@code call: a2a} body task,
+   * unaffected by {@code invokeStepService}'s new no-default-retry posture for that call kind:
+   * {@code dispatchTry} is a separate, higher-layer mechanism that reruns the whole try list itself
+   * (a manual loop with its own timer/backoff) rather than relying on the activity's own {@code
+   * WorkflowTaskOptions} retry policy, so the two are independent by construction.
+   */
+  @Test
+  void a2aCallInsideTryStillRetriesPerTheAuthorsDeclaredRetryCount() throws Exception {
+    seedClasspath("try-a2a.yaml");
+    WorkflowContext ctx = mock(WorkflowContext.class);
+    stubContext(ctx);
+    stubServiceCallAlwaysFailing(ctx, "dispatch-agent", 503);
+
+    workflow.execute(ctx);
+
+    // Same shape as try-order.yaml: three body executions allowed, two waits between them.
+    verify(ctx, times(2)).createTimer(any(Duration.class));
+    verify(ctx, times(3))
+        .callActivity(
+            eq(CallServiceActivity.class.getName()),
+            any(),
+            any(WorkflowTaskOptions.class),
+            eq(JsonNode.class));
 
     JsonNode output = completionOutput(ctx);
     assertThat(output.get("recovered").textValue()).isEqualTo("yes");

@@ -39,6 +39,7 @@ class StackSynthesizerTest {
           "sw-call-openapi:1.0",
           "sw-call-grpc:1.0",
           "sw-call-asyncapi:1.0",
+          "sw-call-a2a:1.0",
           "sw-run-shell:1.0",
           "sw-run-script-js:1.0",
           "sw-run-script-python:1.0",
@@ -267,6 +268,35 @@ class StackSynthesizerTest {
   }
 
   @Test
+  @DisplayName(
+      "a2a 'with.server' oauth2 synthesizes the same scoped resources and app-id match as http")
+  void a2aServerOauth2SharesScopedResources() {
+    DeploymentPlan plan = compiler.compile(a2aServerOAuthDefinition());
+    OAuthEndpoint descriptor = plan.oauthEndpoints().getFirst();
+
+    List<GenericKubernetesResource> endpoints = synthesizer.oauthHttpEndpoints(plan, NAMESPACE);
+    List<GenericKubernetesResource> middleware =
+        synthesizer.oauthMiddlewareComponents(plan, NAMESPACE);
+    List<GenericKubernetesResource> configurations =
+        synthesizer.oauthConfigurations(plan, NAMESPACE);
+
+    assertThat(endpoints).hasSize(1);
+    assertThat(middleware).hasSize(1);
+    assertThat(configurations).hasSize(1);
+    assertThat(descriptor.appIds()).containsExactly("dispatch-agent");
+    assertThat(endpoints.getFirst().getAdditionalProperties())
+        .containsEntry("scopes", List.of("dispatch-agent"));
+    assertThat(spec(endpoints.getFirst())).containsEntry("baseUrl", "https://agent.example.test");
+
+    assertThat(synthesizer.knativeServices(plan, NAMESPACE))
+        .allSatisfy(
+            service ->
+                assertThat(templateAnnotations(service))
+                    .containsEntry("dapr.io/config", descriptor.name())
+                    .containsEntry("dapr.io/app-id", "dispatch-agent"));
+  }
+
+  @Test
   @DisplayName("Dapr 1.18.1 OAuth middleware uses comma-delimited scopes and a narrow path filter")
   void oauthMiddlewareUsesSecretMetadataAndNarrowPathFilter() {
     DeploymentPlan plan = compiler.compile(sharedOAuthDefinition());
@@ -449,6 +479,33 @@ class StackSynthesizerTest {
                   uri: https://api.example.test/v1/accounts
                   authentication:
                     use: accounts
+        """;
+  }
+
+  private static String a2aServerOAuthDefinition() {
+    return """
+        document:
+          dsl: '1.0.0'
+          namespace: default
+          name: a2a-oauth-resource-sharing
+          version: '1.0.0'
+        use:
+          secrets: [oauthclientid, oauthclientsecret]
+        do:
+          - dispatchAgent:
+              call: a2a
+              with:
+                server:
+                  uri: https://agent.example.test/rpc
+                  authentication:
+                    oauth2:
+                      authority: https://identity.example.test
+                      grant: client_credentials
+                      client:
+                        id: ${ $secrets.oauthclientid }
+                        secret: ${ $secrets.oauthclientsecret }
+                      scopes: [agent.invoke]
+                method: message/send
         """;
   }
 

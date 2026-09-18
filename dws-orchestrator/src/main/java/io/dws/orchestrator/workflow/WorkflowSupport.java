@@ -6,6 +6,7 @@ import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
 import io.dapr.client.DaprClient;
 import io.dapr.workflows.WorkflowTaskOptions;
+import io.dapr.workflows.WorkflowTaskRetryPolicy;
 import io.dws.orchestrator.expr.JqEvaluator;
 import io.serverlessworkflow.api.types.DoTimeout;
 import io.serverlessworkflow.api.types.DurationInline;
@@ -37,6 +38,23 @@ public class WorkflowSupport {
    */
   private static final SchemaRegistry SCHEMA_REGISTRY =
       SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12);
+
+  /**
+   * Fixed no-retry activity options for {@code call: a2a} (ADR 0004 Decision 8's "default retry
+   * posture" sub-question). Unlike {@link #defaultTaskOptions()}, this is not sourced from {@code
+   * dws.retry.*} configuration and needs no {@link #init} parameter: the deterministic {@code
+   * messageId} derivation (Decision 8) means a retry of the same logical call now carries the
+   * <em>same</em> {@code messageId} it had before, not a fresh one — but dedupe on that repeated
+   * value is only as good as the agent's own cooperation, which A2A does not require of every
+   * agent. An uncooperative agent that starts a second task anyway would do so silently, so a
+   * single attempt is the safe default for every a2a call regardless of workflow author or
+   * deployment — a failure surfaces to the author's own {@code try}/{@code catch} instead of being
+   * silently re-dispatched into an agent that might not dedupe it. A single attempt needs no real
+   * backoff, so the interval/coefficient values below are inert placeholders, never actually used.
+   */
+  private static final WorkflowTaskOptions NO_RETRY_TASK_OPTIONS =
+      new WorkflowTaskOptions(
+          new WorkflowTaskRetryPolicy(1, Duration.ofSeconds(1), 1.0, Duration.ofSeconds(1), null));
 
   private static volatile Workflow definition;
   private static volatile String workflowName;
@@ -131,6 +149,11 @@ public class WorkflowSupport {
 
   public static WorkflowTaskOptions defaultTaskOptions() {
     return require(defaultTaskOptions, "defaultTaskOptions");
+  }
+
+  /** The fixed, non-configurable no-retry options {@code call: a2a} dispatches with. */
+  public static WorkflowTaskOptions noRetryTaskOptions() {
+    return NO_RETRY_TASK_OPTIONS;
   }
 
   public static String defaultPubsub() {

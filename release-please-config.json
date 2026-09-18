@@ -61,6 +61,12 @@
       "changelog-path": "CHANGELOG.md",
       "version-file": "version.txt",
       "skip-github-release": true
+    },
+    "dws-call-a2a": {
+      "release-type": "python",
+      "component": "dws-call-a2a",
+      "changelog-path": "CHANGELOG.md",
+      "skip-github-release": true
     }
   }
 }
