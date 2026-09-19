@@ -747,3 +747,44 @@ none of which exist in the environment this work was done in. Phase 1 is therefo
 not ✅ — the chart wiring is complete and CI-guarded, and the remaining step is running an
 enabled release against a real receiver and recording what arrives. The Dapr Workflow replay
 question (0-A(c), deferred to observation) is still waiting on that same run.
+
+### 2026-09-19 (review) — Dapr's `endpointAddress` is not an OTel SDK endpoint
+
+Caught in review of the Phase 1 implementation, before merge. The first cut set
+`spec.tracing.otel.endpointAddress` to `observability.otlp.endpoint` verbatim — which is what
+this roadmap's own Phase 1 sketch said to do, and what the change's delta spec encoded.
+
+That is wrong, and wrong quietly. Dapr assigns the field straight to
+`otlptracehttp.WithEndpoint` / `otlptracegrpc.WithEndpoint` (`dapr/dapr` `pkg/runtime/runtime.go`,
+verified against v1.18.1), and both OTel Go exporters expect a bare `host:port`. That is exactly
+why Dapr carries a separate `isSecure` boolean while its Zipkin exporter's `endpointAddress` does
+take a full URL. With the chart's own default the sidecar would have built
+`http://http://dws-otel-collector:4318/v1/traces` and exported nothing. The Dapr `Configuration`
+CRD types the field as a plain `string` with no format, so neither the schema, `helm lint`, nor a
+server-side dry run rejects it.
+
+The failure mode is the worst shape available: application-agent spans arrive, Dapr spans do not,
+and the missing hop looks like a collector or network problem rather than a values bug. It would
+have been found — if at all — during Phase 1's live verification, by which point the
+controller → Dapr → admin → Postgres trace would simply have been broken in the middle.
+
+Resolved by `dws.observability.daprOtelEndpoint`, which strips the scheme on the way into Dapr
+only. `observability.otlp.endpoint` stays scheme-qualified because the `Instrumentation`
+resource's `spec.exporter.endpoint` becomes `OTEL_EXPORTER_OTLP_ENDPOINT`, which requires one.
+The render test now asserts both shapes and fails on a scheme appearing in `endpointAddress`.
+
+**Two related gaps closed in the same pass.** `dws.observability.daprOtelProtocol` was the only
+rejecter of an unknown protocol, and it is reached only through the component Configuration
+templates — so `controller.enabled=false admin.enabled=false` rendered `bogus` straight into
+`OTEL_EXPORTER_OTLP_PROTOCOL`. Nothing at all rejected an empty endpoint, which makes Dapr skip
+tracing (it guards on a non-empty address) and the agents fall back to their own localhost
+default. Both now live in `dws.observability.validate`, called unconditionally from
+`preflight.yaml`. Separately, `OTEL_EXPORTER_OTLP_HEADERS` has no escape for its comma separator,
+so a comma in a header name or value now fails render rather than silently splitting into extra
+headers.
+
+**Lesson for Phase 2a and 2b.** Dapr's telemetry vocabulary overlaps the OTel SDK's without
+matching it — `endpointAddress` vs `endpoint`, `http` vs `http/protobuf`, an explicit `isSecure`
+instead of a scheme. Every later phase that hands the same operator-facing value to both a Dapr
+`Configuration` and an OTel agent needs the same translation layer, and it belongs in one helper
+per concept, not at each call site.

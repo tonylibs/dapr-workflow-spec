@@ -180,7 +180,10 @@ the comma-separated `key=value` list `OTEL_EXPORTER_OTLP_HEADERS` expects.
 observability:
   enabled: true
   otlp:
-    endpoint: https://otlp.vendor.example/v1/traces
+    # A BASE endpoint, with a scheme and no signal path: the agents append /v1/traces,
+    # /v1/metrics and /v1/logs themselves. The chart strips the scheme on the way into Dapr,
+    # whose tracing.otel.endpointAddress wants a bare host:port and carries its own isSecure.
+    endpoint: https://otlp.vendor.example
     protocol: http/protobuf
     # (a) let the chart create the Secret
     headers:

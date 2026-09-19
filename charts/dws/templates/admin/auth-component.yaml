@@ -6,7 +6,7 @@
   The Component definition matches the controller's, but the paired Configurations do NOT:
   the admin Configuration references this Component from spec.httpPipeline.handlers (the
   sidecar's own Dapr HTTP API), whereas the controller uses spec.appHttpPipeline. That
-  divergence is deliberate — see auth-configuration.yaml's header and dws-auth.md
+  divergence is deliberate — see configuration.yaml's header and dws-auth.md
   "Decision (2026-09-13)". The admin Pod's dapr.io/config annotation names that Configuration
   — the three files must stay in sync.
 */}}

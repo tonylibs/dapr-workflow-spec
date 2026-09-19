@@ -61,19 +61,31 @@ The chart SHALL pass application-agent OTLP headers through `OTEL_EXPORTER_OTLP_
 
 ### Requirement: Dapr tracing shares the component Configuration and preserves one sampling root
 
-For each enabled controller or admin component, `observability.enabled=true` SHALL add `spec.tracing` to that component's single Dapr `Configuration`. The tracing block SHALL set `samplingRate: "1"` literally, set `otel.endpointAddress` from `observability.otlp.endpoint`, derive `otel.isSecure` from the endpoint's HTTPS scheme, and map `observability.otlp.protocol` to Dapr's `http` or `grpc` protocol. The tunable `observability.traces.samplingRate` SHALL NOT change the Dapr sampling value. The chart MUST NOT create a standalone tracing `Configuration` or more than one `dapr.io/config` annotation on a pod. Owning component: `charts/dws`.
+For each enabled controller or admin component, `observability.enabled=true` SHALL add `spec.tracing` to that component's single Dapr `Configuration`. The tracing block SHALL set `samplingRate: "1"` literally, set `otel.endpointAddress` to `observability.otlp.endpoint` **with its `http://` or `https://` scheme removed**, derive `otel.isSecure` from that same removed scheme, and map `observability.otlp.protocol` to Dapr's `http` or `grpc` protocol. The tunable `observability.traces.samplingRate` SHALL NOT change the Dapr sampling value. The chart MUST NOT create a standalone tracing `Configuration` or more than one `dapr.io/config` annotation on a pod. Owning component: `charts/dws`.
+
+Dapr's `otel.endpointAddress` is not the same shape as the OTel SDK's endpoint value. Dapr passes the field verbatim to `otlptracehttp.WithEndpoint` / `otlptracegrpc.WithEndpoint`, both of which expect a bare `host:port` — which is why Dapr carries a separate `isSecure` boolean at all. A scheme left in place makes daprd build `http://http://collector:4318/v1/traces` and every sidecar export fails at runtime, with nothing in the Dapr `Configuration` CRD schema (a plain `type: string`) or `helm lint` to catch it. The `Instrumentation` resource's `spec.exporter.endpoint` SHALL keep the scheme, because it becomes `OTEL_EXPORTER_OTLP_ENDPOINT`, which requires one. The two shapes SHALL NOT be conflated.
+
+`charts/dws` SHALL additionally reject, at render time and independently of which components are enabled, an empty or scheme-less `observability.otlp.endpoint` and an `observability.otlp.protocol` outside `http/protobuf` and `grpc`. Both otherwise fail silently: Dapr skips tracing when the address is empty, and the application agents fall back to their own localhost default.
 
 #### Scenario: HTTP OTLP values render in both component configurations
 
 - **WHEN** observability is enabled with the default `http/protobuf` endpoint and auth disabled
 - **THEN** exactly one controller and one admin `Configuration` render
 - **AND** each has `spec.tracing.samplingRate: "1"`, Dapr protocol `http`, and `isSecure: false`
+- **AND** each `otel.endpointAddress` is the bare `host:port` with no scheme
 - **AND** neither configuration contains an auth pipeline
 
 #### Scenario: HTTPS gRPC values map to Dapr transport fields
 
 - **WHEN** observability is enabled with an HTTPS OTLP endpoint and protocol `grpc`
-- **THEN** each rendered tracing block uses that endpoint, `isSecure: true`, and protocol `grpc`
+- **THEN** each rendered tracing block has `isSecure: true`, protocol `grpc`, and that endpoint's `host:port` with the `https://` scheme removed
+- **AND** the `Instrumentation` resource's exporter endpoint keeps the full `https://` URL
+
+#### Scenario: Invalid OTLP connection values are rejected at render time
+
+- **WHEN** observability is enabled with an empty, scheme-less, or otherwise malformed `observability.otlp.endpoint`, or a protocol outside `http/protobuf` and `grpc`
+- **THEN** rendering fails with a message naming the offending value
+- **AND** it fails even when neither the controller nor the admin component is enabled
 
 #### Scenario: Custom agent sampling does not alter Dapr sampling
 

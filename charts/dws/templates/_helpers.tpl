@@ -555,7 +555,17 @@ release on every upgrade.
 {{- define "dws.observability.otlpHeaderList" -}}
 {{- $pairs := list -}}
 {{- range $key := (keys .Values.observability.otlp.headers | sortAlpha) -}}
-{{- $pairs = append $pairs (printf "%s=%s" $key (get $.Values.observability.otlp.headers $key | toString)) -}}
+{{- $value := get $.Values.observability.otlp.headers $key | toString -}}
+{{- /*
+  The list separator is a bare comma with no escaping mechanism in the OTLP environment-variable
+  format, so a comma anywhere in a name or value silently splits into extra bogus headers rather
+  than failing. Reject it here instead. Use observability.otlp.existingSecret for any header the
+  format cannot represent.
+*/ -}}
+{{- if or (contains "," $key) (contains "," $value) -}}
+{{- fail (printf "observability.otlp.headers: header %q contains a comma, which OTEL_EXPORTER_OTLP_HEADERS uses as its list separator and cannot escape. Supply this header through observability.otlp.existingSecret instead." $key) -}}
+{{- end -}}
+{{- $pairs = append $pairs (printf "%s=%s" $key $value) -}}
 {{- end -}}
 {{- join "," $pairs -}}
 {{- end }}
@@ -592,6 +602,22 @@ false
 {{- end }}
 
 {{/*
+Dapr's `tracing.otel.endpointAddress` is NOT the same shape as the OTel SDK's endpoint value.
+Dapr passes the field verbatim to otlptracehttp.WithEndpoint / otlptracegrpc.WithEndpoint
+(dapr/dapr pkg/runtime/runtime.go), and both expect a bare `host:port` — which is exactly why
+Dapr carries a separate `isSecure` boolean instead of reading the scheme. Leaving the scheme on
+produces a URL like `http://http://collector:4318/v1/traces` and every sidecar export fails at
+runtime, with nothing in the CRD schema (plain `type: string`) or `helm lint` to catch it.
+
+observability.otlp.endpoint stays scheme-qualified because the Instrumentation resource's
+`spec.exporter.endpoint` becomes OTEL_EXPORTER_OTLP_ENDPOINT, which REQUIRES the scheme. Strip
+it only on the way into Dapr. The scheme is not lost — dws.observability.otlpIsSecure reads it.
+*/}}
+{{- define "dws.observability.daprOtelEndpoint" -}}
+{{- .Values.observability.otlp.endpoint | default "" | trimPrefix "https://" | trimPrefix "http://" | trimSuffix "/" -}}
+{{- end }}
+
+{{/*
 Per-component Dapr tracing block, shared by templates/controller/configuration.yaml and
 templates/admin/configuration.yaml so the two cannot drift. Emits the `tracing:` key itself at
 the caller's indentation; the caller gates it on .Values.observability.enabled.
@@ -608,7 +634,7 @@ tracing:
   # root; daprd must honour the parent decision, not make a second one.
   samplingRate: "1"
   otel:
-    endpointAddress: {{ .Values.observability.otlp.endpoint | quote }}
+    endpointAddress: {{ include "dws.observability.daprOtelEndpoint" . | quote }}
     isSecure: {{ include "dws.observability.otlpIsSecure" . }}
     protocol: {{ include "dws.observability.daprOtelProtocol" . | quote }}
 {{- end }}

@@ -86,8 +86,17 @@ fi
 
 [ -f "$baseline" ] || fail "missing baseline fixture $baseline (regenerate with --update-baseline)"
 
-if ! diff -u "$baseline" <(printf '%s\n' "$default_render"); then
-  fail "the DEFAULT render changed. observability.enabled=false must stay byte-identical to the pre-observability chart. If the diff above is a deliberate chart change (including a Chart.yaml version/appVersion bump, which lands in every resource's labels), review it and re-record the baseline with: bash $chart_dir/tests/observability-render-test.sh $chart_dir --update-baseline"
+# Mask the two version-bearing label lines on BOTH sides. They appear on every resource, so an
+# ordinary Chart.yaml version/appVersion bump would otherwise red-fail this across ~150 lines and
+# force a regeneration — which would silently absorb any unrelated default-render change landing
+# in the same commit. That is the exact regression this fixture exists to catch. Masking keeps a
+# version bump a no-op while a real topology change still fails.
+mask_versions() {
+  sed -E 's#^( *helm\.sh/chart: dws-).*#\1<CHART_VERSION>#; s#^( *app\.kubernetes\.io/version: ).*#\1<APP_VERSION>#'
+}
+
+if ! diff -u <(mask_versions < "$baseline") <(printf '%s\n' "$default_render" | mask_versions); then
+  fail "the DEFAULT render changed. observability.enabled=false must stay byte-identical to the pre-observability chart (Chart.yaml version/appVersion bumps are already masked out of this comparison, so the diff above is real). If it is a deliberate chart change, review it and re-record the baseline with: bash $chart_dir/tests/observability-render-test.sh $chart_dir --update-baseline"
 fi
 
 assert_absent '^kind: Instrumentation$' "$default_render" \
@@ -135,11 +144,25 @@ assert_absent 'middleware\.http\.bearer' "$obs_only" \
 both="$(render "${base_args[@]}" "${auth_args[@]}" "${obs_args[@]}" "${config_only[@]}")"
 assert_count '^kind: Configuration$' "$both" 2 \
   "auth+observability must still render exactly one Configuration per component — a second one cannot be referenced, dapr.io/config is single-valued"
-# The admin Configuration must never grow an appHttpPipeline: that would re-gate daprd's own
-# /dapr/subscribe discovery and break dws.events delivery (auth roadmap 2026-09-13 decision).
-assert_count '^  appHttpPipeline:$' "$both" 1 "auth+observability: exactly the controller must use spec.appHttpPipeline"
-assert_count '^  httpPipeline:$' "$both" 1 "auth+observability: exactly the admin must use spec.httpPipeline"
 assert_count '^  tracing:$' "$both" 2 "auth+observability: both components need spec.tracing"
+
+# Render the two documents SEPARATELY for placement. An aggregate count over both documents
+# cannot tell which one carries which pipeline, so a controller/admin swap would keep both
+# counts at 1 and pass. The admin Configuration must never grow an appHttpPipeline: that would
+# re-gate daprd's own /dapr/subscribe discovery and break dws.events delivery (auth roadmap
+# 2026-09-13 decision).
+for cell in "auth_only:${auth_args[*]}" "both:${auth_args[*]} ${obs_args[*]}"; do
+  cell_name="${cell%%:*}"
+  read -r -a cell_flags <<<"${cell#*:}"
+  ctrl="$(render "${base_args[@]}" "${cell_flags[@]}" -s templates/controller/configuration.yaml)"
+  adm="$(render "${base_args[@]}" "${cell_flags[@]}" -s templates/admin/configuration.yaml)"
+  assert_count '^  appHttpPipeline:$' "$ctrl" 1 "$cell_name: the controller Configuration must use spec.appHttpPipeline"
+  assert_absent '^  httpPipeline:$' "$ctrl" \
+    "$cell_name: the controller Configuration moved to spec.httpPipeline — Dapr service invocation arrives over gRPC and never traverses it, so the auth gate would be silently bypassed"
+  assert_count '^  httpPipeline:$' "$adm" 1 "$cell_name: the admin Configuration must use spec.httpPipeline"
+  assert_absent 'appHttpPipeline' "$adm" \
+    "$cell_name: the admin Configuration gained spec.appHttpPipeline — that re-gates /dapr/subscribe and breaks dws.events delivery"
+done
 
 # =============================================================================================
 # 3. Dapr sampling is pinned to "1" regardless of the agent's tunable rate (ADR 0005 Decision 2)
@@ -160,13 +183,31 @@ assert_count '^    argument: "0.25"$' "$custom_rate" 1 \
 assert_count '^      protocol: "http"$' "$obs_only" 2 "http/protobuf must map to Dapr protocol http"
 assert_count '^      isSecure: false$' "$obs_only" 2 "a plain http:// endpoint must render isSecure false"
 
+# Dapr passes endpointAddress verbatim to otlptracehttp/otlptracegrpc WithEndpoint, which want a
+# bare host:port — hence Dapr's separate isSecure boolean. A scheme left on produces
+# "http://http://host:4318/v1/traces" and every sidecar export fails at runtime, with nothing in
+# the CRD schema (plain string) or helm lint to catch it.
+assert_count '^      endpointAddress: "dws-otel-collector:4318"$' "$obs_only" 2 \
+  "the Dapr tracing endpointAddress must be a bare host:port with the scheme stripped"
+assert_absent 'endpointAddress: "https?://' "$obs_only" \
+  "a scheme leaked into Dapr's endpointAddress — daprd would build http://http://... and export nothing"
+
 secure_grpc="$(render "${base_args[@]}" "${obs_args[@]}" \
   --set observability.otlp.endpoint=https://otlp.example.test:4317 \
-  --set observability.otlp.protocol=grpc "${config_only[@]}")"
+  --set observability.otlp.protocol=grpc "${config_only[@]}" \
+  -s templates/observability/instrumentation.yaml)"
 assert_count '^      protocol: "grpc"$' "$secure_grpc" 2 "grpc must stay grpc in the Dapr tracing block"
 assert_count '^      isSecure: true$' "$secure_grpc" 2 "an https:// endpoint must render isSecure true"
-assert_count '^      endpointAddress: "https://otlp.example.test:4317"$' "$secure_grpc" 2 \
-  "the configured OTLP endpoint did not reach the Dapr tracing block"
+assert_count '^      endpointAddress: "otlp.example.test:4317"$' "$secure_grpc" 2 \
+  "the configured OTLP endpoint did not reach the Dapr tracing block as a bare host:port"
+# The Instrumentation keeps the SCHEME-QUALIFIED endpoint: it becomes the agents'
+# OTEL_EXPORTER_OTLP_ENDPOINT, which requires one. The two shapes must not be conflated.
+assert_count '^    endpoint: "https://otlp.example.test:4317"$' "$secure_grpc" 1 \
+  "the Instrumentation exporter endpoint must keep its scheme"
+# Renders the Instrumentation too, so this catches a hardcoded protocol or one wired to the
+# Dapr-mapped value ("http") instead of the public one.
+assert_count '^      value: "grpc"$' "$secure_grpc" 1 \
+  "OTEL_EXPORTER_OTLP_PROTOCOL must follow observability.otlp.protocol, not a literal or the Dapr-mapped value"
 
 # =============================================================================================
 # 5. Pod annotations: one dapr.io/config matching the rendered Configuration, targeted injection
@@ -177,6 +218,15 @@ pods_default="$(render "${base_args[@]}" "${deployments_only[@]}")"
 assert_absent 'dapr\.io/config' "$pods_default" "dapr.io/config rendered with auth and observability both off"
 assert_absent 'instrumentation\.opentelemetry\.io/' "$pods_default" \
   "an OpenTelemetry injection annotation rendered with observability disabled"
+# base_args sets dapr.enabled=false, so with auth and observability also off NO feature needs a
+# sidecar: the admin pod must carry no Dapr contract at all. The controller's three baseline
+# annotations are unconditional by design and must survive regardless.
+assert_absent 'DAPR_PUBSUB_NAME' "$pods_default" \
+  "admin received Dapr pub/sub environment variables with dapr, auth and observability all disabled"
+assert_count '^        dapr\.io/app-port: "8080"$' "$pods_default" 1 \
+  "the controller's unconditional dapr.io/app-port annotation disappeared"
+assert_absent '^        dapr\.io/app-port: "3000"$' "$pods_default" \
+  "admin carries a Dapr sidecar contract with dapr, auth and observability all disabled"
 
 pods_auth="$(render "${base_args[@]}" "${auth_args[@]}" "${deployments_only[@]}")"
 assert_count '^        dapr\.io/config: "dws-controller-config"$' "$pods_auth" 1 "auth-only controller dapr.io/config"
@@ -201,7 +251,25 @@ for pods in "$(render "${base_args[@]}" "${obs_args[@]}" "${deployments_only[@]}
   assert_count '^        instrumentation\.opentelemetry\.io/container-names: "admin"$' "$pods" 1 \
     "admin injection is not targeted at the admin container"
   assert_absent 'inject-dotnet' "$pods" "Phase 1 must not annotate any pod for .NET injection"
+  # Enabling observability widened the admin's annotation and environment gates; it must not
+  # have disturbed the app-port contract on either pod. There is one app port per component and
+  # port 3001 was retired.
+  assert_count '^        dapr\.io/app-port: "8080"$' "$pods" 1 "controller must keep dapr.io/app-port 8080"
+  assert_count '^        dapr\.io/app-port: "3000"$' "$pods" 1 "admin must keep dapr.io/app-port 3000"
+  assert_absent '3001' "$pods" "port 3001 reappeared on the admin pod"
+  assert_absent 'DAPR_APP_PORT' "$pods" "DAPR_APP_PORT must not be set on the admin container"
+  assert_count '^            - name: DAPR_PUBSUB_NAME$' "$pods" 1 \
+    "the admin Dapr environment gate did not widen to observability"
 done
+
+# The admin's sidecar-listen-addresses widening is an AUTH-topology concern (only auth puts a
+# Service in front of port 3500). Observability alone must not widen that bind.
+obs_only_pods="$(render "${base_args[@]}" "${obs_args[@]}" "${deployments_only[@]}")"
+assert_absent 'sidecar-listen-addresses' "$obs_only_pods" \
+  "observability alone widened the admin sidecar's bind address — only the auth topology exposes port 3500"
+assert_count '^        dapr\.io/sidecar-listen-addresses: "\[::\],0\.0\.0\.0"$' \
+  "$(render "${base_args[@]}" "${auth_args[@]}" "${obs_args[@]}" "${deployments_only[@]}")" 1 \
+  "auth+observability lost the admin sidecar listen-address widening"
 
 # =============================================================================================
 # 6. Instrumentation resource shape and the OTLP header Secret contract
@@ -294,5 +362,28 @@ helm template dws "$chart_dir" \
   --set admin.database.url=postgres://dws:dws@postgres.example.test:5432/dws \
   --set observability.enabled=true --set observability.operator.required=false > /dev/null \
   || fail "observability.operator.required=false did not bypass the preflight"
+
+# =============================================================================================
+# 8. Value-shape validation runs even when no component would reach the helpers
+# =============================================================================================
+# These checks live in preflight.yaml rather than in the Configuration templates: with both
+# components off, nothing would otherwise reject an unknown protocol or an empty endpoint, and
+# both fail silently at runtime (Dapr skips tracing on an empty address; the agents fall back to
+# their own localhost default).
+assert_rejected() {
+  local message="$1"; shift
+  local out
+  out="$(render "${base_args[@]}" "${obs_args[@]}" "$@" 2>&1 || true)"
+  grep -q "$message" <<<"$out" || fail "expected render to fail with /$message/, got: $(head -c 300 <<<"$out")"
+}
+
+assert_rejected 'observability.otlp.protocol must be' \
+  --set controller.enabled=false --set admin.enabled=false --set observability.otlp.protocol=bogus
+assert_rejected 'requires a non-empty observability.otlp.endpoint' \
+  --set controller.enabled=false --set admin.enabled=false --set observability.otlp.endpoint=
+assert_rejected 'must start with http:// or https://' \
+  --set observability.otlp.endpoint=dws-otel-collector:4318
+assert_rejected 'contains a comma' \
+  --set 'observability.otlp.headers.x=a\,b'
 
 echo "observability-render-test.sh: all checks passed"

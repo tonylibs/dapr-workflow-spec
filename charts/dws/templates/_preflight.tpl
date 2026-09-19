@@ -60,3 +60,31 @@ that install the Operator out of band after this release.
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{/*
+Value-shape validation for the observability block. Separate from dws.preflight.observability
+(which asks the CLUSTER a question) because this asks the VALUES a question, and because it must
+run even when neither the controller nor the admin is enabled.
+
+Both checks would otherwise only be reached through the two component Configuration templates:
+dws.observability.daprOtelProtocol is the sole rejecter of an unknown protocol, and nothing at
+all rejects an empty endpoint. With `controller.enabled=false admin.enabled=false` an invalid
+protocol rendered clean into OTEL_EXPORTER_OTLP_PROTOCOL, and an empty endpoint rendered an
+empty exporter endpoint — Dapr then silently skips tracing (it guards on a non-empty address)
+and the agents fall back to the SDK's own localhost default. Both are quiet misconfigurations
+that only surface as "no telemetry arrives".
+
+Called unconditionally from templates/preflight.yaml.
+*/}}
+{{- define "dws.observability.validate" -}}
+{{- if .Values.observability.enabled }}
+{{- if not .Values.observability.otlp.endpoint }}
+{{- fail "observability.enabled=true requires a non-empty observability.otlp.endpoint (scheme-qualified, e.g. http://dws-otel-collector:4318). An empty endpoint renders an empty exporter address: Dapr silently skips tracing and the application agents fall back to their own localhost default, so no telemetry reaches your receiver." }}
+{{- end }}
+{{- if not (hasPrefix "http://" .Values.observability.otlp.endpoint | or (hasPrefix "https://" .Values.observability.otlp.endpoint)) }}
+{{- fail (printf "observability.otlp.endpoint must start with http:// or https://, got %q. The scheme sets the Instrumentation resource's OTEL_EXPORTER_OTLP_ENDPOINT (which requires it) and derives Dapr's tracing.otel.isSecure." .Values.observability.otlp.endpoint) }}
+{{- end }}
+{{- /* Reached for its fail() side effect: this is the only rejecter of an unknown protocol. */ -}}
+{{- $_ := include "dws.observability.daprOtelProtocol" . }}
+{{- end }}
+{{- end }}
