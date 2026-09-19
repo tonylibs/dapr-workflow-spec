@@ -109,6 +109,99 @@ admin image built for a different listener contract than the one the old `admin-
 — see `docs/roadmaps/dws-auth.md` §2b), rolling back the chart's Kubernetes objects alone does not
 undo that; restore the matching application image alongside the chart-level rollback.
 
+## OpenTelemetry observability (Phase 1)
+
+`observability.enabled=false` by default. With it off the chart renders exactly what it rendered
+before the feature existed — no `Instrumentation`, no OTLP Secret, no Dapr tracing, no injection
+annotations. `tests/observability-render-test.sh` pins that against a recorded baseline.
+
+### External prerequisite: the OpenTelemetry Operator
+
+The Operator is **not** a `Chart.yaml` dependency and this chart will not install it. It requires
+cert-manager, which is a cluster singleton — bundling it risks colliding with an existing install.
+Install it yourself, pinned to the combination this phase was verified against:
+
+| Component | Pinned version |
+|---|---|
+| `open-telemetry/opentelemetry-operator` Helm chart | `0.123.0` |
+| operator image | `0.159.0` |
+| cert-manager | whatever your cluster already standardises on (the Operator's own prerequisite) |
+
+```bash
+helm repo add jetstack https://charts.jetstack.io --force-update
+helm upgrade --install cert-manager jetstack/cert-manager \
+  --namespace cert-manager --create-namespace --set crds.enabled=true
+
+helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update
+helm upgrade --install opentelemetry-operator open-telemetry/opentelemetry-operator \
+  --namespace opentelemetry-operator-system --create-namespace \
+  --version 0.123.0 \
+  --set 'manager.collectorImage.repository=otel/opentelemetry-collector-k8s'
+```
+
+`helm install`/`helm upgrade` of this chart fails fast with explicit guidance when
+`observability.enabled=true` and `opentelemetry.io/v1alpha1` is absent. Set
+`observability.operator.required=false` to bypass that check in an environment that installs the
+Operator out of band after the release.
+
+You also need a reachable OTLP receiver. This chart does not bundle a collector in Phase 1 —
+`observability.otlp.endpoint` defaults to `http://dws-otel-collector:4318`, which names a
+collector you install yourself.
+
+### What Phase 1 covers
+
+| Pod | Agent | Dapr sidecar |
+|---|---|---|
+| `dws-controller` | Java, injected into container `controller` only | exports spans via its shared Dapr `Configuration` |
+| `dws-admin` | Node.js, injected into container `admin` only | exports spans via its shared Dapr `Configuration` |
+
+`dws-orchestrator`, `dws-flow`, `dws-step`, and the compiled Knative step Services are later
+phases (see [`docs/roadmaps/observability.md`](../../docs/roadmaps/observability.md)).
+
+Two things worth knowing before enabling it:
+
+- **`dapr.io/config` is single-valued.** Tracing is merged into the same per-component Dapr
+  `Configuration` that may already carry the bearer auth pipeline
+  (`templates/controller/configuration.yaml`, `templates/admin/configuration.yaml`). There is no
+  separate tracing `Configuration`, and there is never more than one `dapr.io/config` annotation.
+- **The application agent is the only sampling root.** `observability.traces.samplingRate` sets
+  the agent's `parentbased_traceidratio` argument; every Dapr `Configuration` is pinned to
+  `samplingRate: "1"` so daprd honours the parent decision instead of sampling again (ADR 0005
+  Decision 2). Two independent samplers would compose multiplicatively and produce partial traces
+  that look like exporter failures.
+
+### OTLP headers
+
+Header credentials (a SaaS backend API key, for example) always travel through a Secret; they are
+never inlined into the `Instrumentation` resource. The contract is one key named `headers` holding
+the comma-separated `key=value` list `OTEL_EXPORTER_OTLP_HEADERS` expects.
+
+```yaml
+observability:
+  enabled: true
+  otlp:
+    endpoint: https://otlp.vendor.example/v1/traces
+    protocol: http/protobuf
+    # (a) let the chart create the Secret
+    headers:
+      api-key: REDACTED
+    # (b) or point at one you manage; this wins over headers above and the chart creates none
+    existingSecret: ""
+```
+
+An operator-managed Secret must expose that same `headers` key:
+
+```bash
+kubectl create secret generic platform-otlp \
+  --namespace dws-system \
+  --from-literal=headers='api-key=REDACTED,x-tenant=acme'
+```
+
+Dapr's own exporter does not receive these headers. Dapr's `otel.headers[]` structure needs a
+header-name-to-secret-key mapping that the single-string contract above cannot express, so a
+deployment that needs authenticated Dapr export should point `observability.otlp.endpoint` at an
+in-cluster collector and let that collector authenticate upstream.
+
 ## Validating changes to this chart
 
 ```bash
@@ -117,6 +210,8 @@ helm lint .
 helm template dws .
 bash tests/values-schema-test.sh .
 bash tests/api-gateway-render-test.sh .
+bash tests/auth-pipeline-placement-test.sh .
+bash tests/observability-render-test.sh .
 ```
 
 `scripts/verify-console-ingress-migration.sh` (repo root) additionally rehearses the pre-Gateway

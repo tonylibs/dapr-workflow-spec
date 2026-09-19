@@ -37,3 +37,26 @@ them correctly.
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{/*
+Preflight check for the OpenTelemetry Operator (observability roadmap Phase 1): when
+observability.enabled=true this chart renders an opentelemetry.io/v1alpha1 Instrumentation
+resource and annotates pods for the Operator's mutating webhook, but it does NOT install the
+Operator itself. Mirrors dws.preflight.dapr one-for-one — assert the CRDs are present,
+otherwise fail with a message naming both ways out.
+
+The Operator is a documented prerequisite rather than a Chart.yaml dependency specifically
+because it requires cert-manager, which is a cluster singleton: bundling it risks colliding
+with an existing install, and would hit the same "Capabilities computed before a fresh
+install's own dependency CRDs land" hazard that dws.preflight.apiGateway already documents.
+
+observability.operator.required=false is the explicit opt-out for controlled environments
+that install the Operator out of band after this release.
+*/}}
+{{- define "dws.preflight.observability" -}}
+{{- if and .Values.observability.enabled .Values.observability.operator.required }}
+{{- if not (.Capabilities.APIVersions.Has "opentelemetry.io/v1alpha1") }}
+{{- fail "observability.enabled=true but the OpenTelemetry Operator CRDs (opentelemetry.io/v1alpha1) were not found in the cluster. Install the OpenTelemetry Operator (which requires cert-manager) before running helm install/upgrade, or set observability.operator.required=false to skip this check." }}
+{{- end }}
+{{- end }}
+{{- end }}
