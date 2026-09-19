@@ -2,7 +2,7 @@
   Defense-in-depth Helm test (auth roadmap Phase 2): when auth.enabled=true, a Dapr service-
   invocation call to dws-controller with no Authorization header MUST fail before it reaches
   the controller container. The Dapr sidecar's bearer middleware rejects the request with 401
-  (see auth-component.yaml, auth-configuration.yaml).
+  (see auth-component.yaml, configuration.yaml).
 
   Gated on auth.enabled=true — a release without auth has no middleware to assert.
 

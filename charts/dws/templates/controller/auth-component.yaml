@@ -3,7 +3,7 @@
   Rendered only when auth.enabled=true. Scoped to the controller app-id so future sibling
   sidecars (admin, orchestrator) do not accidentally inherit this middleware.
 
-  The paired Configuration in auth-configuration.yaml references this Component by name in
+  The paired Configuration in configuration.yaml references this Component by name in
   spec.appHttpPipeline.handlers, and the controller Pod's dapr.io/config annotation names
   that Configuration — the three files must stay in sync.
 */}}

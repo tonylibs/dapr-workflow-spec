@@ -17,13 +17,25 @@ spec:
       labels:
         {{- include "dws.labels" . | nindent 8 }}
         app.kubernetes.io/component: admin
-      {{- if or .Values.dapr.enabled .Values.auth.enabled }}
+      {{- /*
+        The Dapr sidecar contract is required by any feature that depends on the sidecar, not
+        just by dapr.enabled (which only controls whether THIS chart installs Dapr): auth needs
+        the sidecar to run the bearer middleware, and observability needs it to export spans.
+      */}}
+      {{- if or .Values.dapr.enabled .Values.auth.enabled .Values.observability.enabled }}
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: {{ include "dws.admin.fullname" . | quote }}
         dapr.io/app-port: "3000"
+        {{- /*
+          One shared Configuration carries the auth pipeline, the observability tracing block,
+          or both (templates/admin/configuration.yaml). dapr.io/config is single-valued, so this
+          annotation follows EITHER feature toggle and can only ever name one resource.
+        */}}
+        {{- if or .Values.auth.enabled .Values.observability.enabled }}
+        dapr.io/config: {{ include "dws.admin.configName" . | quote }}
+        {{- end }}
         {{- if .Values.auth.enabled }}
-        dapr.io/config: {{ include "dws.admin.auth.configName" . | quote }}
         # Dapr's app-facing HTTP API (port 3500) binds to loopback only ([::1]/127.0.0.1) by
         # default -- reachable from the admin container in the same pod, but NOT through any
         # Kubernetes Service, because kube-proxy's DNAT still targets the pod's real interface
@@ -34,7 +46,18 @@ spec:
         # Gateway/APISIX run that got ECONNREFUSED at the APISIX->sidecar hop (502) with this
         # annotation absent; scripts/verify-gateway-sse-path.sh proves live traffic reaches the
         # sidecar with it present.
+        #
+        # Stays gated on auth alone: only the auth topology puts a Service in front of port 3500.
+        # Observability does not expose the sidecar, so enabling it must not widen this bind.
         dapr.io/sidecar-listen-addresses: "[::],0.0.0.0"
+        {{- end }}
+        {{- /*
+          OpenTelemetry Node.js agent injection, targeted at the `admin` container only — an
+          untargeted annotation would make the Operator try to instrument the daprd sidecar too.
+          Emits nothing when observability is disabled.
+        */}}
+        {{- with (include "dws.observability.podAnnotations" (dict "root" . "language" "nodejs" "container" "admin")) }}
+        {{- . | nindent 8 }}
         {{- end }}
       {{- end }}
     spec:
@@ -109,7 +132,11 @@ spec:
                   {{- end }}
             - name: RUN_MIGRATIONS_ON_BOOT
               value: "true"
-            {{- if or .Values.dapr.enabled .Values.auth.enabled }}
+            {{- /*
+              Same widened gate as the annotations above: the admin app only talks to its
+              sidecar when one is actually present, which any of the three toggles implies.
+            */}}
+            {{- if or .Values.dapr.enabled .Values.auth.enabled .Values.observability.enabled }}
             - name: DAPR_PUBSUB_NAME
               value: {{ .Values.admin.pubsub.name | quote }}
             - name: DAPR_PUBSUB_TOPIC

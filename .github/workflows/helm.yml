@@ -62,6 +62,9 @@ jobs:
       - name: Verify bearer-middleware pipeline placement
         run: bash ${{ env.CHART_DIR }}/tests/auth-pipeline-placement-test.sh ${{ env.CHART_DIR }}
 
+      - name: Verify observability rendering
+        run: bash ${{ env.CHART_DIR }}/tests/observability-render-test.sh ${{ env.CHART_DIR }}
+
       - name: Template (default values)
         run: helm template dws ${{ env.CHART_DIR }} > /tmp/render-default.yaml
 

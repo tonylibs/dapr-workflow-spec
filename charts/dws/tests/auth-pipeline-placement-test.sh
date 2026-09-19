@@ -26,9 +26,9 @@ auth_args=(
 )
 
 admin_config="$(helm template dws "$chart_dir" "${auth_args[@]}" \
-  --show-only templates/admin/auth-configuration.yaml)"
+  --show-only templates/admin/configuration.yaml)"
 controller_config="$(helm template dws "$chart_dir" "${auth_args[@]}" \
-  --show-only templates/controller/auth-configuration.yaml)"
+  --show-only templates/controller/configuration.yaml)"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 

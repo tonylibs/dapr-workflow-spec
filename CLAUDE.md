@@ -96,6 +96,7 @@ helm template dws charts/dws
 bash charts/dws/tests/values-schema-test.sh charts/dws
 bash charts/dws/tests/api-gateway-render-test.sh charts/dws
 bash charts/dws/tests/auth-pipeline-placement-test.sh charts/dws
+bash charts/dws/tests/observability-render-test.sh charts/dws
 ```
 
 `helm lint`/`helm template` do not run Kubernetes' apimachinery validation, so a manifest that

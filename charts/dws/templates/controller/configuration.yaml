@@ -1,0 +1,50 @@
+{{- /*
+  The controller's ONE Dapr Configuration — the single resource its Pod's dapr.io/config
+  annotation can name, because that annotation is single-valued. Two independent features
+  render into it:
+
+    - auth.enabled          -> spec.appHttpPipeline (bearer middleware, auth roadmap Phase 2)
+    - observability.enabled -> spec.tracing         (OTLP export, observability roadmap Phase 1)
+
+  Either one alone is enough to render the resource; both together render both blocks. There is
+  deliberately NO standalone tracing Configuration: pointing dapr.io/config at one would
+  silently drop the auth middleware on any cluster running auth.enabled=true.
+
+  The bearer handler DELIBERATELY STAYS on spec.appHttpPipeline while the admin side uses
+  spec.httpPipeline (templates/admin/configuration.yaml). These two files do not mirror each
+  other; the divergence is the fix, not an oversight (auth roadmap dws-auth.md
+  "Decision (2026-09-13)"):
+
+  - dws-admin reaches the controller by Dapr SERVICE INVOCATION, which arrives at this sidecar
+    over internal gRPC and NEVER traverses spec.httpPipeline. Dapr's own docs put the receiving
+    side's middleware on appHttpPipeline for exactly this case.
+  - Moving this handler to httpPipeline would silently DELETE the Phase 2 gate: no render error,
+    helm lint stays green, and only a no-token invocation would ever reveal the hole.
+  - The controller has no browser-facing HTTP surface and no pub/sub subscription of its own,
+    so it does not hit the /dapr/subscribe problem that forced the admin move. Its own event
+    publishing goes out over gRPC (events/DaprClientProducer.java builds the default gRPC
+    DaprClient), which HTTP middleware does not gate either way.
+
+  charts/dws/tests/auth-pipeline-placement-test.sh and
+  charts/dws/tests/observability-render-test.sh both pin this placement and the four-way
+  auth x observability matrix.
+*/}}
+{{- if and .Values.controller.enabled (or .Values.auth.enabled .Values.observability.enabled) }}
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: {{ include "dws.controller.configName" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.controller.selectorLabels" . | nindent 4 }}
+spec:
+  {{- if .Values.auth.enabled }}
+  appHttpPipeline:
+    handlers:
+      - name: {{ include "dws.auth.componentName" . }}
+        type: middleware.http.bearer
+  {{- end }}
+  {{- if .Values.observability.enabled }}
+  {{- include "dws.observability.daprTracing" . | nindent 2 }}
+  {{- end }}
+{{- end }}
