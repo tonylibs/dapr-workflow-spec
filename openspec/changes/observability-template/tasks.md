@@ -43,8 +43,8 @@
 
 - [x] 7.1 Update `docs/roadmaps/observability.md` Phase 1 to complete and add a Findings log entry recording the merged single-Configuration implementation, pinned Dapr sampling, protocol mapping, Secret contract, and verification evidence.
 - [x] 7.2 Update `docs/roadmaps/README.md` so its Current phase table reflects Observability Phase 1 completion.
-- [ ] 7.3 Update the linked Notion observability roadmap mirror and the tracker database Phase 1 row with the same status, decisions, and evidence.
-- [ ] 7.4 Update the Notion “Roadmaps — Overview” current-phase entry and cross-check repository and Notion status text for drift before completion.
+- [x] 7.3 Update the linked Notion observability roadmap mirror and the tracker database Phase 1 row with the same status, decisions, and evidence.
+- [x] 7.4 Update the Notion “Roadmaps — Overview” current-phase entry and cross-check repository and Notion status text for drift before completion.
 
 ## Outstanding
 
@@ -53,6 +53,19 @@
   implemented in, so the connected controller → Dapr → admin → Postgres trace has not been
   captured. Phase 1 is recorded as ⚠️ in `docs/roadmaps/observability.md` for exactly this reason.
   Everything render-level is complete and guarded by `charts/dws/tests/observability-render-test.sh`.
-- **7.3 / 7.4** write to the external Notion roadmap mirror and tracker database. Left for an
-  explicit go-ahead rather than done implicitly — the repository-side documentation (7.1, 7.2) is
-  complete and is the source the mirror should be synced from.
+**7.3 / 7.4 are done** (2026-09-19, after an explicit go-ahead), synced from the repository-side
+documentation:
+
+- Notion "Observability Roadmap" mirror: Phase 1 ❌ → ⚠️, Phase 0-A ⚠️ → ✅, status legend and
+  "Next up" corrected, the chart-layout sketch replaced with what was built, and three Findings
+  log entries added (the single-valued `dapr.io/config` design input, the Phase 1 implementation
+  record, and the `endpointAddress` review finding).
+- Notion "DWS Roadmap Tracker" → "Observability Phase 1 — Chart surface" row: Status
+  `Not Started` → `In Progress` (not `Done` — the live trace is outstanding), Notes rewritten
+  with what shipped and the three corrections to what that row previously claimed.
+- Notion "Roadmaps — Overview": the Observability current-phase cell now says Phase 1 landed and
+  is ⚠️ pending live verification.
+
+Repository and Notion status text were cross-checked for drift. One pre-existing divergence was
+corrected rather than carried forward: the mirror still had Phase 0-A at ⚠️ with spike (c) open,
+while the repository had already closed it as deferred-to-observation.
