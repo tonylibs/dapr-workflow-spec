@@ -386,7 +386,7 @@ Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Nothing st
 
 | Phase | Status | Goal | Key tasks |
 |---|---|---|---|
-| **0-A. Spikes (Track A)** | ✅ | De-risk the Deployment track | **(b) ✅ documented prerequisite + preflight, not a chart dependency.** **(e) ✅ `dws-flow` is glibc; no fourth annotation.** **(f) ✅ pin chart `0.123.0` / operator `0.159.0`.** **(c) ↪️ DEFERRED TO OBSERVATION (decided 2026-09-19)** — rather than spike the Dapr Workflow replay question up front, observe real replay behaviour during Phase 1/2a testing and write the ADR from what the traces actually show. Acceptable because Track A surfaces it early: `dws-orchestrator` is a Deployment, so replays are visible as soon as Phase 2a lands. **Risk accepted:** if replays do duplicate spans or restart traces, the fix may reach back into Phase 2a's span model. See the Findings log |
+| **0-A. Spikes (Track A)** | ⚠️ | De-risk the Deployment track | **(b) ✅ ANSWERED — documented prerequisite + preflight, not a chart dependency.** **(e) ✅ ANSWERED — `dws-flow` is glibc; no fourth annotation.** **(f) ✅ ANSWERED — pin chart `0.123.0` / operator `0.159.0`.** **(c) ❌ OPEN — does trace context survive a Dapr Workflow replay?** Exercised by `dws-orchestrator`, a Deployment, so it is answerable inside Track A. Now the only open Track A spike and the highest-risk item in the roadmap. See the Findings log for (b), (e), (f) |
 | **0-B. Spikes (Track B)** | ❌ | Deferred — de-risk the Knative track | **(a) Knative init containers**, scoped to `dws-call-openapi`, `dws-call-asyncapi`, `dws-call-a2a` — Knative gates init containers behind `kubernetes.podspec-init-containers` and `emptyDir` behind `kubernetes.podspec-volumes-emptydir`. Two sub-questions: is the flag on, and — since the operator mutates the **Pod**, downstream of Knative's Revision validation — does injection work even with the flag off? **(d) `inject-python` for `dws-call-a2a`**, or the in-code SDK path? Plus cold-start cost on a scale-to-zero step pod — the cost is the **init-container image pull**, cached per node, so measure cold node vs warm node separately |
 | **1. Chart surface** | ❌ | Render the CRs, cover the control plane | `observability.*` values block; `Instrumentation` CR template; tracing Configuration CRD with `tracing.otel` + `samplingRate: "1"`; observability flag keys added to the existing `dws-controller-config` store; `dws.preflight.observability`; `dws.observability.podAnnotations` helper; annotate `dws-controller` + `dws-admin` (all three annotations). **Track A. No Knative dependency** — both targets are Deployments. Deliverable: a trace covering controller → Dapr → admin → Postgres, with zero application code changed |
 | **2a. Compiled Deployment nodes** | ❌ | **Track A's payoff** | `dws-controller` stamps `inject-<lang>`, `container-names` and `dapr.io/config` onto the compiled **Deployments** — the orchestrator plus the `dws-flow`/`dws-step` nodes — with `OTEL_RESOURCE_ATTRIBUTES` carrying `service.name`/`dws.workflow.*`/`dws.node.*`. Controller reads the flags from `dws-controller-config` via the Configuration API, defaulting to off. Touches both compiler strategies (`V1OrchestratorCompiler`, `V2StructuralCompiler`) and `StackSynthesizer`. **No Knative dependency.** Deliverable: a trace from controller through orchestrator to the edge of each step invocation |
@@ -468,13 +468,7 @@ visibility actually arrives — it is deferred, not dropped, and Phase 7 cannot 
   `dapr_runtime_service_invocation_*` counters (framed around remote Dapr apps) or only the
   `dapr_http_client_*` family. Settle by curling the sidecar's metrics endpoint after one OAuth2
   call step, before Phase 5 fixes any naming.
-- **Next up:** Phase 1. Phase 0-A is closed — (b), (e), (f) answered, (c) deferred to observation during Phase 1/2a testing. Track B waits.
-- **Phase 1 blocker found before implementation (2026-09-19):** `dapr.io/config` is a
-  **single-valued annotation** — a pod names exactly one Dapr `Configuration` resource. The
-  controller and admin Deployments already render it, gated on `auth.enabled`, pointing at
-  `dws.auth.configName` / `dws.admin.auth.configName`. Phase 1 therefore **cannot add a second
-  `dapr.io/config: dws-tracing`**; tracing must be merged into the same per-component
-  `Configuration` that auth already owns. See the Findings log for the shape.
+- **Next up:** Phase 0-A(c) — the Dapr Workflow replay question — is the only open Track A spike. (b), (e) and (f) are answered; Phase 1 is unblocked and can start in parallel. Track B waits.
 
 ## Findings log
 
@@ -538,56 +532,6 @@ CI builds `dws-controller/src/main/docker/Dockerfile.jvm`
 from the Quarkus scaffolding, and a GraalVM native image has no JVM — injection would become a
 silent no-op. Related good news: `run-java.sh` consumes `JAVA_OPTS`/`JAVA_OPTS_APPEND` while the
 operator injects `JAVA_TOOL_OPTIONS`, so there is no variable collision.
-
-### 2026-09-19 (later still) — Phase 1 design inputs
-
-**`dapr.io/config` is single-valued. This is the one that would have bitten during implementation.**
-
-A pod's `dapr.io/config` annotation names exactly one Dapr `Configuration` resource; Dapr takes
-no list. Both Track A chart components already render it:
-
-| Component | Template | Annotation | Pipeline field |
-|---|---|---|---|
-| controller | `controller/auth-configuration.yaml` | `dapr.io/config: {{ include "dws.auth.configName" . }}`, gated `auth.enabled` | `appHttpPipeline` |
-| admin | `admin/auth-configuration.yaml` | `dapr.io/config: {{ include "dws.admin.auth.configName" . }}`, gated `auth.enabled` | `httpPipeline` |
-
-So "stamp `dapr.io/config: dws-tracing`" as written elsewhere in this roadmap is wrong for any
-cluster running `auth.enabled=true` — a second value cannot coexist, and pointing the annotation
-at a tracing-only Configuration would silently drop the auth middleware. **Tracing must be merged
-into the per-component Configuration that already exists**, not given one of its own.
-
-The refactor is small, because the resources are already named generically
-(`<component-fullname>-config`, not `-auth-config`):
-
-1. Rename `*/auth-configuration.yaml` → `*/configuration.yaml`; render it when
-   `or .Values.auth.enabled .Values.observability.enabled`.
-2. Keep the pipeline block conditional on `auth.enabled` — preserving the deliberate
-   `appHttpPipeline` (controller) vs `httpPipeline` (admin) divergence, which the auth roadmap
-   records as a fix, not an oversight.
-3. Add a `spec.tracing` block conditional on `observability.enabled`, with
-   `samplingRate: "1"` per ADR candidate 3 and `otel.endpointAddress` from
-   `observability.otlp.*`.
-4. Widen the Deployment gate from `if .Values.auth.enabled` to
-   `if or .Values.auth.enabled .Values.observability.enabled`.
-5. Optionally rename the helpers `dws.auth.configName` → `dws.controller.configName` (and the
-   admin equivalent), since they are no longer auth-specific.
-
-Note this means **Phase 1 touches already-shipped auth templates** (PR #74). Worth a render test
-alongside the existing `charts/dws/tests/auth-pipeline-placement-test.sh`, asserting all four
-combinations of `auth.enabled` × `observability.enabled` produce exactly one Configuration per
-component with the right blocks present.
-
-**Second correction: there is nothing to template in the config store.** The roadmap lists
-"observability flag keys added to the existing `dws-controller-config` store" as Phase 1 work.
-`controller/config-component.yaml` renders the Component only — its own comment states the flag
-values are "set out of band (kubectl/redis-cli)". So Phase 1's obligation there is to *name* the
-keys and their defaults in documentation; the controller-side read belongs to Phase 2a.
-
-**On 0-A(c), deferred to observation.** Replay behaviour will be watched during Phase 1/2a
-testing rather than spiked up front. The risk being accepted: if replays turn out to duplicate
-spans or start a fresh trace each time, the correction reaches back into Phase 2a's span model
-rather than being designed in from the start. Track A surfaces it early enough for that to be
-recoverable — `dws-orchestrator` is a Deployment, so replays are observable as soon as 2a lands.
 
 **Still unverified, carried forward:** whether Knative's Revision-level feature flags gate a
 Pod-level operator mutation at all (Phase 0-B(a)); whether Dapr's `HTTPEndpoint` path populates
