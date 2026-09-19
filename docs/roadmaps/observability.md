@@ -18,7 +18,7 @@ goes first. Every open Knative question is confined to Track B, so Track A can s
 
 | | Track A — start now | Track B — deferred, needs its own spike |
 |---|---|---|
-| Components | `dws-controller`, `dws-admin` (chart) · `dws-orchestrator`, `dws-flow`, `dws-step` (controller-deployed) | The eight `TaskKind` step images |
+| Components | `dws-controller`, `dws-admin` (chart) · `dws-orchestrator` (controller-deployed) · `dws-flow`, `dws-step` **once runtime-v2 Phase 4 deploys them** | The eight `TaskKind` step images |
 | Workload | Deployment | Knative Service |
 | Stacks | Java, .NET, Node | Node, Python, Go |
 | Blocked by | Nothing Knative-related | Knative init containers, `emptyDir` gating, Pod-vs-Revision admission, `inject-python`, cold-start cost |
@@ -389,7 +389,8 @@ Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Nothing st
 | **0-A. Spikes (Track A)** | ✅ | De-risk the Deployment track | **(b) ✅ documented prerequisite + preflight, not a chart dependency.** **(e) ✅ `dws-flow` is glibc; no fourth annotation.** **(f) ✅ pin chart `0.123.0` / operator `0.159.0`.** **(c) ↪️ DEFERRED TO OBSERVATION (decided 2026-09-19)** — rather than spike the Dapr Workflow replay question up front, observe real replay behaviour during Phase 1/2a testing and write the ADR from what the traces actually show. Acceptable because Track A surfaces it early: `dws-orchestrator` is a Deployment, so replays are visible as soon as Phase 2a lands. **Risk accepted:** if replays do duplicate spans or restart traces, the fix may reach back into Phase 2a's span model. See the Findings log |
 | **0-B. Spikes (Track B)** | ❌ | Deferred — de-risk the Knative track | **(a) Knative init containers**, scoped to `dws-call-openapi`, `dws-call-asyncapi`, `dws-call-a2a` — Knative gates init containers behind `kubernetes.podspec-init-containers` and `emptyDir` behind `kubernetes.podspec-volumes-emptydir`. Two sub-questions: is the flag on, and — since the operator mutates the **Pod**, downstream of Knative's Revision validation — does injection work even with the flag off? **(d) `inject-python` for `dws-call-a2a`**, or the in-code SDK path? Plus cold-start cost on a scale-to-zero step pod — the cost is the **init-container image pull**, cached per node, so measure cold node vs warm node separately |
 | **1. Chart surface** | ❌ | Render the CRs, cover the control plane | `observability.*` values block; `Instrumentation` CR template; tracing Configuration CRD with `tracing.otel` + `samplingRate: "1"`; observability flag keys added to the existing `dws-controller-config` store; `dws.preflight.observability`; `dws.observability.podAnnotations` helper; annotate `dws-controller` + `dws-admin` (all three annotations). **Track A. No Knative dependency** — both targets are Deployments. Deliverable: a trace covering controller → Dapr → admin → Postgres, with zero application code changed |
-| **2a. Compiled Deployment nodes** | ❌ | **Track A's payoff** | `dws-controller` stamps `inject-<lang>`, `container-names` and `dapr.io/config` onto the compiled **Deployments** — the orchestrator plus the `dws-flow`/`dws-step` nodes — with `OTEL_RESOURCE_ATTRIBUTES` carrying `service.name`/`dws.workflow.*`/`dws.node.*`. Controller reads the flags from `dws-controller-config` via the Configuration API, defaulting to off. Touches both compiler strategies (`V1OrchestratorCompiler`, `V2StructuralCompiler`) and `StackSynthesizer`. **No Knative dependency.** Deliverable: a trace from controller through orchestrator to the edge of each step invocation |
+| **2a. Compiled Deployment nodes** | ❌ | **Track A's payoff** | **Scope today is `dws-orchestrator` alone** — see below. `dws-controller` stamps `inject-java`, `container-names` and `dapr.io/config` in `StackSynthesizer.orchestratorAnnotations()`, plus `OTEL_RESOURCE_ATTRIBUTES` carrying `service.name`/`dws.workflow.*`. A Java change, not a chart change, and a **clean add** — that method stamps only `dapr.io/enabled`, `dapr.io/app-id`, `dapr.io/app-port` today, so there is no `dapr.io/config` to merge with. Controller reads the flags from `dws-controller-config` via the Configuration API, defaulting to off. **No Knative dependency.** Deliverable: a trace from controller through orchestrator to the edge of each step invocation |
+| **2a′. Flow/Step nodes** | ⛔ | Blocked cross-roadmap | `dws-flow` and `dws-step` have **no Deployment to annotate yet**. `V2StructuralCompiler` populates `DeploymentPlan.flowStepGraph`, but `DeploymentPlan.structural()` leaves `orchestrator` null and `steps` empty, and the `k8s` package contains zero references to `CompiledNode` — nothing turns the graph into pods. Deploy synthesis is **runtime-v2 Phase 4** (`workflow-runtime-architecture-roadmap.md`), not started. Stamp annotations *inside* that synthesis when it is written rather than bolting them on afterwards |
 | **2b. Knative step services** | ❌ | Deferred — needs Phase 0-B | The same stamping applied to `StackSynthesizer.knativeServices()` output, for the eight `TaskKind` images. Covers the Node and Python images via auto-injection; the Go images consume the stamped env in Phase 3. This is where end-to-end step visibility actually arrives |
 | **3. Go step services** | ❌ | Deferred with 2b | In-code OTel SDK bootstrap in `dws-call-http`, `dws-call-grpc`, `dws-run` (shared internal package — one codebase produces the three `dws-run-*` images). `otel-go` + `autoexport`, reading the standard `OTEL_*` env vars Phase 2b stamps, so the config surface stays identical to the injected stacks. If Phase 0-B comes back hostile, the Node and Python images adopt this same pattern — a known path, not a re-plan |
 | **4. Logs** | ❌ | Log ↔ trace correlation | Structured JSON to stdout with `trace_id`/`span_id` injected by the active context; collector `filelog` receiver; `observability.logs.format`. The only phase requiring a code change in every package. **Splittable along the same track line** — Java and .NET (Track A) first, the step images with 2b |
@@ -588,6 +589,52 @@ testing rather than spiked up front. The risk being accepted: if replays turn ou
 spans or start a fresh trace each time, the correction reaches back into Phase 2a's span model
 rather than being designed in from the start. Track A surfaces it early enough for that to be
 recoverable — `dws-orchestrator` is a Deployment, so replays are observable as soon as 2a lands.
+
+### 2026-09-19 — what Phase 2a can actually reach today
+
+**`dws-flow` and `dws-step` have nothing to annotate yet.** This roadmap has said since 2026-09-12
+that Phase 2 covers "the orchestrator Deployment, `dws-flow`/`dws-step` nodes, and each Knative
+Service". Two of those three do not exist as deployed pods.
+
+| Component | Synthesized by | State |
+|---|---|---|
+| `dws-orchestrator` | `StackSynthesizer.orchestratorDeployment()` | ✅ real today |
+| step images | `StackSynthesizer.knativeServices()` | ✅ real today (Track B) |
+| `dws-flow` / `dws-step` | *nothing* | ⛔ no synthesis exists |
+
+`V2StructuralCompiler` does populate `DeploymentPlan.flowStepGraph`, and the node model
+(`CompiledNode`, `FlowNode`, `StepNode`, `ChildIndex`, `AppIdRegistry`, `NodeClassifier`) is
+present. But `DeploymentPlan.structural()` leaves `orchestrator` null and `steps` empty, and the
+`io.dws.controller.k8s` package contains **zero references to `CompiledNode`** — the graph is
+compiled and then goes nowhere. Turning it into pods is **runtime-v2 Phase 4, "Deploy synthesis
+v2"** (`workflow-runtime-architecture-roadmap.md`), which is not started.
+
+Three consequences:
+
+1. **Phase 2a's deliverable today is the orchestrator alone.** Splitting out 2a′ makes that
+   explicit rather than leaving a phase that silently cannot complete.
+2. **When runtime-v2 Phase 4 is written, stamp the annotations inside it.** Its roadmap row
+   already says "no new Helm templates — same deployed-dynamically pattern `dws-orchestrator`
+   already follows", so the stamping helper built for 2a applies directly. Adding it there costs
+   almost nothing; retrofitting later costs a second pass over the same code.
+3. **Instrumenting the orchestrator has a shelf life.** Runtime-v2 Phase 5 retires
+   `dws-orchestrator` at cutover. Still worth doing — it is the only compiled Deployment that
+   exists, it proves the stamping mechanism end to end, and it is where Dapr Workflow replay
+   becomes observable — but it is not permanent infrastructure.
+
+**Good news on the mechanics.** Unlike the chart components, the orchestrator has no
+`dapr.io/config` collision. `StackSynthesizer.orchestratorAnnotations()` currently emits exactly
+three entries — `dapr.io/enabled`, `dapr.io/app-id`, `dapr.io/app-port` — so the tracing
+Configuration reference is a clean add, not a merge. Worth noting the corollary: the
+orchestrator's sidecar carries no Dapr `Configuration` at all today, which is why `auth.enabled`
+never gated it.
+
+**Cross-doc drift spotted, not fixed.** `workflow-runtime-architecture-roadmap.md` marks its
+Phase 1 (structural compiler) ❌ not started, but `WorkflowCompiler`, `V1OrchestratorCompiler`,
+`V2StructuralCompiler`, `CompilerProducer`, `NodeClassifier`, `AppIdRegistry` and `NodeNaming` are
+all present in `dws-controller/src/main`. That row looks stale. Left alone deliberately — it
+belongs to another roadmap and should be verified against its own acceptance criteria rather than
+guessed at from file existence.
 
 **Still unverified, carried forward:** whether Knative's Revision-level feature flags gate a
 Pod-level operator mutation at all (Phase 0-B(a)); whether Dapr's `HTTPEndpoint` path populates
