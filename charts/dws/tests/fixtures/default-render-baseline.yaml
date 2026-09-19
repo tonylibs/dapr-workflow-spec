@@ -1,0 +1,2991 @@
+---
+# Source: dws/charts/redis/templates/networkpolicy.yaml
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: dws-redis
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/version: 8.10.1
+    helm.sh/chart: redis-28.0.6
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: dws
+      app.kubernetes.io/name: redis
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - {}
+  ingress:
+    # Allow inbound connections
+    - ports:
+        - port: 6379
+
+---
+# Source: dws/charts/dapr/charts/dapr_scheduler/templates/dapr_scheduler_poddisruptionbudget.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: dapr-scheduler-server-disruption-budget
+  namespace: default
+  labels:
+    app: dapr-scheduler-server
+    app.kubernetes.io/component: scheduler
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+spec:
+  maxUnavailable: 25%
+  selector:
+    matchLabels:
+      app: dapr-scheduler-server
+      app.kubernetes.io/component: scheduler
+      app.kubernetes.io/managed-by: Helm
+      app.kubernetes.io/name: dws
+      app.kubernetes.io/part-of: dapr
+      app.kubernetes.io/version: 1.18.1
+
+---
+# Source: dws/charts/postgresql/templates/primary/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: dws-postgresql
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/version: 17.6.0
+    helm.sh/chart: postgresql-16.7.27
+    app.kubernetes.io/component: primary
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: dws
+      app.kubernetes.io/name: postgresql
+      app.kubernetes.io/component: primary
+
+---
+# Source: dws/charts/redis/templates/master/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: dws-redis-master
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/version: 8.10.1
+    helm.sh/chart: redis-28.0.6
+    app.kubernetes.io/component: master
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: dws
+      app.kubernetes.io/name: redis
+      app.kubernetes.io/component: master
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/injector.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dapr-injector
+  namespace: default
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/operator.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dapr-operator
+  namespace: default
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/placement.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dapr-placement
+  namespace: default
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/scheduler.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dapr-scheduler
+  namespace: default
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/sentry.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dapr-sentry
+  namespace: default
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+
+---
+# Source: dws/charts/postgresql/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dws-postgresql
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/version: 17.6.0
+    helm.sh/chart: postgresql-16.7.27
+automountServiceAccountToken: false
+
+---
+# Source: dws/charts/redis/templates/master/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+automountServiceAccountToken: false
+metadata:
+  name: dws-redis-master
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/version: 8.10.1
+    helm.sh/chart: redis-28.0.6
+
+---
+# Source: dws/templates/controller/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dws-controller
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.0
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller
+
+---
+# Source: dws/charts/dapr/charts/dapr_sentry/templates/dapr_sentry_deployment.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dapr-trust-bundle
+  namespace: default
+  labels:
+    app: dapr-sentry
+    app.kubernetes.io/component: sentry
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+
+
+---
+# Source: dws/charts/postgresql/templates/secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dws-postgresql
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/version: 17.6.0
+    helm.sh/chart: postgresql-16.7.27
+type: Opaque
+data:
+  postgres-password: "ZHdzLWJhc2VsaW5lLXN1cGVy"
+  password: "ZHdzLWJhc2VsaW5l"
+  # We don't auto-generate LDAP password when it's not provided as we do for other passwords
+
+---
+# Source: dws/charts/redis/templates/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dws-redis
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/version: 8.10.1
+    helm.sh/chart: redis-28.0.6
+type: Opaque
+data:
+  redis-password: "ZHdz"
+---
+# Source: dws/templates/postgres/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dws-postgres
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.0
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: postgres
+type: Opaque
+stringData:
+  database-url: "postgres://dws:dws-baseline@dws-postgresql.default.svc.cluster.local:5432/dws_admin"
+
+---
+# Source: dws/charts/dapr/charts/dapr_sentry/templates/dapr_sentry_deployment.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dapr-trust-bundle
+  namespace: default
+  labels:
+    app: dapr-sentry
+    app.kubernetes.io/component: sentry
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+
+
+---
+# Source: dws/charts/redis/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dws-redis-configuration
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/version: 8.10.1
+    helm.sh/chart: redis-28.0.6
+data:
+  redis.conf: |-
+    # User-supplied common configuration:
+    # Enable ReJSON y Redisearch
+    loadmodule /opt/bitnami/redis/lib/redis/modules/redisearch.so
+    loadmodule /opt/bitnami/redis/lib/redis/modules/rejson.so
+    # Enable AOF https://redis.io/topics/persistence#append-only-file
+    appendonly yes
+    # Disable RDB persistence, AOF persistence already enabled.
+    save ""
+    # End of common configuration
+  master.conf: |-
+    dir /data
+    # User-supplied master configuration:
+    rename-command FLUSHDB ""
+    rename-command FLUSHALL ""
+    # End of master configuration
+  replica.conf: |-
+    dir /data
+    # User-supplied replica configuration:
+    rename-command FLUSHDB ""
+    rename-command FLUSHALL ""
+    # End of replica configuration
+
+---
+# Source: dws/charts/redis/templates/health-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dws-redis-health
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/version: 8.10.1
+    helm.sh/chart: redis-28.0.6
+data:
+  ping_readiness_local.sh: |-
+    #!/bin/bash
+
+    timeout=$1
+    run_redis_command() {
+        local args=("-p" "$REDIS_PORT")
+        timeout -s 15 $timeout redis-cli "${args[@]}" "$@"
+    }
+
+    [[ -f $REDIS_PASSWORD_FILE ]] && export REDIS_PASSWORD="$(< "${REDIS_PASSWORD_FILE}")"
+    [[ -n "$REDIS_PASSWORD" ]] && export REDISCLI_AUTH="$REDIS_PASSWORD"
+    response=$(run_redis_command ping)
+    if [ "$?" -eq "124" ]; then
+      echo "Timed out"
+      exit 1
+    fi
+    if [ "$response" != "PONG" ]; then
+      echo "$response"
+      exit 1
+    fi
+
+  ping_liveness_local.sh: |-
+    #!/bin/bash
+
+    [[ -f $REDIS_PASSWORD_FILE ]] && export REDIS_PASSWORD="$(< "${REDIS_PASSWORD_FILE}")"
+    [[ -n "$REDIS_PASSWORD" ]] && export REDISCLI_AUTH="$REDIS_PASSWORD"
+    response=$(
+      timeout -s 15 $1 \
+      redis-cli \
+        -h localhost \
+        -p $REDIS_PORT \
+        ping
+    )
+    if [ "$?" -eq "124" ]; then
+      echo "Timed out"
+      exit 1
+    fi
+    responseFirstWord=$(echo $response | head -n1 | awk '{print $1;}')
+    if [ "$response" != "PONG" ] && [ "$responseFirstWord" != "LOADING" ] && [ "$responseFirstWord" != "MASTERDOWN" ]; then
+      echo "$response"
+      exit 1
+    fi
+  ping_readiness_master.sh: |-
+    #!/bin/bash
+
+    [[ -f $REDIS_MASTER_PASSWORD_FILE ]] && export REDIS_MASTER_PASSWORD="$(< "${REDIS_MASTER_PASSWORD_FILE}")"
+    [[ -n "$REDIS_MASTER_PASSWORD" ]] && export REDISCLI_AUTH="$REDIS_MASTER_PASSWORD"
+    response=$(
+      timeout -s 15 $1 \
+      redis-cli \
+        -h $REDIS_MASTER_HOST \
+        -p $REDIS_MASTER_PORT_NUMBER \
+        ping
+    )
+    if [ "$?" -eq "124" ]; then
+      echo "Timed out"
+      exit 1
+    fi
+    if [ "$response" != "PONG" ]; then
+      echo "$response"
+      exit 1
+    fi
+  ping_liveness_master.sh: |-
+    #!/bin/bash
+
+    [[ -f $REDIS_MASTER_PASSWORD_FILE ]] && export REDIS_MASTER_PASSWORD="$(< "${REDIS_MASTER_PASSWORD_FILE}")"
+    [[ -n "$REDIS_MASTER_PASSWORD" ]] && export REDISCLI_AUTH="$REDIS_MASTER_PASSWORD"
+    response=$(
+      timeout -s 15 $1 \
+      redis-cli \
+        -h $REDIS_MASTER_HOST \
+        -p $REDIS_MASTER_PORT_NUMBER \
+        ping
+    )
+    if [ "$?" -eq "124" ]; then
+      echo "Timed out"
+      exit 1
+    fi
+    responseFirstWord=$(echo $response | head -n1 | awk '{print $1;}')
+    if [ "$response" != "PONG" ] && [ "$responseFirstWord" != "LOADING" ]; then
+      echo "$response"
+      exit 1
+    fi
+  ping_readiness_local_and_master.sh: |-
+    script_dir="$(dirname "$0")"
+    exit_status=0
+    "$script_dir/ping_readiness_local.sh" $1 || exit_status=$?
+    "$script_dir/ping_readiness_master.sh" $1 || exit_status=$?
+    exit $exit_status
+  ping_liveness_local_and_master.sh: |-
+    script_dir="$(dirname "$0")"
+    exit_status=0
+    "$script_dir/ping_liveness_local.sh" $1 || exit_status=$?
+    "$script_dir/ping_liveness_master.sh" $1 || exit_status=$?
+    exit $exit_status
+
+---
+# Source: dws/charts/redis/templates/scripts-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dws-redis-scripts
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/version: 8.10.1
+    helm.sh/chart: redis-28.0.6
+data:
+  start-master.sh: |
+    #!/bin/bash
+
+    [[ -f $REDIS_PASSWORD_FILE ]] && export REDIS_PASSWORD="$(< "${REDIS_PASSWORD_FILE}")"
+    if [[ -f /opt/bitnami/redis/mounted-etc/master.conf ]];then
+        cp /opt/bitnami/redis/mounted-etc/master.conf /opt/bitnami/redis/etc/master.conf
+    fi
+    if [[ -f /opt/bitnami/redis/mounted-etc/redis.conf ]];then
+        cp /opt/bitnami/redis/mounted-etc/redis.conf /opt/bitnami/redis/etc/redis.conf
+    fi
+    if [[ -f /opt/bitnami/redis/mounted-etc/users.acl ]];then
+        cp /opt/bitnami/redis/mounted-etc/users.acl /opt/bitnami/redis/etc/users.acl
+    fi
+    ARGS=("--port" "${REDIS_PORT}")
+    ARGS+=("--requirepass" "${REDIS_PASSWORD}")
+    ARGS+=("--masterauth" "${REDIS_PASSWORD}")
+    ARGS+=("--include" "/opt/bitnami/redis/etc/redis.conf")
+    ARGS+=("--include" "/opt/bitnami/redis/etc/master.conf")
+    exec redis-server "${ARGS[@]}"
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/injector.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dapr-injector
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+rules:
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["mutatingwebhookconfigurations"]
+    verbs: ["patch"]
+    resourceNames: ["dapr-sidecar-injector"]
+  - apiGroups: ["dapr.io"]
+    resources: ["components"]
+    verbs: [ "get", "list"]
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/operator.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dapr-operator-admin
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+rules:
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/finalizers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/finalizers"]
+    verbs: ["update"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets", "statefulsets/finalizers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets/finalizers"]
+    verbs: ["update"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete", "watch"]
+  - apiGroups: [""]
+    resources: ["services","services/finalizers"]
+    verbs: ["get", "list", "watch", "update", "create"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["dapr.io"]
+    resources: ["components", "configurations", "subscriptions", "resiliencies", "httpendpoints", "mcpservers", "workflowaccesspolicies"]
+    verbs: [ "get", "list", "watch"]
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/placement.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dapr-placement
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+rules: []
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/scheduler.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dapr-scheduler
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/sentry.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dapr-sentry
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+rules:
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+  - apiGroups: ["dapr.io"]
+    resources: ["configurations"]
+    verbs: ["list", "get", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list", "get", "watch"]
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/injector.yaml
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dapr-injector
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+subjects:
+- kind: ServiceAccount
+  name: dapr-injector
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dapr-injector
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/operator.yaml
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dapr-operator-admin
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+subjects:
+- kind: ServiceAccount
+  name: dapr-operator
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dapr-operator-admin
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/placement.yaml
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dapr-placement
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+subjects:
+- kind: ServiceAccount
+  name: dapr-placement
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dapr-placement
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/scheduler.yaml
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dapr-scheduler
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+subjects:
+- kind: ServiceAccount
+  name: dapr-scheduler
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dapr-scheduler
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/sentry.yaml
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dapr-sentry
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+subjects:
+- kind: ServiceAccount
+  name: dapr-sentry
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dapr-sentry
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/injector.yaml
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dapr-injector
+  namespace: default
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+    resourceNames: ["dapr-trust-bundle"]
+  - apiGroups: ["dapr.io"]
+    resources: ["configurations"]
+    verbs: [ "get" ]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: [ "get" ]
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/operator.yaml
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dapr-operator
+  namespace: default
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "update", "create"]
+    resourceNames: ["operator.dapr.io", "webhooks.dapr.io"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "update", "create"]
+    resourceNames: ["operator.dapr.io", "webhooks.dapr.io"]
+# We cannot use resourceNames for create because Kubernetes doesn't nessarily
+# know resource names at authorization time.
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["configmaps", "events"]
+    verbs: ["create"]
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/secret-reader.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: secret-reader
+  namespace: default
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/sentry.yaml
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dapr-sentry
+  namespace: default
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "update","delete"]
+    resourceNames: ["dapr-trust-bundle"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "update", "watch", "list"]
+    resourceNames: ["dapr-trust-bundle"]
+  - apiGroups: ["dapr.io"]
+    resources: ["configurations"]
+    verbs: ["list", "get", "watch"]
+
+---
+# Source: dws/templates/controller/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dws-controller
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.0
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller
+rules:
+  # Immutable definition ConfigMaps.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "create", "delete"]
+  # Orchestrator Deployments. `update`/`patch` are needed to stamp dws.io/drain=true on
+  # the superseded version during rollout.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "create", "delete", "update", "patch"]
+  # Step services. `update`/`patch` let a new version re-label an existing, same-named
+  # Knative Service instead of failing on create.
+  - apiGroups: ["serving.knative.dev"]
+    resources: ["services"]
+    verbs: ["get", "list", "create", "delete", "update", "patch"]
+  # Dapr configuration components backing the definition store.
+  - apiGroups: ["dapr.io"]
+    resources: ["components"]
+    verbs: ["get", "list", "create", "delete", "update", "patch"]
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/injector.yaml
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dapr-injector
+  namespace: default
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+subjects:
+- kind: ServiceAccount
+  name: dapr-injector
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dapr-injector
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/operator.yaml
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dapr-operator
+  namespace: default
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+subjects:
+- kind: ServiceAccount
+  name: dapr-operator
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dapr-operator
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/secret-reader.yaml
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dapr-secret-reader
+  namespace: default
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+subjects:
+- kind: ServiceAccount
+  name: default
+roleRef:
+  kind: Role
+  name: secret-reader
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Source: dws/charts/dapr/charts/dapr_rbac/templates/sentry.yaml
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: dapr-sentry
+  namespace: default
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+subjects:
+- kind: ServiceAccount
+  name: dapr-sentry
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dapr-sentry
+
+---
+# Source: dws/templates/controller/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dws-controller
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.0
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller
+subjects:
+  - kind: ServiceAccount
+    name: dws-controller
+    namespace: default
+roleRef:
+  kind: Role
+  name: dws-controller
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Source: dws/charts/dapr/charts/dapr_operator/templates/dapr_operator_service.yaml
+kind: Service
+apiVersion: v1
+metadata:
+  name: dapr-api
+  namespace: default
+  labels:
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/"
+spec:
+  selector:
+    app: dapr-operator
+  type: ClusterIP
+  ports:
+  - protocol: TCP
+    port: 443
+    targetPort: 6500
+    name: grpc
+# Added for backwards compatibility where previous clients will attempt to
+# connect on port 80.
+# TOOD: @joshvanl: remove in v1.14
+
+  - protocol: TCP
+    port: 80
+    targetPort: 6500
+    name: legacy
+
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+
+---
+# Source: dws/charts/dapr/charts/dapr_operator/templates/dapr_operator_service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: dapr-webhook
+  namespace: default
+  labels:
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+spec:
+  type: ClusterIP
+  ports:
+  - port: 443
+    targetPort: 19443
+    protocol: TCP
+  selector:
+    app: dapr-operator
+
+---
+# Source: dws/charts/dapr/charts/dapr_placement/templates/dapr_placement_service.yaml
+kind: Service
+apiVersion: v1
+metadata:
+  name: dapr-placement-server
+  namespace: default
+  labels:
+    app: dapr-placement-server
+    app.kubernetes.io/component: placement
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/"
+spec:
+  selector:
+    app: dapr-placement-server
+  # placement must be able to resolve pod address to join initial cluster peers
+  # before POD is ready
+  publishNotReadyAddresses: true
+  ports:
+  - name: api
+    port: 50005
+  - name: raft-node
+    port: 8201
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+  clusterIP: None
+
+---
+# Source: dws/charts/dapr/charts/dapr_scheduler/templates/dapr_scheduler_service.yaml
+kind: Service
+apiVersion: v1
+metadata:
+  name: dapr-scheduler-server-a
+  namespace: default
+  labels:
+    app: dapr-scheduler-server
+    app.kubernetes.io/component: scheduler
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/"
+spec:
+  selector:
+    app: dapr-scheduler-server
+  # scheduler must be able to resolve pod address to join initial cluster peers
+  # before POD is ready
+  publishNotReadyAddresses: true
+  ports:
+  - name: api
+    port: 443
+    targetPort: 50006
+  - name: etcd-client
+    port: 2379
+  - name: etcd-peer
+    port: 2380
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+  type: ClusterIP
+
+---
+# Source: dws/charts/dapr/charts/dapr_scheduler/templates/dapr_scheduler_service.yaml
+kind: Service
+apiVersion: v1
+metadata:
+  name: dapr-scheduler-server
+  namespace: default
+  labels:
+    app: dapr-scheduler-server
+    app.kubernetes.io/component: scheduler
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/"
+spec:
+  selector:
+    app: dapr-scheduler-server
+  # scheduler must be able to resolve pod address to join initial cluster peers
+  # before POD is ready
+  publishNotReadyAddresses: true
+  ports:
+  - name: api
+    port: 50006
+  - name: etcd-client
+    port: 2379
+  - name: etcd-peer
+    port: 2380
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+  clusterIP: None # make the service headless
+
+---
+# Source: dws/charts/dapr/charts/dapr_sentry/templates/dapr_sentry_service.yaml
+kind: Service
+apiVersion: v1
+metadata:
+  name: dapr-sentry
+  namespace: default
+  labels:
+    app.kubernetes.io/component: sentry
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/"
+spec:
+  selector:
+    app: dapr-sentry
+  type: ClusterIP
+  ports:
+  - protocol: TCP
+    port: 443
+    targetPort: 50001
+    name: grpc
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+
+---
+# Source: dws/charts/dapr/charts/dapr_sidecar_injector/templates/dapr_sidecar_injector_service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: dapr-sidecar-injector
+  namespace: default
+  labels:
+    app.kubernetes.io/component: sidecar-injector
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/path: "/"
+spec:
+  selector:
+    app: dapr-sidecar-injector
+  type: ClusterIP
+  ports:
+  - port: 443
+    targetPort: https
+    protocol: TCP
+    name: https
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+
+---
+# Source: dws/charts/postgresql/templates/primary/svc-headless.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: dws-postgresql-hl
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/version: 17.6.0
+    helm.sh/chart: postgresql-16.7.27
+    app.kubernetes.io/component: primary
+  annotations:
+spec:
+  type: ClusterIP
+  clusterIP: None
+  # We want all pods in the StatefulSet to have their addresses published for
+  # the sake of the other Postgresql pods even before they're ready, since they
+  # have to be able to talk to each other in order to become ready.
+  publishNotReadyAddresses: true
+  ports:
+    - name: tcp-postgresql
+      port: 5432
+      targetPort: tcp-postgresql
+  selector:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/component: primary
+
+---
+# Source: dws/charts/postgresql/templates/primary/svc.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: dws-postgresql
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/version: 17.6.0
+    helm.sh/chart: postgresql-16.7.27
+    app.kubernetes.io/component: primary
+spec:
+  type: ClusterIP
+  sessionAffinity: None
+  ports:
+    - name: tcp-postgresql
+      port: 5432
+      targetPort: tcp-postgresql
+      nodePort: null
+  selector:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/component: primary
+
+---
+# Source: dws/charts/redis/templates/headless-svc.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: dws-redis-headless
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/version: 8.10.1
+    helm.sh/chart: redis-28.0.6
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: tcp-redis
+      port: 6379
+      targetPort: redis
+  selector:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/name: redis
+
+---
+# Source: dws/charts/redis/templates/master/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: dws-redis-master
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/version: 8.10.1
+    helm.sh/chart: redis-28.0.6
+    app.kubernetes.io/component: master
+spec:
+  type: ClusterIP
+  internalTrafficPolicy: Cluster
+  ports:
+    - name: tcp-redis
+      port: 6379
+      targetPort: redis
+      nodePort: null
+  selector:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: master
+
+---
+# Source: dws/templates/admin/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: dws-admin
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.0
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: admin
+spec:
+  selector:
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/component: admin
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+
+---
+# Source: dws/templates/controller/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: dws-controller
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.0
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller
+spec:
+  selector:
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/component: controller
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+
+---
+# Source: dws/charts/dapr/charts/dapr_operator/templates/dapr_operator_deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dapr-operator
+  namespace: default
+  labels:
+    app: dapr-operator
+    app.kubernetes.io/component: operator
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dapr-operator
+  template:
+    metadata:
+      labels:
+        app: dapr-operator
+        app.kubernetes.io/component: operator
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: dws
+        app.kubernetes.io/part-of: dapr
+        app.kubernetes.io/version: 1.18.1
+      annotations:
+        dapr.io/control-plane: operator
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/"
+    spec:
+      containers:
+      - name: dapr-operator
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 180
+          periodSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 1
+          periodSeconds: 1
+          failureThreshold: 3
+        image: "ghcr.io/dapr/operator:1.18.1"
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        ports:
+        - containerPort: 6500
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        resources:
+          {}
+        volumeMounts:
+        - name: dapr-trust-bundle
+          mountPath: /var/run/secrets/dapr.io/tls
+          readOnly: true
+        - name: dapr-identity-token
+          mountPath: /var/run/secrets/dapr.io/sentrytoken
+          readOnly: true
+        # This is not needed in debug mode because the root FS is writable
+        - name: dapr-operator-tmp
+          mountPath: /tmp
+        command:
+        - "/operator"
+        args:
+        - "--watch-interval"
+        - "0"
+        - "--max-pod-restarts-per-minute"
+        - "20"
+        - "--log-level"
+        - "info"
+        - "--trust-anchors-file"
+        - "/var/run/secrets/dapr.io/tls/ca.crt"
+        - "--enable-metrics"
+        - "--metrics-port"
+        - "9090"
+      serviceAccountName: dapr-operator
+      volumes:
+        - name: dapr-operator-tmp
+          emptyDir:
+            sizeLimit: 64Mi
+            medium: Memory
+        - name: dapr-trust-bundle
+          configMap:
+            name: dapr-trust-bundle
+        - name: dapr-identity-token
+          projected:
+            sources:
+            - serviceAccountToken:
+                path: token
+                expirationSeconds: 600
+                audience: "spiffe://cluster.local/ns/default/dapr-sentry"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+             nodeSelectorTerms:
+                - matchExpressions:
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                    - linux
+
+---
+# Source: dws/charts/dapr/charts/dapr_sentry/templates/dapr_sentry_deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dapr-sentry
+  namespace: default
+  labels:
+    app: dapr-sentry
+    app.kubernetes.io/component: sentry
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dapr-sentry
+  template:
+    metadata:
+      labels:
+        app: dapr-sentry
+        app.kubernetes.io/component: sentry
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: dws
+        app.kubernetes.io/part-of: dapr
+        app.kubernetes.io/version: 1.18.1
+      annotations:
+        dapr.io/control-plane: sentry
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/"
+    spec:
+      containers:
+      - name: dapr-sentry
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 180
+          periodSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 1
+          periodSeconds: 1
+          failureThreshold: 3
+        image: "ghcr.io/dapr/sentry:1.18.1"
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        ports:
+        - containerPort: 50001
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        resources:
+          {}
+        volumeMounts:
+          - name: credentials
+            mountPath: /var/run/secrets/dapr.io/credentials
+            readOnly: true
+        command:
+        - "/sentry"
+        args:
+        - "--mode"
+        - "kubernetes"
+        - "--log-level"
+        - info
+        - "--enable-metrics"
+        - "--metrics-port"
+        - "9090"
+        - "--trust-domain"
+        - cluster.local
+
+      serviceAccountName: dapr-sentry
+      volumes:
+        - name: credentials
+          secret:
+            secretName: dapr-trust-bundle
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+             nodeSelectorTerms:
+                - matchExpressions:
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                    - linux
+
+---
+# Source: dws/charts/dapr/charts/dapr_sidecar_injector/templates/dapr_sidecar_injector_deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dapr-sidecar-injector
+  namespace: default
+  labels:
+    app: dapr-sidecar-injector
+    app.kubernetes.io/component: sidecar-injector
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dapr-sidecar-injector
+  template:
+    metadata:
+      labels:
+        app: dapr-sidecar-injector
+        app.kubernetes.io/component: sidecar-injector
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: dws
+        app.kubernetes.io/part-of: dapr
+        app.kubernetes.io/version: 1.18.1
+      annotations:
+        dapr.io/control-plane: injector
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/"
+    spec:
+      serviceAccountName: dapr-injector
+      containers:
+      - name: dapr-sidecar-injector
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 180
+          periodSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 1
+          periodSeconds: 1
+          failureThreshold: 3
+        image: "ghcr.io/dapr/injector:1.18.1"
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        command:
+        - "/injector"
+        args:
+        - "--log-level"
+        - info
+        - "--enable-metrics"
+        - "--metrics-port"
+        - "9090"
+        - "--healthz-port"
+        - "8080"
+        - "--scheduler-enabled=true"
+        env:
+        - name: DAPR_TRUST_ANCHORS_FILE
+          value: /var/run/secrets/dapr.io/tls/ca.crt
+        - name: DAPR_CONTROL_PLANE_TRUST_DOMAIN
+          value: cluster.local
+        - name: DAPR_SENTRY_ADDRESS
+          value: dapr-sentry.default.svc.cluster.local:443
+        - name: KUBE_CLUSTER_DOMAIN
+          value: cluster.local
+        - name: SIDECAR_IMAGE
+          value: "ghcr.io/dapr/daprd:1.18.1"
+        - name: SIDECAR_IMAGE_PULL_POLICY
+          value: IfNotPresent
+        # Configuration for injected sidecars
+        - name: SIDECAR_RUN_AS_NON_ROOT
+          value: "true"
+        - name: ENABLE_K8S_DOWNWARD_APIS
+          value: "false"
+        - name: SIDECAR_DROP_ALL_CAPABILITIES
+          value: "false"
+        - name: SIDECAR_READ_ONLY_ROOT_FILESYSTEM
+          value: "true"
+        - name: NATIVE_SIDECAR_ENABLED
+          value: "false"
+
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: IGNORE_ENTRYPOINT_TOLERATIONS
+          value: '[{\"effect\":\"NoSchedule\",\"key\":\"alibabacloud.com/eci\"},{\"effect\":\"NoSchedule\",\"key\":\"azure.com/aci\"},{\"effect\":\"NoSchedule\",\"key\":\"aws\"},{\"effect\":\"NoSchedule\",\"key\":\"huawei.com/cci\"}]'
+
+        # Configuration for actors and reminders
+        - name: ACTORS_ENABLED
+          value: "true"
+        - name: ACTORS_SERVICE_NAME
+          value: placement
+        - name: ACTORS_SERVICE_ADDRESS
+          value: dapr-placement-server:50005
+        ports:
+        - name: https
+          containerPort: 4000
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        resources:
+          {}
+        volumeMounts:
+        - name: dapr-trust-bundle
+          mountPath: /var/run/secrets/dapr.io/tls
+          readOnly: true
+        - name: dapr-identity-token
+          mountPath: /var/run/secrets/dapr.io/sentrytoken
+          readOnly: true
+      volumes:
+      - name: dapr-trust-bundle
+        configMap:
+          name: dapr-trust-bundle
+      - name: dapr-identity-token
+        projected:
+          sources:
+          - serviceAccountToken:
+              path: token
+              expirationSeconds: 600
+              audience: "spiffe://cluster.local/ns/default/dapr-sentry"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+             nodeSelectorTerms:
+                - matchExpressions:
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                      - linux
+
+---
+# Source: dws/templates/admin/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dws-admin
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.0
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: admin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dws
+      app.kubernetes.io/instance: dws
+      app.kubernetes.io/component: admin
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: dws-1.1.0
+        app.kubernetes.io/name: dws
+        app.kubernetes.io/instance: dws
+        app.kubernetes.io/version: "1.18.0"
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/component: admin
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "dws-admin"
+        dapr.io/app-port: "3000"
+    spec:
+      
+      initContainers:
+        # Bitnami subcharts (postgresql, redis) don't gate the app pod's startup
+        # on their own readiness — helm applies everything in one pass, so the
+        # admin pod races the backing services. Postgres-not-ready crashes the
+        # admin container mid-migration (ECONNREFUSED on port 5432); Redis-not-
+        # ready fatally exits the daprd sidecar during pubsub.redis Component
+        # init (`connect: connection refused` — pubsub.redis returns error
+        # synchronously, so `spec.initTimeout` on the Component does not save it).
+        # Wait for both TCP ports here so admin's containers start into a
+        # reachable dependency set.
+        - name: wait-for-postgres
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z dws-postgresql 5432; do
+                echo "waiting for postgres dws-postgresql:5432" >&2
+                sleep 2
+              done
+        - name: wait-for-redis
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              # Strip the :port suffix off dws.redis.host — nc wants host and
+              # port as separate args.
+              host_port='dws-redis-master.default.svc.cluster.local:6379'
+              host=${host_port%:*}
+              port=${host_port##*:}
+              until nc -z "$host" "$port"; do
+                echo "waiting for redis $host:$port" >&2
+                sleep 2
+              done
+      containers:
+        - name: admin
+          image: "ghcr.io/tonylibs/dws-admin:0.2.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: dws-postgres
+                  key: database-url
+            - name: RUN_MIGRATIONS_ON_BOOT
+              value: "true"
+            - name: DAPR_PUBSUB_NAME
+              value: "pubsub"
+            - name: DAPR_PUBSUB_TOPIC
+              value: "dws.events"
+            - name: DAPR_CONTROLLER_APP_ID
+              value: "dws-controller"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          resources:
+            limits:
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+
+---
+# Source: dws/templates/controller/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dws-controller
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.0
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dws
+      app.kubernetes.io/instance: dws
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: dws-1.1.0
+        app.kubernetes.io/name: dws
+        app.kubernetes.io/instance: dws
+        app.kubernetes.io/version: "1.18.0"
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/component: controller
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "dws-controller"
+        dapr.io/app-port: "8080"
+    spec:
+      serviceAccountName: dws-controller
+      
+      initContainers:
+        # The daprd sidecar's pubsub.redis Component init returns error
+        # synchronously on a first connection-refused, so if the sidecar starts
+        # before the in-chart Bitnami Redis is Ready it fatally exits (see
+        # admin/deployment.yaml for the full explanation and CI evidence). Wait
+        # for Redis's TCP port here so the sidecar comes up into a reachable
+        # dependency set.
+        - name: wait-for-redis
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              host_port='dws-redis-master.default.svc.cluster.local:6379'
+              host=${host_port%:*}
+              port=${host_port##*:}
+              until nc -z "$host" "$port"; do
+                echo "waiting for redis $host:$port" >&2
+                sleep 2
+              done
+      containers:
+        - name: controller
+          image: "ghcr.io/tonylibs/dws-controller:1.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: DWS_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: DWS_IMAGES_CALL_HTTP
+              value: "ghcr.io/tonylibs/dws-call-http:0.2.0"
+            - name: DWS_IMAGES_CALL_OPENAPI
+              value: "ghcr.io/tonylibs/dws-call-openapi:1.1.0"
+            - name: DWS_IMAGES_CALL_GRPC
+              value: "ghcr.io/tonylibs/dws-call-grpc:0.2.0"
+            - name: DWS_IMAGES_CALL_ASYNCAPI
+              value: "ghcr.io/tonylibs/dws-call-asyncapi:1.1.0"
+            - name: DWS_IMAGES_CALL_A2A
+              value: "ghcr.io/tonylibs/dws-call-a2a:latest"
+            - name: DWS_IMAGES_RUN_SHELL
+              value: "ghcr.io/tonylibs/dws-run-shell:0.2.0"
+            - name: DWS_IMAGES_RUN_SCRIPT_JS
+              value: "ghcr.io/tonylibs/dws-run-script-js:0.2.0"
+            - name: DWS_IMAGES_RUN_SCRIPT_PYTHON
+              value: "ghcr.io/tonylibs/dws-run-script-python:0.2.0"
+            - name: DWS_IMAGES_ORCHESTRATOR
+              value: "ghcr.io/tonylibs/dws-orchestrator:latest"
+          livenessProbe:
+            httpGet:
+              path: /q/health/live
+              port: http
+            initialDelaySeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /q/health/ready
+              port: http
+            initialDelaySeconds: 5
+          resources:
+            limits:
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+
+---
+# Source: dws/charts/dapr/charts/dapr_placement/templates/dapr_placement_statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: dapr-placement-server
+  namespace: default
+  labels:
+    app: dapr-placement-server
+    app.kubernetes.io/component: placement
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+spec:
+  replicas: 1
+  serviceName: dapr-placement-server
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: dapr-placement-server
+  template:
+    metadata:
+      labels:
+        app: dapr-placement-server
+        app.kubernetes.io/component: placement
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: dws
+        app.kubernetes.io/part-of: dapr
+        app.kubernetes.io/version: 1.18.1
+      annotations:
+        dapr.io/control-plane: placement
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/"
+    spec:
+      securityContext:
+        fsGroup: 65532
+      containers:
+      - name: dapr-placement-server
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 180
+          periodSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 1
+          periodSeconds: 1
+          failureThreshold: 3
+        image: "ghcr.io/dapr/placement:1.18.1"
+        imagePullPolicy: IfNotPresent
+        resources:
+          {}
+        volumeMounts:
+          - name: dapr-trust-bundle
+            mountPath: /var/run/secrets/dapr.io/tls
+            readOnly: true
+          - name: dapr-identity-token
+            mountPath: /var/run/secrets/dapr.io/sentrytoken
+        ports:
+          - containerPort: 50005
+            name: api
+          - containerPort: 8201
+            name: raft-node
+          - name: metrics
+            containerPort: 9090
+            protocol: TCP
+        command:
+        - "/placement"
+        args:
+        - "--log-level"
+        - info
+        - "--replicationFactor=100"
+        - "--max-api-level=10"
+        - "--min-api-level=0"
+        - "--keepalive-time=2s"
+        - "--keepalive-timeout=3s"
+        - "--disseminate-timeout=8s"
+        - "--disseminate-coalesce-window=0s"
+        - "--enable-metrics"
+        - "--metrics-port"
+        - "9090"
+        - "--tls-enabled"
+        - "--trust-domain=cluster.local"
+        - "--trust-anchors-file=/var/run/secrets/dapr.io/tls/ca.crt"
+        - "--sentry-address=dapr-sentry.default.svc.cluster.local:443"
+        - "--mode=kubernetes"
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        env:
+        - name: PLACEMENT_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+      serviceAccountName: dapr-placement
+      volumes:
+      - name: dapr-trust-bundle
+        configMap:
+          name: dapr-trust-bundle
+      - name: dapr-identity-token
+        projected:
+          sources:
+          - serviceAccountToken:
+              path: token
+              expirationSeconds: 600
+              audience: "spiffe://cluster.local/ns/default/dapr-sentry"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+             nodeSelectorTerms:
+                - matchExpressions:
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                    - linux
+
+---
+# Source: dws/charts/dapr/charts/dapr_scheduler/templates/dapr_scheduler_statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: dapr-scheduler-server
+  namespace: default
+  labels:
+    app: dapr-scheduler-server
+    app.kubernetes.io/component: scheduler
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+spec:
+  replicas: 3
+  serviceName: dapr-scheduler-server
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: dapr-scheduler-server
+  volumeClaimTemplates:
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: dapr-scheduler-data-dir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 16Gi
+  template:
+    metadata:
+      labels:
+        app: dapr-scheduler-server
+        app.kubernetes.io/component: scheduler
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: dws
+        app.kubernetes.io/part-of: dapr
+        app.kubernetes.io/version: 1.18.1
+      annotations:
+        dapr.io/control-plane: scheduler
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/"
+    spec:
+      securityContext:
+        fsGroup: 65532
+      containers:
+      - name: dapr-scheduler-server
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 180
+          periodSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 1
+          periodSeconds: 1
+          failureThreshold: 3
+        image: "ghcr.io/dapr/scheduler:1.18.1"
+        imagePullPolicy: IfNotPresent
+        resources:
+          {}
+        volumeMounts:
+          - name: dapr-scheduler-data-dir
+            mountPath: /var/run/data/dapr-scheduler/
+            readOnly: false
+          - name: dapr-scheduler-writeable-identity
+            mountPath: /tmp
+          - name: dapr-trust-bundle
+            mountPath: /var/run/secrets/dapr.io/tls
+            readOnly: true
+          - name: dapr-identity-token
+            mountPath: /var/run/secrets/dapr.io/sentrytoken
+        ports:
+          - containerPort: 50006
+          - containerPort: 2379
+            name: etcd-client
+          - containerPort: 2380
+            name: etcd-peer
+          - name: metrics
+            containerPort: 9090
+            protocol: TCP
+        command:
+        - "/scheduler"
+        args:
+        - "--listen-address=0.0.0.0"
+        - "--id"
+        - "$(SCHEDULER_ID)"
+        - "--etcd-initial-cluster"
+        - "dapr-scheduler-server-0=https://dapr-scheduler-server-0.dapr-scheduler-server.default.svc.cluster.local:2380,dapr-scheduler-server-1=https://dapr-scheduler-server-1.dapr-scheduler-server.default.svc.cluster.local:2380,dapr-scheduler-server-2=https://dapr-scheduler-server-2.dapr-scheduler-server.default.svc.cluster.local:2380"
+        - "--etcd-embed=true"
+        - "--log-level"
+        - info
+        - "--enable-metrics"
+        - "--metrics-port"
+        - "9090"
+        - "--etcd-client-port"
+        - "2379"
+        - "--etcd-data-dir=/var/run/data/dapr-scheduler/default/$(SCHEDULER_ID)"
+        - "--etcd-space-quota=9.2E"
+        - "--etcd-compaction-mode=revision"
+        - "--etcd-compaction-retention=1000000"
+        - "--etcd-snapshot-count=100000"
+        - "--etcd-max-snapshots=10"
+        - "--etcd-max-wals=10"
+        - "--etcd-backend-batch-limit=10000"
+        - "--etcd-backend-batch-interval=100ms"
+        - "--etcd-max-txn-ops=10000"
+        - "--etcd-experimental-bootstrap-defrag-threshold-megabytes=100"
+        - "--etcd-initial-election-tick-advance=false"
+        - "--etcd-metrics=basic"
+        - "--tls-enabled"
+        - "--trust-domain=cluster.local"
+        - "--trust-anchors-file=/var/run/secrets/dapr.io/tls/ca.crt"
+        - "--sentry-address=dapr-sentry.default.svc.cluster.local:443"
+        - "--mode=kubernetes"
+        - "--workers=2048"
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        env:
+        - name: SCHEDULER_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+      serviceAccountName: dapr-scheduler
+      volumes:
+      - name: dapr-scheduler-writeable-identity
+        emptyDir: {}
+      - name: dapr-trust-bundle
+        configMap:
+          name: dapr-trust-bundle
+      - name: dapr-identity-token
+        projected:
+          sources:
+          - serviceAccountToken:
+              path: token
+              expirationSeconds: 600
+              audience: "spiffe://cluster.local/ns/default/dapr-sentry"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+             nodeSelectorTerms:
+                - matchExpressions:
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                    - linux
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - dapr-scheduler-server
+              topologyKey: topology.kubernetes.io/zone
+
+---
+# Source: dws/charts/postgresql/templates/primary/statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: dws-postgresql
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/version: 17.6.0
+    helm.sh/chart: postgresql-16.7.27
+    app.kubernetes.io/component: primary
+spec:
+  replicas: 1
+  serviceName: dws-postgresql-hl
+  updateStrategy:
+    rollingUpdate: {}
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: dws
+      app.kubernetes.io/name: postgresql
+      app.kubernetes.io/component: primary
+  template:
+    metadata:
+      name: dws-postgresql
+      labels:
+        app.kubernetes.io/instance: dws
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: postgresql
+        app.kubernetes.io/version: 17.6.0
+        helm.sh/chart: postgresql-16.7.27
+        app.kubernetes.io/component: primary
+    spec:
+      serviceAccountName: dws-postgresql
+      
+      automountServiceAccountToken: false
+      affinity:
+        podAffinity:
+          
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/instance: dws
+                    app.kubernetes.io/name: postgresql
+                    app.kubernetes.io/component: primary
+                topologyKey: kubernetes.io/hostname
+              weight: 1
+        nodeAffinity:
+          
+      securityContext:
+        fsGroup: 1001
+        fsGroupChangePolicy: Always
+        supplementalGroups: []
+        sysctls: []
+      hostNetwork: false
+      hostIPC: false
+      containers:
+        - name: postgresql
+          image: docker.io/bitnamilegacy/postgresql:17.6.0-debian-12-r4
+          imagePullPolicy: "IfNotPresent"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsGroup: 1001
+            runAsNonRoot: true
+            runAsUser: 1001
+            seLinuxOptions: {}
+            seccompProfile:
+              type: RuntimeDefault
+          env:
+            - name: BITNAMI_DEBUG
+              value: "false"
+            - name: POSTGRESQL_PORT_NUMBER
+              value: "5432"
+            - name: POSTGRESQL_VOLUME_DIR
+              value: "/bitnami/postgresql"
+            - name: PGDATA
+              value: "/bitnami/postgresql/data"
+            # Authentication
+            - name: POSTGRES_USER
+              value: "dws"
+            - name: POSTGRES_PASSWORD_FILE
+              value: /opt/bitnami/postgresql/secrets/password
+            - name: POSTGRES_POSTGRES_PASSWORD_FILE
+              value: /opt/bitnami/postgresql/secrets/postgres-password
+            - name: POSTGRES_DATABASE
+              value: "dws_admin"
+            # LDAP
+            - name: POSTGRESQL_ENABLE_LDAP
+              value: "no"
+            # TLS
+            - name: POSTGRESQL_ENABLE_TLS
+              value: "no"
+            # Audit
+            - name: POSTGRESQL_LOG_HOSTNAME
+              value: "false"
+            - name: POSTGRESQL_LOG_CONNECTIONS
+              value: "false"
+            - name: POSTGRESQL_LOG_DISCONNECTIONS
+              value: "false"
+            - name: POSTGRESQL_PGAUDIT_LOG_CATALOG
+              value: "off"
+            # Others
+            - name: POSTGRESQL_CLIENT_MIN_MESSAGES
+              value: "error"
+            - name: POSTGRESQL_SHARED_PRELOAD_LIBRARIES
+              value: "pgaudit"
+          ports:
+            - name: tcp-postgresql
+              containerPort: 5432
+          livenessProbe:
+            failureThreshold: 6
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - exec pg_isready -U "dws" -d "dbname=dws_admin" -h 127.0.0.1 -p 5432
+          readinessProbe:
+            failureThreshold: 6
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - -e
+                - |
+                  exec pg_isready -U "dws" -d "dbname=dws_admin" -h 127.0.0.1 -p 5432
+                  [ -f /opt/bitnami/postgresql/tmp/.initialized ] || [ -f /bitnami/postgresql/.initialized ]
+          resources:
+            limits:
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          volumeMounts:
+            - name: empty-dir
+              mountPath: /tmp
+              subPath: tmp-dir
+            - name: empty-dir
+              mountPath: /opt/bitnami/postgresql/conf
+              subPath: app-conf-dir
+            - name: empty-dir
+              mountPath: /opt/bitnami/postgresql/tmp
+              subPath: app-tmp-dir
+            - name: postgresql-password
+              mountPath: /opt/bitnami/postgresql/secrets/
+            - name: dshm
+              mountPath: /dev/shm
+            - name: data
+              mountPath: /bitnami/postgresql
+      volumes:
+        - name: empty-dir
+          emptyDir: {}
+        - name: postgresql-password
+          secret:
+            secretName: dws-postgresql
+        - name: dshm
+          emptyDir:
+            medium: Memory
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: data
+      spec:
+        accessModes:
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: "1Gi"
+        
+
+---
+# Source: dws/charts/redis/templates/master/application.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: dws-redis-master
+  namespace: "default"
+  labels:
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/version: 8.10.1
+    helm.sh/chart: redis-28.0.6
+    app.kubernetes.io/component: master
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: dws
+      app.kubernetes.io/name: redis
+      app.kubernetes.io/component: master
+  serviceName: dws-redis-headless
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: dws
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: redis
+        app.kubernetes.io/version: 8.10.1
+        helm.sh/chart: redis-28.0.6
+        app.kubernetes.io/component: master
+      annotations:
+        checksum/configmap: 62ff2843192643ad74a96fbad607a0b92db3dc81d3a369deaa3fb9aebbd24ddc
+        checksum/health: a2fc61ae99390643dac0673ed97203805136d4460b2319e7beff10546c1e1140
+        checksum/scripts: 0717e77fd3bb941f602860e9be4f2ed87b481cddeadf37be463f8512ecde0c3e
+        checksum/secret: 0305a7440f0a8382bd9119abbd460cda296de551c682046dac20a966de2f2832
+    spec:
+      
+      securityContext:
+        fsGroup: 1001
+        fsGroupChangePolicy: Always
+        supplementalGroups: []
+        sysctls: []
+      serviceAccountName: dws-redis-master
+      automountServiceAccountToken: false
+      affinity:
+        podAffinity:
+          
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/instance: dws
+                    app.kubernetes.io/name: redis
+                    app.kubernetes.io/component: master
+                topologyKey: kubernetes.io/hostname
+              weight: 1
+        nodeAffinity:
+          
+      enableServiceLinks: true
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: redis
+          image: registry-1.docker.io/bitnamilegacy/redis:latest
+          imagePullPolicy: "IfNotPresent"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+            runAsGroup: 1001
+            runAsNonRoot: true
+            runAsUser: 1001
+            seLinuxOptions: {}
+            seccompProfile:
+              type: RuntimeDefault
+          command:
+            - /bin/bash
+          args:
+            - -ec
+            - /opt/bitnami/scripts/start-scripts/start-master.sh
+          env:
+            - name: BITNAMI_DEBUG
+              value: "false"
+            - name: REDIS_REPLICATION_MODE
+              value: master
+            - name: ALLOW_EMPTY_PASSWORD
+              value: "no"
+            - name: OPENSSL_FIPS
+              value: "yes"
+            - name: REDIS_PASSWORD_FILE
+              value: "/opt/bitnami/redis/secrets/redis-password"
+            - name: REDIS_TLS_ENABLED
+              value: "no"
+            - name: REDIS_PORT
+              value: "6379"
+          ports:
+            - name: redis
+              containerPort: 6379
+          livenessProbe:
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            # One second longer than command timeout should prevent generation of zombie processes.
+            timeoutSeconds: 6
+            successThreshold: 1
+            failureThreshold: 5
+            exec:
+              command:
+                - /bin/bash
+                - -ec
+                - "/health/ping_liveness_local.sh 5"
+          readinessProbe:
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            timeoutSeconds: 2
+            successThreshold: 1
+            failureThreshold: 5
+            exec:
+              command:
+                - /bin/bash
+                - -ec
+                - "/health/ping_readiness_local.sh 1"
+          resources:
+            limits:
+              cpu: 150m
+              ephemeral-storage: 2Gi
+              memory: 192Mi
+            requests:
+              cpu: 100m
+              ephemeral-storage: 50Mi
+              memory: 128Mi
+          volumeMounts:
+            - name: start-scripts
+              mountPath: /opt/bitnami/scripts/start-scripts
+            - name: health
+              mountPath: /health
+            - name: redis-password
+              mountPath: /opt/bitnami/redis/secrets/
+            - name: redis-data
+              mountPath: /data
+            - name: config
+              mountPath: /opt/bitnami/redis/mounted-etc
+            - name: empty-dir
+              mountPath: /opt/bitnami/redis/etc/
+              subPath: app-conf-dir
+            - name: empty-dir
+              mountPath: /tmp
+              subPath: tmp-dir
+      volumes:
+        - name: start-scripts
+          configMap:
+            name: dws-redis-scripts
+            defaultMode: 0755
+        - name: health
+          configMap:
+            name: dws-redis-health
+            defaultMode: 0755
+        - name: redis-password
+          
+          secret:
+            secretName: dws-redis
+            items:
+            - key: redis-password
+              path: redis-password
+        - name: config
+          configMap:
+            name: dws-redis-configuration
+        - name: empty-dir
+          emptyDir: {}
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: redis-data
+        labels:
+          app.kubernetes.io/instance: dws
+          app.kubernetes.io/name: redis
+          app.kubernetes.io/component: master
+      spec:
+        accessModes:
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: "1Gi"
+        
+
+---
+# Source: dws/charts/dapr/charts/dapr_sidecar_injector/templates/dapr_sidecar_injector_webhook_config.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: dapr-sidecar-injector
+  labels:
+    app: dapr-sidecar-injector
+    app.kubernetes.io/component: sidecar-injector
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+webhooks:
+- name: sidecar-injector.dapr.io
+  reinvocationPolicy: IfNeeded
+  clientConfig:
+    service:
+      namespace: default
+      name: dapr-sidecar-injector
+      path: "/mutate"
+  rules:
+  - apiGroups:
+    - ""
+    apiVersions:
+    - v1
+    resources:
+    - pods
+    operations:
+    - CREATE
+  failurePolicy: Ignore
+  sideEffects: None
+  admissionReviewVersions: ["v1", "v1beta1"]
+
+---
+# Source: dws/templates/actor-statestore-component.yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: dws-actor-statestore
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.0
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: actor-statestore
+spec:
+  type: state.redis
+  version: v1
+  # See pubsub-component.yaml — extend past Dapr's 5s default to survive the
+  # Bitnami Redis 20s readiness-probe warmup window. state.redis also issues
+  # CONFIG SET for keyspace notifications on init, which is Redis-side work
+  # that particularly benefits from the wider window.
+  initTimeout: 1m
+  metadata:
+    - name: redisHost
+      value: "dws-redis-master.default.svc.cluster.local:6379"
+    - name: redisPassword
+      secretKeyRef:
+        name: dws-redis
+        key: redis-password
+    - name: actorStateStore
+      value: "true"
+    - name: enableTLS
+      value: "false"
+auth:
+  secretStore: kubernetes
+# Only dws-orchestrator uses the actor/workflow state store (once it adopts the
+# Dapr Workflow runtime). Scoping prevents unrelated pods' daprd sidecars (admin,
+# controller) from trying to initialize a state.redis Component that also does a
+# CONFIG SET on Redis for keyspace notifications — under load or before Redis is
+# fully warm this exceeds Dapr's 5s per-component init timeout and fatally crashes
+# the sidecar.
+scopes:
+  - dws-orchestrator
+
+---
+# Source: dws/templates/controller/config-component.yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: dws-controller-config
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.0
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller
+spec:
+  type: configuration.redis
+  version: v1
+  # See pubsub-component.yaml — extend past Dapr's 5s default to survive the
+  # Bitnami Redis 20s readiness-probe warmup window without a fatal sidecar exit.
+  initTimeout: 1m
+  metadata:
+    - name: redisHost
+      value: "dws-redis-master.default.svc.cluster.local:6379"
+    - name: redisPassword
+      secretKeyRef:
+        name: dws-redis
+        key: redis-password
+    # Flag values are plain scalar strings (e.g. "v1"/"v2"); do not treat them as JSON documents.
+    - name: enableTLS
+      value: "false"
+auth:
+  secretStore: kubernetes
+# Only the controller reads the compiler-strategy flag via the Configuration API.
+# Scoping this Component to the controller's Dapr app-id prevents unrelated pods' daprd
+# sidecars (admin, orchestrator) from initializing the store — a configuration.redis init
+# hitting Redis before it's fully warm can exceed Dapr's 5s per-component init timeout and
+# fatally crash the sidecar. Same isolation reason dws-definitions is scoped to the
+# orchestrator only.
+scopes:
+  - dws-controller
+
+---
+# Source: dws/templates/definitions-component.yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: dws-definitions
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.0
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: definitions
+spec:
+  type: configuration.redis
+  version: v1
+  # See pubsub-component.yaml — extend past Dapr's 5s default to survive the
+  # Bitnami Redis 20s readiness-probe warmup window without a fatal sidecar exit.
+  initTimeout: 1m
+  metadata:
+    - name: redisHost
+      value: "dws-redis-master.default.svc.cluster.local:6379"
+    - name: redisPassword
+      secretKeyRef:
+        name: dws-redis
+        key: redis-password
+    # Definition values are plain YAML/JSON text; do not treat them as JSON documents.
+    - name: enableTLS
+      value: "false"
+auth:
+  secretStore: kubernetes
+# Only dws-orchestrator reads workflow definitions via the Configuration API.
+# Scoping this Component prevents unrelated pods' daprd sidecars (admin, controller)
+# from trying to initialize the store — a state.redis / configuration.redis init
+# hitting Redis before it's fully warm can exceed Dapr's 5s per-component init
+# timeout and fatally crash the sidecar.
+scopes:
+  - dws-orchestrator
+
+---
+# Source: dws/templates/pubsub-component.yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: pubsub
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.0
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: pubsub
+spec:
+  type: pubsub.redis
+  version: v1
+  # Dapr defaults per-component init to 5s. Redis's Service endpoints don't get
+  # populated until Bitnami's readiness probe (20s initialDelay) first passes, so
+  # an admin/controller/orchestrator sidecar that starts alongside Redis can hit
+  # `connect: connection refused` and fatally exit before Redis warms up. Extend
+  # to 1m so init retries through the warmup window.
+  initTimeout: 1m
+  metadata:
+    - name: redisHost
+      value: "dws-redis-master.default.svc.cluster.local:6379"
+    - name: redisPassword
+      secretKeyRef:
+        name: dws-redis
+        key: redis-password
+    - name: enableTLS
+      value: "false"
+auth:
+  secretStore: kubernetes
+
+---
+# Source: dws/charts/dapr/charts/dapr_config/templates/dapr_default_config.yaml
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: daprsystem
+  namespace: default
+  labels:
+    app.kubernetes.io/component: config
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+spec:
+  mtls:
+    enabled: true
+    workloadCertTTL: 24h
+    allowedClockSkew: 15m
+    controlPlaneTrustDomain: cluster.local
+    sentryAddress: dapr-sentry.default.svc.cluster.local:443
+---
+# Source: dws/templates/dapr-ready-hook.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dws-dapr-ready
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.0
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: dapr-ready-hook
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+
+---
+# Source: dws/templates/dapr-ready-hook.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dws-dapr-ready
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.0
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: dapr-ready-hook
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+rules:
+  # To wait on the dapr-sidecar-injector Deployment's rollout.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+  # To find the admin Pod and delete it if its sidecar injection was missed.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
+
+---
+# Source: dws/templates/dapr-ready-hook.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dws-dapr-ready
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.0
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: dapr-ready-hook
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+subjects:
+  - kind: ServiceAccount
+    name: dws-dapr-ready
+    namespace: default
+roleRef:
+  kind: Role
+  name: dws-dapr-ready
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Source: dws/templates/tests/admin-db-connection.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "dws-admin-db-connection-test"
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.0
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: admin
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: curl
+      image: curlimages/curl:8.11.1
+      command: ["sh", "-c"]
+      args:
+        - |
+          body=$(curl -sS -w '\n%{http_code}' "http://dws-admin:3000/health")
+          status=$(echo "$body" | tail -n1)
+          payload=$(echo "$body" | sed '$d')
+          echo "$payload"
+          if [ "$status" != "200" ]; then
+            echo "admin /health returned HTTP $status"
+            exit 1
+          fi
+          echo "$payload" | grep -q '"database":{"status":"up"' || {
+            echo "admin /health database indicator is not up"
+            exit 1
+          }
+  restartPolicy: Never
+
+---
+# Source: dws/templates/dapr-ready-hook.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dws-dapr-ready
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.0
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: dapr-ready-hook
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: dws-1.1.0
+        app.kubernetes.io/name: dws
+        app.kubernetes.io/instance: dws
+        app.kubernetes.io/version: "1.18.0"
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/component: dapr-ready-hook
+    spec:
+      serviceAccountName: dws-dapr-ready
+      restartPolicy: Never
+      containers:
+        - name: dapr-ready
+          image: "docker.io/alpine/k8s:1.31.1"
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              ns="default"
+              echo "waiting for dapr-sidecar-injector rollout in namespace $ns..."
+              kubectl rollout status deployment/dapr-sidecar-injector -n "$ns" --timeout=180s
+              # Deployment readiness doesn't guarantee the admission webhook is reachable
+              # from the API server yet — give its cert/registration a beat to catch up.
+              sleep 15
+
+              pods=$(kubectl get pods -n "$ns" -l app.kubernetes.io/component=admin -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)
+              if [ -z "$pods" ]; then
+                echo "no admin pod found, nothing to check"
+                exit 0
+              fi
+              for pod in $pods; do
+                containers=$(kubectl get pod "$pod" -n "$ns" -o jsonpath='{.spec.containers[*].name}' 2>/dev/null || true)
+                echo "admin pod $pod containers: $containers"
+                if ! echo "$containers" | grep -q daprd; then
+                  echo "admin pod $pod is missing its daprd sidecar (injection missed), deleting to force re-injection"
+                  kubectl delete pod "$pod" -n "$ns"
+                fi
+              done
+
