@@ -1,7 +1,7 @@
 {{- /*
   Dapr Configuration that wires the admin's bearer middleware into the sidecar's own
   Dapr HTTP API pipeline (spec.httpPipeline), NOT spec.appHttpPipeline. Rendered only when
-  auth.enabled=true. Named consistently with dws.admin.auth.configName so the admin Pod's
+  auth.enabled=true. Named consistently with dws.admin.configName so the admin Pod's
   dapr.io/config annotation can name it.
 
   DELIBERATELY DIFFERENT from templates/controller/auth-configuration.yaml, which stays on
@@ -26,7 +26,7 @@
 apiVersion: dapr.io/v1alpha1
 kind: Configuration
 metadata:
-  name: {{ include "dws.admin.auth.configName" . }}
+  name: {{ include "dws.admin.configName" . }}
   namespace: {{ include "dws.namespace" . }}
   labels:
     {{- include "dws.admin.selectorLabels" . | nindent 4 }}
