@@ -21,3 +21,9 @@
 .idea/
 *.tmproj
 .vscode/
+# Chart render tests and their fixtures. Run from a repo checkout by
+# .github/workflows/helm.yml, never from a packaged chart — and the default-render
+# baseline fixture alone is ~100KB of dead weight in every published release.
+# Leading slash anchors this to the chart root so templates/tests/ (the real
+# `helm test` hooks) is NOT excluded.
+/tests/
