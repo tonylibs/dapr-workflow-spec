@@ -13,8 +13,10 @@
 #      immediately before this feature existed.
 #
 # Run: bash charts/dws/tests/observability-render-test.sh [chart_dir] [--update-baseline]
+# This test requires the Helm 3.19.0 renderer pinned in .github/workflows/helm.yml.
 set -euo pipefail
 
+required_helm_version="v3.19.0"
 chart_dir="charts/dws"
 update_baseline=0
 for arg in "$@"; do
@@ -27,6 +29,13 @@ done
 baseline="$chart_dir/tests/fixtures/default-render-baseline.yaml"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
+
+helm_version="$(helm version --template '{{ .Version }}' 2>/dev/null)" \
+  || fail "unable to determine the installed Helm version"
+case "$helm_version" in
+  "$required_helm_version"|"$required_helm_version"+*) ;;
+  *) fail "this test requires Helm $required_helm_version (CI's pinned renderer); found $helm_version. Install Helm $required_helm_version before running or regenerating the baseline." ;;
+esac
 
 # Bitnami's postgresql subchart generates both passwords randomly on every render, so pin them
 # to make the default render byte-comparable. Nothing else is overridden — this IS the default.
@@ -341,7 +350,34 @@ assert_count '^          name: "platform-otlp"$' "$existing_instrumentation" 1 \
   "the Instrumentation must reference the operator-supplied Secret"
 
 # =============================================================================================
-# 7. Operator preflight: required by default, explicitly bypassable
+# 7. Same-release admission ordering is self-healed
+# =============================================================================================
+# Helm installs unknown CR kinds (including Instrumentation) after Deployments. The Operator
+# therefore can admit the first controller/admin Pods before their referenced Instrumentation
+# exists. Rendering the right annotations is insufficient: a post-install/post-upgrade hook must
+# recreate only Pods that missed the expected language init container, then verify the replacement.
+ready_hook="$(render "${base_args[@]}" "${obs_args[@]}" -s templates/dapr-ready-hook.yaml)"
+assert_count '^kind: Job$' "$ready_hook" 1 \
+  "observability must render one admission-readiness hook Job"
+assert_count '^    "helm\.sh/hook": post-install,post-upgrade$' "$ready_hook" 4 \
+  "the readiness hook ServiceAccount/RBAC/Job must all run as Helm hooks"
+assert_count 'kubectl get instrumentation "\$instrumentation"' "$ready_hook" 2 \
+  "the readiness hook must wait for the same-release Instrumentation"
+assert_count 'ensure_instrumented controller .*opentelemetry-auto-instrumentation-java$' "$ready_hook" 1 \
+  "the readiness hook must self-heal missed controller Java injection"
+assert_count 'ensure_instrumented admin .*opentelemetry-auto-instrumentation-nodejs$' "$ready_hook" 1 \
+  "the readiness hook must self-heal missed admin Node.js injection"
+assert_count 'missed OpenTelemetry injection, deleting to force re-admission' "$ready_hook" 1 \
+  "the readiness hook must recreate Pods whose one-shot admission missed injection"
+
+# With both Dapr and observability disabled, no admission hook is needed. Helm -s exits non-zero
+# when a conditionally empty template renders no document.
+if render "${base_args[@]}" -s templates/dapr-ready-hook.yaml > /dev/null 2>&1; then
+  fail "the admission-readiness hook rendered with Dapr and observability both disabled"
+fi
+
+# =============================================================================================
+# 8. Operator preflight: required by default, explicitly bypassable
 # =============================================================================================
 # No --api-versions opentelemetry.io/v1alpha1 here: that is the "Operator not installed" case.
 preflight_out="$(helm template dws "$chart_dir" \
@@ -364,7 +400,7 @@ helm template dws "$chart_dir" \
   || fail "observability.operator.required=false did not bypass the preflight"
 
 # =============================================================================================
-# 8. Value-shape validation runs even when no component would reach the helpers
+# 9. Value-shape validation runs even when no component would reach the helpers
 # =============================================================================================
 # These checks live in preflight.yaml rather than in the Configuration templates: with both
 # components off, nothing would otherwise reject an unknown protocol or an empty endpoint, and

@@ -399,13 +399,13 @@ charts/dws/
 
 ## Phased roadmap
 
-Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Phase 0-A closed and Phase 1's chart surface landed on 2026-09-19; Phase 1 stays ⚠️ until its live trace is captured. Track A phases are 0-A, 1, 2a, 6 (and the Track A halves of 4 and 5); Track B is 0-B, 2b, 3.
+Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Phase 0-A and Phase 1 are complete; the live evidence is recorded below. Track A phases are 0-A, 1, 2a, 6 (and the Track A halves of 4 and 5); Track B is 0-B, 2b, 3.
 
 | Phase | Status | Goal | Key tasks |
 |---|---|---|---|
 | **0-A. Spikes (Track A)** | ✅ | De-risk the Deployment track | **(b) ✅ documented prerequisite + preflight, not a chart dependency.** **(e) ✅ `dws-flow` is glibc; no fourth annotation.** **(f) ✅ pin chart `0.123.0` / operator `0.159.0`.** **(c) ↪️ DEFERRED TO OBSERVATION (decided 2026-09-19)** — rather than spike the Dapr Workflow replay question up front, observe real replay behaviour during Phase 1/2a testing and write the ADR from what the traces actually show. Acceptable because Track A surfaces it early: `dws-orchestrator` is a Deployment, so replays are visible as soon as Phase 2a lands. **Risk accepted:** if replays do duplicate spans or restart traces, the fix may reach back into Phase 2a's span model. See the Findings log |
 | **0-B. Spikes (Track B)** | ❌ | Deferred — de-risk the Knative track | **(a) Knative init containers**, scoped to `dws-call-openapi`, `dws-call-asyncapi`, `dws-call-a2a` — Knative gates init containers behind `kubernetes.podspec-init-containers` and `emptyDir` behind `kubernetes.podspec-volumes-emptydir`. Two sub-questions: is the flag on, and — since the operator mutates the **Pod**, downstream of Knative's Revision validation — does injection work even with the flag off? **(d) `inject-python` for `dws-call-a2a`**, or the in-code SDK path? Plus cold-start cost on a scale-to-zero step pod — the cost is the **init-container image pull**, cached per node, so measure cold node vs warm node separately |
-| **1. Chart surface** | ⚠️ | Render the CRs, cover the control plane | **Chart surface ✅ complete and CI-guarded (2026-09-19).** Shipped: the `observability.*` values block (`enabled: false` master gate); one `Instrumentation` CR; `spec.tracing` **merged into the existing per-component Dapr `Configuration`** (not a new one — `dapr.io/config` is single-valued) with `tracing.otel` + pinned `samplingRate: "1"`; `dws.preflight.observability`; `dws.observability.podAnnotations`; targeted `inject-java`/`inject-nodejs` + `container-names` on `dws-controller` and `dws-admin`; an OTLP header Secret contract; `tests/observability-render-test.sh` covering the four-way auth × observability matrix plus a byte-identical disabled-state baseline. **Dropped as a non-task:** "observability flag keys added to the existing `dws-controller-config` store" — that Component's values are set out of band, so there is nothing to template (the controller-side read is Phase 2a). **Still outstanding:** the deliverable trace covering controller → Dapr → admin → Postgres, which needs a cluster with the pinned Operator, cert-manager, and a reachable collector. **Track A. No Knative dependency** — both targets are Deployments |
+| **1. Chart surface** | ✅ | Render and prove the control plane | **Complete (2026-09-21).** The live fixture admitted the targeted Java/Node.js agents only, left both `daprd` containers uninstrumented, delivered application and Dapr spans to Jaeger, and delivered metrics and logs to the Collector. The connected event trace is recorded in [Phase 1 live evidence](observability-phase1-evidence.md). The fixture also exposed the post-install admission race; the chart now self-heals missed Operator injection and the render test asserts that hook. The database span and replay probe are explicitly limited by the private orchestrator image and the admin `postgres`-JS client, neither of which is a chart-render concern. **Track A. No Knative dependency** — both targets are Deployments |
 | **2a. Compiled Deployment nodes** | ❌ | **Track A's payoff** | **Scope today is `dws-orchestrator` alone** — see below. `dws-controller` stamps `inject-java`, `container-names` and `dapr.io/config` in `StackSynthesizer.orchestratorAnnotations()`, plus `OTEL_RESOURCE_ATTRIBUTES` carrying `service.name`/`dws.workflow.*`. A Java change, not a chart change, and a **clean add** — that method stamps only `dapr.io/enabled`, `dapr.io/app-id`, `dapr.io/app-port` today, so there is no `dapr.io/config` to merge with. Controller reads the flags from `dws-controller-config` via the Configuration API, defaulting to off. **No Knative dependency.** Deliverable: a trace from controller through orchestrator to the edge of each step invocation |
 | **2a′. Flow/Step nodes** | ⛔ | Blocked cross-roadmap | `dws-flow` and `dws-step` have **no Deployment to annotate yet**. `V2StructuralCompiler` populates `DeploymentPlan.flowStepGraph`, but `DeploymentPlan.structural()` leaves `orchestrator` null and `steps` empty, and the `k8s` package contains zero references to `CompiledNode` — nothing turns the graph into pods. Deploy synthesis is **runtime-v2 Phase 4** (`workflow-runtime-architecture-roadmap.md`), not started. Stamp annotations *inside* that synthesis when it is written rather than bolting them on afterwards |
 | **2b. Knative step services** | ❌ | Deferred — needs Phase 0-B | The same stamping applied to `StackSynthesizer.knativeServices()` output, for the eight `TaskKind` images. Covers the Node and Python images via auto-injection; the Go images consume the stamped env in Phase 3. This is where end-to-end step visibility actually arrives |
@@ -451,6 +451,34 @@ visibility actually arrives — it is deferred, not dropped, and Phase 7 cannot 
 | 6 | **Whether all call-step egress routes through Dapr** — **DEFERRED pending the Istio decision** | Today only `auth: oauth2` steps do, making egress observability depend on an unrelated auth choice. Changing it alters failure semantics for every call step. Istio delivers the same uniformity transparently, so deciding this now risks changing how every call step talks to the internet for a benefit the mesh provides for free. Belongs to the Workflow Runtime Architecture roadmap; recorded here because this roadmap consumes the outcome |
 | 7 | **Istio as a fifth telemetry layer** | If the mesh lands, its sampling rate joins the pinned-to-1 rule, and per-destination egress metrics require a synthesized `ServiceEntry` per external host. Both are controller-side obligations that should be written down before the mesh work starts, not discovered during it |
 
+### 2026-09-21 — Phase 1 live evidence
+
+The isolated `dws-obs-e2e` release ran against Docker Desktop Kubernetes with cert-manager, the
+OpenTelemetry Operator chart `0.123.0` / operator `0.159.0`, Dapr CRDs, the fixture Collector and
+Jaeger. Worktree-built `dws-controller` (JVM Dockerfile) and `dws-admin` images were loaded into
+all three nodes. Posting `review-request` to `POST /workflows` produced the lifecycle event; the
+compile-only path was not used as evidence.
+
+- Pod admission: `dws-controller` had `opentelemetry-auto-instrumentation-java`; `dws-admin` had
+  `opentelemetry-auto-instrumentation-nodejs`; neither `daprd` container had an OTel init container.
+  The first install reproduced the Operator/Helm ordering race (`Instrumentation` was not present
+  when the pods were admitted). A post-install/upgrade hook now waits for the CR and deletes any
+  missed pods; the render test asserts this recovery path.
+- Collector evidence: debug exporter output showed traces from both app agents and Dapr's
+  `dapr-diagnostics` scope, plus metrics batches (18–23 metrics / 66–78 data points). The fixture's
+  `filelog` receiver exercised the logs pipeline and the debug exporter emitted `data_type: logs`;
+  the stock agents did not emit separate OTLP log records. Jaeger trace `61a3d135fd15003bbbff6a11f74c1d2b`
+  contains 49 nested spans across `dws-controller` and `dws-admin`, including
+  `POST /workflows`, Dapr `PublishEvent`/`GetConfiguration`, and admin
+  `POST /dapr/events/dws`/`DaprSubscriptionController.deliver` spans. The Dapr endpoint A/B check
+  also confirmed that sidecar spans arrive with the chart's bare `host:port` HTTP endpoint once a
+  fresh event is sent; schemes in `endpointAddress` are not required.
+- Limitations: the controller-created orchestrator pod could not start because its default GHCR
+  image is private, so no Dapr Workflow replay occurred. The admin uses `postgres` (postgres-js),
+  while the pinned Node auto-instrumentation image supplies `pg` instrumentation, so no separate
+  Postgres client span was emitted. These are recorded as runtime follow-ups for Phase 2a rather
+  than chart failures; the application images and source were unchanged for this phase.
+
 ## Open items
 
 - **Phase 0-B(a) is narrower than first assessed.** Only `dws-call-openapi`, `dws-call-asyncapi`
@@ -486,7 +514,7 @@ visibility actually arrives — it is deferred, not dropped, and Phase 7 cannot 
   `dapr_runtime_service_invocation_*` counters (framed around remote Dapr apps) or only the
   `dapr_http_client_*` family. Settle by curling the sidecar's metrics endpoint after one OAuth2
   call step, before Phase 5 fixes any naming.
-- **Next up:** Phase 1's live verification, then Phase 2a. Phase 0-A is closed — (b), (e), (f) answered, (c) deferred to observation during Phase 1/2a testing. Phase 1's chart surface is implemented and CI-guarded; only the controller → Dapr → admin → Postgres trace remains. Track B waits.
+- **Next up:** Phase 2a (`dws-orchestrator`) will add workflow-node identity and provide the runnable Dapr Workflow replay probe. Phase 0-A is closed — (b), (e), (f) answered, and (c) is recorded as not exercised because no orchestrator image was available in the live cluster. Track B waits.
 - **Phase 1 blocker found before implementation (2026-09-19):** `dapr.io/config` is a
   **single-valued annotation** — a pod names exactly one Dapr `Configuration` resource. The
   controller and admin Deployments already render it, gated on `auth.enabled`, pointing at

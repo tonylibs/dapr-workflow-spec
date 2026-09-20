@@ -10,6 +10,7 @@ default — leaves the rendered manifest byte-identical to the pre-change chart.
 It is regenerated with:
 
 ```sh
+# Helm 3.19.0 is required: this is the renderer pinned in .github/workflows/helm.yml.
 bash charts/dws/tests/observability-render-test.sh charts/dws --update-baseline
 ```
 
@@ -20,6 +21,8 @@ generates them randomly on every render; nothing else about the render is overri
 Regenerate this file **only** when a chart change is deliberately meant to alter the default
 render (including a `Chart.yaml` `version`/`appVersion` bump, which lands in every resource's
 `helm.sh/chart` and `app.kubernetes.io/version` labels), and review the resulting diff.
+The test rejects other Helm versions so a fixture generated locally cannot diverge from CI's
+byte-for-byte comparison.
 
 ## `otel-collector-dev.yaml`
 

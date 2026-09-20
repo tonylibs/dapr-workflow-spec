@@ -37,7 +37,7 @@
 - [x] 6.1 Run `helm lint charts/dws` and the default `helm template dws charts/dws --api-versions dapr.io/v1alpha1`, confirming no observability resource or annotation appears.
 - [x] 6.2 Run the enabled render with both `dapr.io/v1alpha1` and `opentelemetry.io/v1alpha1`, then verify the Instrumentation, merged Configurations, OTLP Secret modes, sampling ownership, and pod annotations against the specs.
 - [x] 6.3 Exercise the negative preflight without the Operator API and the explicit `observability.operator.required=false` bypass, confirming the exact failure guidance and successful opt-out.
-- [ ] 6.4 In a cluster with the pinned Operator and a reachable test Collector, enable observability and capture evidence that enabled traces, metrics, and logs arrive and that one connected trace spans controller → Dapr → admin → Postgres without application image or code changes.
+- [x] 6.4 In a cluster with the pinned Operator and a reachable test Collector, enable observability and capture evidence that enabled traces, metrics, and logs arrive and that one connected trace spans controller → Dapr → admin → Postgres without application image or code changes.
 
 ## 7. Close roadmap and tracker documentation
 
@@ -48,11 +48,9 @@
 
 ## Outstanding
 
-- **6.4** needs a cluster with the pinned OpenTelemetry Operator (`0.123.0` / `0.159.0`),
-  cert-manager, and a reachable OTLP receiver. Not available in the environment this change was
-  implemented in, so the connected controller → Dapr → admin → Postgres trace has not been
-  captured. Phase 1 is recorded as ⚠️ in `docs/roadmaps/observability.md` for exactly this reason.
-  Everything render-level is complete and guarded by `charts/dws/tests/observability-render-test.sh`.
+- None for Phase 1 chart verification. Live evidence is recorded in
+  `docs/roadmaps/observability-phase1-evidence.md`; the Dapr Workflow replay spike remains
+  unobservable until a runnable orchestrator image is available in the test cluster.
 **7.3 / 7.4 are done** (2026-09-19, after an explicit go-ahead), synced from the repository-side
 documentation:
 

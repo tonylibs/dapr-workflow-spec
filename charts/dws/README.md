@@ -207,6 +207,10 @@ in-cluster collector and let that collector authenticate upstream.
 
 ## Validating changes to this chart
 
+The observability render test compares a committed fixture byte-for-byte, so it requires Helm
+3.19.0, the version pinned in `.github/workflows/helm.yml`. It rejects other Helm versions rather
+than allowing them to produce an incompatible baseline.
+
 ```bash
 cd charts/dws
 helm lint .

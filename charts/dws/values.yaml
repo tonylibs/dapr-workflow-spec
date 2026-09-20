@@ -35,14 +35,10 @@ defaults:
 # externally).
 dapr:
   enabled: true
-  # Sidecar injection is a one-shot decision the dapr-sidecar-injector's mutating webhook
-  # makes at Pod creation time. In a plain `helm install` with dapr.enabled=true, Dapr's own
-  # control plane and the admin Deployment are created in the same atomic apply, so there is
-  # no guarantee the injector's webhook is actually serving yet when the admin Pod is
-  # admitted — a missed injection never recovers on its own (a container restart doesn't
-  # re-run admission). This post-install/post-upgrade hook Job waits for the injector
-  # rollout, then deletes the admin Pod if it ended up without its daprd sidecar so it gets
-  # recreated correctly. Only runs when dapr.enabled is true.
+  # Admission injection is a one-shot decision made at Pod creation time. The shared
+  # post-install/post-upgrade hook self-heals both a same-release Dapr injector race and, when
+  # observability is enabled, a same-release Instrumentation ordering race. It deletes only a
+  # workload Pod that missed the expected sidecar/agent so the replacement is admitted again.
   readyHook:
     image:
       repository: docker.io/alpine/k8s

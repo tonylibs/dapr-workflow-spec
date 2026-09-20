@@ -43,6 +43,13 @@ data:
             endpoint: 0.0.0.0:4318
           grpc:
             endpoint: 0.0.0.0:4317
+      filelog:
+        include:
+          - /var/log/pods/*/*/*.log
+        start_at: end
+        include_file_path: true
+        operators:
+          - type: container
     processors:
       batch: {}
     exporters:
@@ -65,7 +72,7 @@ data:
           processors: [batch]
           exporters: [debug]
         logs:
-          receivers: [otlp]
+          receivers: [otlp, filelog]
           processors: [batch]
           exporters: [debug]
 ---
@@ -103,6 +110,9 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/otel
+            - name: pod-logs
+              mountPath: /var/log/pods
+              readOnly: true
           resources:
             requests:
               cpu: 50m
@@ -113,6 +123,10 @@ spec:
         - name: config
           configMap:
             name: dws-otel-collector-config
+        - name: pod-logs
+          hostPath:
+            path: /var/log/pods
+            type: Directory
 ---
 apiVersion: v1
 kind: Service
