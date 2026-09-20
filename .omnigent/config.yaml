@@ -80,7 +80,7 @@ skills:
 
 executor:
   harness: claude-sdk
-  model: claude-sonnet-4-6
+  model: claude-sonnet-5
 
 os_env:
   type: caller_process
@@ -129,7 +129,7 @@ tools:
       - 'dapr-workflow-spec'
     executor:
       harness: claude-sdk
-      model: claude-opus-4-6
+      model: claude-opus-5
     os_env: inherit
 
   docs-researcher:
@@ -142,7 +142,7 @@ tools:
       Do not invent undocumented behavior.
     executor:
       harness: claude-sdk
-      model: claude-sonnet-4-6
+      model: claude-haiku-4-5-20251001
     tools:
       context7: inherit
     os_env: inherit
@@ -163,8 +163,10 @@ tools:
       - 'dotnet-patterns'
       - 'csharp-testing'
     executor:
-      harness: claude-sdk
-      model: claude-sonnet-4-6
+      # copilot: pilot harness for .NET (deep C#/VS-ecosystem training); dws-flow
+      # has no CI gate yet, so blast radius is low. Fall back to claude-sdk /
+      # claude-sonnet-5 if copilot credentials aren't set up (`omnigent setup`).
+      harness: copilot
     tools:
       context7: inherit
     os_env: inherit
@@ -179,7 +181,7 @@ tools:
       Prefer targeted search and file reads over broad scans.
     executor:
       harness: claude-sdk
-      model: claude-sonnet-4-6
+      model: claude-haiku-4-5-20251001
     os_env: inherit
 
   frontend-developer:
@@ -221,8 +223,9 @@ tools:
       - 'python-patterns'
       - 'docker-patterns'
     executor:
-      harness: claude-sdk
-      model: claude-sonnet-4-6
+      # codex: tight edit -> `make lint && make test` loop suits Go codegen.
+      # Fall back to claude-sdk / claude-sonnet-5 if codex credentials aren't set up.
+      harness: codex
     tools:
       context7: inherit
     os_env: inherit
@@ -245,7 +248,9 @@ tools:
       - 'junit-5-skill'
     executor:
       harness: claude-sdk
-      model: claude-sonnet-4-6
+      # Escalate to claude-opus-5 for orchestrator task-name -> Dapr app-id
+      # routing changes (silent-failure risk per CLAUDE.md); Sonnet otherwise.
+      model: claude-sonnet-5
     tools:
       context7: inherit
     os_env: inherit
@@ -269,7 +274,7 @@ tools:
       - 'backend-patterns'
     executor:
       harness: claude-sdk
-      model: claude-sonnet-4-6
+      model: claude-sonnet-5
     tools:
       context7: inherit
     os_env: inherit
@@ -291,8 +296,9 @@ tools:
       - 'coding-standards'
       - 'docker-patterns'
     executor:
-      harness: claude-sdk
-      model: claude-sonnet-4-6
+      # copilot: TS-heavy CRUD-shaped step-service work, GH-native strength.
+      # Fall back to claude-sdk / claude-sonnet-5 if copilot credentials aren't set up.
+      harness: copilot
     tools:
       context7: inherit
     os_env: inherit
@@ -314,7 +320,9 @@ tools:
       - 'deployment-patterns'
     executor:
       harness: claude-sdk
-      model: claude-sonnet-4-6
+      # Escalate to claude-opus-5 for Gateway/auth-path/APISIX changes: helm
+      # lint/template miss real apimachinery rejections (has bitten before).
+      model: claude-sonnet-5
     tools:
       context7: inherit
     os_env: inherit
@@ -340,7 +348,7 @@ tools:
       - 'docker-patterns'
     executor:
       harness: claude-sdk
-      model: claude-sonnet-4-6
+      model: claude-sonnet-5
     tools:
       context7: inherit
     os_env: inherit
@@ -362,7 +370,9 @@ tools:
       - 'helm-chart-scaffolding'
     executor:
       harness: claude-sdk
-      model: claude-sonnet-4-6
+      # Escalate to claude-opus-5 for compiler/apply-separation, content-
+      # addressed version, or GC-label invariant changes; Sonnet otherwise.
+      model: claude-sonnet-5
     tools:
       context7: inherit
     os_env: inherit
