@@ -2,7 +2,7 @@
 type: Deployment Guide
 title: Helm chart packaging
 description: How the charts/dws Helm application chart installs DWS control-plane services and optional infrastructure, including the disabled-by-default Dex identity provider, and how chart changes are verified and released.
-tags: [dws, helm, kubernetes, controller, admin, postgresql, dapr, redis, dex, authentication]
+tags: [dws, helm, kubernetes, controller, admin, postgresql, dapr, redis, dex, authentication, observability]
 ---
 
 # Helm chart packaging
@@ -23,6 +23,7 @@ The chart defaults to one controller replica, one admin replica, an in-chart sta
 | `auth.enabled` | `false` | Opt-in Dapr bearer middleware for inbound controller traffic. Requires either external `auth.issuer` and `auth.audience` (with optional `auth.jwksURL`) or the enabled in-chart Dex mode. |
 | `console.enabled` | `false` | Optional console Deployment, Service, and console-only Ingress. Its browser login is described in [console OIDC login](console-auth.md). |
 | `adminGateway.enabled` | `false` | Optional nginx reverse proxy for browser-to-admin write-relay traffic. It requires a non-empty `adminGateway.corsOrigins` list of explicit origins and rejects `*`. |
+| `observability.enabled` | `false` | Opt-in OpenTelemetry agent and Dapr-sidecar tracing for the chart-managed controller and admin. It requires the cluster's OpenTelemetry Operator unless the operator preflight is explicitly disabled. |
 | `imagePullSecrets` | `[]` | Pull credentials attached to component pods that use private registries. |
 
 ### Deployment defaults and overrides
@@ -73,13 +74,25 @@ Two value modes are supported: set `auth.issuer` and `auth.audience` for an exte
 
 The Service bypass is closed in the enabled path, but this is not complete pod-network isolation. Phase 2 verification found that another pod can still reach `<controller-pod-ip>:8080` on CNIs that do not enforce NetworkPolicy. A CNI-aware NetworkPolicy or binding the Quarkus application to loopback is deferred work; do not treat the current chart setting as protection against that direct pod-IP path. Role or Rego middleware is also deliberately deferred pending a proven token-claim contract.
 
+## Control-plane observability
+
+`observability.enabled=false` preserves the pre-observability chart render. When enabled, Phase 1 instruments only the chart-managed control plane: the OpenTelemetry Operator injects Java instrumentation into the `controller` container and Node.js instrumentation into the `admin` container; it does not target their Dapr sidecars. The chart also adds Dapr OTLP tracing to both pods. Per-workflow orchestrators, runtime-v2 flow/step deployments, and Knative step services are deliberately outside this chart phase; they remain part of the [deployed workflow lifecycle](deployed-workflow.md) and require controller-side stamping in later work.
+
+The chart renders one namespaced `Instrumentation` resource (`<release>-instrumentation`) and uses its name in targeted `instrumentation.opentelemetry.io/inject-java` or `inject-nodejs` pod annotations. The OpenTelemetry Operator is an external prerequisite—not a chart dependency—because its installation also requires cluster-singleton cert-manager. With the default `observability.operator.required=true`, Helm fails when the `opentelemetry.io/v1alpha1` API is unavailable. Operators that intentionally install the Operator after this release can disable that preflight, but must ensure admission occurs before replacement pods are created.
+
+`observability.otlp.endpoint` is a scheme-qualified base endpoint without a signal path (for example, `https://collector.example:4318`); the agents need the scheme and append signal paths themselves. The chart maps `http/protobuf` or `grpc` to Dapr's corresponding protocol, strips the scheme only for Dapr's required bare `endpointAddress`, and derives Dapr TLS from the original scheme. Invalid protocol, empty endpoint, missing scheme, and a path-bearing endpoint fail rendering rather than silently export nowhere.
+
+If the OTLP receiver needs headers, set `observability.otlp.headers` and the chart creates an Opaque Secret with one `headers` key containing the deterministic comma-separated `key=value` list required by `OTEL_EXPORTER_OTLP_HEADERS`. Or set `observability.otlp.existingSecret`; it wins over inline headers and must expose that same key. Header credentials are not inlined into the `Instrumentation` resource. This Secret contract applies to application-agent export only: the chart does not translate it into Dapr's structured header configuration, so authenticated Dapr export should use an in-cluster collector that handles upstream authentication.
+
+The agent is the sole sampling root: `observability.traces.samplingRate` configures its `parentbased_traceidratio` sampler, while the Dapr Configuration is deliberately pinned to `samplingRate: "1"`. This avoids independent probabilistic decisions producing partial traces. Observability and authentication share each component's one allowed `dapr.io/config` reference, so the chart combines tracing with the existing controller `appHttpPipeline` or admin `httpPipeline`; it must not create a second tracing Configuration or normalize those intentionally different pipelines. In particular, the admin pipeline must continue to permit the Dapr subscription path that feeds the [administrative read model](../integrations/admin-read-model.md) from [lifecycle events](../integrations/lifecycle-events.md).
+
 The console does not yet exercise this route. The planned `dws-admin` relay is the first intended caller; it will forward the browser authorization header through its own sidecar. Until that phase exists, enabling controller auth changes the contract only for operators or in-cluster callers that invoke the controller directly.
 
 For changes, keep each workload's Deployment `dapr.io/config` annotation, auth Component, and Configuration handler names synchronized. Do not normalize the controller and admin pipelines to match: `charts/dws/tests/auth-pipeline-placement-test.sh` pins controller `appHttpPipeline` and admin `httpPipeline`. Validate disabled and external/Dex-enabled render modes with `helm lint charts/dws` and `helm template`; the chart's Helm test includes an unauthenticated Dapr invocation that must receive `401`.
 
 ## Verification and release
 
-`.github/workflows/helm.yml` runs on changes to `charts/**` or the workflow itself. Its verification job runs `helm lint`, renders default and overridden values, confirms controller resources disappear when `controller.enabled=false`, and performs `helm install --dry-run=server` against Kind. The dry run does not start pods, so it cannot prove admin-to-Postgres connectivity.
+`.github/workflows/helm.yml` runs on changes to `charts/**` or the workflow itself. Its verification job runs `helm lint`, schema and feature render checks (including `tests/observability-render-test.sh`), renders default and overridden values, confirms controller resources disappear when `controller.enabled=false`, and performs `helm install --dry-run=server` against Kind. The observability render test pins the disabled-state no-op, the auth/observability configuration matrix, targeted injection annotations, OTLP endpoint mapping, and header-Secret contract. The dry run does not start pods, so it cannot prove admin-to-Postgres connectivity or actual agent/collector delivery.
 
 A dependent integration job installs Dapr into Kind, installs admin plus Postgres with the controller disabled, waits for both workloads, and runs `helm test`. It supplies a registry pull secret because the admin image is private in the CI environment. On pushes to `main`, the release job packages the chart and pushes it to `oci://ghcr.io/<repository-owner>/charts`; pull requests verify but do not publish.
 
