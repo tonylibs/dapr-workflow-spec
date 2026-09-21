@@ -369,26 +369,43 @@ boundary note above.
 
 ## Chart layout additions
 
+As implemented (2026-09-19). Note the two departures from the original sketch: there is **no**
+`observability/dapr-configuration.yaml` — tracing merges into each component's existing
+Configuration, because `dapr.io/config` is single-valued — and `controller/config-component.yaml`
+is **untouched**, because that store's values are set out of band and there is nothing to
+template.
+
 ```
-charts/dws/templates/
-├── observability/
-│   ├── instrumentation.yaml       # opentelemetry.io/v1alpha1 Instrumentation CR
-│   ├── dapr-configuration.yaml    # dapr.io/v1alpha1 Configuration — tracing.otel, samplingRate "1"
-│   └── otlp-secret.yaml           # optional header secret passthrough
-├── controller/config-component.yaml  # EXTENDED — same store, observability flag keys
-├── _preflight.tpl                 # + dws.preflight.observability (opentelemetry.io/v1alpha1)
-└── _helpers.tpl                   # + dws.observability.podAnnotations, dws.observability.configName
+charts/dws/
+├── templates/
+│   ├── observability/
+│   │   ├── instrumentation.yaml   # opentelemetry.io/v1alpha1 Instrumentation CR
+│   │   └── otlp-secret.yaml       # optional OTLP header Secret (one `headers` key)
+│   ├── controller/configuration.yaml  # RENAMED from auth-configuration.yaml — appHttpPipeline
+│   │                                  #   (auth) + tracing (observability), samplingRate "1"
+│   ├── admin/configuration.yaml       # RENAMED from auth-configuration.yaml — httpPipeline
+│   │                                  #   (auth) + tracing (observability), samplingRate "1"
+│   ├── preflight.yaml             # + include dws.preflight.observability
+│   ├── _preflight.tpl             # + dws.preflight.observability (opentelemetry.io/v1alpha1)
+│   └── _helpers.tpl               # + dws.observability.{instrumentationName, otlpSecretFullname,
+│                                  #   otlpSecretName, otlpHeaderList, daprOtelProtocol,
+│                                  #   otlpIsSecure, daprTracing, podAnnotations}
+│                                  # RENAMED dws.auth.configName -> dws.controller.configName,
+│                                  #   dws.admin.auth.configName -> dws.admin.configName
+└── tests/
+    ├── observability-render-test.sh          # four-way matrix + disabled-state baseline
+    └── fixtures/default-render-baseline.yaml # pre-change default render, byte-compared
 ```
 
 ## Phased roadmap
 
-Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Nothing started as of 2026-09-19. Track A phases are 0-A, 1, 2a, 6 (and the Track A halves of 4 and 5); Track B is 0-B, 2b, 3.
+Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Phase 0-A and Phase 1 are complete; the live evidence is recorded below. Track A phases are 0-A, 1, 2a, 6 (and the Track A halves of 4 and 5); Track B is 0-B, 2b, 3.
 
 | Phase | Status | Goal | Key tasks |
 |---|---|---|---|
 | **0-A. Spikes (Track A)** | ✅ | De-risk the Deployment track | **(b) ✅ documented prerequisite + preflight, not a chart dependency.** **(e) ✅ `dws-flow` is glibc; no fourth annotation.** **(f) ✅ pin chart `0.123.0` / operator `0.159.0`.** **(c) ↪️ DEFERRED TO OBSERVATION (decided 2026-09-19)** — rather than spike the Dapr Workflow replay question up front, observe real replay behaviour during Phase 1/2a testing and write the ADR from what the traces actually show. Acceptable because Track A surfaces it early: `dws-orchestrator` is a Deployment, so replays are visible as soon as Phase 2a lands. **Risk accepted:** if replays do duplicate spans or restart traces, the fix may reach back into Phase 2a's span model. See the Findings log |
 | **0-B. Spikes (Track B)** | ❌ | Deferred — de-risk the Knative track | **(a) Knative init containers**, scoped to `dws-call-openapi`, `dws-call-asyncapi`, `dws-call-a2a` — Knative gates init containers behind `kubernetes.podspec-init-containers` and `emptyDir` behind `kubernetes.podspec-volumes-emptydir`. Two sub-questions: is the flag on, and — since the operator mutates the **Pod**, downstream of Knative's Revision validation — does injection work even with the flag off? **(d) `inject-python` for `dws-call-a2a`**, or the in-code SDK path? Plus cold-start cost on a scale-to-zero step pod — the cost is the **init-container image pull**, cached per node, so measure cold node vs warm node separately |
-| **1. Chart surface** | ❌ | Render the CRs, cover the control plane | `observability.*` values block; `Instrumentation` CR template; tracing Configuration CRD with `tracing.otel` + `samplingRate: "1"`; observability flag keys added to the existing `dws-controller-config` store; `dws.preflight.observability`; `dws.observability.podAnnotations` helper; annotate `dws-controller` + `dws-admin` (all three annotations). **Track A. No Knative dependency** — both targets are Deployments. Deliverable: a trace covering controller → Dapr → admin → Postgres, with zero application code changed |
+| **1. Chart surface** | ✅ | Render and prove the control plane | **Complete (2026-09-21).** The live fixture admitted the targeted Java/Node.js agents only, left both `daprd` containers uninstrumented, delivered application and Dapr spans to Jaeger, and delivered metrics and logs to the Collector. The connected event trace is recorded in [Phase 1 live evidence](observability-phase1-evidence.md). The fixture also exposed the post-install admission race; the chart now self-heals missed Operator injection and the render test asserts that hook. The database span and replay probe are explicitly limited by the private orchestrator image and the admin `postgres`-JS client, neither of which is a chart-render concern. **Track A. No Knative dependency** — both targets are Deployments |
 | **2a. Compiled Deployment nodes** | ❌ | **Track A's payoff** | **Scope today is `dws-orchestrator` alone** — see below. `dws-controller` stamps `inject-java`, `container-names` and `dapr.io/config` in `StackSynthesizer.orchestratorAnnotations()`, plus `OTEL_RESOURCE_ATTRIBUTES` carrying `service.name`/`dws.workflow.*`. A Java change, not a chart change, and a **clean add** — that method stamps only `dapr.io/enabled`, `dapr.io/app-id`, `dapr.io/app-port` today, so there is no `dapr.io/config` to merge with. Controller reads the flags from `dws-controller-config` via the Configuration API, defaulting to off. **No Knative dependency.** Deliverable: a trace from controller through orchestrator to the edge of each step invocation |
 | **2a′. Flow/Step nodes** | ⛔ | Blocked cross-roadmap | `dws-flow` and `dws-step` have **no Deployment to annotate yet**. `V2StructuralCompiler` populates `DeploymentPlan.flowStepGraph`, but `DeploymentPlan.structural()` leaves `orchestrator` null and `steps` empty, and the `k8s` package contains zero references to `CompiledNode` — nothing turns the graph into pods. Deploy synthesis is **runtime-v2 Phase 4** (`workflow-runtime-architecture-roadmap.md`), not started. Stamp annotations *inside* that synthesis when it is written rather than bolting them on afterwards |
 | **2b. Knative step services** | ❌ | Deferred — needs Phase 0-B | The same stamping applied to `StackSynthesizer.knativeServices()` output, for the eight `TaskKind` images. Covers the Node and Python images via auto-injection; the Go images consume the stamped env in Phase 3. This is where end-to-end step visibility actually arrives |
@@ -434,6 +451,34 @@ visibility actually arrives — it is deferred, not dropped, and Phase 7 cannot 
 | 6 | **Whether all call-step egress routes through Dapr** — **DEFERRED pending the Istio decision** | Today only `auth: oauth2` steps do, making egress observability depend on an unrelated auth choice. Changing it alters failure semantics for every call step. Istio delivers the same uniformity transparently, so deciding this now risks changing how every call step talks to the internet for a benefit the mesh provides for free. Belongs to the Workflow Runtime Architecture roadmap; recorded here because this roadmap consumes the outcome |
 | 7 | **Istio as a fifth telemetry layer** | If the mesh lands, its sampling rate joins the pinned-to-1 rule, and per-destination egress metrics require a synthesized `ServiceEntry` per external host. Both are controller-side obligations that should be written down before the mesh work starts, not discovered during it |
 
+### 2026-09-21 — Phase 1 live evidence
+
+The isolated `dws-obs-e2e` release ran against Docker Desktop Kubernetes with cert-manager, the
+OpenTelemetry Operator chart `0.123.0` / operator `0.159.0`, Dapr CRDs, the fixture Collector and
+Jaeger. Worktree-built `dws-controller` (JVM Dockerfile) and `dws-admin` images were loaded into
+all three nodes. Posting `review-request` to `POST /workflows` produced the lifecycle event; the
+compile-only path was not used as evidence.
+
+- Pod admission: `dws-controller` had `opentelemetry-auto-instrumentation-java`; `dws-admin` had
+  `opentelemetry-auto-instrumentation-nodejs`; neither `daprd` container had an OTel init container.
+  The first install reproduced the Operator/Helm ordering race (`Instrumentation` was not present
+  when the pods were admitted). A post-install/upgrade hook now waits for the CR and deletes any
+  missed pods; the render test asserts this recovery path.
+- Collector evidence: debug exporter output showed traces from both app agents and Dapr's
+  `dapr-diagnostics` scope, plus metrics batches (18–23 metrics / 66–78 data points). The fixture's
+  `filelog` receiver exercised the logs pipeline and the debug exporter emitted `data_type: logs`;
+  the stock agents did not emit separate OTLP log records. Jaeger trace `61a3d135fd15003bbbff6a11f74c1d2b`
+  contains 49 nested spans across `dws-controller` and `dws-admin`, including
+  `POST /workflows`, Dapr `PublishEvent`/`GetConfiguration`, and admin
+  `POST /dapr/events/dws`/`DaprSubscriptionController.deliver` spans. The Dapr endpoint A/B check
+  also confirmed that sidecar spans arrive with the chart's bare `host:port` HTTP endpoint once a
+  fresh event is sent; schemes in `endpointAddress` are not required.
+- Limitations: the controller-created orchestrator pod could not start because its default GHCR
+  image is private, so no Dapr Workflow replay occurred. The admin uses `postgres` (postgres-js),
+  while the pinned Node auto-instrumentation image supplies `pg` instrumentation, so no separate
+  Postgres client span was emitted. These are recorded as runtime follow-ups for Phase 2a rather
+  than chart failures; the application images and source were unchanged for this phase.
+
 ## Open items
 
 - **Phase 0-B(a) is narrower than first assessed.** Only `dws-call-openapi`, `dws-call-asyncapi`
@@ -469,7 +514,7 @@ visibility actually arrives — it is deferred, not dropped, and Phase 7 cannot 
   `dapr_runtime_service_invocation_*` counters (framed around remote Dapr apps) or only the
   `dapr_http_client_*` family. Settle by curling the sidecar's metrics endpoint after one OAuth2
   call step, before Phase 5 fixes any naming.
-- **Next up:** Phase 1. Phase 0-A is closed — (b), (e), (f) answered, (c) deferred to observation during Phase 1/2a testing. Track B waits.
+- **Next up:** Phase 2a (`dws-orchestrator`) will add workflow-node identity and provide the runnable Dapr Workflow replay probe. Phase 0-A is closed — (b), (e), (f) answered, and (c) is recorded as not exercised because no orchestrator image was available in the live cluster. Track B waits.
 - **Phase 1 blocker found before implementation (2026-09-19):** `dapr.io/config` is a
   **single-valued annotation** — a pod names exactly one Dapr `Configuration` resource. The
   controller and admin Deployments already render it, gated on `auth.enabled`, pointing at
@@ -640,3 +685,134 @@ guessed at from file existence.
 Pod-level operator mutation at all (Phase 0-B(a)); whether Dapr's `HTTPEndpoint` path populates
 `dapr_runtime_service_invocation_*` or only `dapr_http_client_*`; and `dws-flow`'s base image
 libc (Phase 0-A(e)).
+
+### 2026-09-19 (implementation) — Phase 1 chart surface landed
+
+The chart surface is implemented and pinned in CI. What shipped, and where it diverged from
+what this roadmap predicted:
+
+**Merged single Configuration, as the blocker note required.** `*/auth-configuration.yaml`
+became `charts/dws/templates/controller/configuration.yaml` and
+`charts/dws/templates/admin/configuration.yaml`, rendered when the component is enabled and
+*either* `auth.enabled` or `observability.enabled` is true. Inside each resource the bearer
+handler stays gated on auth alone — controller on `spec.appHttpPipeline`, admin on
+`spec.httpPipeline`, the 2026-09-13 divergence intact — and `spec.tracing` renders
+independently under observability. The helpers were renamed `dws.auth.configName` →
+`dws.controller.configName` and `dws.admin.auth.configName` → `dws.admin.configName`; the
+rendered Kubernetes names (`dws-controller-config`, `dws-admin-config`) are unchanged, so no
+existing release sees a resource rename. There is no standalone tracing `Configuration` and no
+pod carries more than one `dapr.io/config`.
+
+**Dapr sampling is pinned to the literal string `"1"`.** `dws.observability.daprTracing` in
+`_helpers.tpl` is the single definition of the tracing block both components include, with the
+ADR 0005 Decision 2 rationale written beside the value. `observability.traces.samplingRate`
+feeds only the `Instrumentation` resource's `parentbased_traceidratio` argument. The render test
+asserts that a custom agent rate leaves both Dapr blocks at `"1"`.
+
+**Protocol mapping needed a helper the values table does not expose.** Dapr's
+`tracing.otel.protocol` accepts only `http` or `grpc`, while the OTel agent vocabulary is
+`http/protobuf` or `grpc`. `dws.observability.daprOtelProtocol` maps the public value and fails
+render on anything else. `otel.isSecure` is derived from whether
+`observability.otlp.endpoint` starts with `https://` rather than adding a TLS value that could
+drift out of sync with the endpoint it describes.
+
+**One `Instrumentation`, one common `spec.env`.** v1alpha1 has a common env layer, so the OTLP
+protocol, the per-signal `otlp`/`none` exporter selection, and the header Secret reference live
+there once instead of being duplicated into `java`/`nodejs`/`dotnet`. All three language
+sections render (empty) so Phase 2a can add `dotnet` without changing the resource's identity;
+Phase 1 only *annotates* java (controller) and nodejs (admin). `service.namespace: dws` is
+merged last over `observability.resourceAttributes`, so an operator cannot override it away.
+
+**Header credentials: one Secret, one key.** `OTEL_EXPORTER_OTLP_HEADERS` always comes from key
+`headers` in a Secret — never inlined, because `helm get manifest` would expose it.
+`observability.otlp.existingSecret` wins over `observability.otlp.headers`; inline headers
+render one Opaque Secret whose value is a key-sorted comma-separated `key=value` list, so
+repeat renders are byte-stable. Dapr's own exporter does **not** receive these headers: Dapr's
+`otel.headers[]` needs a header-name-to-secret-key mapping the single-string contract cannot
+express. Deployments needing authenticated Dapr export should point the endpoint at an
+in-cluster collector. Extending the contract is a future values change, not a bug.
+
+**Targeted injection is mandatory, not an optimization.** Both `inject-*` annotations ship with
+`instrumentation.opentelemetry.io/container-names` naming exactly one container (`controller`,
+`admin`). Without it the Operator's webhook would try to instrument `daprd`, a Go binary that
+cannot take a Java or Node.js agent. `dws.observability.podAnnotations` is the one
+implementation, and the render test asserts the exact container names.
+
+**The admin's `dapr.io/sidecar-listen-addresses` stays gated on auth alone.** Only the auth
+topology puts a Service in front of the sidecar's port 3500; observability does not expose it,
+so enabling observability must not widen that bind. The `dapr.io/enabled`/`app-id`/`app-port`
+annotations and the Dapr pub/sub environment variables *did* widen, since any of the three
+toggles implies a sidecar is present.
+
+**Preflight lands exactly as drafted above**, registered in `templates/preflight.yaml` beside
+the Dapr and API Gateway checks, with `observability.operator.required=false` as the documented
+bypass. The Operator stays out of `Chart.yaml`; `charts/dws/README.md` now carries the pinned
+chart `0.123.0` / operator `0.159.0` install recipe, the cert-manager prerequisite, and the
+existing-Secret `headers` contract.
+
+**Verification evidence (render-level, complete).** `charts/dws/tests/observability-render-test.sh`
+runs in `.github/workflows/helm.yml` and covers all four `auth.enabled` × `observability.enabled`
+combinations, exactly one `Configuration` per enabled component, exact pipeline placement,
+conditional tracing, the pinned Dapr `"1"`, both protocol/`isSecure` mappings, targeted
+injection, the `Instrumentation` shape and non-overridable `service.namespace`, all three OTLP
+Secret modes including a no-inlined-credential assertion, and both preflight outcomes. Its
+disabled-state leg diffs the full default render against
+`charts/dws/tests/fixtures/default-render-baseline.yaml`, recorded from the chart immediately
+before this change, so `observability.enabled=false` is proven byte-identical. `helm lint`, the
+default `helm template`, and the three pre-existing chart tests all pass unchanged.
+
+**Baseline maintenance note.** The fixture is a full manifest, so a deliberate `Chart.yaml`
+`version`/`appVersion` bump changes every resource's `helm.sh/chart` and
+`app.kubernetes.io/version` labels and will fail the test until the baseline is re-recorded with
+`bash charts/dws/tests/observability-render-test.sh charts/dws --update-baseline`. The failure
+message says so. Two Bitnami postgresql passwords are pinned on the render command line because
+the subchart regenerates them on every render; nothing else is overridden.
+
+**Still outstanding — the live deliverable.** Phase 1's stated deliverable is *a trace covering
+controller → Dapr → admin → Postgres with zero application code changed*. That has **not** been
+captured: it needs a cluster with the pinned Operator, cert-manager, and a reachable collector,
+none of which exist in the environment this work was done in. Phase 1 is therefore marked ⚠️,
+not ✅ — the chart wiring is complete and CI-guarded, and the remaining step is running an
+enabled release against a real receiver and recording what arrives. The Dapr Workflow replay
+question (0-A(c), deferred to observation) is still waiting on that same run.
+
+### 2026-09-19 (review) — Dapr's `endpointAddress` is not an OTel SDK endpoint
+
+Caught in review of the Phase 1 implementation, before merge. The first cut set
+`spec.tracing.otel.endpointAddress` to `observability.otlp.endpoint` verbatim — which is what
+this roadmap's own Phase 1 sketch said to do, and what the change's delta spec encoded.
+
+That is wrong, and wrong quietly. Dapr assigns the field straight to
+`otlptracehttp.WithEndpoint` / `otlptracegrpc.WithEndpoint` (`dapr/dapr` `pkg/runtime/runtime.go`,
+verified against v1.18.1), and both OTel Go exporters expect a bare `host:port`. That is exactly
+why Dapr carries a separate `isSecure` boolean while its Zipkin exporter's `endpointAddress` does
+take a full URL. With the chart's own default the sidecar would have built
+`http://http://dws-otel-collector:4318/v1/traces` and exported nothing. The Dapr `Configuration`
+CRD types the field as a plain `string` with no format, so neither the schema, `helm lint`, nor a
+server-side dry run rejects it.
+
+The failure mode is the worst shape available: application-agent spans arrive, Dapr spans do not,
+and the missing hop looks like a collector or network problem rather than a values bug. It would
+have been found — if at all — during Phase 1's live verification, by which point the
+controller → Dapr → admin → Postgres trace would simply have been broken in the middle.
+
+Resolved by `dws.observability.daprOtelEndpoint`, which strips the scheme on the way into Dapr
+only. `observability.otlp.endpoint` stays scheme-qualified because the `Instrumentation`
+resource's `spec.exporter.endpoint` becomes `OTEL_EXPORTER_OTLP_ENDPOINT`, which requires one.
+The render test now asserts both shapes and fails on a scheme appearing in `endpointAddress`.
+
+**Two related gaps closed in the same pass.** `dws.observability.daprOtelProtocol` was the only
+rejecter of an unknown protocol, and it is reached only through the component Configuration
+templates — so `controller.enabled=false admin.enabled=false` rendered `bogus` straight into
+`OTEL_EXPORTER_OTLP_PROTOCOL`. Nothing at all rejected an empty endpoint, which makes Dapr skip
+tracing (it guards on a non-empty address) and the agents fall back to their own localhost
+default. Both now live in `dws.observability.validate`, called unconditionally from
+`preflight.yaml`. Separately, `OTEL_EXPORTER_OTLP_HEADERS` has no escape for its comma separator,
+so a comma in a header name or value now fails render rather than silently splitting into extra
+headers.
+
+**Lesson for Phase 2a and 2b.** Dapr's telemetry vocabulary overlaps the OTel SDK's without
+matching it — `endpointAddress` vs `endpoint`, `http` vs `http/protobuf`, an explicit `isSecure`
+instead of a scheme. Every later phase that hands the same operator-facing value to both a Dapr
+`Configuration` and an OTel agent needs the same translation layer, and it belongs in one helper
+per concept, not at each call site.

@@ -302,28 +302,33 @@ dws-console
 {{- end }}
 
 {{/*
-Controller-scoped auth resource names (auth roadmap Phase 2). Reserved for the
-`dws-controller` sidecar's bearer Component/Configuration — the plain names predate the
-admin equivalents below, kept as-is so Phase 2 templates need no rename.
+Controller-scoped Dapr resource names. dws.auth.componentName is the bearer middleware
+Component (auth roadmap Phase 2); dws.controller.configName is the SHARED Dapr Configuration
+the controller Pod names in dapr.io/config. It carries the auth pipeline, the observability
+tracing block, or both — dapr.io/config is single-valued, so there is exactly one such
+resource per component (observability roadmap Phase 1). Its rendered Kubernetes name
+(<controller fullname>-config) is unchanged from when it was auth-only.
 */}}
 {{- define "dws.auth.componentName" -}}
 {{- printf "%s-auth" (include "dws.controller.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end }}
 
-{{- define "dws.auth.configName" -}}
+{{- define "dws.controller.configName" -}}
 {{- printf "%s-config" (include "dws.controller.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end }}
 
 {{/*
-Admin-scoped auth resource names (auth roadmap Phase 4). Named fully qualified
-(dws.admin.auth.*) to avoid confusion with the controller-scoped plain names above — a
-future reader editing `dws.auth.componentName` should not accidentally touch admin.
+Admin-scoped Dapr resource names. dws.admin.auth.componentName is the bearer middleware
+Component (auth roadmap Phase 4), kept fully qualified so a future reader editing
+`dws.auth.componentName` does not accidentally touch admin. dws.admin.configName is the admin
+equivalent of dws.controller.configName above: the one shared Configuration carrying the auth
+pipeline and/or observability tracing.
 */}}
 {{- define "dws.admin.auth.componentName" -}}
 {{- printf "%s-auth" (include "dws.admin.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end }}
 
-{{- define "dws.admin.auth.configName" -}}
+{{- define "dws.admin.configName" -}}
 {{- printf "%s-config" (include "dws.admin.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end }}
 
@@ -501,4 +506,155 @@ affinity:
 {{- else }}
 {{- print "redis-password" }}
 {{- end }}
+{{- end }}
+
+{{/*
+Observability (observability roadmap Phase 1) — release-safe names and shared value
+normalization for the OpenTelemetry surface. Every helper below assumes its caller has already
+gated on .Values.observability.enabled; none of them re-check the master switch, except
+dws.observability.podAnnotations, which is included unconditionally from the Deployments.
+*/}}
+
+{{/*
+Namespaced Instrumentation resource name — the value both Deployments' inject-* annotations
+point at, so the name has exactly one definition.
+*/}}
+{{- define "dws.observability.instrumentationName" -}}
+{{- printf "%s-instrumentation" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{/*
+Chart-owned OTLP header Secret name. Only rendered when observability.otlp.headers is
+non-empty AND observability.otlp.existingSecret is unset — see dws.observability.otlpSecretName
+for the resolved reference.
+*/}}
+{{- define "dws.observability.otlpSecretFullname" -}}
+{{- printf "%s-otlp" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{/*
+Resolve WHICH Secret supplies OTEL_EXPORTER_OTLP_HEADERS, or the empty string when headers are
+not configured at all. existingSecret wins over inline headers, matching the precedence the
+admin database Secret already uses (templates/admin/deployment.yaml). The key is always
+`headers`; that single-key contract is what the chart documents to operators.
+*/}}
+{{- define "dws.observability.otlpSecretName" -}}
+{{- if .Values.observability.otlp.existingSecret -}}
+{{- .Values.observability.otlp.existingSecret -}}
+{{- else if .Values.observability.otlp.headers -}}
+{{- include "dws.observability.otlpSecretFullname" . -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Serialize observability.otlp.headers into the one comma-separated key=value list the
+OTEL_EXPORTER_OTLP_HEADERS environment variable expects. Sorted by key (Helm's `keys` is
+unordered) so the rendered Secret is deterministic across renders and does not churn the
+release on every upgrade.
+*/}}
+{{- define "dws.observability.otlpHeaderList" -}}
+{{- $pairs := list -}}
+{{- range $key := (keys .Values.observability.otlp.headers | sortAlpha) -}}
+{{- $value := get $.Values.observability.otlp.headers $key | toString -}}
+{{- /*
+  The list separator is a bare comma with no escaping mechanism in the OTLP environment-variable
+  format, so a comma anywhere in a name or value silently splits into extra bogus headers rather
+  than failing. Reject it here instead. Use observability.otlp.existingSecret for any header the
+  format cannot represent.
+*/ -}}
+{{- if or (contains "," $key) (contains "," $value) -}}
+{{- fail (printf "observability.otlp.headers: header %q contains a comma, which OTEL_EXPORTER_OTLP_HEADERS uses as its list separator and cannot escape. Supply this header through observability.otlp.existingSecret instead." $key) -}}
+{{- end -}}
+{{- $pairs = append $pairs (printf "%s=%s" $key $value) -}}
+{{- end -}}
+{{- join "," $pairs -}}
+{{- end }}
+
+{{/*
+Map the public OTLP protocol value onto Dapr's own, narrower transport vocabulary. Dapr's
+`tracing.otel.protocol` accepts only "http" or "grpc"; the OTel SDK/agent value is
+"http/protobuf" or "grpc". Centralized here so the controller and admin Configurations cannot
+disagree about the mapping.
+*/}}
+{{- define "dws.observability.daprOtelProtocol" -}}
+{{- $protocol := .Values.observability.otlp.protocol | default "http/protobuf" -}}
+{{- if eq $protocol "grpc" -}}
+grpc
+{{- else if eq $protocol "http/protobuf" -}}
+http
+{{- else -}}
+{{- fail (printf "observability.otlp.protocol must be \"http/protobuf\" or \"grpc\", got %q" $protocol) -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Derive Dapr's `tracing.otel.isSecure` from the configured endpoint's scheme. Dapr needs an
+explicit boolean, but the roadmap's operator-facing values table has no separate TLS toggle —
+the endpoint URL already carries the answer, so read it from there rather than adding a value
+that could drift out of sync with the endpoint it describes.
+*/}}
+{{- define "dws.observability.otlpIsSecure" -}}
+{{- if hasPrefix "https://" (.Values.observability.otlp.endpoint | default "") -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{/*
+Dapr's `tracing.otel.endpointAddress` is NOT the same shape as the OTel SDK's endpoint value.
+Dapr passes the field verbatim to otlptracehttp.WithEndpoint / otlptracegrpc.WithEndpoint
+(dapr/dapr pkg/runtime/runtime.go), and both expect a bare `host:port` — which is exactly why
+Dapr carries a separate `isSecure` boolean instead of reading the scheme. Leaving the scheme on
+produces a URL like `http://http://collector:4318/v1/traces` and every sidecar export fails at
+runtime, with nothing in the CRD schema (plain `type: string`) or `helm lint` to catch it.
+
+observability.otlp.endpoint stays scheme-qualified because the Instrumentation resource's
+`spec.exporter.endpoint` becomes OTEL_EXPORTER_OTLP_ENDPOINT, which REQUIRES the scheme. Strip
+it only on the way into Dapr. The scheme is not lost — dws.observability.otlpIsSecure reads it.
+*/}}
+{{- define "dws.observability.daprOtelEndpoint" -}}
+{{- .Values.observability.otlp.endpoint | default "" | trimPrefix "https://" | trimPrefix "http://" | trimSuffix "/" -}}
+{{- end }}
+
+{{/*
+Per-component Dapr tracing block, shared by templates/controller/configuration.yaml and
+templates/admin/configuration.yaml so the two cannot drift. Emits the `tracing:` key itself at
+the caller's indentation; the caller gates it on .Values.observability.enabled.
+
+ADR 0005 Decision 2: samplingRate is the LITERAL string "1", never
+observability.traces.samplingRate. The application agent's parentbased_traceidratio sampler is
+the single sampling root; if daprd also sampled probabilistically the two decisions would
+compose multiplicatively and produce partial traces that look like exporter failures.
+*/}}
+{{- define "dws.observability.daprTracing" -}}
+tracing:
+  # ADR 0005 Decision 2 — pinned to "1" on purpose. The application agent
+  # (parentbased_traceidratio, observability.traces.samplingRate) is the only sampling
+  # root; daprd must honour the parent decision, not make a second one.
+  samplingRate: "1"
+  otel:
+    endpointAddress: {{ include "dws.observability.daprOtelEndpoint" . | quote }}
+    isSecure: {{ include "dws.observability.otlpIsSecure" . }}
+    protocol: {{ include "dws.observability.daprOtelProtocol" . | quote }}
+{{- end }}
+
+{{/*
+OpenTelemetry Operator injection annotations for one pod template. Takes a dict
+`{root: $, language: "java"|"nodejs"|"dotnet", container: "<app container name>"}`.
+
+Emits nothing when observability is disabled, so the Deployments can include it
+unconditionally and keep their annotation blocks readable.
+
+container-names is MANDATORY, not an optimization: an untargeted inject-* annotation makes the
+Operator's webhook instrument EVERY container in the pod, including the daprd sidecar — a Go
+binary that cannot take a Java or Node.js agent. Both call sites therefore name exactly the one
+application container.
+*/}}
+{{- define "dws.observability.podAnnotations" -}}
+{{- $ := .root -}}
+{{- if $.Values.observability.enabled -}}
+instrumentation.opentelemetry.io/inject-{{ .language }}: {{ include "dws.observability.instrumentationName" $ | quote }}
+instrumentation.opentelemetry.io/container-names: {{ .container | quote }}
+{{- end -}}
 {{- end }}

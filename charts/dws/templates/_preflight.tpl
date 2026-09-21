@@ -37,3 +37,58 @@ them correctly.
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{/*
+Preflight check for the OpenTelemetry Operator (observability roadmap Phase 1): when
+observability.enabled=true this chart renders an opentelemetry.io/v1alpha1 Instrumentation
+resource and annotates pods for the Operator's mutating webhook, but it does NOT install the
+Operator itself. Mirrors dws.preflight.dapr one-for-one — assert the CRDs are present,
+otherwise fail with a message naming both ways out.
+
+The Operator is a documented prerequisite rather than a Chart.yaml dependency specifically
+because it requires cert-manager, which is a cluster singleton: bundling it risks colliding
+with an existing install, and would hit the same "Capabilities computed before a fresh
+install's own dependency CRDs land" hazard that dws.preflight.apiGateway already documents.
+
+observability.operator.required=false is the explicit opt-out for controlled environments
+that install the Operator out of band after this release.
+*/}}
+{{- define "dws.preflight.observability" -}}
+{{- if and .Values.observability.enabled .Values.observability.operator.required }}
+{{- if not (.Capabilities.APIVersions.Has "opentelemetry.io/v1alpha1") }}
+{{- fail "observability.enabled=true but the OpenTelemetry Operator CRDs (opentelemetry.io/v1alpha1) were not found in the cluster. Install the OpenTelemetry Operator (which requires cert-manager) before running helm install/upgrade, or set observability.operator.required=false to skip this check." }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Value-shape validation for the observability block. Separate from dws.preflight.observability
+(which asks the CLUSTER a question) because this asks the VALUES a question, and because it must
+run even when neither the controller nor the admin is enabled.
+
+Both checks would otherwise only be reached through the two component Configuration templates:
+dws.observability.daprOtelProtocol is the sole rejecter of an unknown protocol, and nothing at
+all rejects an empty endpoint. With `controller.enabled=false admin.enabled=false` an invalid
+protocol rendered clean into OTEL_EXPORTER_OTLP_PROTOCOL, and an empty endpoint rendered an
+empty exporter endpoint — Dapr then silently skips tracing (it guards on a non-empty address)
+and the agents fall back to the SDK's own localhost default. Both are quiet misconfigurations
+that only surface as "no telemetry arrives".
+
+Called unconditionally from templates/preflight.yaml.
+*/}}
+{{- define "dws.observability.validate" -}}
+{{- if .Values.observability.enabled }}
+{{- if not .Values.observability.otlp.endpoint }}
+{{- fail "observability.enabled=true requires a non-empty observability.otlp.endpoint (scheme-qualified, e.g. http://dws-otel-collector:4318). An empty endpoint renders an empty exporter address: Dapr silently skips tracing and the application agents fall back to their own localhost default, so no telemetry reaches your receiver." }}
+{{- end }}
+{{- if not (hasPrefix "http://" .Values.observability.otlp.endpoint | or (hasPrefix "https://" .Values.observability.otlp.endpoint)) }}
+{{- fail (printf "observability.otlp.endpoint must start with http:// or https://, got %q. The scheme sets the Instrumentation resource's OTEL_EXPORTER_OTLP_ENDPOINT (which requires it) and derives Dapr's tracing.otel.isSecure." .Values.observability.otlp.endpoint) }}
+{{- end }}
+{{- $endpointNoScheme := .Values.observability.otlp.endpoint | trimPrefix "https://" | trimPrefix "http://" | trimSuffix "/" -}}
+{{- if contains "/" $endpointNoScheme }}
+{{- fail (printf "observability.otlp.endpoint must be a base endpoint without a path, got %q. The application agents append /v1/traces, /v1/metrics, and /v1/logs themselves, and Dapr requires a bare host:port." .Values.observability.otlp.endpoint) }}
+{{- end }}
+{{- /* Reached for its fail() side effect: this is the only rejecter of an unknown protocol. */ -}}
+{{- $_ := include "dws.observability.daprOtelProtocol" . }}
+{{- end }}
+{{- end }}

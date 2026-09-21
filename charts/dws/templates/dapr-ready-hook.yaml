@@ -1,8 +1,9 @@
-{{- if .Values.dapr.enabled }}
+{{- if or .Values.dapr.enabled .Values.observability.enabled }}
 {{- /*
-Self-heals a missed Dapr sidecar injection on the admin Pod — see the comment on
-dapr.readyHook in values.yaml for why this is needed. Namespace-scoped RBAC, mirroring the
-controller's Role/RoleBinding pattern in templates/controller/rbac.yaml.
+Self-heals admission-time injection races. The same-release Dapr control plane or
+Instrumentation resource can become ready after workload Pods were first admitted, and neither
+webhook revisits an existing Pod. Namespace-scoped RBAC mirrors the controller's Role/RoleBinding
+pattern in templates/controller/rbac.yaml.
 */ -}}
 apiVersion: v1
 kind: ServiceAccount
@@ -38,6 +39,12 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch", "delete"]
+  {{ if .Values.observability.enabled }}
+  # To wait until the same-release Instrumentation exists before recreating missed Pods.
+  - apiGroups: ["opentelemetry.io"]
+    resources: ["instrumentations"]
+    verbs: ["get"]
+  {{ end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -89,7 +96,7 @@ spec:
           command:
             - /bin/sh
             - -c
-            - |
+            - |{{ if .Values.dapr.enabled }}
               set -eu
               ns="{{ include "dws.namespace" . }}"
               echo "waiting for dapr-sidecar-injector rollout in namespace $ns..."
@@ -97,18 +104,73 @@ spec:
               # Deployment readiness doesn't guarantee the admission webhook is reachable
               # from the API server yet — give its cert/registration a beat to catch up.
               sleep 15
+              {{- if .Values.admin.enabled }}
 
-              pods=$(kubectl get pods -n "$ns" -l app.kubernetes.io/component=admin -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)
+              echo "checking Dapr sidecar injection for admin..."
+              for attempt in $(seq 1 60); do
+                pods=$(kubectl get pods -n "$ns" -l app.kubernetes.io/component=admin -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)
+                [ -n "$pods" ] && break
+                sleep 2
+              done
               if [ -z "$pods" ]; then
                 echo "no admin pod found, nothing to check"
-                exit 0
+              else
+                for pod in $pods; do
+                  containers=$(kubectl get pod "$pod" -n "$ns" -o jsonpath='{.spec.containers[*].name}' 2>/dev/null || true)
+                  echo "admin pod $pod containers: $containers"
+                  if ! echo "$containers" | grep -q daprd; then
+                    echo "admin pod $pod is missing its daprd sidecar (injection missed), deleting to force re-injection"
+                    kubectl delete pod "$pod" -n "$ns"
+                  fi
+                done
               fi
-              for pod in $pods; do
-                containers=$(kubectl get pod "$pod" -n "$ns" -o jsonpath='{.spec.containers[*].name}' 2>/dev/null || true)
-                echo "admin pod $pod containers: $containers"
-                if ! echo "$containers" | grep -q daprd; then
-                  echo "admin pod $pod is missing its daprd sidecar (injection missed), deleting to force re-injection"
-                  kubectl delete pod "$pod" -n "$ns"
-                fi
+              {{- end }}{{ end }}{{ if .Values.observability.enabled }}
+              set -eu
+              ns="{{ include "dws.namespace" . }}"
+              instrumentation="{{ include "dws.observability.instrumentationName" . }}"
+
+              echo "waiting for Instrumentation $instrumentation in namespace $ns..."
+              for attempt in $(seq 1 60); do
+                kubectl get instrumentation "$instrumentation" -n "$ns" >/dev/null 2>&1 && break
+                sleep 2
               done
-{{- end }}
+              kubectl get instrumentation "$instrumentation" -n "$ns" >/dev/null
+
+              ensure_instrumented() {
+                component="$1"
+                expected_init="$2"
+
+                echo "checking OpenTelemetry injection for $component..."
+                for attempt in $(seq 1 60); do
+                  pods=$(kubectl get pods -n "$ns" -l "app.kubernetes.io/component=$component" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)
+                  [ -n "$pods" ] && break
+                  sleep 2
+                done
+                [ -n "${pods:-}" ] || { echo "no $component pod found" >&2; exit 1; }
+
+                for pod in $pods; do
+                  init_containers=$(kubectl get pod "$pod" -n "$ns" -o jsonpath='{.spec.initContainers[*].name}' 2>/dev/null || true)
+                  echo "$component pod $pod init containers: $init_containers"
+                  if ! echo "$init_containers" | grep -qw "$expected_init"; then
+                    echo "$component pod $pod missed OpenTelemetry injection, deleting to force re-admission"
+                    kubectl delete pod "$pod" -n "$ns"
+                  fi
+                done
+
+                kubectl wait pod -n "$ns" -l "app.kubernetes.io/component=$component" --for=condition=Ready --timeout=300s
+                pods=$(kubectl get pods -n "$ns" -l "app.kubernetes.io/component=$component" -o jsonpath='{.items[*].metadata.name}')
+                for pod in $pods; do
+                  init_containers=$(kubectl get pod "$pod" -n "$ns" -o jsonpath='{.spec.initContainers[*].name}')
+                  echo "$component pod $pod admitted init containers: $init_containers"
+                  echo "$init_containers" | grep -qw "$expected_init" \
+                    || { echo "$component pod $pod is still missing $expected_init" >&2; exit 1; }
+                done
+              }
+
+              {{ if .Values.controller.enabled }}
+              ensure_instrumented controller opentelemetry-auto-instrumentation-java
+              {{ end }}
+              {{ if .Values.admin.enabled }}
+              ensure_instrumented admin opentelemetry-auto-instrumentation-nodejs{{ end }}
+{{ end }}
+{{ end }}

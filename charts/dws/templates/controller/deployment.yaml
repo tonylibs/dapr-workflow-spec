@@ -21,8 +21,21 @@ spec:
         dapr.io/enabled: "true"
         dapr.io/app-id: {{ include "dws.controller.fullname" . | quote }}
         dapr.io/app-port: "8080"
-        {{- if .Values.auth.enabled }}
-        dapr.io/config: {{ include "dws.auth.configName" . | quote }}
+        {{- /*
+          One shared Configuration carries the auth pipeline, the observability tracing block,
+          or both (templates/controller/configuration.yaml). dapr.io/config is single-valued, so
+          this annotation follows EITHER feature toggle and can only ever name one resource.
+        */}}
+        {{- if or .Values.auth.enabled .Values.observability.enabled }}
+        dapr.io/config: {{ include "dws.controller.configName" . | quote }}
+        {{- end }}
+        {{- /*
+          OpenTelemetry Java agent injection, targeted at the `controller` container only — an
+          untargeted annotation would make the Operator try to instrument the daprd sidecar too.
+          Emits nothing when observability is disabled.
+        */}}
+        {{- with (include "dws.observability.podAnnotations" (dict "root" . "language" "java" "container" "controller")) }}
+        {{- . | nindent 8 }}
         {{- end }}
     spec:
       serviceAccountName: {{ include "dws.controller.fullname" . }}

@@ -90,12 +90,16 @@ Windows: Java packages use `mvnw.cmd` instead of `./mvnw`.
 `charts/dws` has no build, but it has its own gate — run it from the repository root before
 calling a chart change done:
 
+The observability render test byte-compares a fixture and therefore requires Helm 3.19.0, matching
+the pinned version in `.github/workflows/helm.yml`.
+
 ```sh
 helm lint charts/dws
 helm template dws charts/dws
 bash charts/dws/tests/values-schema-test.sh charts/dws
 bash charts/dws/tests/api-gateway-render-test.sh charts/dws
 bash charts/dws/tests/auth-pipeline-placement-test.sh charts/dws
+bash charts/dws/tests/observability-render-test.sh charts/dws
 ```
 
 `helm lint`/`helm template` do not run Kubernetes' apimachinery validation, so a manifest that

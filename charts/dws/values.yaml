@@ -35,14 +35,10 @@ defaults:
 # externally).
 dapr:
   enabled: true
-  # Sidecar injection is a one-shot decision the dapr-sidecar-injector's mutating webhook
-  # makes at Pod creation time. In a plain `helm install` with dapr.enabled=true, Dapr's own
-  # control plane and the admin Deployment are created in the same atomic apply, so there is
-  # no guarantee the injector's webhook is actually serving yet when the admin Pod is
-  # admitted — a missed injection never recovers on its own (a container restart doesn't
-  # re-run admission). This post-install/post-upgrade hook Job waits for the injector
-  # rollout, then deletes the admin Pod if it ended up without its daprd sidecar so it gets
-  # recreated correctly. Only runs when dapr.enabled is true.
+  # Admission injection is a one-shot decision made at Pod creation time. The shared
+  # post-install/post-upgrade hook self-heals both a same-release Dapr injector race and, when
+  # observability is enabled, a same-release Instrumentation ordering race. It deletes only a
+  # workload Pod that missed the expected sidecar/agent so the replacement is admitted again.
   readyHook:
     image:
       repository: docker.io/alpine/k8s
@@ -396,6 +392,87 @@ redis:
     host: ""
     existingSecret: ""
     existingSecretKey: "redis-password"
+
+# OpenTelemetry observability (docs/roadmaps/observability.md Phase 1). Disabled by default:
+# with observability.enabled=false the chart is a TOPOLOGICAL NO-OP — no Instrumentation CR,
+# no OTLP Secret, no Dapr tracing, no injection annotations, and no observability-only Dapr
+# Configuration render. charts/dws/tests/observability-render-test.sh pins that against a
+# recorded pre-change baseline.
+#
+# PREREQUISITE (not a Chart.yaml dependency): the OpenTelemetry Operator must already be
+# installed in the cluster, pinned to opentelemetry-operator chart 0.123.0 / operator 0.159.0,
+# along with its own cert-manager prerequisite. It is deliberately NOT bundled because
+# cert-manager is a cluster singleton and bundling it risks colliding with an existing install
+# (see docs/roadmaps/observability.md, decision (b)). observability.operator.required drives a
+# fail-fast preflight instead.
+#
+# Phase 1 scope is the chart-managed control plane only: dws-controller (Java agent) and
+# dws-admin (Node.js agent), plus both of their Dapr sidecars. dws-orchestrator, dws-flow,
+# dws-step, and the compiled Knative step Services are later phases.
+observability:
+  # Master switch for every observability resource and pod mutation in this chart.
+  enabled: false
+  otlp:
+    # Where every signal (traces, metrics, logs) is exported. The default names an
+    # in-namespace collector that this chart does NOT install — point it at your own
+    # collector or managed OTLP endpoint.
+    #
+    # Must be a BASE endpoint with a scheme and no signal path: the agents append /v1/traces,
+    # /v1/metrics and /v1/logs themselves. The scheme is required (it becomes the application
+    # agents' OTEL_EXPORTER_OTLP_ENDPOINT) and also derives Dapr's tracing.otel.isSecure; the
+    # chart strips it on the way into Dapr, whose endpointAddress wants a bare host:port.
+    endpoint: http://dws-otel-collector:4318
+    # OTLP transport used by the application agents: http/protobuf or grpc. The Dapr
+    # sidecars use the same endpoint; http/protobuf is mapped to Dapr's own "http"
+    # protocol vocabulary by the chart (see templates/*/configuration.yaml).
+    protocol: http/protobuf
+    # Inline OTLP headers (e.g. a SaaS backend API key). When non-empty and
+    # existingSecret is unset, the chart renders ONE Opaque Secret whose `headers` key
+    # holds the deterministic comma-separated key=value list OTLP expects, and the
+    # Instrumentation resource reads OTEL_EXPORTER_OTLP_HEADERS from it. Values are never
+    # inlined into the Instrumentation resource. A comma in a header name or value is rejected
+    # at render time: it is the list separator and the format has no escape for it — use
+    # existingSecret for any header this format cannot represent.
+    headers: {}
+    # Operator-managed Secret holding the same `headers` key. Takes precedence over
+    # otlp.headers — when set, the chart references it and renders no Secret of its own
+    # (mirrors the admin.database.existingSecret precedence pattern).
+    existingSecret: ""
+  traces:
+    enabled: true
+    # Application-agent sampling rate, used as the parentbased_traceidratio argument on the
+    # Instrumentation resource. The APPLICATION AGENT IS THE ONLY SAMPLING ROOT: every Dapr
+    # Configuration this chart renders pins samplingRate: "1" so daprd honours the parent's
+    # decision instead of making a second, independent probabilistic one (ADR 0005 Decision 2).
+    # Changing this value never changes the Dapr sampling value.
+    samplingRate: 0.1
+    # Reserved for a later phase's sidecar span-volume control. Phase 1 always exports Dapr
+    # spans when observability is enabled.
+    daprSpans: true
+  metrics:
+    enabled: true
+  logs:
+    enabled: true
+    # Reserved for the Phase 4 log/trace correlation work: json or text.
+    format: json
+  # Whether compiled workflow stacks get instrumented. Separate from the master switch so an
+  # operator can observe the control plane without paying per-workflow span volume. Reserved
+  # for Phase 2b — Phase 1 does not instrument compiled workflow resources.
+  workflows:
+    enabled: true
+  operator:
+    # Fail render when observability.enabled=true and opentelemetry.io/v1alpha1 is absent from
+    # the target cluster. Set to false only for controlled environments that install the
+    # Operator out of band after this release (see templates/_preflight.tpl).
+    required: true
+  collector:
+    # Reserved for Phase 6's bundled opentelemetry-collector subchart. Phase 1 never installs
+    # a collector; enabling this has no effect yet.
+    enabled: false
+  # Extra OTel resource attributes merged into the Instrumentation resource, e.g.
+  # deployment.environment: production. service.namespace is always dws and cannot be
+  # overridden away.
+  resourceAttributes: {}
 
 # Image pull secrets, applied to the admin (and other component) pods that reference
 # private registries. More info: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/

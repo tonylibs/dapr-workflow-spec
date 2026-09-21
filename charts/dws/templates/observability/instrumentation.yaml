@@ -1,0 +1,76 @@
+{{- /*
+  The OpenTelemetry Operator's Instrumentation resource: the single description of HOW the
+  chart-managed application containers are auto-instrumented (observability roadmap Phase 1).
+  The Operator's mutating webhook reads it when a pod carries an
+  instrumentation.opentelemetry.io/inject-<language> annotation naming this resource — see
+  dws.observability.podAnnotations and the controller/admin Deployments.
+
+  Rendered only when observability.enabled=true. The Operator itself is an external,
+  documented prerequisite (chart 0.123.0 / operator 0.159.0) and is NOT a Chart.yaml
+  dependency, because it pulls cert-manager, a cluster singleton — dws.preflight.observability
+  fails fast when its CRDs are absent.
+
+  ONE resource covers all three languages: v1alpha1 has a common spec.env layer, so every
+  shared OTEL_* setting and the OTLP header Secret reference live there once instead of being
+  copied into java/nodejs/dotnet. The three language sections are present but empty so later
+  phases can add per-runtime settings without changing this resource's identity. Phase 1 only
+  ANNOTATES java (controller) and nodejs (admin); dotnet is here for dws-flow in Phase 2a.
+*/}}
+{{- if .Values.observability.enabled }}
+apiVersion: opentelemetry.io/v1alpha1
+kind: Instrumentation
+metadata:
+  name: {{ include "dws.observability.instrumentationName" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: observability
+spec:
+  exporter:
+    endpoint: {{ .Values.observability.otlp.endpoint | quote }}
+  propagators:
+    - tracecontext
+    - baggage
+  sampler:
+    # THE application-side sampling root. Every Dapr Configuration this chart renders pins
+    # samplingRate "1" so daprd honours this decision rather than making a second, independent
+    # one (ADR 0005 Decision 2 — see dws.observability.daprTracing).
+    type: parentbased_traceidratio
+    argument: {{ .Values.observability.traces.samplingRate | toString | quote }}
+  resource:
+    resourceAttributes:
+      {{- /*
+        service.namespace is the chart's own required attribute and is applied LAST so an
+        operator-supplied observability.resourceAttributes entry cannot remove or override it.
+      */}}
+      {{- $attributes := merge (dict "service.namespace" "dws") (deepCopy (default dict .Values.observability.resourceAttributes)) }}
+      {{- $attributes = mergeOverwrite $attributes (dict "service.namespace" "dws") }}
+      {{- range $key := (keys $attributes | sortAlpha) }}
+      {{ $key }}: {{ get $attributes $key | toString | quote }}
+      {{- end }}
+  env:
+    - name: OTEL_EXPORTER_OTLP_PROTOCOL
+      value: {{ .Values.observability.otlp.protocol | quote }}
+    - name: OTEL_TRACES_EXPORTER
+      value: {{ ternary "otlp" "none" .Values.observability.traces.enabled | quote }}
+    - name: OTEL_METRICS_EXPORTER
+      value: {{ ternary "otlp" "none" .Values.observability.metrics.enabled | quote }}
+    - name: OTEL_LOGS_EXPORTER
+      value: {{ ternary "otlp" "none" .Values.observability.logs.enabled | quote }}
+    {{- with (include "dws.observability.otlpSecretName" .) }}
+    {{- /*
+      Header credentials are never inlined here: helm's release metadata and `helm get manifest`
+      would expose them outside a Secret. The `headers` key holds the comma-separated key=value
+      list OTLP expects, whether the chart rendered the Secret (observability.otlp.headers) or
+      the operator supplied it (observability.otlp.existingSecret).
+    */}}
+    - name: OTEL_EXPORTER_OTLP_HEADERS
+      valueFrom:
+        secretKeyRef:
+          name: {{ . | quote }}
+          key: headers
+    {{- end }}
+  java: {}
+  nodejs: {}
+  dotnet: {}
+{{- end }}
