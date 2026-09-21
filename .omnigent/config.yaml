@@ -79,15 +79,26 @@ skills:
   - 'cross-review'
 
 executor:
-  harness: claude-sdk
-  model: claude-sonnet-5
+  type: omnigent
+  config:
+    harness: claude-sdk
+    model: claude-sonnet-5
 
 os_env:
+  # sandbox block removed: windows_jobobject sandboxing gives zero real
+  # isolation on Windows anyway (own log warning: no filesystem/network
+  # isolation, process-tree containment only), so no reason to keep it here.
+  # NOTE: this did NOT fix the WinError 193 claude-sdk spawn bug (tested
+  # 2026-09-22) — that bug is unconditional on Windows, not tied to sandbox
+  # config. Root cause: claude_agent_sdk resolves "the claude CLI" to a
+  # generated temp .py proxy script and execs it directly; Windows
+  # CreateProcess doesn't interpret shebangs (POSIX exec() does), so running
+  # a .py as if it were a binary fails with "%1 is not a valid Win32
+  # application". Confirmed unpatched in 0.14.0 (latest as of 2026-09-22).
+  # Likely fixed by running omnigent under Linux/WSL2/macOS instead — see
+  # discussion, untested here. Re-add sandbox: once on Linux/macOS.
   type: caller_process
   cwd: .
-  sandbox:
-    write_paths: [.]
-    allow_network: true
 
 tools:
   context7:
@@ -136,8 +147,10 @@ tools:
       - 'security-review'
       - 'dapr-workflow-spec'
     executor:
-      harness: claude-sdk
-      model: claude-opus-5
+      type: omnigent
+      config:
+        harness: claude-sdk
+        model: claude-opus-5
     tools:
       github: inherit
     os_env: inherit
@@ -151,11 +164,13 @@ tools:
       Cite the exact docs or file paths that support each claim.
       Do not invent undocumented behavior.
     executor:
-      harness: claude-sdk
-      model: claude-haiku-4-5-20251001
-      tools:
-        context7: inherit
-      os_env: inherit
+      type: omnigent
+      config:
+        harness: claude-sdk
+        model: claude-haiku-4-5-20251001
+    tools:
+      context7: inherit
+    os_env: inherit
 
   dotnet-developer:
     type: agent
@@ -173,10 +188,12 @@ tools:
       - 'dotnet-patterns'
       - 'csharp-testing'
     executor:
+      type: omnigent
       # copilot: pilot harness for .NET (deep C#/VS-ecosystem training); dws-flow
       # has no CI gate yet, so blast radius is low. Fall back to claude-sdk /
       # claude-sonnet-5 if copilot credentials aren't set up (`omnigent setup`).
-      harness: copilot
+      config:
+        harness: copilot
     tools:
       context7: inherit
     os_env: inherit
@@ -190,8 +207,10 @@ tools:
       Trace the real execution path, cite files and symbols, and avoid proposing fixes unless the parent agent asks for them.
       Prefer targeted search and file reads over broad scans.
     executor:
-      harness: claude-sdk
-      model: claude-haiku-4-5-20251001
+      type: omnigent
+      config:
+        harness: claude-sdk
+        model: claude-haiku-4-5-20251001
     os_env: inherit
 
   frontend-developer:
@@ -211,8 +230,10 @@ tools:
       - 'tanstack-form'
       - 'tanstack-table'
     executor:
-      harness: antigravity
-      model: gemini-3.8-flash-high
+      type: omnigent
+      config:
+        harness: antigravity
+        model: gemini-3.8-flash-high
     tools:
       context7: inherit
     os_env: inherit
@@ -234,9 +255,11 @@ tools:
       - 'python-patterns'
       - 'docker-patterns'
     executor:
+      type: omnigent
       # codex: tight edit -> `make lint && make test` loop suits Go codegen.
       # Fall back to claude-sdk / claude-sonnet-5 if codex credentials aren't set up.
-      harness: codex
+      config:
+        harness: codex
     tools:
       context7: inherit
     os_env: inherit
@@ -258,10 +281,12 @@ tools:
       - 'streamex'
       - 'junit-5-skill'
     executor:
-      harness: claude-sdk
+      type: omnigent
       # Escalate to claude-opus-5 for orchestrator task-name -> Dapr app-id
       # routing changes (silent-failure risk per CLAUDE.md); Sonnet otherwise.
-      model: claude-sonnet-5
+      config:
+        harness: claude-sdk
+        model: claude-sonnet-5
     tools:
       context7: inherit
     os_env: inherit
@@ -284,8 +309,10 @@ tools:
       - 'api-design'
       - 'backend-patterns'
     executor:
-      harness: claude-sdk
-      model: claude-sonnet-5
+      type: omnigent
+      config:
+        harness: claude-sdk
+        model: claude-sonnet-5
     tools:
       context7: inherit
     os_env: inherit
@@ -307,9 +334,11 @@ tools:
       - 'coding-standards'
       - 'docker-patterns'
     executor:
+      type: omnigent
       # copilot: TS-heavy CRUD-shaped step-service work, GH-native strength.
       # Fall back to claude-sdk / claude-sonnet-5 if copilot credentials aren't set up.
-      harness: copilot
+      config:
+        harness: copilot
     tools:
       context7: inherit
     os_env: inherit
@@ -330,10 +359,12 @@ tools:
       - 'docker-patterns'
       - 'deployment-patterns'
     executor:
-      harness: claude-sdk
+      type: omnigent
       # Escalate to claude-opus-5 for Gateway/auth-path/APISIX changes: helm
       # lint/template miss real apimachinery rejections (has bitten before).
-      model: claude-sonnet-5
+      config:
+        harness: claude-sdk
+        model: claude-sonnet-5
     tools:
       context7: inherit
       github: inherit
@@ -359,8 +390,10 @@ tools:
       - 'api-design'
       - 'docker-patterns'
     executor:
-      harness: claude-sdk
-      model: claude-sonnet-5
+      type: omnigent
+      config:
+        harness: claude-sdk
+        model: claude-sonnet-5
     tools:
       context7: inherit
     os_env: inherit
@@ -381,10 +414,12 @@ tools:
       - 'kubernetes-patterns'
       - 'helm-chart-scaffolding'
     executor:
-      harness: claude-sdk
+      type: omnigent
       # Escalate to claude-opus-5 for compiler/apply-separation, content-
       # addressed version, or GC-label invariant changes; Sonnet otherwise.
-      model: claude-sonnet-5
+      config:
+        harness: claude-sdk
+        model: claude-sonnet-5
     tools:
       context7: inherit
     os_env: inherit
