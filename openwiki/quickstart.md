@@ -16,6 +16,7 @@ DWS (`dapr-workflow-spec`) is a config-driven workflow platform for Kubernetes. 
 - [Administrative read model](integrations/admin-read-model.md) explains how `dws-admin` turns that stream into a durable Postgres query view and read-only APIs.
 - [HTTP step runner](integrations/http-step-runner.md) explains the generic `call: http` activity worker's request, authentication, and retryability contract.
 - [OpenAPI step runner](integrations/openapi-step-runner.md) explains the generic `call: openapi` service's pinned-document startup, request transformation, and generated authentication contract.
+- [gRPC and AsyncAPI step runners](integrations/protocol-step-runners.md) explains the generic `call: grpc` dynamic-descriptor worker and `call: asyncapi` output-binding dispatcher.
 - [A2A step runner](integrations/a2a-step-runner.md) explains the generic `call: a2a` service's supported JSON-RPC operations, agent discovery, and retry-safety contract.
 - [OWS DSL feature roadmap](architecture/roadmap.md) tracks DSL 1.0 task-type and cross-cutting feature coverage against the current implementation, phased into build order.
 - [Agent sandbox](architecture/agent-sandbox.md) explains the CI-validated development image, cluster-hosted session templates, and local Docker-backed alternative for persistent agent work.
@@ -30,6 +31,8 @@ The repository has four independently built components; run builds and tests fro
 | `dws-orchestrator` | Spring Boot Dapr Workflow interpreter for one pinned definition per pod | `./mvnw verify` |
 | `dws-call-http` | Go step image for `call: http` tasks | `make test` |
 | `dws-call-openapi` | TypeScript/Fastify step image for `call: openapi` tasks | `pnpm lint && pnpm test && pnpm build` |
+| `dws-call-grpc` | Go step image for unary `call: grpc` tasks | `make test` |
+| `dws-call-asyncapi` | TypeScript/Fastify step image for `call: asyncapi` send tasks | `pnpm lint && pnpm test && pnpm build` |
 | `dws-call-a2a` | Python/FastAPI step image for supported `call: a2a` tasks | `uv run ruff check . && uv run pyright && uv run pytest` |
 | `dws-run` | Go step images for `run: shell` and inline JavaScript/Python `run: script` tasks | `make lint && make test` |
 | `dws-admin` | NestJS/Postgres projection and query API for lifecycle events | `pnpm db:migrate && pnpm lint && pnpm test && pnpm build` |

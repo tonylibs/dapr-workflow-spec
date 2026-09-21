@@ -20,7 +20,7 @@ Two readiness axes matter here. Control-flow tasks run in-process in the orchest
 | `call` (http) | Done | StepService via `dws-call-http` |
 | `call` (openapi) | Done | StepService via `dws-call-openapi` |
 | `call` (grpc) | Done | StepService via `dws-call-grpc`; unary calls use its remote Dapr Workflow activity |
-| `call` (asyncapi) | In progress | StepService via `dws-call-asyncapi`, which dispatches AsyncAPI 3.0 `send` operations through a Dapr output binding |
+| `call` (asyncapi) | Done | StepService via `dws-call-asyncapi`, which dispatches AsyncAPI 3.0 `send` operations through a Dapr output binding. See [gRPC and AsyncAPI step runners](../integrations/protocol-step-runners.md). |
 | `call` (a2a) | Done | StepService via `dws-call-a2a`; supports `message/send` and `tasks/get` against an agent card or direct server. See [A2A step runner](../integrations/a2a-step-runner.md). |
 | `run` (shell / inline JS / inline Python) | Done | StepService backed by the matching `dws-run` image; `run: container`, `run: workflow`, and external script sources remain unsupported |
 | `switch` | Done | local replay-safe jq evaluation activity; no image needed |
