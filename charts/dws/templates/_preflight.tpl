@@ -84,6 +84,10 @@ Called unconditionally from templates/preflight.yaml.
 {{- if not (hasPrefix "http://" .Values.observability.otlp.endpoint | or (hasPrefix "https://" .Values.observability.otlp.endpoint)) }}
 {{- fail (printf "observability.otlp.endpoint must start with http:// or https://, got %q. The scheme sets the Instrumentation resource's OTEL_EXPORTER_OTLP_ENDPOINT (which requires it) and derives Dapr's tracing.otel.isSecure." .Values.observability.otlp.endpoint) }}
 {{- end }}
+{{- $endpointNoScheme := .Values.observability.otlp.endpoint | trimPrefix "https://" | trimPrefix "http://" | trimSuffix "/" -}}
+{{- if contains "/" $endpointNoScheme }}
+{{- fail (printf "observability.otlp.endpoint must be a base endpoint without a path, got %q. The application agents append /v1/traces, /v1/metrics, and /v1/logs themselves, and Dapr requires a bare host:port." .Values.observability.otlp.endpoint) }}
+{{- end }}
 {{- /* Reached for its fail() side effect: this is the only rejecter of an unknown protocol. */ -}}
 {{- $_ := include "dws.observability.daprOtelProtocol" . }}
 {{- end }}

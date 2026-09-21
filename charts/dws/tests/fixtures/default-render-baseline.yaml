@@ -2901,16 +2901,21 @@ spec:
               # from the API server yet — give its cert/registration a beat to catch up.
               sleep 15
 
-              pods=$(kubectl get pods -n "$ns" -l app.kubernetes.io/component=admin -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)
+              echo "checking Dapr sidecar injection for admin..."
+              for attempt in $(seq 1 60); do
+                pods=$(kubectl get pods -n "$ns" -l app.kubernetes.io/component=admin -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || true)
+                [ -n "$pods" ] && break
+                sleep 2
+              done
               if [ -z "$pods" ]; then
                 echo "no admin pod found, nothing to check"
-                exit 0
+              else
+                for pod in $pods; do
+                  containers=$(kubectl get pod "$pod" -n "$ns" -o jsonpath='{.spec.containers[*].name}' 2>/dev/null || true)
+                  echo "admin pod $pod containers: $containers"
+                  if ! echo "$containers" | grep -q daprd; then
+                    echo "admin pod $pod is missing its daprd sidecar (injection missed), deleting to force re-injection"
+                    kubectl delete pod "$pod" -n "$ns"
+                  fi
+                done
               fi
-              for pod in $pods; do
-                containers=$(kubectl get pod "$pod" -n "$ns" -o jsonpath='{.spec.containers[*].name}' 2>/dev/null || true)
-                echo "admin pod $pod containers: $containers"
-                if ! echo "$containers" | grep -q daprd; then
-                  echo "admin pod $pod is missing its daprd sidecar (injection missed), deleting to force re-injection"
-                  kubectl delete pod "$pod" -n "$ns"
-                fi
-              done

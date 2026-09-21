@@ -419,6 +419,8 @@ assert_rejected 'requires a non-empty observability.otlp.endpoint' \
   --set controller.enabled=false --set admin.enabled=false --set observability.otlp.endpoint=
 assert_rejected 'must start with http:// or https://' \
   --set observability.otlp.endpoint=dws-otel-collector:4318
+assert_rejected 'must be a base endpoint without a path' \
+  --set observability.otlp.endpoint=http://dws-otel-collector:4318/v1/traces
 assert_rejected 'contains a comma' \
   --set 'observability.otlp.headers.x=a\,b'
 
