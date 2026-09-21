@@ -51,7 +51,7 @@ flowchart TD
 | **8** | Make the bundled development IdP satisfy the browser client contract: adopt a released Dex version/configuration (or another in-chart IdP) with non-interactive `prompt=none` browser sessions and advertised RP-initiated logout; then verify token-expiry renewal, clean renewal failure, authenticated storage, logout, route restoration, and two-tab convergence | Phases 0, 1 | ❌ deferred — Dex 2.44.0 lacks the required browser-session and `end_session_endpoint` behavior; owns deferred checklist tasks 6.1, 6.2, 7.2, and 8.3 |
 | **9** | Content/version management (CMS layer) in `dws-admin`: own the workflow draft → active → archived lifecycle and version history as `dws-admin`'s own authored data, not a projection of controller events. Controller-reported deployment status (`applied`/`failed`/`drained`/`collected`) becomes a nested, controller-owned status on whichever version is `active` — never a competing lifecycle. Foundation for later per-user read/edit permissions on content (extends Phase 7's role model) | Phase 3 | ❌ not started — deliberately deferred; scoped down 2026-08-26 so Phase 3 ships as a plain stateless forward first |
 | **10** | **Dapr API token + App API token (added 2026-09-13)**: Dapr's own machine-auth pair, both on the `dapr-api-token` header so they compose with the bearer JWT rather than competing for `Authorization`. `dapr.io/api-token-secret` (`DAPR_API_TOKEN`) so only holders of the shared secret may call a sidecar's HTTP API — APISIX must inject it; `dapr.io/app-token-secret` (`APP_API_TOKEN`) so each app can verify a request genuinely came from its own sidecar. The app-side guard also closes the pod-IP direct-app-port bypass (§4) app-side and CNI-independently, and must exempt the kubelet-probed health route. Machine identity, never a replacement for user identity | Phase 4 + the pipeline-placement change | ❌ not started — scoped 2026-09-13 as its own later phase so the pubsub unblock can ship on its own |
-| **11** | **Service mesh (Istio) as the gate — evaluated 2026-09-13, not scheduled (see §2e)**: replace Dapr's `middleware.http.bearer` with Istio `RequestAuthentication` + `AuthorizationPolicy` on the mesh sidecar. Solves the `/dapr/subscribe` conflict *by construction* (envoy never intercepts daprd's intra-pod loopback calls) and closes §4's pod-IP bypass as a side effect — but it is an architecture change, not a swap: the `dws-admin` → `dws-controller` hop becomes workload-identity-gated rather than user-JWT-gated, Dapr or Istio (not both) must own mTLS, and Istio's own Gateway API support overlaps the APISIX dependency adopted in Phase 4 | Phases 4, 10 (would likely subsume 10) | ❌ not started — exploratory; needs its own ADR before any commitment |
+| **11** | **Service mesh (Istio) as the gate — evaluated 2026-09-13, not scheduled (see §2e)**: replace Dapr's `middleware.http.bearer` with Istio `RequestAuthentication` + `AuthorizationPolicy` on the mesh sidecar. Solves the `/dapr/subscribe` conflict *by construction* (envoy never intercepts daprd's intra-pod loopback calls) and closes §4's pod-IP bypass as a side effect — but it is an architecture change, not a swap: the `dws-admin` → `dws-controller` hop becomes workload-identity-gated rather than user-JWT-gated, Dapr or Istio (not both) must own mTLS, and Istio's own Gateway API support overlaps the APISIX dependency adopted in Phase 4 | Phases 4, 10 (complements 10, does not replace it — see §2e) | ❌ not started — exploratory; needs its own ADR before any commitment |
 
 ### Current progress (2026-09-01)
 
@@ -563,11 +563,15 @@ boundary, so the policy applies. Two open items, one mechanism.
 	initializing components before envoy is ready (`holdApplicationUntilProxyStarts`).
 - This roadmap's ground rule "JWT/role verification is Dapr-only" would need explicit amendment.
 	Istio satisfies its spirit — verification stays in infrastructure, never hand-rolled in app code
-	— but not its letter.
+	—**Relationship to Phase 10 (corrected 2026-09-21).** Complementary, not a replacement. Phase 10's
+tokens guard the **app ↔ own-sidecar** legs — app → daprd `:3500` (`DAPR_API_TOKEN`) and daprd →
+app (`APP_API_TOKEN`). Both are intra-pod loopback, the exact traffic envoy never intercepts (the
+same property that makes a mesh fix `/dapr/subscribe`), so Istio cannot gate them. Istio gates the
+pod-boundary hops; Phase 10 gates the in-pod hops. Overlap is limited to pod-boundary callers
+(e.g. APISIX → sidecar, the §4 pod-IP bypass), where both would apply — defence in depth, not
+redundancy. Phase 10 stays scheduled regardless of the mesh decision.
 
-**Relationship to Phase 10.** A mesh would likely *subsume* the API-token phase rather than follow
-it: workload identity from mesh-issued certificates is strictly stronger than a shared static
-`dapr-api-token`. Don't ship Phase 10 and then adopt a mesh without re-asking whether Phase 10 still
+till
 earns its keep.
 
 **Status.** Recorded as Phase 11, exploratory. Deliberately decoupled from the 2026-09-13 pipeline
