@@ -1,8 +1,9 @@
 # `dws-console` Web UI Roadmap
 
 Operator-facing web app for DWS. Reads from `dws-admin`'s read API (see
-[`dws-admin/README.md`](../../dws-admin/README.md)); writes (submitting definitions) go direct
-to `dws-controller` — public and unauthenticated for now, deliberately decoupled from auth; see
+[`dws-admin/README.md`](../../dws-admin/README.md)); writes (submitting definitions) go through
+`dws-admin`'s authenticated write relay (OIDC bearer token, same-origin `/dws-admin` via the shared
+Gateway) — never directly to `dws-controller`; see
 [`dws-console-submission.md`](dws-console-submission.md). The app has moved past the UI-complete
 prototype stage: workflow-browser and
 instance-monitor screens are now wired to the live `dws-admin` API via TanStack Query — no route
@@ -37,7 +38,7 @@ flowchart TD
   P1 --> P2["Phase 2: Instance monitor ✅<br/>UI built, live API"]
   P2 --> P25["Phase 2.5: Wire to live API ✅<br/>mock-data.ts → TanStack Query"]
   P25 --> P3["Phase 3: Live updates ✅<br/>dws-admin SSE push API<br/>+ console wired to it"]
-  P25 --> P4["Phase 4: Definition submission<br/>public/unauthenticated for now<br/>see dws-console-submission.md"]
+  P25 --> P4["Phase 4: Definition submission ✅<br/>editor + validation preview<br/>see dws-console-submission.md"]
   P25 --> P5["Phase 5: Auth ⚠️<br/>OIDC client done;<br/>Dapr write path pending"]
   P3 --> P6["Phase 6: Containerize ✅<br/>Dockerfile + CI"]
   P5 -.guards later, doesn't gate.-> P4
@@ -52,7 +53,7 @@ flowchart TD
 | **2** | Instance monitor: instance list with status filter, instance detail, task-event timeline | `dws-admin` `/instances*` (done) | ✅ done — live API |
 | **2.5** | Wire Phases 1–2 to the real API: replace `mock-data.ts` reads with TanStack Query calls against `dws-admin` | TanStack Query provider (done) | ✅ done — merged `497d7c8c` (2026-08-12), follow-up fix `d30c36f9` |
 | **3** | Live status updates on running instances, backend included: the `dws-admin` push API plus the console's consumption of it | Phase 2.5 (done) | ✅ done — SSE, on `dws-admin`'s existing read listener; both instance screens live-wired |
-| **4** | Submit new/updated definitions from the console (`POST` to `dws-controller`) | `dws-controller`'s existing compile endpoint + CORS story | ❌ not started — public/unauthenticated by design; detailed sequencing in [`dws-console-submission.md`](dws-console-submission.md), no dependency on Phase 5 |
+| **4** | Submit new/updated definitions from the console (`POST` to `dws-controller`) | `dws-controller`'s existing compile endpoint + CORS story | ✅ done — shipped as the submission roadmap's Phase 1 (`dws-console-definition-editor`) + Phase 2 (`submission-preview-validation`, 2026-09-04); now submits via the authenticated `dws-admin` relay, not `dws-controller` directly. File import + persisted draft followed as its Phase 3 (2026-09-05); workflow diagram and visual editor continue in [`dws-console-submission.md`](dws-console-submission.md) Phases 4–5 |
 | **5** | Console-level auth (login, session, RBAC on write actions) | [OWS Phase 4 — auth/secrets](openworkflow-features.md) for backend parity | ⚠️ partial — the provider-agnostic browser OIDC/PKCE client is done; the Dapr-gated write path remains. Bundled-IdP session/logout interoperability is separate, deferred auth-roadmap Phase 8. See [`dws-auth.md`](dws-auth.md) |
 | **6** | Dockerfile + CI workflow, publish `ghcr.io/tonylibs/dws-console` | Phases 3–5 substantially done | ✅ done — image + CI build/smoke-test/push; unblocks [Helm Phase 5](helm-packaging.md) |
 
@@ -87,7 +88,9 @@ flowchart TD
   decided for the interim: browser-direct, unauthenticated, gated only by CORS on `dws-controller`.
   `dws-auth.md`'s ground rules keep `dws-controller` purely internal long-term (reached only via a
   `dws-admin` relay), so expect this direct path to be replaced, not merely guarded, once Phase 5
-  lands — see [`dws-console-submission.md`](dws-console-submission.md)'s open items.
+  lands — see [`dws-console-submission.md`](dws-console-submission.md)'s open items. **Closed as
+  predicted:** the direct path was replaced — submission now goes through the `dws-admin` relay with
+  the OIDC bearer token, same-origin via the Gateway (`dws-auth.md` Phases 4–5).
 - ~~Push mechanism for Phase 3 (SSE vs. WebSocket vs. short-poll)~~ — settled in Phase 3: **SSE**,
   served from Nest's own listener (`PORT`). The `@dbc-tech/nest-dapr` `DaprServer` second listener
   was checked and rejected: it is a `@dapr/dapr`-owned Express instance with no hook for
@@ -116,16 +119,16 @@ What exists in `dws-console/src/` today, checked directly against the repo (not 
 | Shared UI kit | `components/data-table.tsx`, `components/skeleton.tsx`, `components/states.tsx`, `components/status.tsx`, `components/app-layout.tsx` | Built — table primitives, loading/empty/error states, status-to-color mapping already cover all four `dws-admin` status enums (`WorkflowStatus`, `DeploymentStatus`, `InstanceStatus`, `TaskStatus`). |
 | Data fetching (Phase 2.5) | `lib/admin-client.ts`, `lib/admin-hooks.ts`, `lib/admin-adapters.ts` (+ `admin-adapters.test.ts`), `lib/admin-types.ts` | ✅ done. Typed fetch client (`VITE_DWS_ADMIN_URL`, `ApiError` with status), TanStack Query hooks (infinite queries for lists, plain queries for details, 4xx-no-retry), unit-tested DTO→view-model adapters. All four routes drive loading/empty/error/not-found state from live query status; `QueryClient` from `integrations/tanstack-query/root-provider.tsx` is now actually used. |
 | Mock data | `lib/mock-data.ts` | No longer a data source — only its type/constant exports (`TaskType`, `statusClass`, `INSTANCE_STATUSES`, etc.) are still imported. |
-| Definition submission (Phase 4) | — | No form/mutation code found; the only `POST` reference is copy text in an empty state. Definition graph view also still unwired (see §5). |
+| Definition submission (Phase 4) | `routes/workflows/new.tsx`, `components/definition-editor.tsx` (+ tests), `components/deployment-plan-view.tsx`, `lib/definition-draft-store.ts`, `submitDefinition` + preview transport in `lib/admin-client.ts` | ✅ done. CodeMirror 6 YAML/JSON editor with `Preview` (spec check → `dryRun=true` compile) and `Submit definition`, via the `dws-admin` relay; local-file import and a Zustand-persisted draft that survives refresh. Definition graph view still unwired (see §5) — that's submission-roadmap Phase 4. |
 | Auth (Phase 5) | `components/auth-control.tsx` (+ `auth-control.test.tsx`), `lib/oidc.ts`, `lib/oidc-config.ts` (+ `oidc-config.test.ts`), `vite.config.ts`, `.env.example` | ⚠️ overall. The console client portion is done: OIDC Authorization Code + PKCE bootstrap, app-wide in-memory auth state, sign-in/identity/logout UI, SSR wiring, redirect config, and visible failure handling are merged. Phases 2–5 of the dedicated [`dws-auth.md`](dws-auth.md) write-path sequence remain; bundled-IdP live acceptance moved to its Phase 8. |
 | Containerization (Phase 6) | `Dockerfile`, `.dockerignore`, `server.js` | ✅ done. Multi-stage npm build; runtime stage runs `server.js` as non-root on `PORT` (3000). `server.js` exists because TanStack Start emits a `fetch` handler and static assets but no listening server — it serves `dist/client/` and falls through to SSR, and adds `/healthz`. `VITE_DWS_ADMIN_URL` is a build arg (Vite inlines it at build time). CI builds the image on every PR, smoke-tests the running container, and pushes only on merge to `main`. |
 
 **Bottom line**: Phases 0–3 and 6 are done — the console reads live cluster state end to end for
 workflows and instances, a running instance updates itself as `dws-admin` ingests its events (no
 polling, no manual refresh), and the app ships as a container image built and smoke-tested by CI.
-**Phase 4 (definition submission) has not started; Phase 5 (auth) is partial**, and — per a
-deliberate call, see §4 — they no longer gate each other. Phase 4 ships public/unauthenticated on
-its own timeline ([`dws-console-submission.md`](dws-console-submission.md)); Phase 5 already has
+**Phase 4 (definition submission) is done** — editor + validation preview, submitting through the
+authenticated `dws-admin` relay ([`dws-console-submission.md`](dws-console-submission.md) Phases 1–2);
+**Phase 5 (auth) is partial**. Phase 5 already has
 the completed browser OIDC client foundation, while its Dapr-gated write path remains. Bundled-IdP
 browser-session/RP-logout compatibility is documented as deferred Phase 8
 ([`dws-auth.md`](dws-auth.md)).

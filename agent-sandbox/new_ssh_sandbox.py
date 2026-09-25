@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -18,6 +19,16 @@ from opensandbox.sync.sandbox import SandboxSync
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = SCRIPT_DIR / "ssh-sandbox.json"
+
+# Host environment variables forwarded to the sandbox's agent CLIs when set. Must match
+# ALLOWED_NAMES in agent-auth-setup.sh and PermitUserEnvironment in the Dockerfile.
+AGENT_TOKEN_NAMES = (
+    "ANTHROPIC_API_KEY",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "OPENAI_API_KEY",
+    "COPILOT_GITHUB_TOKEN",
+    "GEMINI_API_KEY",
+)
 
 
 def run(command: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -76,6 +87,19 @@ def docker_ip(container: str) -> str:
     if not address:
         raise RuntimeError(f"Could not determine the Docker IP for {container}")
     return address
+
+
+def allocate_ssh_port(host: str) -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind((host, 0))
+        return int(listener.getsockname()[1])
+
+
+def configured_ssh_port(config: dict[str, Any]) -> int | None:
+    value = config.get("ssh_port")
+    if value in (None, "", "random", 0, "0"):
+        return None
+    return int(value)
 
 
 def remove_stale_bridge(ssh_port: int) -> None:
@@ -140,6 +164,40 @@ def command_failure_details(command: Any) -> str:
     return "\n".join(output) if output else "The sandbox command returned no output."
 
 
+def forward_agent_tokens(container: str) -> None:
+    """Stream the host's agent tokens into the sandbox's agent-auth-setup over stdin.
+
+    Using stdin keeps the tokens off command lines, `docker inspect`, and the
+    OpenSandbox store.
+    """
+    lines = [
+        f"{name}={value.strip()}"
+        for name in AGENT_TOKEN_NAMES
+        if (value := os.environ.get(name, "")).strip()
+    ]
+    if not lines:
+        print(
+            f"No agent tokens set ({', '.join(AGENT_TOKEN_NAMES)}); "
+            "agent CLIs will need a manual login."
+        )
+        return
+
+    result = subprocess.run(
+        ["docker", "exec", "-i", container, "agent-auth-setup"],
+        input="\n".join(lines) + "\n",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "Could not configure agent CLI credentials in the sandbox:\n"
+            f"{result.stderr.strip()}"
+        )
+    print(result.stdout.strip())
+
+
 def refresh_mutable_image(image: str) -> None:
     run(["docker", "pull", image])
 
@@ -161,7 +219,9 @@ def main() -> int:
     public_key = (home / config["public_key"]).resolve()
     ensure_key_pair(private_key, public_key)
 
-    remove_stale_bridge(int(config["ssh_port"]))
+    fixed_ssh_port = configured_ssh_port(config)
+    if fixed_ssh_port is not None:
+        remove_stale_bridge(fixed_ssh_port)
     if arguments.pull_image:
         refresh_mutable_image(config["image"])
     sandbox: SandboxSync | None = None
@@ -183,6 +243,7 @@ def main() -> int:
             entrypoint=list(config["entrypoint"]),
             timeout=timeout,
             resource={"cpu": config["cpu"], "memory": config["memory"]},
+            extensions=config.get("extensions"),
             skip_health_check=True,
         )
         container = f"sandbox-{sandbox.id}"
@@ -210,7 +271,9 @@ def main() -> int:
                 f"(exit code {verification.exit_code}):\n"
                 f"{command_failure_details(verification)}"
             )
+        forward_agent_tokens(container)
 
+        ssh_port = fixed_ssh_port or allocate_ssh_port(config["ssh_host"])
         bridge_name = f"dws-ssh-forward-{sandbox.id}"
         run(
             [
@@ -220,7 +283,7 @@ def main() -> int:
                 "--name",
                 bridge_name,
                 "--publish",
-                f"{config['ssh_host']}:{config['ssh_port']}:{config['bridge_port']}",
+                f"{config['ssh_host']}:{ssh_port}:{config['bridge_port']}",
                 "--network",
                 config["docker_network"],
                 config["bridge_image"],
@@ -228,10 +291,10 @@ def main() -> int:
                 f"TCP:{docker_ip(container)}:22",
             ]
         )
-        wait_for_ssh(config["ssh_host"], int(config["ssh_port"]), private_key)
+        wait_for_ssh(config["ssh_host"], ssh_port, private_key)
 
         print(f"Sandbox created: {sandbox.id}")
-        print(f"SSH: {config['ssh_host']}:{config['ssh_port']}")
+        print(f"SSH: {config['ssh_host']}:{ssh_port}")
         print(f"Identity: {private_key}")
         print("Orca username: root")
         return 0

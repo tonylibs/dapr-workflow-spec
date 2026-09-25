@@ -28,6 +28,7 @@ Thumbs.db
 
 # Scripts
 **/__pycache__/
+agent-sandbox/*.log
 
 # pnpm
 .pnpm-store

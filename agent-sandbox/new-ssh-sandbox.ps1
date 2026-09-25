@@ -7,20 +7,57 @@ param(
 $ErrorActionPreference = "Stop"
 $config = Import-PowerShellDataFile -LiteralPath $ConfigPath
 
+# Host environment variables forwarded to the sandbox's agent CLIs when set. Must match
+# ALLOWED_NAMES in agent-auth-setup.sh and PermitUserEnvironment in the Dockerfile.
+$agentTokenNames = @(
+    "ANTHROPIC_API_KEY",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "OPENAI_API_KEY",
+    "COPILOT_GITHUB_TOKEN",
+    "GEMINI_API_KEY"
+)
+
 foreach ($commandName in @("osb", "docker", "ssh-keygen", "ssh")) {
     if (-not (Get-Command $commandName -ErrorAction SilentlyContinue)) {
         throw "$commandName is required but was not found in PATH."
     }
 }
 
-    if ($PullImage) {
-        & docker pull $config.Image
-        if ($LASTEXITCODE -ne 0) {
-            throw "Could not refresh sandbox image $($config.Image)."
-        }
+function Get-ConfiguredSshPort {
+    param([object]$Value)
+
+    if ($null -eq $Value -or
+        [string]::IsNullOrWhiteSpace([string]$Value) -or
+        [string]$Value -eq "random" -or
+        [string]$Value -eq "0") {
+        return $null
     }
 
-    $userHome = if ($env:USERPROFILE) { $env:USERPROFILE } else { $env:HOME }
+    return [int]$Value
+}
+
+function Get-FreeTcpPort {
+    param([string]$HostAddress)
+
+    $address = [System.Net.IPAddress]::Parse($HostAddress)
+    $listener = [System.Net.Sockets.TcpListener]::new($address, 0)
+    try {
+        $listener.Start()
+        return [int]$listener.LocalEndpoint.Port
+    }
+    finally {
+        $listener.Stop()
+    }
+}
+
+if ($PullImage) {
+    & docker pull $config.Image
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not refresh sandbox image $($config.Image)."
+    }
+}
+
+$userHome = if ($env:USERPROFILE) { $env:USERPROFILE } else { $env:HOME }
 $privateKeyPath = Join-Path $userHome $config.PrivateKey
 $publicKeyPath = Join-Path $userHome $config.PublicKey
 $keyDirectory = Split-Path -Parent $privateKeyPath
@@ -53,29 +90,32 @@ if ([string]::IsNullOrWhiteSpace($privateFingerprint) -or
     throw "dws_sandbox and dws_sandbox.pub are inconsistent."
 }
 
-# Validate the lifecycle server and avoid creating a sandbox that cannot claim
-# the fixed local SSH port.
+# Validate the lifecycle server and, when configured with a fixed local SSH
+# port, avoid creating a sandbox that cannot claim it.
 & osb sandbox list -o json *> $null
 if ($LASTEXITCODE -ne 0) {
     throw "The OpenSandbox server is not reachable. Start agent-sandbox/start-opensandbox.ps1 first."
 }
 
-$portOwnerOutput = & docker ps --filter "publish=$($config.SshPort)/tcp" --format "{{.Names}}" | Select-Object -First 1
-$portOwner = if ($portOwnerOutput) { $portOwnerOutput.ToString().Trim() } else { "" }
-if (-not [string]::IsNullOrWhiteSpace($portOwner)) {
-    $forwarderPrefix = "dws-ssh-forward-"
-    if ($portOwner.StartsWith($forwarderPrefix)) {
-        $oldSandboxId = $portOwner.Substring($forwarderPrefix.Length)
-        & docker inspect "sandbox-$oldSandboxId" *> $null
-        if ($LASTEXITCODE -ne 0) {
-            & docker rm --force $portOwner *> $null
+$fixedSshPort = Get-ConfiguredSshPort $config.SshPort
+if ($null -ne $fixedSshPort) {
+    $portOwnerOutput = & docker ps --filter "publish=$fixedSshPort/tcp" --format "{{.Names}}" | Select-Object -First 1
+    $portOwner = if ($portOwnerOutput) { $portOwnerOutput.ToString().Trim() } else { "" }
+    if (-not [string]::IsNullOrWhiteSpace($portOwner)) {
+        $forwarderPrefix = "dws-ssh-forward-"
+        if ($portOwner.StartsWith($forwarderPrefix)) {
+            $oldSandboxId = $portOwner.Substring($forwarderPrefix.Length)
+            & docker inspect "sandbox-$oldSandboxId" *> $null
+            if ($LASTEXITCODE -ne 0) {
+                & docker rm --force $portOwner *> $null
+            }
+            else {
+                throw "SSH port $fixedSshPort is already in use by active bridge $portOwner"
+            }
         }
         else {
-            throw "SSH port $($config.SshPort) is already in use by active bridge $portOwner"
+            throw "SSH port $fixedSshPort is already in use by: $portOwner"
         }
-    }
-    else {
-        throw "SSH port $($config.SshPort) is already in use by: $portOwner"
     }
 }
 
@@ -91,6 +131,11 @@ try {
         "--resource", "memory=$($config.Memory)",
         "-o", "json"
     )
+    if ($config.Extensions) {
+        foreach ($extensionName in $config.Extensions.Keys) {
+            $createArgs += @("--extension", "$extensionName=$($config.Extensions[$extensionName])")
+        }
+    }
     foreach ($entrypointItem in $config.EntryPoint) {
         $createArgs += @("--entrypoint", [string]$entrypointItem)
     }
@@ -135,15 +180,34 @@ try {
         throw "Could not secure the sandbox SSH directory."
     }
 
+    # Forward whichever agent tokens are set in this shell. Stream them over stdin so they
+    # never appear on a command line, in `docker inspect`, or in the OpenSandbox store.
+    $agentTokenLines = foreach ($tokenName in $agentTokenNames) {
+        $tokenValue = [Environment]::GetEnvironmentVariable($tokenName)
+        if (-not [string]::IsNullOrWhiteSpace($tokenValue)) {
+            "$tokenName=$($tokenValue.Trim())"
+        }
+    }
+    if ($agentTokenLines) {
+        ($agentTokenLines -join "`n") | & docker exec -i $containerName agent-auth-setup
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not configure agent CLI credentials in the sandbox."
+        }
+    }
+    else {
+        Write-Host "No agent tokens set ($($agentTokenNames -join ', ')); agent CLIs will need a manual login."
+    }
+
     $sandboxIp = (& docker inspect --format "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" $containerName).Trim()
     if ([string]::IsNullOrWhiteSpace($sandboxIp)) {
         throw "Could not determine the sandbox Docker IP address."
     }
 
+    $sshPort = if ($null -ne $fixedSshPort) { $fixedSshPort } else { Get-FreeTcpPort $config.SshHost }
     $bridgeName = "dws-ssh-forward-$sandboxId"
     & docker run --detach `
         --name $bridgeName `
-        --publish "$($config.SshHost):$($config.SshPort):$($config.BridgePort)" `
+        --publish "$($config.SshHost):${sshPort}:$($config.BridgePort)" `
         --network $config.Network `
         $config.BridgeImage `
         "TCP-LISTEN:$($config.BridgePort),fork,reuseaddr" `
@@ -160,7 +224,7 @@ try {
             -o StrictHostKeyChecking=no `
             -o UserKnownHostsFile=NUL `
             -i $privateKeyPath `
-            -p $config.SshPort `
+            -p $sshPort `
             "root@$($config.SshHost)" `
             "true" *> $null
         if ($LASTEXITCODE -eq 0) {
@@ -174,7 +238,7 @@ try {
     }
 
     Write-Host "Sandbox created: $sandboxId"
-    Write-Host "SSH: $($config.SshHost):$($config.SshPort)"
+    Write-Host "SSH: $($config.SshHost):$sshPort"
     Write-Host "Identity: $privateKeyPath"
     Write-Host "Orca username: root"
 }

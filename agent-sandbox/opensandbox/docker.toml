@@ -42,7 +42,10 @@ sandbox_binds = ["__DWS_HOST_KUBECONFIG__:/root/.kube/config:ro"]
 port_range_min = 40000
 port_range_max = 60000
 drop_capabilities = [
-  "AUDIT_WRITE", "MKNOD", "NET_ADMIN", "NET_RAW", "SYS_ADMIN",
+  # Do not drop SYS_ADMIN here: OpenSandbox's per-sandbox
+  # bootstrap.execd.isolation=enable extension adds it only for sandboxes that
+  # need bubblewrap isolation, such as Omnigent agent sandboxes.
+  "AUDIT_WRITE", "MKNOD", "NET_ADMIN", "NET_RAW",
   "SYS_MODULE", "SYS_PTRACE", "SYS_TIME", "SYS_TTY_CONFIG",
 ]
 no_new_privileges = true

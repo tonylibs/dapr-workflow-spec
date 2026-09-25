@@ -15,8 +15,11 @@ if [ -z "$host_gateway_ipv4" ]; then
 fi
 
 if [ -n "$host_gateway_ipv4" ]; then
-    { grep -v "[[:space:]]${kube_host_alias}$" /etc/hosts || true; printf '%s %s\n' "$host_gateway_ipv4" "$kube_host_alias"; } \
-        | tee /etc/hosts >/dev/null
+    # Read the current entries fully before rewriting: piping /etc/hosts into `tee /etc/hosts`
+    # races, and tee's truncation usually wins, dropping localhost. Write in place rather than
+    # replacing the file, since Docker bind-mounts /etc/hosts.
+    other_hosts=$(grep -v "[[:space:]]${kube_host_alias}$" /etc/hosts || true)
+    printf '%s\n%s %s\n' "$other_hosts" "$host_gateway_ipv4" "$kube_host_alias" > /etc/hosts
 else
     echo "WARN: could not resolve a Docker Desktop host-gateway IPv4 address; kubectl setup skipped." >&2
 fi

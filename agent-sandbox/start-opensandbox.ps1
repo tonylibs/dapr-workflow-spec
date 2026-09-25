@@ -22,7 +22,10 @@ $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 [System.IO.File]::WriteAllText($generatedConfigPath, $configText, $utf8NoBom)
 
 try {
-    & uvx opensandbox-server --config $generatedConfigPath @args
+    if (-not $env:OPENSANDBOX_INSECURE_SERVER) {
+        $env:OPENSANDBOX_INSECURE_SERVER = "YES"
+    }
+    & uvx opensandbox-server==0.2.3 --config $generatedConfigPath @args
     exit $LASTEXITCODE
 }
 finally {

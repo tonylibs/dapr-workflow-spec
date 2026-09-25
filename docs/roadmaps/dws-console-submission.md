@@ -140,16 +140,21 @@ deployability
   Console -->|"2. dryRun=true"| B
 ```
 
-**Layer 1 — dws-admin, spec conformance.** The OWS DSL 1.0 spec publishes its own JSON Schema:
+**Layer 1 — dws-admin, spec conformance.** `dws-admin` vendors the DSL's JSON Schema (draft
+2020-12) and validates the parsed document against it with **ajv**. This needs no port of
+`dws-controller`'s `semanticErrors()` — the schema already encodes document/task shape, required
+fields, and per-task-type structure — and ajv's errors carry an `instancePath` (JSON pointer to the
+offending field), which is exactly the line/path precision the old "Error precision" open item
+wanted, with no dependency on OWS Phase 3 (see the corrected bullet above).
+
+**Which schema — corrected 2026-09-04 during implementation.** This section originally specified
+the spec repo's
 [`schema/workflow.yaml`](https://github.com/open-workflow-specification/specification/blob/main/schema/workflow.yaml)
-in the spec's own repo — `$id: https://open-workflow-specification.org/schemas/1.0.3/workflow.yaml`,
-JSON Schema draft 2020-12, ~4,500 lines, single self-contained file (no external `$ref`s). `dws-admin`
-vendors this one file and validates the parsed document against it with **ajv** (draft-2020-12
-support). This needs no port of `dws-controller`'s `semanticErrors()` — the schema already encodes
-document/task shape, required fields, and per-task-type structure — and ajv's errors carry an
-`instancePath` (JSON pointer to the offending field), which is exactly the line/path precision the
-old "Error precision" open item wanted, with no dependency on OWS Phase 3 (see the corrected bullet
-above).
+(`$id: https://open-workflow-specification.org/schemas/1.0.3/workflow.yaml`). That was wrong, and
+adopting it would have shipped a validator that disagrees with the compiler in both directions.
+What ships instead is the schema vendored out of `serverlessworkflow-types-7.26.0.Final.jar` —
+`$id: https://serverlessworkflow.io/schemas/1.0.1/workflow.yaml` — the same artifact
+`dws-controller`'s parser is generated from. See open question 1 below for the evidence.
 
 **Layer 2 — dws-controller, deployability.** Unchanged. Stays the sole authority on whether *this*
 DWS runtime can actually compile and deploy a spec-valid document: task-kind support (`run:

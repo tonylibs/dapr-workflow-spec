@@ -4,8 +4,11 @@
     Timeout = "none"
     Cpu = "2"
     Memory = "4Gi"
+    Extensions = @{
+        "bootstrap.execd.isolation" = "enable"
+    }
     SshHost = "127.0.0.1"
-    SshPort = 22222
+    SshPort = $null
     BridgePort = 2222
     BridgeImage = "alpine/socat:latest"
     Network = "bridge"

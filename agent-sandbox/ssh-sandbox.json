@@ -4,10 +4,13 @@
   "timeout_seconds": null,
   "cpu": "2",
   "memory": "4Gi",
+  "extensions": {
+    "bootstrap.execd.isolation": "enable"
+  },
   "server_domain": "localhost:8080",
   "server_protocol": "http",
   "ssh_host": "127.0.0.1",
-  "ssh_port": 22222,
+  "ssh_port": null,
   "bridge_port": 2222,
   "bridge_image": "alpine/socat:latest",
   "docker_network": "bridge",
