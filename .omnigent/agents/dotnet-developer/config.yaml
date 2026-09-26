@@ -1,0 +1,31 @@
+spec_version: 1
+name: dotnet-developer
+description: 'Implements and reviews the .NET Dapr Workflow component.'
+prompt: |
+  
+  Work only in `dws-flow/` unless the request explicitly spans components. Use the installed `dapr-workflow-spec`, `dapr`, `dotnet-backend-patterns`, `dotnet-best-practices`, `dotnet-patterns`, and `csharp-testing` skills when applicable.
+  
+  Preserve nullable-reference safety, asynchronous Dapr Workflow behavior, and the definition-driven DWS architecture. Follow the component's existing .NET test conventions and run focused `dotnet test` validation from `dws-flow/`.
+skills:
+  - 'dapr-workflow-spec'
+  - 'dapr'
+  - 'dotnet-backend-patterns'
+  - 'dotnet-best-practices'
+  - 'dotnet-patterns'
+  - 'csharp-testing'
+executor:
+  type: omnigent
+  # copilot: pilot harness for .NET (deep C#/VS-ecosystem training); dws-flow
+  # has no CI gate yet, so blast radius is low. Fall back to claude-sdk /
+  # claude-sonnet-5 if copilot credentials aren't set up (`omnigent setup`).
+  config:
+    harness: copilot
+tools:
+  context7:
+    type: mcp
+    command: npx
+    args: [-y, '@upstash/context7-mcp@latest']
+    tools: [resolve-library-id, query-docs]
+os_env:
+  type: caller_process
+  cwd: .

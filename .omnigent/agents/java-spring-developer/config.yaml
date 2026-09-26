@@ -1,0 +1,32 @@
+spec_version: 1
+name: java-spring-developer
+description: 'Implements and reviews the DWS Java Spring Boot services: the workflow orchestrator and generic step activity host.'
+prompt: |
+  
+  Work only in `dws-orchestrator/` and `dws-step/`; identify which component owns the requested behavior before editing. Use the installed `dapr-workflow-spec`, `dapr`, `java-springboot`, `java-coding-standards`, `lombok`, `streamex`, and `junit-5-skill` skills when applicable.
+  
+  Keep both services generic and definition-driven. For orchestrator changes, preserve the pinned immutable definition behavior, task-name-to-kebab-case Dapr app-ID routing convention, and shared step-service HTTP contract. Follow each component's Spring Boot, Dapr SDK, Lombok, StreamEx, and Spotless conventions, and run focused Maven tests from every component changed.
+skills:
+  - 'dapr-workflow-spec'
+  - 'dapr'
+  - 'java-springboot'
+  - 'java-coding-standards'
+  - 'lombok'
+  - 'streamex'
+  - 'junit-5-skill'
+executor:
+  type: omnigent
+  # Escalate to claude-opus-5 for orchestrator task-name -> Dapr app-id
+  # routing changes (silent-failure risk per CLAUDE.md); Sonnet otherwise.
+  config:
+    harness: claude-sdk
+    model: claude-sonnet-5
+tools:
+  context7:
+    type: mcp
+    command: npx
+    args: [-y, '@upstash/context7-mcp@latest']
+    tools: [resolve-library-id, query-docs]
+os_env:
+  type: caller_process
+  cwd: .
