@@ -76,6 +76,10 @@ To create a fully configured local SSH sandbox with a fresh localhost SSH port f
 
 The helper calls `osb sandbox create`, provisions only `~/.ssh/dws_sandbox.pub`, creates a
 localhost-only TCP bridge on an available random port, and prints the exact `host:port` for Orca.
+Use `root` as the SSH username and `/workspace` as Orca's remote project directory. The
+repository is cloned directly into `/workspace`, not `/home/workspace/dapr-workflow-spec`.
+If a restored terminal reports `chdir(2) failed`, check that its saved remote project path
+exists in the current sandbox and reopen the project from `/workspace`.
 Edit `agent-sandbox/ssh-sandbox.psd1` or `agent-sandbox/ssh-sandbox.json` to change the image,
 resource limits, lifetime, or set a fixed local SSH port. Leaving `SshPort`/`ssh_port` null avoids
 Orca host-key cache conflicts between freshly provisioned sandboxes. The default profile uses
@@ -97,6 +101,10 @@ py -3 .\agent-sandbox\new_ssh_sandbox.py
 Its settings are in `agent-sandbox/ssh-sandbox.json`. It uses the OpenSandbox Python SDK for
 lifecycle and sandbox file operations, and Docker only for the localhost-only SSH bridge and for
 forwarding agent tokens (below).
+
+If credential setup reports that `agent-auth-setup` is missing, the cached image predates
+token forwarding. Rerun with `--pull-image` (or `-PullImage` for PowerShell) to refresh it;
+locally built images need to be rebuilt from the current Dockerfile.
 
 ### Agent CLI login via tokens
 

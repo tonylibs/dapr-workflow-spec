@@ -241,6 +241,7 @@ try {
     Write-Host "SSH: $($config.SshHost):$sshPort"
     Write-Host "Identity: $privateKeyPath"
     Write-Host "Orca username: root"
+    Write-Host "Orca remote project directory: /workspace"
 }
 catch {
     if ($bridgeName) {
