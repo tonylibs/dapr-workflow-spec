@@ -98,6 +98,10 @@ Its settings are in `agent-sandbox/ssh-sandbox.json`. It uses the OpenSandbox Py
 lifecycle and sandbox file operations, and Docker only for the localhost-only SSH bridge and for
 forwarding agent tokens (below).
 
+If credential setup reports that `agent-auth-setup` is missing, the cached image predates
+token forwarding. Rerun with `--pull-image` (or `-PullImage` for PowerShell) to refresh it;
+locally built images need to be rebuilt from the current Dockerfile.
+
 ### Agent CLI login via tokens
 
 Both helpers forward these host environment variables into the sandbox when they are set, so the

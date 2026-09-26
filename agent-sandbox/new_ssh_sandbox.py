@@ -191,9 +191,21 @@ def forward_agent_tokens(container: str) -> None:
         check=False,
     )
     if result.returncode != 0:
+        details = "\n".join(
+            output.strip() for output in (result.stdout, result.stderr) if output.strip()
+        ) or "Docker returned no output."
+        for line in lines:
+            details = details.replace(line.split("=", 1)[1], "[REDACTED]")
+        if "agent-auth-setup" in details and (
+            "not found" in details or "no such file" in details.lower()
+        ):
+            details += (
+                "\nThe cached sandbox image does not include agent-auth-setup. "
+                "Rerun with --pull-image to refresh it, or rebuild the configured image."
+            )
         raise RuntimeError(
-            "Could not configure agent CLI credentials in the sandbox:\n"
-            f"{result.stderr.strip()}"
+            "Could not configure agent CLI credentials in the sandbox "
+            f"(exit code {result.returncode}):\n{details}"
         )
     print(result.stdout.strip())
 
@@ -244,7 +256,8 @@ def main() -> int:
             timeout=timeout,
             resource={"cpu": config["cpu"], "memory": config["memory"]},
             extensions=config.get("extensions"),
-            skip_health_check=True,
+            # File and command APIs require execd to be ready before provisioning.
+            skip_health_check=False,
         )
         container = f"sandbox-{sandbox.id}"
 
