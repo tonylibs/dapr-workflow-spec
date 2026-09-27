@@ -15,8 +15,6 @@ spec:
           image: REGISTRY/dws-agent-sandbox:TODO-TAG
           workingDir: /workspace
           volumeMounts:
-            - name: repo
-              mountPath: /workspace
             - name: m2-cache
               mountPath: /root/.m2
             - name: go-cache
@@ -24,8 +22,6 @@ spec:
             - name: pnpm-store
               mountPath: /root/.local/share/pnpm/store
       volumes:
-        - name: repo
-          emptyDir: {}   # TODO: replace with git-clone init container or PVC if repo state must persist
         - name: m2-cache
           persistentVolumeClaim:
             claimName: dws-sandbox-m2-cache

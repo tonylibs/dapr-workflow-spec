@@ -124,10 +124,11 @@ RUN curl -fsSL https://antigravity.google/cli/install.sh -o /tmp/agy-install.sh 
 # Omnigent requires Python 3.12+, uv, git, Node 22+, npm, tmux, and bwrap on Linux. Ubuntu
 # 24.04 provides Python 3.12; Node/npm/tmux/git/bwrap are installed above. Copy uv from
 # Astral's official distroless image and use it to install the pinned Omnigent CLI into
-# /root/.local/bin, which is already on PATH for agent tools.
+# /root/.local/bin, which is already on PATH for agent tools. Include the Copilot and
+# Antigravity SDK extras required by the repository's Omnigent agent configurations.
 COPY --from=uv /uv /uvx /usr/local/bin/
 ENV UV_TOOL_BIN_DIR=/root/.local/bin
-RUN uv tool install --python 3.12 "omnigent==${OMNIGENT_VERSION}" \
+RUN uv tool install --python 3.12 "omnigent[copilot,antigravity]==${OMNIGENT_VERSION}" \
     && ln -sf /root/.local/bin/omnigent /usr/local/bin/omnigent \
     && ln -sf /root/.local/bin/omni /usr/local/bin/omni
 
@@ -202,6 +203,7 @@ RUN set -eux; \
     openwiki --help >/dev/null; \
     omnigent --version | grep -q "${OMNIGENT_VERSION}"; \
     omni --version | grep -q "${OMNIGENT_VERSION}"; \
+    "$(uv tool dir)/omnigent/bin/python" -c 'from importlib.metadata import version; print(version("github-copilot-sdk")); print(version("google-antigravity"))'; \
     clawteam --help >/dev/null; \
     ssh-keygen -A; \
     /usr/sbin/sshd -t; \

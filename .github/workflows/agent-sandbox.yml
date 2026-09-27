@@ -22,7 +22,7 @@ env:
 
 jobs:
   validate:
-    name: build image & run component CI gates
+    name: build image & run toolchain smoke tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -42,34 +42,6 @@ jobs:
           load: true
           cache-from: type=gha,scope=agent-sandbox
           cache-to: type=gha,mode=max,scope=agent-sandbox
-
-      # Real per-component CI-gate commands, run inside the built image against
-      # this checkout -- proves the sandbox toolchain can actually do the job,
-      # not just that the binaries exist.
-      - name: dws-controller -- ./mvnw verify
-        run: |
-          docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace/dws-controller \
-            ${{ env.VALIDATE_TAG }} ./mvnw -B -ntp verify
-
-      - name: dws-orchestrator -- ./mvnw verify
-        run: |
-          docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace/dws-orchestrator \
-            ${{ env.VALIDATE_TAG }} ./mvnw -B -ntp verify
-
-      - name: dws-call-http -- make vet && make test
-        run: |
-          docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace/dws-call-http \
-            ${{ env.VALIDATE_TAG }} sh -c "make vet && make test"
-
-      - name: dws-run -- make vet && make test
-        run: |
-          docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace/dws-run \
-            ${{ env.VALIDATE_TAG }} sh -c "make vet && make test"
-
-      - name: dws-call-openapi -- pnpm lint && pnpm test && pnpm build
-        run: |
-          docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace/dws-call-openapi \
-            ${{ env.VALIDATE_TAG }} sh -c "pnpm install --frozen-lockfile && pnpm lint && pnpm test && pnpm build"
 
   build-image:
     name: build & push image

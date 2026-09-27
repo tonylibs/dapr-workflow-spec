@@ -25,6 +25,11 @@ runtime option: it creates containers through the local Docker daemon and does n
 
 ## Local Docker runtime
 
+Omnigent is installed through uv with both `copilot` and `antigravity` extras
+(`omnigent[copilot,antigravity]`), using the version pinned in the Dockerfile.
+The image's build-time smoke test checks that both SDK packages are installed in
+Omnigent's tool environment.
+
 With Docker Desktop or Docker Engine running, start a local OpenSandbox server with the
 Docker profile:
 
@@ -151,8 +156,13 @@ the sandbox is done.
 - `dapr` CLI in the image (not needed for kubectl access to the host cluster)
 
 `.github/workflows/agent-sandbox.yml` builds the image on every push/PR touching this directory
-(the Dockerfile's smoke-test `RUN` step fails the build if a toolchain is missing or the wrong
-version, and the workflow then runs each component's real CI-gate command inside the built image:
-`./mvnw verify` for `dws-controller`/`dws-orchestrator`, `make vet && make test` for
-`dws-call-http`/`dws-run`, `pnpm lint && pnpm test && pnpm build` for `dws-call-openapi`) and pushes
-to `ghcr.io/tonylibs/dws-agent-sandbox` only on merge to `main`.
+and pushes to `ghcr.io/tonylibs/dws-agent-sandbox` only on merge to `main`.
+The Dockerfile's smoke-test `RUN` step fails the build if a toolchain is missing or
+the wrong version. DWS component builds and tests run in their own CI workflows.
+
+`.github/workflows/agent-sandbox-components.yml` provides a separate, manually
+triggered check of `dws-controller`, `dws-orchestrator`, `dws-call-http`, `dws-run`,
+and `dws-call-openapi` inside the sandbox image. Run **agent-sandbox-components**
+from GitHub Actions using **Run workflow**. It builds the sandbox image from the
+selected ref and mounts the CI checkout for these checks; it does not publish
+an image or run automatically on pushes or pull requests.
