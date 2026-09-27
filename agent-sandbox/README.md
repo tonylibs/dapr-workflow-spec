@@ -131,12 +131,34 @@ $env:CLAUDE_CODE_OAUTH_TOKEN = "..."   # plus any of the others
 
 The tokens are streamed over `docker exec -i` stdin into `agent-auth-setup`, so they never appear
 on a command line, in `docker inspect`, or in the OpenSandbox store. Inside the sandbox they are
-written to `/root/.ssh/environment` (mode 600), which `sshd` loads into every SSH session for the
-names allowed by `PermitUserEnvironment`. Plain container env would not reach SSH sessions. To add
-or rotate tokens on a running sandbox, pipe the full set again:
-`"COPILOT_GITHUB_TOKEN=..." | docker exec -i sandbox-<id> agent-auth-setup` (names left out are
-removed, except Codex's stored login, which stays until `codex logout`); then open a new SSH
-session.
+written to `/root/.config/agent-sandbox/credentials.env` (directory mode 700, file mode 600).
+The image's Bash startup hooks load this file into login and interactive shells, including
+Orca remote terminals. Values are parsed as data, never evaluated as shell code.
+`/root/.ssh/environment` is also maintained for direct SSH commands.
+
+Rebuild and publish the updated image, then create a new sandbox with `-PullImage` or
+`--pull-image` from a shell where the desired token variables are set. Connect Orca to the
+SSH endpoint printed by the launcher; no Orca setup script is needed.
+
+To add or rotate tokens on a running sandbox, pipe the full set again. For example, using
+the existing host environment variable rather than typing a token into command history:
+
+```powershell
+"COPILOT_GITHUB_TOKEN=$env:COPILOT_GITHUB_TOKEN" | docker exec -i sandbox-<id> agent-auth-setup
+```
+
+Names left out are removed from the files, except Codex's stored login, which stays until
+`codex logout`. Open a fresh Orca terminal to load the updated credentials. Existing processes
+retain their old environment; restarting the terminal is required to remove omitted tokens.
+To reload added or changed tokens in an existing Bash terminal, run:
+
+```sh
+. /etc/profile.d/agent-env.sh
+test -n "${COPILOT_GITHUB_TOKEN:-}" && echo 'Copilot token loaded'
+```
+
+The check prints only token presence. A loaded token still needs to be valid and have the
+Copilot Requests permission.
 
 Any agent in the sandbox runs as root and can read every forwarded token, so a prompt-injected
 agent could leak them. Use dedicated, narrowly scoped keys with spend limits, and revoke them when

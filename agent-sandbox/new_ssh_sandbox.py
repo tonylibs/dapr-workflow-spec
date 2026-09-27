@@ -21,7 +21,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = SCRIPT_DIR / "ssh-sandbox.json"
 
 # Host environment variables forwarded to the sandbox's agent CLIs when set. Must match
-# ALLOWED_NAMES in agent-auth-setup.sh and PermitUserEnvironment in the Dockerfile.
+# ALLOWED_NAMES in agent-auth-setup.sh, agent-env.sh, and PermitUserEnvironment in the Dockerfile.
 AGENT_TOKEN_NAMES = (
     "ANTHROPIC_API_KEY",
     "CLAUDE_CODE_OAUTH_TOKEN",

@@ -173,11 +173,14 @@ COPY sshd-start.sh /usr/local/bin/sshd-start
 RUN chmod 755 /usr/local/bin/sshd-start
 
 # --- Agent CLI credentials ---
-# The launchers stream host tokens into agent-auth-setup after the sandbox starts; it writes
-# them to /root/.ssh/environment, which sshd loads into every session for the names allowed
-# by PermitUserEnvironment above, and performs the per-CLI login steps.
+# The launchers stream host tokens into agent-auth-setup after the sandbox starts.
+# Bash loads the private credentials file for login and interactive Orca terminals;
+# sshd's environment file remains available for direct SSH commands.
 COPY agent-auth-setup.sh /usr/local/bin/agent-auth-setup
-RUN chmod 755 /usr/local/bin/agent-auth-setup
+COPY agent-env.sh /etc/profile.d/agent-env.sh
+RUN chmod 755 /usr/local/bin/agent-auth-setup \
+    && chmod 644 /etc/profile.d/agent-env.sh \
+    && printf '\n%s\n' '. /etc/profile.d/agent-env.sh' >> /etc/bash.bashrc
 
 # --- smoke test: fail the build if any toolchain is missing or the wrong version ---
 RUN set -eux; \
