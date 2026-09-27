@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "command(regex:pnpm (check|typecheck|test|build|lint|install)( .*)?)"
+    ]
+  }
+}

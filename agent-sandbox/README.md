@@ -25,6 +25,11 @@ runtime option: it creates containers through the local Docker daemon and does n
 
 ## Local Docker runtime
 
+Omnigent is installed through uv with both `copilot` and `antigravity` extras
+(`omnigent[copilot,antigravity]`), using the version pinned in the Dockerfile.
+The image's build-time smoke test checks that both SDK packages are installed in
+Omnigent's tool environment.
+
 With Docker Desktop or Docker Engine running, start a local OpenSandbox server with the
 Docker profile:
 
@@ -76,6 +81,10 @@ To create a fully configured local SSH sandbox with a fresh localhost SSH port f
 
 The helper calls `osb sandbox create`, provisions only `~/.ssh/dws_sandbox.pub`, creates a
 localhost-only TCP bridge on an available random port, and prints the exact `host:port` for Orca.
+Use `root` as the SSH username and `/workspace` as Orca's remote project directory. The
+repository is cloned directly into `/workspace`, not `/home/workspace/dapr-workflow-spec`.
+If a restored terminal reports `chdir(2) failed`, check that its saved remote project path
+exists in the current sandbox and reopen the project from `/workspace`.
 Edit `agent-sandbox/ssh-sandbox.psd1` or `agent-sandbox/ssh-sandbox.json` to change the image,
 resource limits, lifetime, or set a fixed local SSH port. Leaving `SshPort`/`ssh_port` null avoids
 Orca host-key cache conflicts between freshly provisioned sandboxes. The default profile uses
@@ -98,6 +107,10 @@ Its settings are in `agent-sandbox/ssh-sandbox.json`. It uses the OpenSandbox Py
 lifecycle and sandbox file operations, and Docker only for the localhost-only SSH bridge and for
 forwarding agent tokens (below).
 
+If credential setup reports that `agent-auth-setup` is missing, the cached image predates
+token forwarding. Rerun with `--pull-image` (or `-PullImage` for PowerShell) to refresh it;
+locally built images need to be rebuilt from the current Dockerfile.
+
 ### Agent CLI login via tokens
 
 Both helpers forward these host environment variables into the sandbox when they are set, so the
@@ -118,12 +131,34 @@ $env:CLAUDE_CODE_OAUTH_TOKEN = "..."   # plus any of the others
 
 The tokens are streamed over `docker exec -i` stdin into `agent-auth-setup`, so they never appear
 on a command line, in `docker inspect`, or in the OpenSandbox store. Inside the sandbox they are
-written to `/root/.ssh/environment` (mode 600), which `sshd` loads into every SSH session for the
-names allowed by `PermitUserEnvironment`. Plain container env would not reach SSH sessions. To add
-or rotate tokens on a running sandbox, pipe the full set again:
-`"COPILOT_GITHUB_TOKEN=..." | docker exec -i sandbox-<id> agent-auth-setup` (names left out are
-removed, except Codex's stored login, which stays until `codex logout`); then open a new SSH
-session.
+written to `/root/.config/agent-sandbox/credentials.env` (directory mode 700, file mode 600).
+The image's Bash startup hooks load this file into login and interactive shells, including
+Orca remote terminals. Values are parsed as data, never evaluated as shell code.
+`/root/.ssh/environment` is also maintained for direct SSH commands.
+
+Rebuild and publish the updated image, then create a new sandbox with `-PullImage` or
+`--pull-image` from a shell where the desired token variables are set. Connect Orca to the
+SSH endpoint printed by the launcher; no Orca setup script is needed.
+
+To add or rotate tokens on a running sandbox, pipe the full set again. For example, using
+the existing host environment variable rather than typing a token into command history:
+
+```powershell
+"COPILOT_GITHUB_TOKEN=$env:COPILOT_GITHUB_TOKEN" | docker exec -i sandbox-<id> agent-auth-setup
+```
+
+Names left out are removed from the files, except Codex's stored login, which stays until
+`codex logout`. Open a fresh Orca terminal to load the updated credentials. Existing processes
+retain their old environment; restarting the terminal is required to remove omitted tokens.
+To reload added or changed tokens in an existing Bash terminal, run:
+
+```sh
+. /etc/profile.d/agent-env.sh
+test -n "${COPILOT_GITHUB_TOKEN:-}" && echo 'Copilot token loaded'
+```
+
+The check prints only token presence. A loaded token still needs to be valid and have the
+Copilot Requests permission.
 
 Any agent in the sandbox runs as root and can read every forwarded token, so a prompt-injected
 agent could leak them. Use dedicated, narrowly scoped keys with spend limits, and revoke them when
@@ -143,8 +178,13 @@ the sandbox is done.
 - `dapr` CLI in the image (not needed for kubectl access to the host cluster)
 
 `.github/workflows/agent-sandbox.yml` builds the image on every push/PR touching this directory
-(the Dockerfile's smoke-test `RUN` step fails the build if a toolchain is missing or the wrong
-version, and the workflow then runs each component's real CI-gate command inside the built image:
-`./mvnw verify` for `dws-controller`/`dws-orchestrator`, `make vet && make test` for
-`dws-call-http`/`dws-run`, `pnpm lint && pnpm test && pnpm build` for `dws-call-openapi`) and pushes
-to `ghcr.io/tonylibs/dws-agent-sandbox` only on merge to `main`.
+and pushes to `ghcr.io/tonylibs/dws-agent-sandbox` only on merge to `main`.
+The Dockerfile's smoke-test `RUN` step fails the build if a toolchain is missing or
+the wrong version. DWS component builds and tests run in their own CI workflows.
+
+`.github/workflows/agent-sandbox-components.yml` provides a separate, manually
+triggered check of `dws-controller`, `dws-orchestrator`, `dws-call-http`, `dws-run`,
+and `dws-call-openapi` inside the sandbox image. Run **agent-sandbox-components**
+from GitHub Actions using **Run workflow**. It builds the sandbox image from the
+selected ref and mounts the CI checkout for these checks; it does not publish
+an image or run automatically on pushes or pull requests.

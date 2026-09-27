@@ -1,0 +1,16 @@
+spec_version: 1
+name: explorer
+description: 'Read-only codebase exploration agent that traces real execution paths and cites files and symbols without proposing fixes.'
+prompt: |
+  
+  Stay in exploration mode.
+  Trace the real execution path, cite files and symbols, and avoid proposing fixes unless the parent agent asks for them.
+  Prefer targeted search and file reads over broad scans.
+executor:
+  type: omnigent
+  config:
+    harness: claude-sdk
+    model: claude-haiku-4-5-20251001
+os_env:
+  type: caller_process
+  cwd: .

@@ -124,10 +124,11 @@ RUN curl -fsSL https://antigravity.google/cli/install.sh -o /tmp/agy-install.sh 
 # Omnigent requires Python 3.12+, uv, git, Node 22+, npm, tmux, and bwrap on Linux. Ubuntu
 # 24.04 provides Python 3.12; Node/npm/tmux/git/bwrap are installed above. Copy uv from
 # Astral's official distroless image and use it to install the pinned Omnigent CLI into
-# /root/.local/bin, which is already on PATH for agent tools.
+# /root/.local/bin, which is already on PATH for agent tools. Include the Copilot and
+# Antigravity SDK extras required by the repository's Omnigent agent configurations.
 COPY --from=uv /uv /uvx /usr/local/bin/
 ENV UV_TOOL_BIN_DIR=/root/.local/bin
-RUN uv tool install --python 3.12 "omnigent==${OMNIGENT_VERSION}" \
+RUN uv tool install --python 3.12 "omnigent[copilot,antigravity]==${OMNIGENT_VERSION}" \
     && ln -sf /root/.local/bin/omnigent /usr/local/bin/omnigent \
     && ln -sf /root/.local/bin/omni /usr/local/bin/omni
 
@@ -172,11 +173,14 @@ COPY sshd-start.sh /usr/local/bin/sshd-start
 RUN chmod 755 /usr/local/bin/sshd-start
 
 # --- Agent CLI credentials ---
-# The launchers stream host tokens into agent-auth-setup after the sandbox starts; it writes
-# them to /root/.ssh/environment, which sshd loads into every session for the names allowed
-# by PermitUserEnvironment above, and performs the per-CLI login steps.
+# The launchers stream host tokens into agent-auth-setup after the sandbox starts.
+# Bash loads the private credentials file for login and interactive Orca terminals;
+# sshd's environment file remains available for direct SSH commands.
 COPY agent-auth-setup.sh /usr/local/bin/agent-auth-setup
-RUN chmod 755 /usr/local/bin/agent-auth-setup
+COPY agent-env.sh /etc/profile.d/agent-env.sh
+RUN chmod 755 /usr/local/bin/agent-auth-setup \
+    && chmod 644 /etc/profile.d/agent-env.sh \
+    && printf '\n%s\n' '. /etc/profile.d/agent-env.sh' >> /etc/bash.bashrc
 
 # --- smoke test: fail the build if any toolchain is missing or the wrong version ---
 RUN set -eux; \
@@ -202,6 +206,7 @@ RUN set -eux; \
     openwiki --help >/dev/null; \
     omnigent --version | grep -q "${OMNIGENT_VERSION}"; \
     omni --version | grep -q "${OMNIGENT_VERSION}"; \
+    "$(uv tool dir)/omnigent/bin/python" -c 'from importlib.metadata import version; print(version("github-copilot-sdk")); print(version("google-antigravity"))'; \
     clawteam --help >/dev/null; \
     ssh-keygen -A; \
     /usr/sbin/sshd -t; \

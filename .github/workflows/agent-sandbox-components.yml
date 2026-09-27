@@ -1,0 +1,60 @@
+name: agent-sandbox-components
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-sandbox-components-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VALIDATE_TAG: dws-agent-sandbox:validate
+
+jobs:
+  validate-components:
+    name: run component CI gates in sandbox image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build sandbox image
+        uses: docker/build-push-action@v6
+        with:
+          context: agent-sandbox
+          tags: ${{ env.VALIDATE_TAG }}
+          load: true
+          cache-from: type=gha,scope=agent-sandbox
+          cache-to: type=gha,mode=max,scope=agent-sandbox
+
+      # Override the image's SSH entrypoint command to run each component's CI gate.
+      - name: dws-controller -- ./mvnw verify
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace/dws-controller \
+            ${{ env.VALIDATE_TAG }} ./mvnw -B -ntp verify
+
+      - name: dws-orchestrator -- ./mvnw verify
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace/dws-orchestrator \
+            ${{ env.VALIDATE_TAG }} ./mvnw -B -ntp verify
+
+      - name: dws-call-http -- make vet && make test
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace/dws-call-http \
+            ${{ env.VALIDATE_TAG }} sh -c "make vet && make test"
+
+      - name: dws-run -- make vet && make test
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace/dws-run \
+            ${{ env.VALIDATE_TAG }} sh -c "make vet && make test"
+
+      - name: dws-call-openapi -- pnpm lint && pnpm test && pnpm build
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace/dws-call-openapi \
+            ${{ env.VALIDATE_TAG }} sh -c "pnpm install --frozen-lockfile && pnpm lint && pnpm test && pnpm build"

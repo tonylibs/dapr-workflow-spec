@@ -5,19 +5,19 @@
 # agent tokens here with `docker exec -i` right after the sandbox is created, so the
 # tokens never appear in `docker inspect`, a command line, or the OpenSandbox store.
 #
-# sshd does not hand the container's environment to SSH sessions, so the tokens are
-# written to /root/.ssh/environment, which sshd loads for every session (interactive
-# or not) for exactly the names allowed by PermitUserEnvironment in the image's sshd
-# config. Keep ALLOWED_NAMES and that list in sync.
+# Store tokens in a private file loaded by Bash startup hooks, including Orca's
+# remote terminals. Also retain sshd's environment file for direct SSH commands.
+# Keep ALLOWED_NAMES, the loader, and PermitUserEnvironment in sync.
 #
 # Re-running replaces the previous set: a name missing from stdin is removed.
 # Values are never printed.
 set -eu
 
 ALLOWED_NAMES="ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN OPENAI_API_KEY COPILOT_GITHUB_TOKEN GEMINI_API_KEY"
-ENV_FILE=/root/.ssh/environment
-CLAUDE_CONFIG=/root/.claude.json
-AGY_SETTINGS=/root/.gemini/antigravity-cli/settings.json
+ENV_FILE="$HOME/.config/agent-sandbox/credentials.env"
+SSH_ENV_FILE="$HOME/.ssh/environment"
+CLAUDE_CONFIG="$HOME/.claude.json"
+AGY_SETTINGS="$HOME/.gemini/antigravity-cli/settings.json"
 
 is_allowed() {
     for allowed in $ALLOWED_NAMES; do
@@ -36,9 +36,10 @@ jq_in_place() {
     mv "$tmp" "$file"
 }
 
-mkdir -p /root/.ssh
-chmod 700 /root/.ssh
-staged=$(mktemp /root/.ssh/environment.XXXXXX)
+umask 077
+mkdir -p "$HOME/.ssh" "$(dirname "$ENV_FILE")"
+chmod 700 "$HOME/.ssh" "$(dirname "$ENV_FILE")"
+staged=$(mktemp "$ENV_FILE.XXXXXX")
 chmod 600 "$staged"
 trap 'rm -f "$staged"' EXIT
 
@@ -61,6 +62,8 @@ tr -d '\r' | while IFS= read -r line || [ -n "$line" ]; do
 done
 
 mv "$staged" "$ENV_FILE"
+cp "$ENV_FILE" "$SSH_ENV_FILE"
+chmod 600 "$SSH_ENV_FILE"
 trap - EXIT
 
 # Read one value back from the environment file without exporting it into this shell.

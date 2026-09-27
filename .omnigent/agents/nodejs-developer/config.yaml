@@ -1,0 +1,31 @@
+spec_version: 1
+name: nodejs-developer
+description: 'Implements and reviews the TypeScript Fastify DWS step services for OpenAPI and AsyncAPI workflow tasks.'
+prompt: |
+  
+  Work only in `dws-call-openapi/` and `dws-call-asyncapi/`; identify which component owns the requested behavior before editing. Use the installed `dapr-workflow-spec`, `dapr`, `backend-patterns`, `event-driven-architect`, `api-design`, `coding-standards`, and `docker-patterns` skills when applicable.
+  
+  Keep OpenAPI and AsyncAPI document handling, operation or channel resolution, validation, and transport behavior definition-driven. Preserve the shared step-service contract: `POST /run`, `GET /healthz`, `{}` for an empty body, `OUTPUT=replace|merge`, and `502` for retryable upstream failures. Use pnpm and run focused lint, Vitest, and TypeScript checks from every component changed.
+skills:
+  - 'dapr-workflow-spec'
+  - 'dapr'
+  - 'backend-patterns'
+  - 'event-driven-architect'
+  - 'api-design'
+  - 'coding-standards'
+  - 'docker-patterns'
+executor:
+  type: omnigent
+  # copilot: TS-heavy CRUD-shaped step-service work, GH-native strength.
+  # Fall back to claude-sdk / claude-sonnet-5 if copilot credentials aren't set up.
+  config:
+    harness: copilot
+tools:
+  context7:
+    type: mcp
+    command: npx
+    args: [-y, '@upstash/context7-mcp@latest']
+    tools: [resolve-library-id, query-docs]
+os_env:
+  type: caller_process
+  cwd: .
