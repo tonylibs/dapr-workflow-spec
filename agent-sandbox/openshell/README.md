@@ -36,20 +36,30 @@ supervisor as the entrypoint.
 
 ## Steps
 
-1. Install the OpenShell runtime/CLI and the Omnigent extra:
+1. Install the native OpenShell gateway. On Debian/Ubuntu the installer adds a `.deb`
+   (CLI, `openshell-gateway`, prover), starts the `openshell-gateway` systemd **user**
+   service on `https://127.0.0.1:17670` with mTLS, and registers it as gateway `openshell`:
 
    ```sh
-   curl -LsSf https://raw.githubusercontent.com/NVIDIA/OpenShell/main/install.sh | sh
-   uv pip install 'omnigent[openshell]==0.14.0'
+   curl -fsSL https://raw.githubusercontent.com/NVIDIA/OpenShell/main/install.sh -o install.sh
+   sh install.sh
+   sudo loginctl enable-linger "$USER"   # keep the gateway running after logout
+   openshell status                      # expect: Connected, Authenticated
+   openshell gateway info                # expect the docker driver to be initialized
    ```
 
-2. Start a local Docker-backed gateway. The helper script lives in the Omnigent repo:
+   Logs: `journalctl --user -u openshell-gateway -f`. Config: `~/.config/openshell/gateway.toml`.
+
+2. Install Omnigent with the OpenShell extra, as the same user that owns the gateway
+   registration, and select the gateway:
 
    ```sh
-   git clone https://github.com/omnigent-ai/omnigent && cd omnigent
-   deploy/openshell/start-local-docker-gateway.sh
-   openshell status        # expect: Connected
+   uv tool install --python 3.12 'omnigent[openshell]==0.14.0'
+   openshell gateway select openshell
    ```
+
+   For a quick plaintext test gateway instead, Omnigent's
+   `deploy/openshell/start-local-docker-gateway.sh` also works; don't expose it on a network.
 
 3. Back in this repository's root, build the image and check the contract:
 
