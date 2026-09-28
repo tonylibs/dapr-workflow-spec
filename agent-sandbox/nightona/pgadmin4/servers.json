@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Nightona",
+      "Group": "Servers",
+      "Host": "db",
+      "Port": 5432,
+      "MaintenanceDB": "postgres",
+      "Username": "user",
+      "PassFile": "/pgpass"
+    }
+  }
+}

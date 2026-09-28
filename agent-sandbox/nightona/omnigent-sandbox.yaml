@@ -1,0 +1,17 @@
+# Omnigent SERVER config fragment (goes in the Omnigent server's own /data/config.yaml,
+# not in this repo's .omnigent/*/config.yaml agent bundles). Merge this `sandbox:` block
+# into that file on whatever host runs the Omnigent server.
+#
+# Omnigent has no native "nightona" provider. Nightona is an API-compatible fork of
+# Daytona (frozen at the last open Daytona release, v0.190.0), so it is used through
+# Omnigent's existing `provider: daytona` launcher — see README.md in this directory for
+# why this works and what to verify before trusting it beyond local testing.
+sandbox:
+  provider: daytona
+  # Omnigent server's own reachable URL (sandboxes call back here), not Nightona's URL.
+  server_url: https://your-omnigent-server-host
+  daytona:
+    # Server env vars copied into every sandbox it creates (the coding agent's own
+    # credentials inside the sandbox) -- unrelated to the DAYTONA_* vars below, which
+    # authenticate the Omnigent server *to* Nightona.
+    env: [ANTHROPIC_API_KEY, GIT_TOKEN]

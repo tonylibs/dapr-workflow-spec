@@ -20,6 +20,7 @@ runtime option: it creates containers through the local Docker daemon and does n
 | `sandbox.yaml` | `Sandbox` CRD manifest for one agent session | skeleton — confirm installed CRD apiVersion first |
 | `cache-pvcs.yaml` | PVCs for `~/.m2`, Go module cache, pnpm store | skeleton — confirm storageClass |
 | `opensandbox/docker.toml` | OpenSandbox lifecycle-server profile for local Docker-backed sandboxes | local profile — Docker Desktop/Engine required |
+| `nightona/` | Self-hosted [Nightona](https://github.com/nightona-co/nightona) stack wired in as Omnigent's `daytona` cloud sandbox provider — see `nightona/README.md` | experimental, unverified API compatibility with frozen Daytona v0.190.0 protocol |
 | `start-opensandbox.ps1` | Windows launcher that injects the host kubeconfig path into the local Docker profile | use this instead of starting the server with the TOML directly |
 | `sshd-start.sh` | Key-only SSH daemon entrypoint for Docker-backed remote-development sandboxes | clones the DWS repository into an empty `/workspace`, reuses an existing matching checkout unchanged, and generates unique host keys at each container start |
 
