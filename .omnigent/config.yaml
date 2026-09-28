@@ -97,6 +97,9 @@ os_env:
   # application". Confirmed unpatched in 0.14.0 (latest as of 2026-09-22).
   # Likely fixed by running omnigent under Linux/WSL2/macOS instead — see
   # discussion, untested here. Re-add sandbox: once on Linux/macOS.
+  # Where this runs is chosen per session, not here: agent-sandbox/openshell/
+  # run-orchestrator.sh starts it in a managed OpenShell sandbox. There the
+  # omitted sandbox block resolves to linux_bwrap, nested inside OpenShell.
   type: caller_process
   cwd: .
 

@@ -10,9 +10,24 @@ sandbox:
   server_url: https://your-omnigent-host.example.com
   openshell:
     image: ghcr.io/tonylibs/dws-agent-sandbox:openshell
-    # Server env var NAMES copied into each sandbox. Set in the server environment:
-    #   OMNIGENT_RUNNER_ENV_PASSTHROUGH=https_proxy,http_proxy,HTTPS_PROXY,HTTP_PROXY,NO_PROXY,no_proxy
-    # Without it the runner subprocess misses OpenShell's proxy vars and fails with
-    # "Temporary failure in name resolution".
-    env: [ANTHROPIC_API_KEY, GIT_TOKEN, OMNIGENT_RUNNER_ENV_PASSTHROUGH]
-    # cluster: local-docker   # default: the active gateway
+    # Server env var NAMES copied into each sandbox; every name must be set in the
+    # server environment. One credential per .omnigent/ harness and MCP server:
+    #   claude-sdk  ANTHROPIC_API_KEY (or swap in CLAUDE_CODE_OAUTH_TOKEN)
+    #   codex       OPENAI_API_KEY
+    #   copilot     COPILOT_GITHUB_TOKEN
+    #   antigravity GEMINI_API_KEY
+    #   github MCP  GITHUB_PERSONAL_ACCESS_TOKEN
+    #   git clone   GIT_TOKEN
+    # Set OMNIGENT_RUNNER_ENV_PASSTHROUGH in the server environment to
+    #   https_proxy,http_proxy,HTTPS_PROXY,HTTP_PROXY,NO_PROXY,no_proxy,COPILOT_GITHUB_TOKEN,GITHUB_PERSONAL_ACCESS_TOKEN
+    # The proxy vars fix "Temporary failure in name resolution" in the runner; the two
+    # token names are outside the host's default credential forwarding set.
+    env:
+      - ANTHROPIC_API_KEY
+      - OPENAI_API_KEY
+      - COPILOT_GITHUB_TOKEN
+      - GEMINI_API_KEY
+      - GITHUB_PERSONAL_ACCESS_TOKEN
+      - GIT_TOKEN
+      - OMNIGENT_RUNNER_ENV_PASSTHROUGH
+    # cluster: openshell   # default: the active gateway

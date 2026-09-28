@@ -8,15 +8,26 @@ network_policies:
   omnigent-server:
     endpoints: [{ host: "your-omnigent-host.example.com", port: 443, tls: skip }]
     binaries: [{ path: /** }]
+  # One entry per harness used by .omnigent/: claude-sdk, codex, copilot, antigravity.
   llm:
     endpoints:
       - { host: "api.anthropic.com", port: 443, tls: skip }
+      - { host: "api.openai.com", port: 443, tls: skip }
+      - { host: "*.githubcopilot.com", port: 443, tls: skip }
+      - { host: "*.googleapis.com", port: 443, tls: skip }
     binaries: [{ path: /** }]
   git:
     endpoints:
       - { host: "github.com", port: 443, tls: skip }
+      - { host: "api.github.com", port: 443, tls: skip }
       - { host: "*.githubusercontent.com", port: 443, tls: skip }
       - { host: "ghcr.io", port: 443, tls: skip }
+    binaries: [{ path: /** }]
+  # MCP servers declared in .omnigent/ (context7; github uses api.github.com above).
+  mcp:
+    endpoints:
+      - { host: "context7.com", port: 443, tls: skip }
+      - { host: "mcp.context7.com", port: 443, tls: skip }
     binaries: [{ path: /** }]
   # Dependency registries used by the DWS package gates (./mvnw, go, pnpm/corepack, uv).
   registries:

@@ -12,6 +12,43 @@ Reference: Omnigent's `deploy/openshell/README.md` (the provider guide this foll
 | `Dockerfile` | Layer on top of `ghcr.io/tonylibs/dws-agent-sandbox` that meets OpenShell's image contract. |
 | `policy.yaml` | Egress allow-list baked in at `/etc/openshell/policy.yaml` (OpenShell denies all egress by default). |
 | `omnigent-sandbox.yaml` | `sandbox:` block for the Omnigent **server** config. |
+| `run-orchestrator.sh` | Starts the `.omnigent/` orchestrator in a managed OpenShell sandbox. |
+
+## Run the DWS orchestrator in OpenShell
+
+An agent spec cannot choose its sandbox: placement is per session. `run-orchestrator.sh`
+packs the tracked files under `.omnigent/` into a bundle and sends it with the multipart
+`POST /v1/sessions` API, using `host_type: "managed"` and `sandbox_provider: "openshell"`.
+The server provisions the sandbox and clones the workspace repository into it. The bundle
+and request shape were checked against Omnigent 0.14.0's own validators: the orchestrator
+and all 12 sub-agents pass upload validation.
+
+With the gateway, image and server from the steps below in place:
+
+```sh
+export OMNIGENT_SERVER=https://<your-server-url>
+export DWS_WORKSPACE='https://github.com/tonylibs/dapr-workflow-spec#main'   # optional; this is the default
+# export OMNIGENT_TOKEN=...   # only when the server runs with OMNIGENT_AUTH_ENABLED=1
+agent-sandbox/openshell/run-orchestrator.sh
+omnigent attach <session_id> --server "$OMNIGENT_SERVER"
+```
+
+Credentials needed in the **server** environment, one per harness or MCP server in
+`.omnigent/`:
+
+| Variable | Used by |
+|---|---|
+| `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) | `claude-sdk`: orchestrator and most sub-agents |
+| `OPENAI_API_KEY` | `codex`: go-developer |
+| `COPILOT_GITHUB_TOKEN` | `copilot`: nodejs-developer, dotnet-developer |
+| `GEMINI_API_KEY` | `antigravity`: frontend-developer |
+| `GITHUB_PERSONAL_ACCESS_TOKEN` | `@modelcontextprotocol/server-github` MCP tool |
+| `GIT_TOKEN` | cloning and pushing the workspace repository |
+
+Drop a name from `openshell.env` if you don't use that harness, because a listed name
+that is unset fails the launch. `COPILOT_GITHUB_TOKEN` and `GITHUB_PERSONAL_ACCESS_TOKEN`
+are outside the host's default forwarding set, so they must also appear in
+`OMNIGENT_RUNNER_ENV_PASSTHROUGH`. The comments in `omnigent-sandbox.yaml` give the full value.
 
 ## Why the base image needs a layer
 
