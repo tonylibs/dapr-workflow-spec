@@ -26,12 +26,24 @@ and all 12 sub-agents pass upload validation.
 With the gateway, image and server from the steps below in place:
 
 ```sh
-export OMNIGENT_SERVER=https://<your-server-url>
+export OMNIGENT_SERVER=http://localhost:6767   # you talk to the server locally; only the sandbox uses the tunnel
 export DWS_WORKSPACE='https://github.com/tonylibs/dapr-workflow-spec#main'   # optional; this is the default
 # export OMNIGENT_TOKEN=...   # only when the server runs with OMNIGENT_AUTH_ENABLED=1
+
+# like `omnigent run .omnigent -p "..."`: waits for the sandbox, sends the prompt, opens the TUI
+agent-sandbox/openshell/run-orchestrator.sh -p "List the DWS packages and their gates"
+
+# like `omnigent run .omnigent`: opens the TUI; type once the sandbox is ready
 agent-sandbox/openshell/run-orchestrator.sh
-omnigent attach <session_id> --server "$OMNIGENT_SERVER"
+
+# create only, print the session id (scripts); open the TUI later with `omnigent attach`
+agent-sandbox/openshell/run-orchestrator.sh -p "..." --no-attach
 ```
+
+With `-p`, the script prints each sandbox stage (`provisioning`, `cloning`, `starting`,
+`connecting`, `ready`) and exits with the server's error on `failed`. It waits up to
+`DWS_READY_TIMEOUT_S` (default 900) seconds, since the first pull of the large image is slow.
+`omnigent attach` uses the credentials from `omnigent login <server>` when auth is enabled.
 
 Credentials needed in the **server** environment, one per harness or MCP server in
 `.omnigent/`:
