@@ -34,11 +34,30 @@ RUN for p in .claude .claude.json .codex .config; do \
 ENV GOPATH=/home/sandbox/go
 ENV GOMODCACHE=/home/sandbox/go/pkg/mod
 ENV PATH="/home/sandbox/go/bin:${PATH}"
+# corepack's pnpm cache is per-HOME; without this it would stop to ask before fetching
+# pnpm for `sandbox`, which a non-interactive agent can't answer.
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
 COPY policy.yaml /etc/openshell/policy.yaml
 
 RUN set -eux; \
     id sandbox; \
     command -v ip; \
-    command -v nft; \
-    su sandbox -s /bin/sh -c 'omnigent --version && java -version && go version && node -v && claude --version'
+    command -v nft
+
+# Check as `sandbox` via USER, not `su`: su resets PATH, which hides the base image's
+# ENV PATH entries (/opt/java/openjdk/bin, /usr/local/go/bin).
+USER sandbox
+RUN set -eux; \
+    test "$HOME" = /home/sandbox; \
+    omnigent --version; \
+    java -version; \
+    go version; \
+    go env GOMODCACHE | grep -q '^/home/sandbox/'; \
+    node -v; \
+    pnpm -v; \
+    claude --version; \
+    codex --version; \
+    copilot --version; \
+    agy --version
+USER root
