@@ -1,0 +1,18 @@
+# Omnigent SERVER config fragment (merge into the server's own config.yaml, e.g.
+# `omnigent server -c config.yaml` or <data_dir>/config.yaml). Not an agent bundle like
+# .omnigent/*/config.yaml.
+#
+# The server process also needs OpenShell gateway access: run `openshell gateway select
+# <name>` where the server runs, or set OPENSHELL_GATEWAY / `openshell.cluster` below.
+sandbox:
+  provider: openshell
+  # Must be reachable FROM the sandbox and allowed in policy.yaml's `omnigent-server` entry.
+  server_url: https://your-omnigent-host.example.com
+  openshell:
+    image: ghcr.io/tonylibs/dws-agent-sandbox:openshell
+    # Server env var NAMES copied into each sandbox. Set in the server environment:
+    #   OMNIGENT_RUNNER_ENV_PASSTHROUGH=https_proxy,http_proxy,HTTPS_PROXY,HTTP_PROXY,NO_PROXY,no_proxy
+    # Without it the runner subprocess misses OpenShell's proxy vars and fails with
+    # "Temporary failure in name resolution".
+    env: [ANTHROPIC_API_KEY, GIT_TOKEN, OMNIGENT_RUNNER_ENV_PASSTHROUGH]
+    # cluster: local-docker   # default: the active gateway

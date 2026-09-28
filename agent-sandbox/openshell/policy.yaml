@@ -1,0 +1,31 @@
+# OpenShell sandbox egress policy baked into the image (/etc/openshell/policy.yaml).
+# OpenShell is deny-by-default: anything not listed here gets a 403 from the in-sandbox
+# proxy. Shape follows Omnigent's deploy/openshell/README.md example; check the OpenShell
+# policy schema (https://docs.nvidia.com/openshell) before extending it.
+network_policies:
+  # Omnigent server the in-sandbox host and runner dial back to. Replace with the host
+  # part of `sandbox.server_url`.
+  omnigent-server:
+    endpoints: [{ host: "your-omnigent-host.example.com", port: 443, tls: skip }]
+    binaries: [{ path: /** }]
+  llm:
+    endpoints:
+      - { host: "api.anthropic.com", port: 443, tls: skip }
+    binaries: [{ path: /** }]
+  git:
+    endpoints:
+      - { host: "github.com", port: 443, tls: skip }
+      - { host: "*.githubusercontent.com", port: 443, tls: skip }
+      - { host: "ghcr.io", port: 443, tls: skip }
+    binaries: [{ path: /** }]
+  # Dependency registries used by the DWS package gates (./mvnw, go, pnpm/corepack, uv).
+  registries:
+    endpoints:
+      - { host: "repo.maven.apache.org", port: 443, tls: skip }
+      - { host: "repo1.maven.org", port: 443, tls: skip }
+      - { host: "proxy.golang.org", port: 443, tls: skip }
+      - { host: "sum.golang.org", port: 443, tls: skip }
+      - { host: "registry.npmjs.org", port: 443, tls: skip }
+      - { host: "pypi.org", port: 443, tls: skip }
+      - { host: "files.pythonhosted.org", port: 443, tls: skip }
+    binaries: [{ path: /** }]
