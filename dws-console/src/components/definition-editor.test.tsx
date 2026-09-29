@@ -144,4 +144,10 @@ describe("DefinitionEditor file import", () => {
 				.value,
 		).toBe("existing: draft");
 	});
+
+	it("renders the diagram skeleton placeholder during loading / SSR", () => {
+		render(<DefinitionEditor />);
+		expect(screen.getByTestId("diagram-skeleton")).toBeDefined();
+		expect(screen.getByText("Loading workflow diagram…")).toBeDefined();
+	});
 });

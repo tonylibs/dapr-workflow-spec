@@ -61,13 +61,14 @@ describe("definition draft store", () => {
 			definition: '{"name":"shipping","version":"2"}',
 			format: "yaml",
 		});
-		expect(JSON.parse(localStorage.getItem(DEFINITION_DRAFT_STORAGE_KEY) ?? "{}"))
-			.toMatchObject({
-				state: {
-					definition: '{"name":"shipping","version":"2"}',
-					format: "yaml",
-				},
-			});
+		expect(
+			JSON.parse(localStorage.getItem(DEFINITION_DRAFT_STORAGE_KEY) ?? "{}"),
+		).toMatchObject({
+			state: {
+				definition: '{"name":"shipping","version":"2"}',
+				format: "yaml",
+			},
+		});
 
 		const savedDraft = localStorage.getItem(DEFINITION_DRAFT_STORAGE_KEY);
 		useDefinitionDraftStore.setState(definitionDraftDefaults);

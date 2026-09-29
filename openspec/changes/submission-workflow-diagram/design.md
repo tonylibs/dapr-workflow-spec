@@ -93,6 +93,13 @@ main thread and record the reason in this design and the roadmap. The layout cal
 both cases, so the fallback is a one-line swap. A graph of tens of tasks lays out in milliseconds,
 so the fallback is acceptable.
 
+**Finding & Outcome (2026-09-29):** `elkjs/lib/elk-worker.min.js` is a classic GWT script that
+is not compatible with Vite's module-worker pipeline without external worker scripts or complex
+plugins. We adopted the planned fallback to `elkjs/lib/elk.bundled.js`. It runs asynchronously
+within the lazily loaded `workflow-diagram` chunk on the client. Tested layouts of typical
+workflows execute in under 10 ms, keeping the main thread responsive while avoiding worker
+cross-origin and bundling friction.
+
 ### D6. Debounce, stale state, and error badges
 
 - The diagram subscribes to the draft store and debounces `(definition, format)` by 300 ms before
