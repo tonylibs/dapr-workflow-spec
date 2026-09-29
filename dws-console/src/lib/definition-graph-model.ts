@@ -1,263 +1,239 @@
-import { buildGraph, Classes } from "@openworkflowspec/sdk";
+import {
+	buildGraph,
+	Classes,
+	type Graph,
+	type GraphEdge,
+	type GraphNode,
+	GraphNodeType,
+} from "@openworkflowspec/sdk";
 import yaml from "yaml";
+import type { DefinitionFormat } from "#/lib/definition-draft-store";
+
+/**
+ * Pure, React-free draft text -> graph model. Nodes are keyed by the SDK's JSON-pointer
+ * `taskReference` (for example `/do/1/approve`). Everything the console renders or badges is
+ * derived from these console-owned types, so an SDK graph-shape change only touches
+ * `toDefinitionGraph`.
+ */
 
 export type NodeKind = "task" | "container" | "start" | "end";
 
-export interface DefinitionGraphNode {
+export type DefinitionGraphNode = {
 	id: string;
 	name: string;
 	taskType: string;
 	kind: NodeKind;
 	parentId?: string;
-	ariaLabel: string;
-}
+};
 
-export interface DefinitionGraphEdge {
+export type DefinitionGraphEdge = {
 	id: string;
 	source: string;
 	target: string;
 	label?: string;
-}
+};
 
-export interface DefinitionGraph {
+export type DefinitionGraph = {
 	nodes: DefinitionGraphNode[];
 	edges: DefinitionGraphEdge[];
-}
+};
 
 export type BuildGraphResult =
 	| { ok: true; graph: DefinitionGraph }
 	| { ok: false; error: string };
 
+const segments = (pointer: string) => pointer.split("/").filter(Boolean);
+
 /**
- * Finds the node whose id is the longest segment-wise prefix of the given error JSON pointer path.
- * Returns undefined if no matching task node is found.
+ * Finds the node whose id is the longest segment-wise prefix of an error's JSON pointer path,
+ * or undefined when no node encloses it (for example a `/document/...` error).
  */
 export function findNodeForErrorPath<T extends { id: string }>(
 	errorPath: string,
-	nodes: T[],
+	nodes: readonly T[],
 ): T | undefined {
-	if (!errorPath) return undefined;
-	const errorSegments = errorPath.split("/").filter(Boolean);
-	if (errorSegments.length === 0) return undefined;
-
+	const errorSegments = segments(errorPath);
 	let bestMatch: T | undefined;
 	let bestLength = 0;
 
 	for (const node of nodes) {
-		const nodeSegments = node.id.split("/").filter(Boolean);
-		if (nodeSegments.length === 0) continue;
-		if (nodeSegments.length > errorSegments.length) continue;
-
-		let isPrefix = true;
-		for (let i = 0; i < nodeSegments.length; i++) {
-			if (nodeSegments[i] !== errorSegments[i]) {
-				isPrefix = false;
-				break;
-			}
-		}
-
-		if (isPrefix && nodeSegments.length > bestLength) {
-			bestLength = nodeSegments.length;
+		const nodeSegments = segments(node.id);
+		if (
+			nodeSegments.length > bestLength &&
+			nodeSegments.length <= errorSegments.length &&
+			nodeSegments.every((segment, i) => segment === errorSegments[i])
+		) {
 			bestMatch = node;
+			bestLength = nodeSegments.length;
 		}
 	}
 
 	return bestMatch;
 }
 
+/** Counts spec errors per node id, using the longest-prefix rule; unmatched errors count nowhere. */
+export function countErrorsByNode(
+	errors: readonly { path: string }[],
+	nodes: readonly { id: string }[],
+): Map<string, number> {
+	const counts = new Map<string, number>();
+	for (const error of errors) {
+		const node = findNodeForErrorPath(error.path, nodes);
+		if (node) counts.set(node.id, (counts.get(node.id) ?? 0) + 1);
+	}
+	return counts;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** The minimum shape `buildGraph` can cope with; returns a readable reason when it is missing. */
+function shapeError(parsed: unknown): string | undefined {
+	if (!isRecord(parsed)) return "Definition must be an object";
+	if (!isRecord(parsed.document)) {
+		return "Definition must contain a document object";
+	}
+	if (!Array.isArray(parsed.do) || parsed.do.length === 0) {
+		return 'Definition must contain a non-empty "do" task list';
+	}
+	return undefined;
+}
+
+type SdkNode = Graph | GraphNode;
+type WorkingEdge = Pick<GraphEdge, "sourceId" | "targetId"> & { label: string };
+
+const isPort = (node: SdkNode) =>
+	node.type === GraphNodeType.Entry || node.type === GraphNodeType.Exit;
+
+const consoleId = (node: SdkNode) => node.taskReference || node.id;
+
+/** Flattens the SDK's nested graph into id -> node (with its parent) plus every edge. */
+function flattenSdkGraph(root: Graph) {
+	const nodes = new Map<string, { node: SdkNode; parent?: SdkNode }>();
+	const edges: GraphEdge[] = [];
+
+	const visit = (node: SdkNode, parent?: SdkNode) => {
+		nodes.set(node.id, { node, parent });
+		if (!("nodes" in node)) return;
+		edges.push(...(node.edges ?? []));
+		for (const child of node.nodes) visit(child, node);
+	};
+	visit(root);
+
+	return { nodes, edges };
+}
+
+/** Bridges every edge that passes through an entry/exit port, then drops the port edges. */
+function contractPorts(edges: WorkingEdge[], portIds: string[]): WorkingEdge[] {
+	let result = edges;
+	for (const portId of portIds) {
+		const incoming = result.filter((edge) => edge.targetId === portId);
+		const outgoing = result.filter((edge) => edge.sourceId === portId);
+		const bridges = incoming.flatMap((inEdge) =>
+			outgoing
+				.filter((outEdge) => inEdge.sourceId !== outEdge.targetId)
+				.map((outEdge) => ({
+					sourceId: inEdge.sourceId,
+					targetId: outEdge.targetId,
+					label: inEdge.label || outEdge.label,
+				})),
+		);
+		result = result
+			.filter((edge) => edge.sourceId !== portId && edge.targetId !== portId)
+			.concat(bridges);
+	}
+	return result;
+}
+
+function nodeKind(node: SdkNode): NodeKind {
+	if (node.type === GraphNodeType.Start) return "start";
+	if (node.type === GraphNodeType.End) return "end";
+	return "nodes" in node && node.nodes.length > 0 ? "container" : "task";
+}
+
+function displayName(node: SdkNode, kind: NodeKind): string {
+	if (node.label) return node.label;
+	if (kind === "start") return "Start";
+	if (kind === "end") return "End";
+	return node.id;
+}
+
+function toDefinitionGraph(root: Graph): DefinitionGraph {
+	const { nodes: sdkNodes, edges: sdkEdges } = flattenSdkGraph(root);
+
+	const nodes: DefinitionGraphNode[] = [];
+	const idBySdkId = new Map<string, string>();
+	for (const [sdkId, { node, parent }] of sdkNodes) {
+		if (node.type === GraphNodeType.Root || isPort(node)) continue;
+
+		const kind = nodeKind(node);
+		const id = consoleId(node);
+		idBySdkId.set(sdkId, id);
+		nodes.push({
+			id,
+			name: displayName(node, kind),
+			taskType: node.type,
+			kind,
+			parentId:
+				parent && parent.type !== GraphNodeType.Root
+					? consoleId(parent)
+					: undefined,
+		});
+	}
+
+	const portIds = [...sdkNodes.values()]
+		.filter(({ node }) => isPort(node))
+		.map(({ node }) => node.id);
+	const edges: DefinitionGraphEdge[] = [];
+	const seen = new Set<string>();
+	const workingEdges = sdkEdges.map((edge) => ({
+		sourceId: edge.sourceId,
+		targetId: edge.targetId,
+		label: edge.label ?? "",
+	}));
+	for (const edge of contractPorts(workingEdges, portIds)) {
+		const source = idBySdkId.get(edge.sourceId);
+		const target = idBySdkId.get(edge.targetId);
+		if (!source || !target || source === target) continue;
+
+		const key = `${source}->${target}:${edge.label}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		edges.push({
+			id: `${source}-${target}${edge.label ? `-${edge.label}` : ""}`,
+			source,
+			target,
+			label: edge.label || undefined,
+		});
+	}
+
+	return { nodes, edges };
+}
+
 /**
- * Pure, React-free definition -> graph model function.
- * Parses YAML or JSON, applies shape guard, builds SDK graph and maps to console-owned nodes/edges.
+ * Parses YAML or JSON, applies the shape guard, and maps the SDK graph to console nodes/edges.
+ *
+ * Uses `new Classes.Workflow(parsed)` and never `deserialize()`: deserialization validates against
+ * DSL 1.0.3 and rejects shapes DWS deploys. Any throw (parse error, malformed shape the guard
+ * missed, SDK failure) becomes `{ ok: false }`.
  */
 export function buildDefinitionGraph(
 	text: string,
-	format: "yaml" | "json" = "yaml",
+	format: DefinitionFormat,
 ): BuildGraphResult {
-	let parsed: unknown;
 	try {
-		if (format === "json") {
-			parsed = JSON.parse(text);
-		} else {
-			parsed = yaml.parse(text);
-		}
-	} catch (err) {
-		return {
-			ok: false,
-			error: err instanceof Error ? err.message : String(err),
-		};
-	}
-
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-		return { ok: false, error: "Definition must be an object" };
-	}
-	const obj = parsed as Record<string, unknown>;
-	const doc = obj.document;
-	if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
-		return { ok: false, error: "Definition must contain a document object" };
-	}
-	const doList = obj.do;
-	if (!Array.isArray(doList) || doList.length === 0) {
-		return {
-			ok: false,
-			error: 'Definition must contain a non-empty "do" task list',
-		};
-	}
-
-	try {
-		const workflow = new Classes.Workflow(parsed);
-		const sdkGraph = buildGraph(workflow);
-
-		interface SdkNode {
-			id: string;
-			label?: string;
-			type: string;
-			taskReference?: string;
-			nodes?: SdkNode[];
-			edges?: SdkEdge[];
-		}
-		interface SdkEdge {
-			id?: string;
-			sourceId: string;
-			targetId: string;
-			label?: string;
-		}
-
-		const allNodesMap = new Map<
-			string,
-			{ node: SdkNode; parent: SdkNode | null }
-		>();
-		const allEdges: SdkEdge[] = [];
-
-		function collectSdk(node: SdkNode, parent: SdkNode | null) {
-			allNodesMap.set(node.id, { node, parent });
-			if (node.edges) {
-				allEdges.push(...node.edges);
-			}
-			if (node.nodes) {
-				for (const child of node.nodes) {
-					collectSdk(child, node);
-				}
-			}
-		}
-		collectSdk(sdkGraph as unknown as SdkNode, null);
-
-		const isPort = (id: string) => {
-			const item = allNodesMap.get(id);
-			return item
-				? item.node.type === "entry" || item.node.type === "exit"
-				: false;
-		};
-
-		let workingEdges = allEdges.map((e) => ({
-			sourceId: e.sourceId,
-			targetId: e.targetId,
-			label: e.label || "",
-		}));
-
-		// Contract entry/exit port nodes
-		const portIds = Array.from(allNodesMap.keys()).filter(isPort);
-		for (const portId of portIds) {
-			const inEdges = workingEdges.filter((e) => e.targetId === portId);
-			const outEdges = workingEdges.filter((e) => e.sourceId === portId);
-
-			const cross: Array<{
-				sourceId: string;
-				targetId: string;
-				label: string;
-			}> = [];
-			for (const inE of inEdges) {
-				for (const outE of outEdges) {
-					if (inE.sourceId !== outE.targetId) {
-						cross.push({
-							sourceId: inE.sourceId,
-							targetId: outE.targetId,
-							label: inE.label || outE.label || "",
-						});
-					}
-				}
-			}
-			workingEdges = workingEdges
-				.filter((e) => e.sourceId !== portId && e.targetId !== portId)
-				.concat(cross);
-		}
-
-		const consoleNodes: DefinitionGraphNode[] = [];
-		const sdkIdToConsoleId = new Map<string, string>();
-
-		for (const [id, { node, parent }] of allNodesMap) {
-			if (id === "root" || isPort(id)) continue;
-
-			let kind: NodeKind = "task";
-			if (node.type === "start") kind = "start";
-			else if (node.type === "end") kind = "end";
-			else if (node.nodes && node.nodes.length > 0) kind = "container";
-			else if (["try", "catch", "for", "fork", "try-catch"].includes(node.type))
-				kind = "container";
-
-			const consoleId = node.taskReference || node.id;
-			sdkIdToConsoleId.set(id, consoleId);
-
-			let parentId: string | undefined;
-			if (parent && parent.id !== "root" && !isPort(parent.id)) {
-				parentId = parent.taskReference || parent.id;
-			}
-
-			const name =
-				node.label ||
-				(kind === "start" ? "Start" : kind === "end" ? "End" : node.id);
-			const taskType =
-				node.type ||
-				(kind === "start" ? "start" : kind === "end" ? "end" : "task");
-
-			let ariaLabel: string;
-			if (kind === "start") {
-				ariaLabel = "Start";
-			} else if (kind === "end") {
-				ariaLabel = "End";
-			} else if (kind === "container") {
-				ariaLabel = `${name}, ${taskType} container`;
-			} else {
-				ariaLabel = `${name}, ${taskType} task`;
-			}
-
-			consoleNodes.push({
-				id: consoleId,
-				name,
-				taskType,
-				kind,
-				parentId,
-				ariaLabel,
-			});
-		}
-
-		const seenEdges = new Set<string>();
-		const consoleEdges: DefinitionGraphEdge[] = [];
-		for (const e of workingEdges) {
-			const source = sdkIdToConsoleId.get(e.sourceId);
-			const target = sdkIdToConsoleId.get(e.targetId);
-			if (!source || !target || source === target) continue;
-			const key = `${source}->${target}:${e.label}`;
-			if (seenEdges.has(key)) continue;
-			seenEdges.add(key);
-			consoleEdges.push({
-				id: `${source}-${target}${e.label ? `-${e.label}` : ""}`,
-				source,
-				target,
-				label: e.label || undefined,
-			});
-		}
-
+		const parsed = format === "json" ? JSON.parse(text) : yaml.parse(text);
+		const invalid = shapeError(parsed);
+		if (invalid) return { ok: false, error: invalid };
 		return {
 			ok: true,
-			graph: {
-				nodes: consoleNodes,
-				edges: consoleEdges,
-			},
+			graph: toDefinitionGraph(buildGraph(new Classes.Workflow(parsed))),
 		};
-	} catch (err) {
+	} catch (error) {
 		return {
 			ok: false,
-			error: err instanceof Error ? err.message : String(err),
+			error: error instanceof Error ? error.message : String(error),
 		};
 	}
 }

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
 	buildDefinitionGraph,
+	countErrorsByNode,
 	findNodeForErrorPath,
 } from "./definition-graph-model";
 
@@ -59,6 +60,35 @@ describe("definition-graph-model", () => {
 			expect(findNodeForErrorPath("", nodes)).toBeUndefined();
 			expect(findNodeForErrorPath("/", nodes)).toBeUndefined();
 			expect(findNodeForErrorPath("/other/path", nodes)).toBeUndefined();
+		});
+	});
+
+	describe("countErrorsByNode", () => {
+		const nodes = [{ id: "/do/0/first" }, { id: "/do/1/approve" }];
+
+		it("counts errors per closest enclosing node and ignores unmatched paths", () => {
+			const counts = countErrorsByNode(
+				[
+					{ path: "/do/1/approve/call" },
+					{ path: "/do/1/approve/with/endpoint" },
+					{ path: "/do/0/first" },
+					{ path: "/document/name" },
+					{ path: "" },
+				],
+				nodes,
+			);
+			expect(Object.fromEntries(counts)).toEqual({
+				"/do/1/approve": 2,
+				"/do/0/first": 1,
+			});
+		});
+
+		it("does not match a sibling whose name only shares a string prefix", () => {
+			const counts = countErrorsByNode(
+				[{ path: "/do/1/approved/call" }],
+				nodes,
+			);
+			expect(counts.size).toBe(0);
 		});
 	});
 

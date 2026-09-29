@@ -1,7 +1,7 @@
 import { json } from "@codemirror/lang-json";
 import { yaml } from "@codemirror/lang-yaml";
 import { EditorView } from "@codemirror/view";
-import { Link } from "@tanstack/react-router";
+import { ClientOnly, Link } from "@tanstack/react-router";
 import CodeMirror from "@uiw/react-codemirror";
 import {
 	type ChangeEvent,
@@ -100,10 +100,8 @@ export function DefinitionEditor() {
 	const [preview, setPreview] = useState<DefinitionPreview | undefined>();
 	const [specErrors, setSpecErrors] = useState<SpecError[] | undefined>();
 	const [isPreviewing, setIsPreviewing] = useState(false);
-	const [isClient, setIsClient] = useState(false);
 
 	useEffect(() => {
-		setIsClient(true);
 		void useDefinitionDraftStore.persist.rehydrate();
 	}, []);
 
@@ -282,7 +280,9 @@ export function DefinitionEditor() {
 							minHeight: "480px",
 						}}
 					>
-						{isClient ? (
+						{/* Client-only and lazy: SSR renders the skeleton and never evaluates the
+						    diagram chunk (xyflow, elkjs, SDK, yaml). */}
+						<ClientOnly fallback={<DiagramSkeleton />}>
 							<Suspense fallback={<DiagramSkeleton />}>
 								<LazyWorkflowDiagram
 									definition={definition}
@@ -290,9 +290,7 @@ export function DefinitionEditor() {
 									specErrors={specErrors}
 								/>
 							</Suspense>
-						) : (
-							<DiagramSkeleton />
-						)}
+						</ClientOnly>
 					</div>
 				</div>
 				{outcome?.kind === "applied" && (

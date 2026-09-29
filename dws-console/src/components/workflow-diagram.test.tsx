@@ -156,6 +156,78 @@ describe("WorkflowDiagram component", () => {
 		);
 	});
 
+	it("clears the stale banner when the draft recovers", async () => {
+		const { rerender } = render(
+			<WorkflowDiagram definition={sampleOrderYaml} format="yaml" />,
+		);
+		await waitFor(() => {
+			expect(screen.getByText("checkInventory")).toBeDefined();
+		});
+
+		rerender(
+			<WorkflowDiagram definition="document: [invalid yaml" format="yaml" />,
+		);
+		await waitFor(
+			() => expect(screen.getByTestId("stale-banner")).toBeDefined(),
+			{
+				timeout: 1500,
+			},
+		);
+
+		rerender(<WorkflowDiagram definition={sampleOrderYaml} format="yaml" />);
+		await waitFor(
+			() => {
+				expect(screen.queryByTestId("stale-banner")).toBeNull();
+				expect(screen.getByText("checkInventory")).toBeDefined();
+			},
+			{ timeout: 1500 },
+		);
+	});
+
+	it("shows the error without a diagram when no graph was ever built", async () => {
+		render(
+			<WorkflowDiagram definition="document: [invalid yaml" format="yaml" />,
+		);
+
+		const banner = await screen.findByTestId("stale-banner", undefined, {
+			timeout: 1500,
+		});
+		expect(banner.textContent).toContain("Cannot build diagram");
+		expect(screen.queryByLabelText(/task$/)).toBeNull();
+	});
+
+	it("renders try/catch bodies as containers around their tasks", async () => {
+		render(
+			<WorkflowDiagram
+				definition={`
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: guarded-workflow
+do:
+  - guarded:
+      try:
+        - fetchOrder:
+            call: http
+            with:
+              method: get
+              endpoint: http://orders/get
+      catch:
+        do:
+          - recordFailure:
+              set:
+                failed: true
+`}
+				format="yaml"
+			/>,
+		);
+
+		expect(await screen.findByText("fetchOrder")).toBeDefined();
+		expect(screen.getByText("recordFailure")).toBeDefined();
+		expect(screen.getByLabelText("guarded, try-catch container")).toBeDefined();
+		expect(screen.getByLabelText("fetchOrder, call task")).toBeDefined();
+	});
+
 	it("renders error badges on matching nodes when specErrors are provided and clears them", async () => {
 		const specErrors = [
 			{
