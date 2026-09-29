@@ -16,7 +16,9 @@ import type {
 	TaskEventDto,
 } from "./admin-types";
 
-const instanceDto = (over: Partial<InstanceDetailDto> = {}): InstanceDetailDto => ({
+const instanceDto = (
+	over: Partial<InstanceDetailDto> = {},
+): InstanceDetailDto => ({
 	instanceId: "inst-1",
 	workflow: "order-flow",
 	version: "order-flow@v1",
@@ -27,7 +29,9 @@ const instanceDto = (over: Partial<InstanceDetailDto> = {}): InstanceDetailDto =
 	...over,
 });
 
-const taskDto = (over: Partial<TaskEventDto> & { id: string }): TaskEventDto => ({
+const taskDto = (
+	over: Partial<TaskEventDto> & { id: string },
+): TaskEventDto => ({
 	taskName: "checkInventory",
 	type: "call",
 	status: "started",
@@ -36,7 +40,9 @@ const taskDto = (over: Partial<TaskEventDto> & { id: string }): TaskEventDto => 
 	...over,
 });
 
-const detail = (over: Partial<InstanceDetailData> = {}): InstanceDetailData => ({
+const detail = (
+	over: Partial<InstanceDetailData> = {},
+): InstanceDetailData => ({
 	instance: instanceDto(),
 	tasks: [],
 	...over,
@@ -258,7 +264,11 @@ describe("applyStatusDelta", () => {
 
 	it("ignores a delta that changes nothing, preserving identity", () => {
 		const prev = pages([
-			summary({ instanceId: "inst-1", status: "completed", endedAt: "2026-08-04T12:05:00.000Z" }),
+			summary({
+				instanceId: "inst-1",
+				status: "completed",
+				endedAt: "2026-08-04T12:05:00.000Z",
+			}),
 		]);
 		const next = applyStatusDelta(prev, {
 			instanceId: "inst-1",
