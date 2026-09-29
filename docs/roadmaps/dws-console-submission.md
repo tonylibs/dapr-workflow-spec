@@ -49,7 +49,7 @@ flowchart TD
 | **1** | **Definition editor** — write or paste a DSL 1.0 definition and submit it to the cluster | dws-auth Phase 1 OIDC client + Phase 3 `dws-admin` write relay | ✅ done — `dws-console-definition-editor` |
 | **2** | **Validation preview** — see what a definition will deploy, and why it's invalid, before committing it | Phase 1 | ✅ done 2026-09-04 — `submission-preview-validation`; two-layer validation, see §6 |
 | **3** | **File import** — load a definition from a local `.yaml`/`.yml`/`.json` file instead of typing it | Phase 1 | ❌ not started — design decided 2026-09-04 (file input + Zustand-persisted draft, see §7) |
-| **4** | **Workflow diagram** — see the task graph a definition describes, laid out automatically | Phase 1 | ❌ not started |
+| **4** | **Workflow diagram** — see the task graph a definition describes, laid out automatically | Phase 1 | ❌ not started — design decided 2026-09-29 (execution-view graph, see §8); change `submission-workflow-diagram` proposed |
 | **5** | **Visual editor** — inspect, then edit, a workflow directly on the diagram instead of the text | Phase 4 | ❌ not started — exploratory |
 
 ## 4. Rationale for ordering
@@ -291,6 +291,69 @@ the CodeMirror `onChange` both just call the store's setters — no other wiring
   dependency.
 - Extension-based `format` sniffing on import is a heuristic, not content-based — acceptable since
   the format dropdown remains user-overridable after import.
+
+## 8. Phase 4 design (2026-09-29): execution-view workflow diagram
+
+Discussed with the user; these decisions are settled and are not re-opened by the implementation.
+The OpenSpec change is `submission-workflow-diagram`.
+
+**What the diagram shows: the execution / control-flow graph.** It is built entirely in the
+browser from the draft buffer. `switch` cases and `then` jumps are edges. `try`, `catch.do`, `for`,
+and `fork` bodies are compound container nodes that hold their nested tasks. The *structural*
+Flow/Step view described in [`workflow-visual-model.md`](workflow-visual-model.md) is out of
+scope. That view will come later from `dws-controller`'s dry-run plan (`NodeClassifier` /
+`V2StructuralCompiler`), so the console never reimplements Flow/Step classification.
+
+**Graph model: `@openworkflowspec/sdk`'s `buildGraph`**, pinned to an exact version (currently a
+`1.0.3-alphaN` prerelease; its graph shape can still change). The console builds the model with
+`new Classes.Workflow(parsedObject)`, **not** `Classes.Workflow.deserialize()`. `deserialize`
+always validates against DSL 1.0.3 and rejects definitions DWS accepts, for example object-form
+`run.shell`/`run.script` `arguments` (see §6, open question 1). The SDK's 1.0.3 validation errors
+are never shown. Spec validation stays with `dws-admin` (DSL 1.0.1).
+
+**Rendering: our own `@xyflow/react` + `elkjs`** (ELK layered algorithm, compound nodes), styled
+with existing console pieces (`TaskTypeBadge`, the `wf-node-card` look from
+`definition-graph.tsx`). `@openworkflowspec/diagram-editor` is **not** embedded: it validates with
+1.0.3 (false error badges), has no `onChange` (useless for Phase 5), ships its own
+shadcn/Tailwind CSS, and weighs about 10 MB. Both libraries load client-only and lazily, so SSR and
+the server bundle are unaffected. ELK runs in a web worker if the elkjs worker build works under
+Vite; otherwise the change records why not. Parse and layout are debounced (~300 ms) so typing in
+CodeMirror stays smooth. elkjs is EPL-2.0: it is used unmodified and gets a third-party licence
+notice.
+
+**Placement: the definition editor page only** (`routes/workflows/new.tsx`), as a live preview of
+the draft buffer. The workflow/instance "Definition" tab keeps the hardcoded graph for now and is a
+follow-up. Finding recorded 2026-09-29: `dws-admin`'s read API cannot serve that tab today. Its
+`workflow_definitions` table stores only `name`, `version`, `status`, and `created_at`, and no read
+endpoint returns definition text. The follow-up therefore needs a read-model and API change in
+`dws-admin` first.
+
+**Node IDs are the SDK's JSON-pointer `taskReference`** (for example `/do/1/approve`). This lets
+Phase 2's `{valid: false, errors[].path}` results (ajv `instancePath`) show as badges on the
+matching node: an error maps to the node whose reference is the longest prefix of its path. Errors
+with no matching node (for example `/document/name`) stay in the existing error list only.
+
+**Invalid or partial buffer:** the last good graph stays visible with a "stale" indicator plus the
+parse or build error. The diagram never crashes the page. `buildGraph` throws on some malformed
+shapes (`broken.yaml`: "undefined is not iterable"), so graph building sits behind a minimal shape
+guard (`document` object + `do` array) and a try/catch.
+
+**Pure model module.** The definition → graph conversion lives in a React-free, unit-tested module
+(`lib/definition-graph-model.ts`). Phase 5 reuses it, which keeps §5's rule that the parsed
+definition is the single source of truth. A fixture-parity test mirrors Phase 2's: every
+`dws-controller` fixture that compiles today yields a non-empty graph, `broken.yaml` yields a
+handled error, and `order.yaml` plus `dws-orchestrator`'s `try-order.yaml` cover
+`try`/`catch`/`for`/`fork`/`switch`.
+
+**Out of scope, recorded as follow-ups:**
+
+- The structural Flow/Step view (from the `dws-controller` dry-run plan).
+- The ADR-0003 drift in `workflow-visual-model.md`: it still describes `fork` as an inline region,
+  but ADR 0003 made it a standalone FlowNode.
+- Editing on the canvas (Phase 5).
+- Live instance status on nodes.
+- The Definition tab on workflow/instance pages (needs `dws-admin` to store and serve definition
+  text first; see above).
 
 ## Status legend
 
