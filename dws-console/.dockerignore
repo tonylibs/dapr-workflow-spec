@@ -3,6 +3,7 @@ dist
 .git
 .gitignore
 *.md
+!THIRD_PARTY_NOTICES.md
 .vscode
 .env
 .tanstack

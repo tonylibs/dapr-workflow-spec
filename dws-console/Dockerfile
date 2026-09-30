@@ -45,7 +45,7 @@ COPY --from=deps /src/node_modules ./node_modules
 COPY --from=build /src/dist ./dist
 # The SSR bundle imports react/@tanstack from node_modules rather than bundling
 # them, which is why the production install above ships with the image.
-COPY server.js package.json ./
+COPY server.js package.json THIRD_PARTY_NOTICES.md ./
 
 # node:24-slim ships a non-root `node` user.
 USER node

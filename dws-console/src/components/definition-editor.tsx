@@ -1,9 +1,16 @@
 import { json } from "@codemirror/lang-json";
 import { yaml } from "@codemirror/lang-yaml";
 import { EditorView } from "@codemirror/view";
-import { Link } from "@tanstack/react-router";
+import { ClientOnly, Link } from "@tanstack/react-router";
 import CodeMirror from "@uiw/react-codemirror";
-import { type ChangeEvent, useEffect, useMemo, useState } from "react";
+import {
+	type ChangeEvent,
+	lazy,
+	Suspense,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 import { AppLayout } from "#/components/app-layout";
 import { DeploymentPlanView } from "#/components/deployment-plan-view";
 import { Banner } from "#/components/states";
@@ -22,6 +29,29 @@ import {
 	useDefinitionDraftStore,
 } from "#/lib/definition-draft-store";
 import { useOidc } from "#/lib/oidc";
+
+const LazyWorkflowDiagram = lazy(() => import("#/components/workflow-diagram"));
+
+function DiagramSkeleton() {
+	return (
+		<div
+			data-testid="diagram-skeleton"
+			className="graph-canvas"
+			style={{
+				display: "flex",
+				alignItems: "center",
+				justifyContent: "center",
+				minHeight: "480px",
+				height: "100%",
+				width: "100%",
+			}}
+		>
+			<span className="muted" style={{ fontSize: "13px" }}>
+				Loading workflow diagram…
+			</span>
+		</div>
+	);
+}
 
 const editorTheme = EditorView.theme({
 	"&": {
@@ -228,12 +258,41 @@ export function DefinitionEditor() {
 					<Banner variant="warn">Sign in to submit a definition.</Banner>
 				)}
 				{importError && <Banner>{importError}</Banner>}
-				<CodeMirror
-					value={definition}
-					height="480px"
-					extensions={extensions}
-					onChange={onDefinitionChange}
-				/>
+				<div
+					className="editor-diagram-grid"
+					style={{
+						display: "grid",
+						gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+						gap: "16px",
+						minHeight: "480px",
+					}}
+				>
+					<CodeMirror
+						value={definition}
+						height="480px"
+						extensions={extensions}
+						onChange={onDefinitionChange}
+					/>
+					<div
+						style={{
+							display: "flex",
+							flexDirection: "column",
+							minHeight: "480px",
+						}}
+					>
+						{/* Client-only and lazy: SSR renders the skeleton and never evaluates the
+						    diagram chunk (xyflow, elkjs, SDK, yaml). */}
+						<ClientOnly fallback={<DiagramSkeleton />}>
+							<Suspense fallback={<DiagramSkeleton />}>
+								<LazyWorkflowDiagram
+									definition={definition}
+									format={format}
+									specErrors={specErrors}
+								/>
+							</Suspense>
+						</ClientOnly>
+					</div>
+				</div>
 				{outcome?.kind === "applied" && (
 					<Banner variant="success" role="status">
 						{outcome.result.created
