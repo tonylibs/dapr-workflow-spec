@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
 	buildDefinitionGraph,
+	CATCH_EDGE_LABEL,
 	countErrorsByNode,
 	findNodeForErrorPath,
 } from "./definition-graph-model";
@@ -187,6 +188,30 @@ describe("definition-graph-model", () => {
 			const recordFailureNode = nodes.find((n) => n.name === "recordFailure");
 			expect(recordFailureNode).toBeDefined();
 			expect(recordFailureNode?.parentId).toBeDefined();
+		});
+
+		it("try-order.yaml separates the try success path from the catch error path", () => {
+			const content = fs.readFileSync(
+				path.join(orchestratorFixturesDir, "try-order.yaml"),
+				"utf8",
+			);
+			const result = buildDefinitionGraph(content, "yaml");
+			expect(result.ok).toBe(true);
+			if (!result.ok) return;
+
+			const idOf = (name: string) =>
+				result.graph.nodes.find((n) => n.name === name)?.id;
+			const edge = (from: string, to: string) =>
+				result.graph.edges.find(
+					(e) => e.source === idOf(from) && e.target === idOf(to),
+				);
+
+			// Success: a try body that completes skips the catch body.
+			expect(edge("fetchOrder", "finish")).toBeDefined();
+			expect(edge("fetchOrder", "finish")?.label).toBeUndefined();
+			// Failure: the catch body runs only after a handled error.
+			expect(edge("fetchOrder", "recordFailure")?.label).toBe(CATCH_EDGE_LABEL);
+			expect(edge("recordFailure", "finish")).toBeDefined();
 		});
 
 		it("handles for loop and fork containers", () => {

@@ -67,6 +67,15 @@ function TypeBadge({ taskType }: { taskType: string }) {
 	return <TaskTypeBadge type={taskType as TaskType} showIcon={false} />;
 }
 
+function ErrorBadge({ nodeId, count }: { nodeId: string; count: number }) {
+	if (count === 0) return null;
+	return (
+		<span data-testid={`error-badge-${nodeId}`} style={ERROR_BADGE_STYLE}>
+			{count} error{count > 1 ? "s" : ""}
+		</span>
+	);
+}
+
 function TaskNode({ id, data }: NodeProps<DiagramNode>) {
 	return (
 		<div
@@ -76,11 +85,7 @@ function TaskNode({ id, data }: NodeProps<DiagramNode>) {
 			<Handle type="target" position={Position.Top} style={HIDDEN_HANDLE} />
 			<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
 				<TypeBadge taskType={data.taskType} />
-				{data.errorCount > 0 && (
-					<span data-testid={`error-badge-${id}`} style={ERROR_BADGE_STYLE}>
-						{data.errorCount} error{data.errorCount > 1 ? "s" : ""}
-					</span>
-				)}
+				<ErrorBadge nodeId={id} count={data.errorCount} />
 			</div>
 			<div className="name" style={NAME_STYLE}>
 				{data.name}
@@ -90,13 +95,14 @@ function TaskNode({ id, data }: NodeProps<DiagramNode>) {
 	);
 }
 
-function ContainerNode({ data }: NodeProps<DiagramNode>) {
+function ContainerNode({ id, data }: NodeProps<DiagramNode>) {
 	return (
 		<div style={CONTAINER_STYLE}>
 			<Handle type="target" position={Position.Top} style={HIDDEN_HANDLE} />
 			<div style={CONTAINER_HEADER_STYLE}>
 				<TypeBadge taskType={data.taskType} />
 				<span>{data.name}</span>
+				<ErrorBadge nodeId={id} count={data.errorCount} />
 			</div>
 			<Handle type="source" position={Position.Bottom} style={HIDDEN_HANDLE} />
 		</div>

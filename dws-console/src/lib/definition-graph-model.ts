@@ -146,6 +146,58 @@ function contractPorts(edges: WorkingEdge[], portIds: string[]): WorkingEdge[] {
 	return result;
 }
 
+/** Label on the edge from a try body into its catch body. */
+export const CATCH_EDGE_LABEL = "on error";
+
+const exitPortOf = (container: SdkNode) =>
+	"nodes" in container
+		? container.nodes.find((child) => child.type === GraphNodeType.Exit)
+		: undefined;
+
+const entryPortOf = (container: SdkNode) =>
+	"nodes" in container
+		? container.nodes.find((child) => child.type === GraphNodeType.Entry)
+		: undefined;
+
+/**
+ * The SDK chains a try-catch as `try exit -> catch entry -> catch exit`, which reads as "the catch
+ * body always runs". At runtime the catch body runs only after a handled failure, and a successful
+ * try body continues straight past the try-catch. Label the try -> catch edge as the error path and
+ * add the success edge from the try body's exit to the try-catch's exit.
+ */
+function splitTryCatchPaths(
+	edges: WorkingEdge[],
+	sdkNodes: Iterable<SdkNode>,
+): WorkingEdge[] {
+	const result = [...edges];
+	for (const node of sdkNodes) {
+		if (node.type !== GraphNodeType.TryCatch || !("nodes" in node)) continue;
+		const tryBody = node.nodes.find(
+			(child) => child.type === GraphNodeType.Try,
+		);
+		const catchBody = node.nodes.find(
+			(child) => child.type === GraphNodeType.Catch,
+		);
+		const tryExit = tryBody && exitPortOf(tryBody);
+		const catchEntry = catchBody && entryPortOf(catchBody);
+		const outerExit = exitPortOf(node);
+		if (!tryExit || !catchEntry || !outerExit) continue;
+
+		for (const [i, edge] of result.entries()) {
+			if (edge.sourceId === tryExit.id && edge.targetId === catchEntry.id) {
+				result[i] = { ...edge, label: CATCH_EDGE_LABEL };
+			}
+		}
+		const hasSuccessEdge = result.some(
+			(edge) => edge.sourceId === tryExit.id && edge.targetId === outerExit.id,
+		);
+		if (!hasSuccessEdge) {
+			result.push({ sourceId: tryExit.id, targetId: outerExit.id, label: "" });
+		}
+	}
+	return result;
+}
+
 function nodeKind(node: SdkNode): NodeKind {
 	if (node.type === GraphNodeType.Start) return "start";
 	if (node.type === GraphNodeType.End) return "end";
@@ -187,11 +239,14 @@ function toDefinitionGraph(root: Graph): DefinitionGraph {
 		.map(({ node }) => node.id);
 	const edges: DefinitionGraphEdge[] = [];
 	const seen = new Set<string>();
-	const workingEdges = sdkEdges.map((edge) => ({
-		sourceId: edge.sourceId,
-		targetId: edge.targetId,
-		label: edge.label ?? "",
-	}));
+	const workingEdges = splitTryCatchPaths(
+		sdkEdges.map((edge) => ({
+			sourceId: edge.sourceId,
+			targetId: edge.targetId,
+			label: edge.label ?? "",
+		})),
+		[...sdkNodes.values()].map(({ node }) => node),
+	);
 	for (const edge of contractPorts(workingEdges, portIds)) {
 		const source = idBySdkId.get(edge.sourceId);
 		const target = idBySdkId.get(edge.targetId);

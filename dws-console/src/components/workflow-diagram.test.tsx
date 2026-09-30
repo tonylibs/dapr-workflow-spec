@@ -266,4 +266,38 @@ do:
 			).toBeNull();
 		});
 	});
+	it("renders error badges on container nodes for errors on a try/catch task", async () => {
+		render(
+			<WorkflowDiagram
+				definition={`
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: guarded-workflow
+do:
+  - guarded:
+      try:
+        - fetchOrder:
+            call: http
+            with:
+              method: get
+              endpoint: http://orders/get
+      catch:
+        do:
+          - recordFailure:
+              set:
+                failed: true
+`}
+				format="yaml"
+				specErrors={[{ path: "/do/0/guarded/catch/errors" }]}
+			/>,
+		);
+
+		const badge = await screen.findByTestId(
+			"error-badge-/do/0/guarded",
+			undefined,
+			{ timeout: 1500 },
+		);
+		expect(badge.textContent).toBe("1 error");
+	});
 });
