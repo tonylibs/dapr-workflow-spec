@@ -64,6 +64,18 @@ all components. The tagging step above does the relabel itself, only after the t
 exists. If a run is still blocked, create the tag and relabel the merged PR by hand
 (`autorelease: pending` → `autorelease: tagged`), then re-run release-please.
 
+`dws-controller` and `dws-orchestrator` (Maven) also set `skip-snapshot: true`. We publish
+container images only, so the post-release `-SNAPSHOT` version-bump PRs add noise (they
+show up as empty PRs) and are suppressed.
+
+**Which commit gets tagged.** When `component-release` has to create the tag itself (no tag exists yet), it tags the component's release commit —
+`git log -1 --first-parent -- <component>/CHANGELOG.md`, i.e. the merged release-please PR —
+not `main`'s HEAD. release-please uses the tagged commit as the cut-off when collecting
+commits for the next release PR, and that commit has to touch `<component>/`; a tag on an
+unrelated commit makes it re-list old commits. The workflow falls back to HEAD only when
+`force=true` and the component has no `CHANGELOG.md` history (bootstrap); without `force`
+it fails instead.
+
 ## Ordering rules (enforced)
 
 - **① before ②.** `component-release` reads the version from the manifest and refuses

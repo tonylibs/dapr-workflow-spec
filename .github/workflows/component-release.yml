@@ -102,15 +102,31 @@ jobs:
       - name: Tag and push
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
+          COMPONENT: ${{ inputs.component }}
+          FORCE: ${{ inputs.force }}
         run: |
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null 2>&1; then
             echo "::notice::$TAG already exists on origin -- reusing it."
           else
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git tag "$TAG"
+            # Tag the component's release commit, not HEAD: release-please uses the tagged
+            # commit as the cut-off when listing commits for the next release PR, and it
+            # must touch <component>/ -- a tag on an unrelated commit makes it re-list
+            # old commits.
+            sha=$(git log -1 --first-parent --format=%H -- "${COMPONENT}/CHANGELOG.md")
+            if [ -z "$sha" ]; then
+              if [ "$FORCE" = "true" ]; then
+                sha=$(git rev-parse HEAD)
+                echo "::notice::${COMPONENT}/CHANGELOG.md has no history -- force=true, tagging HEAD ($sha)."
+              else
+                echo "::error::No commit found for ${COMPONENT}/CHANGELOG.md, so there is no release commit to tag. Re-run with force=true to tag HEAD."
+                exit 1
+              fi
+            fi
+            git tag "$TAG" "$sha"
             git push origin "$TAG"
-            echo "::notice::Pushed $TAG."
+            echo "::notice::Pushed $TAG at $sha."
           fi
 
       - name: Start the component build on the tag
