@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-console-v0.2.0...dws-console-v0.3.0) (2026-09-30)
+
+
+### Features
+
+* **console:** implement workflow graph ([5ba57a7](https://github.com/tonylibs/dapr-workflow-spec/commit/5ba57a7f939ac21082038516e03881ce25e04a6e))
+* **console:** live workflow diagram in the definition editor (Phase 4) ([15e26bd](https://github.com/tonylibs/dapr-workflow-spec/commit/15e26bd7d6d3931387027b78d6a17aa23c0a8304))
+
+
+### Bug Fixes
+
+* **console:** allow THIRD_PARTY_NOTICES.md in docker context ([a3f77ae](https://github.com/tonylibs/dapr-workflow-spec/commit/a3f77aebe488d7095011a22e14f3c9a9e45195a5))
+* **console:** restore routeTree.gen.ts to tsr generate output ([1e3ad65](https://github.com/tonylibs/dapr-workflow-spec/commit/1e3ad6588f566ac012c7e3208cac61c6c83c0aae))
+* **console:** split try/catch diagram paths and badge container errors ([8f2dbfe](https://github.com/tonylibs/dapr-workflow-spec/commit/8f2dbfe56d4872fc0fedb9796315945c006d2a97))
+
 ## [0.2.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-console-v0.1.0...dws-console-v0.2.0) (2026-09-09)
 
 
