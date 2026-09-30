@@ -57,6 +57,13 @@ run, and the next push to main retries.
 creates it for a bootstrap/hotfix) and dispatches `<component>.yml` on it, since tags
 pushed with `GITHUB_TOKEN` never trigger `push: tags` builds.
 
+Because no GitHub release is created, release-please never relabels the merged release
+PR from `autorelease: pending` to `autorelease: tagged`, and a PR left at `pending`
+makes every later run abort ("There are untagged, merged release PRs outstanding") for
+all components. The tagging step above does the relabel itself, only after the tag
+exists. If a run is still blocked, create the tag and relabel the merged PR by hand
+(`autorelease: pending` → `autorelease: tagged`), then re-run release-please.
+
 ## Ordering rules (enforced)
 
 - **① before ②.** `component-release` reads the version from the manifest and refuses
