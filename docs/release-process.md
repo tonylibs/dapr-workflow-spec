@@ -11,8 +11,8 @@ three **deliberate, human-gated** steps with automation in between.
 
 | # | Action | Trigger | Produces | Gate |
 |---|---|---|---|---|
-| ① | Bump component version | merge that component's release-please PR | version file + `CHANGELOG.md` + `.release-please-manifest.json` updated | human merges PR |
-| ② | Cut component image | run **component-release** workflow | `<component>-v<version>` tag → build fires → `:<version>` image in ghcr.io | human dispatch |
+| ① | Bump component version | merge that component's release-please PR | version file + `CHANGELOG.md` + `.release-please-manifest.json` updated; `<component>-v<version>` tag pushed, PR labeled `tagged` (no build) | human merges PR |
+| ② | Cut component image | run **component-release** workflow | tag ensured → `<component>.yml` dispatched on it → `:<version>` image in ghcr.io | human dispatch |
 | ③ | Cut chart | run **chart-release** workflow → merge its PR | `values.yaml` pinned + `Chart.yaml` bumped → chart `vX.Y.Z` + OCI push + GitHub Release | human dispatch + merge |
 
 ```
@@ -20,10 +20,11 @@ three **deliberate, human-gated** steps with automation in between.
 ┌────────────────────────┐   ┌──────────────────────────────────────────────┐
 │  merge feature PR      │   │  ① merge component's release-please PR         │
 │  → build + test        │   │     → version file + CHANGELOG + manifest      │
-│  → push :latest :sha   │   │     (still NO tag, NO :semver image)           │
+│  → push :latest :sha   │   │     → pushes <component>-v<version> tag        │
+│     (NO build, NO :semver image yet)           │
 │    (NO version image)  │   │                                                │
 │                        │   │  ② run component-release (pick component)      │
-│  release-please keeps  │   │     → pushes <component>-v<version> tag         │
+│  release-please keeps  │   │     → dispatches build on <component>-v<version>│
 │  a standing release PR │   │     → component build fires → push :<version>  │
 │  updated per component │   │                                                │
 │                        │   │  ③ run chart-release → merge its PR            │
@@ -41,14 +42,33 @@ pushing the `<component>-v<version>` git tag (see each component workflow's
 that a component release has actually produced.
 
 `release-please.yml` sets `skip-github-release: true` on every package, so merging a
-release PR bumps the version/CHANGELOG/manifest but does **not** tag or release —
-that's what keeps releases deliberate instead of firing on every merge.
+release PR bumps the version/CHANGELOG/manifest but creates **no GitHub Release and
+no build** — that's what keeps releases deliberate instead of firing on every merge.
+
+Merging a release PR does push the `<component>-v<version>` git tag (at the merge
+commit) and relabels the PR `autorelease: tagged`, via the "Mark merged release PRs as
+tagged" step in `release-please.yml`. release-please (manifest mode) finds a
+component's previous release only through a GitHub Release or that tag; without it,
+the next run starts from scratch and opens a wrong follow-up PR full of old commits.
+If tagging fails the PR stays `autorelease: pending`, release-please stops for that
+run, and the next push to main retries.
+
+`component-release` is the deliberate build-and-publish step: it reuses the tag (or
+creates it for a bootstrap/hotfix) and dispatches `<component>.yml` on it, since tags
+pushed with `GITHUB_TOKEN` never trigger `push: tags` builds.
+
+Because no GitHub release is created, release-please never relabels the merged release
+PR from `autorelease: pending` to `autorelease: tagged`, and a PR left at `pending`
+makes every later run abort ("There are untagged, merged release PRs outstanding") for
+all components. The tagging step above does the relabel itself, only after the tag
+exists. If a run is still blocked, create the tag and relabel the merged PR by hand
+(`autorelease: pending` → `autorelease: tagged`), then re-run release-please.
 
 `dws-controller` and `dws-orchestrator` (Maven) also set `skip-snapshot: true`. We publish
 container images only, so the post-release `-SNAPSHOT` version-bump PRs add noise (they
 show up as empty PRs) and are suppressed.
 
-**Which commit gets tagged.** `component-release` tags the component's release commit —
+**Which commit gets tagged.** When `component-release` has to create the tag itself (no tag exists yet), it tags the component's release commit —
 `git log -1 --first-parent -- <component>/CHANGELOG.md`, i.e. the merged release-please PR —
 not `main`'s HEAD. release-please uses the tagged commit as the cut-off when collecting
 commits for the next release PR, and that commit has to touch `<component>/`; a tag on an
