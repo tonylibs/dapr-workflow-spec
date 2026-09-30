@@ -44,6 +44,14 @@ that a component release has actually produced.
 release PR bumps the version/CHANGELOG/manifest but does **not** tag or release —
 that's what keeps releases deliberate instead of firing on every merge.
 
+Because no GitHub release is created, release-please never relabels the merged release
+PR from `autorelease: pending` to `autorelease: tagged`, and a PR left at `pending`
+makes every later run abort ("There are untagged, merged release PRs outstanding") for
+all components. The `release-please.yml` workflow therefore relabels merged release PRs
+automatically before running release-please (label swap only: no tag, no Release). If a
+run is still blocked, relabel the merged PR by hand (`autorelease: pending` →
+`autorelease: tagged`) and re-run release-please.
+
 ## Ordering rules (enforced)
 
 - **① before ②.** `component-release` reads the version from the manifest and refuses
