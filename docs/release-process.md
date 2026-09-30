@@ -44,6 +44,18 @@ that a component release has actually produced.
 release PR bumps the version/CHANGELOG/manifest but does **not** tag or release —
 that's what keeps releases deliberate instead of firing on every merge.
 
+`dws-controller` and `dws-orchestrator` (Maven) also set `skip-snapshot: true`. We publish
+container images only, so the post-release `-SNAPSHOT` version-bump PRs add noise (they
+show up as empty PRs) and are suppressed.
+
+**Which commit gets tagged.** `component-release` tags the component's release commit —
+`git log -1 --first-parent -- <component>/CHANGELOG.md`, i.e. the merged release-please PR —
+not `main`'s HEAD. release-please uses the tagged commit as the cut-off when collecting
+commits for the next release PR, and that commit has to touch `<component>/`; a tag on an
+unrelated commit makes it re-list old commits. The workflow falls back to HEAD only when
+`force=true` and the component has no `CHANGELOG.md` history (bootstrap); without `force`
+it fails instead.
+
 ## Ordering rules (enforced)
 
 - **① before ②.** `component-release` reads the version from the manifest and refuses
