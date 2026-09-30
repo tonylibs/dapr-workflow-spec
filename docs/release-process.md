@@ -111,5 +111,12 @@ it fails instead.
   next ③ run — but each of those components needs a `<component>-v<version>` tag to
   exist first. Run ② once per component to mint the images, then the first ③
   normalizes `values.yaml`.
+- First-party image tags (`ghcr.io/tonylibs/<name>:<tag>`, in `image:` lines and env
+  `value:` lines) are masked alongside `helm.sh/chart` and `app.kubernetes.io/version` in
+  `charts/dws/tests/observability-render-test.sh`, so a chart-release re-pin of
+  `values.yaml` does not fail the byte-compare against the default-render baseline.
+  Third-party images stay unmasked.
+- `dws-call-a2a` is pinned by `chart_release.py` like the other step images
+  (`controller.stepImages.callA2a`); it no longer stays on `latest`.
 - `"1.0"` is not valid semver; the manifest already carries proper `X.Y.Z` values, so
   the pins converge to `X.Y.Z` after the first component + chart release.
