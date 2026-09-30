@@ -2,16 +2,15 @@ name: release-please
 
 # Watches every push to main and, per component (see release-please-config.json),
 # maintains a standing "release PR" that accumulates Conventional Commit changes
-# under that component's path. Merging that PR only bumps the component's version
-# file, updates its CHANGELOG.md, and updates .release-please-manifest.json --
-# every package sets `skip-github-release: true`, so no tag and no GitHub Release
-# are created here. Cutting an actual release (tag + image build/publish) for a
-# component is a separate, deliberate step: see component-release.yml
-# (workflow_dispatch) for that, mirroring chart-release.yml for the Helm chart.
-#
-# Because release-please never relabels merged release PRs when GitHub releases
-# are skipped, the first step swaps `autorelease: pending` -> `autorelease: tagged`
-# on merged release PRs so they don't block later runs.
+# under that component's path. Merging that PR bumps the component's version
+# file, updates its CHANGELOG.md, and updates .release-please-manifest.json.
+# Every package sets `skip-github-release: true`, so no GitHub Release is created;
+# instead the first step below pushes a plain `<component>-v<version>` anchor tag
+# at the merge commit and relabels the PR `autorelease: tagged`. release-please
+# (manifest mode) finds a component's previous release only via a GitHub Release
+# or that tag, so without it the next run starts from scratch and opens a wrong PR.
+# Building/publishing the image is still a separate, deliberate step: see
+# component-release.yml (workflow_dispatch), mirroring chart-release.yml.
 on:
   push:
     branches: [main]
@@ -28,20 +27,43 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
+      # Runs BEFORE release-please so the anchor tag exists when it looks for the
+      # previous release. If tagging fails, the label stays `pending`: release-please
+      # then stops for this run rather than opening a wrong PR, and the next run
+      # retries. Snapshot PRs (`autorelease: snapshot`) are not matched.
       - name: Mark merged release PRs as tagged
-        # skip-github-release: true means release-please never relabels merged
-        # release PRs; one left at `autorelease: pending` blocks all later runs.
-        # This only swaps a label: no tag, no GitHub Release.
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          set -euo pipefail
+          prefix="release-please--branches--main--components--"
+          gh label create "autorelease: tagged" --color ededed 2>/dev/null || true
           gh pr list --state merged --label "autorelease: pending" --limit 100 \
-            --json number,headRefName \
-            --jq '.[] | select(.headRefName | startswith("release-please--")) | .number' |
-          while read -r n; do
-            echo "Relabeling #$n: autorelease: pending -> autorelease: tagged"
-            gh pr edit "$n" --remove-label "autorelease: pending" --add-label "autorelease: tagged"
+            --json number,headRefName,mergeCommit \
+            --jq '.[] | select(.headRefName | startswith("'"$prefix"'")) | [.number, .headRefName, .mergeCommit.oid] | @tsv' |
+          while IFS=$'\t' read -r number branch sha; do
+            component="${branch#"$prefix"}"
+            if [ -z "$sha" ] || [ -z "$component" ]; then
+              echo "::warning::PR #$number: cannot determine component/merge commit; leaving label as is"
+              continue
+            fi
+            version=$(gh api -H "Accept: application/vnd.github.raw" \
+              "repos/$GH_REPO/contents/.release-please-manifest.json?ref=$sha" |
+              jq -er --arg c "$component" '.[$c]') || {
+              echo "::warning::PR #$number: no manifest version for $component at $sha; leaving label as is"
+              continue
+            }
+            tag="${component}-v${version}"
+            if gh api "repos/$GH_REPO/git/ref/tags/$tag" >/dev/null 2>&1; then
+              echo "$tag already exists"
+            elif gh api "repos/$GH_REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$sha" >/dev/null; then
+              echo "Created $tag at $sha"
+            else
+              echo "::error::PR #$number: failed to create $tag; leaving label as is so the next run retries"
+              continue
+            fi
+            gh pr edit "$number" --remove-label "autorelease: pending" --add-label "autorelease: tagged"
           done
 
       - uses: googleapis/release-please-action@v4

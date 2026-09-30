@@ -2,12 +2,13 @@ name: component-release
 
 # Manually triggered: run this whenever you deliberately want to cut a release for
 # one component. release-please.yml already keeps each component's version file
-# and CHANGELOG.md up to date on every merge to main (see release-please-config.json
-# -- every package sets `skip-github-release: true`), but it stops there: no tag,
-# no GitHub Release, no build. This workflow pushes the `<component>-v<version>`
-# tag that the component's own build workflow (dws-admin.yml, dws-run.yml, etc.)
-# watches to build and publish the matching image -- mirroring chart-release.yml's
-# manual, deliberate trigger for the Helm chart.
+# and CHANGELOG.md up to date on every merge to main and pushes the
+# `<component>-v<version>` anchor tag when a release PR merges, but it never builds.
+# This workflow creates that tag if it is missing (bootstrap/hotfix) and then
+# dispatches the component's own build workflow (dws-admin.yml, dws-run.yml, etc.)
+# on the tag to build and publish the matching image -- mirroring chart-release.yml's
+# manual, deliberate trigger for the Helm chart. (Tags pushed with GITHUB_TOKEN never
+# trigger `push: tags` workflows, hence the explicit dispatch.)
 #
 # See docs/release-process.md for the end-to-end runbook.
 on:
@@ -40,6 +41,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   release:
@@ -102,11 +104,22 @@ jobs:
           TAG: ${{ steps.resolve.outputs.tag }}
         run: |
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null 2>&1; then
-            echo "::notice::$TAG already exists on origin -- nothing to do. (If you meant to release a newer version, merge that component's pending release-please PR first.)"
-            exit 0
+            echo "::notice::$TAG already exists on origin -- reusing it."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "$TAG"
+            git push origin "$TAG"
+            echo "::notice::Pushed $TAG."
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "$TAG"
-          git push origin "$TAG"
-          echo "::notice::Pushed $TAG -- ${{ inputs.component }}'s build workflow will pick it up and publish the image."
+
+      - name: Start the component build on the tag
+        # GITHUB_TOKEN-pushed tags don't fire `push: tags`, so dispatch explicitly.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          COMPONENT: ${{ inputs.component }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          gh workflow run "${COMPONENT}.yml" --ref "$TAG"
+          echo "::notice::Started ${COMPONENT}.yml on $TAG -- it will publish ghcr.io/${GITHUB_REPOSITORY_OWNER}/${COMPONENT}:${{ steps.resolve.outputs.version }}."
