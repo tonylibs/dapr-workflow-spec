@@ -85,20 +85,21 @@ executor:
     model: claude-sonnet-5
 
 os_env:
-  # sandbox block removed: windows_jobobject sandboxing gives zero real
-  # isolation on Windows anyway (own log warning: no filesystem/network
-  # isolation, process-tree containment only), so no reason to keep it here.
-  # NOTE: this did NOT fix the WinError 193 claude-sdk spawn bug (tested
-  # 2026-09-22) — that bug is unconditional on Windows, not tied to sandbox
-  # config. Root cause: claude_agent_sdk resolves "the claude CLI" to a
-  # generated temp .py proxy script and execs it directly; Windows
-  # CreateProcess doesn't interpret shebangs (POSIX exec() does), so running
-  # a .py as if it were a binary fails with "%1 is not a valid Win32
-  # application". Confirmed unpatched in 0.14.0 (latest as of 2026-09-22).
-  # Likely fixed by running omnigent under Linux/WSL2/macOS instead — see
-  # discussion, untested here. Re-add sandbox: once on Linux/macOS.
   type: caller_process
   cwd: .
+  sandbox:
+    # An omitted sandbox uses the platform default with read-only cwd on Linux.
+    type: auto
+    write_paths: ["."]
+    allow_network: true
+    cwd_allow_hidden:
+      - .git
+      - .github
+      - .agents
+      - .claude
+      - .codex
+      - .omnigent
+      - .venv
 
 tools:
   # Specialist sub-agents: one bundle each under agents/<name>/config.yaml.
