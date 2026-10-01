@@ -20,3 +20,16 @@ tools:
 os_env:
   type: caller_process
   cwd: .
+  sandbox:
+    # An omitted sandbox uses the platform default with read-only cwd on Linux.
+    type: auto
+    write_paths: []
+    allow_network: true
+    cwd_allow_hidden:
+      - .git
+      - .github
+      - .agents
+      - .claude
+      - .codex
+      - .omnigent
+      - .venv
