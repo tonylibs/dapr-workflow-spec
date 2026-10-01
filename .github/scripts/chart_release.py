@@ -21,6 +21,7 @@ VALUES_ANCHORS = {
     "dws-call-grpc": ["ghcr.io/tonylibs/dws-call-grpc"],
     "dws-call-openapi": ["ghcr.io/tonylibs/dws-call-openapi"],
     "dws-call-asyncapi": ["ghcr.io/tonylibs/dws-call-asyncapi"],
+    "dws-call-a2a": ["ghcr.io/tonylibs/dws-call-a2a"],
     "dws-run": [
         "ghcr.io/tonylibs/dws-run-shell",
         "ghcr.io/tonylibs/dws-run-script-js",

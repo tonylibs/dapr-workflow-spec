@@ -95,17 +95,20 @@ fi
 
 [ -f "$baseline" ] || fail "missing baseline fixture $baseline (regenerate with --update-baseline)"
 
-# Mask the two version-bearing label lines on BOTH sides. They appear on every resource, so an
-# ordinary Chart.yaml version/appVersion bump would otherwise red-fail this across ~150 lines and
-# force a regeneration — which would silently absorb any unrelated default-render change landing
-# in the same commit. That is the exact regression this fixture exists to catch. Masking keeps a
-# version bump a no-op while a real topology change still fails.
+# Mask the version-bearing lines on BOTH sides: the two label lines, and the tag of every
+# first-party image reference (ghcr.io/tonylibs/<name>:<tag>, in `image:` lines and in env
+# `value:` lines such as the orchestrator and step images). They appear on many resources, so an
+# ordinary Chart.yaml version/appVersion bump or a chart-release image re-pin would otherwise
+# red-fail this and force a regeneration — which would silently absorb any unrelated
+# default-render change landing in the same commit. That is the exact regression this fixture
+# exists to catch. Masking keeps a version bump or re-pin a no-op while a real topology change
+# still fails. Third-party images (bitnami, daprio, ...) stay unmasked.
 mask_versions() {
-  sed -E 's#^( *helm\.sh/chart: dws-).*#\1<CHART_VERSION>#; s#^( *app\.kubernetes\.io/version: ).*#\1<APP_VERSION>#'
+  sed -E 's#^( *helm\.sh/chart: dws-).*#\1<CHART_VERSION>#; s#^( *app\.kubernetes\.io/version: ).*#\1<APP_VERSION>#; s#(ghcr\.io/tonylibs/[A-Za-z0-9._-]+):[A-Za-z0-9._-]+#\1:<IMAGE_TAG>#g'
 }
 
 if ! diff -u <(mask_versions < "$baseline") <(printf '%s\n' "$default_render" | mask_versions); then
-  fail "the DEFAULT render changed. observability.enabled=false must stay byte-identical to the pre-observability chart (Chart.yaml version/appVersion bumps are already masked out of this comparison, so the diff above is real). If it is a deliberate chart change, review it and re-record the baseline with: bash $chart_dir/tests/observability-render-test.sh $chart_dir --update-baseline"
+  fail "the DEFAULT render changed. observability.enabled=false must stay byte-identical to the pre-observability chart (Chart.yaml version/appVersion bumps and first-party image tags are already masked out of this comparison, so the diff above is real). If it is a deliberate chart change, review it and re-record the baseline with: bash $chart_dir/tests/observability-render-test.sh $chart_dir --update-baseline"
 fi
 
 assert_absent '^kind: Instrumentation$' "$default_render" \
