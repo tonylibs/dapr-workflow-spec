@@ -90,16 +90,11 @@ os_env:
   sandbox:
     # An omitted sandbox uses the platform default with read-only cwd on Linux.
     type: auto
-    write_paths: ["."]
+    # Linked worktree metadata lives outside the workspace on this host.
+    write_paths: [".", "/home/dapr-workflow-spec/.git"]
     allow_network: true
-    cwd_allow_hidden:
-      - .git
-      - .github
-      - .agents
-      - .claude
-      - .codex
-      - .omnigent
-      - .venv
+    # Git must see all tracked dotfiles to report the real working tree.
+    cwd_allow_hidden: ["*"]
 
 tools:
   # Specialist sub-agents: one bundle each under agents/<name>/config.yaml.
