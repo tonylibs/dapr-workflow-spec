@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.regex.Pattern;
+import one.util.streamex.StreamEx;
 
 /** Loads and validates the Step half of the shared single-node definition contract. */
 public class SingleNodeDefinitionLoader {
@@ -46,6 +48,8 @@ public class SingleNodeDefinitionLoader {
       throw new DefinitionLoadException("step definition must contain a non-empty object 'task'");
     }
 
+    validateTaskKind(task);
+
     boolean delegatesToFunction = task.has("call") || task.has("run");
     JsonNode functionAppId = definition.get("functionAppId");
     if (delegatesToFunction
@@ -62,6 +66,23 @@ public class SingleNodeDefinitionLoader {
 
     return new SingleNodeDefinition(
         workflow, version, nodeId, task, functionAppId == null ? null : functionAppId.textValue());
+  }
+
+  private void validateTaskKind(JsonNode task) {
+    List<String> flowOnly =
+        StreamEx.of(SingleNodeDefinition.FLOW_ONLY_TASK_KINDS).filter(task::has).toList();
+    if (!flowOnly.isEmpty()) {
+      throw new DefinitionLoadException(
+          "task kind(s) "
+              + flowOnly
+              + " cannot run in dws-step: wait and listen run as dws-flow controller nodes"
+              + " (see ADR 0006)");
+    }
+    try {
+      new SingleNodeDefinition(null, null, null, task, null).kind();
+    } catch (IllegalStateException e) {
+      throw new DefinitionLoadException(e.getMessage(), e);
+    }
   }
 
   private JsonNode readDefinition() {
