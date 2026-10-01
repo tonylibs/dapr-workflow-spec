@@ -100,7 +100,10 @@ public class JqEvaluator {
     if (value == null) {
       return false;
     }
-    String trimmed = value.trim();
+    return isWrapperForm(value.trim());
+  }
+
+  private static boolean isWrapperForm(String trimmed) {
     return trimmed.startsWith("${") && trimmed.endsWith("}");
   }
 
@@ -149,14 +152,7 @@ public class JqEvaluator {
       throw new ExpressionException("expression must not be null");
     }
     String trimmed = expression.trim();
-    if (trimmed.startsWith("${") && trimmed.endsWith("}")) {
-      return trimmed.substring(2, trimmed.length() - 1).trim();
-    }
-    return trimmed;
-  }
-
-  ObjectMapper mapper() {
-    return mapper;
+    return isWrapperForm(trimmed) ? trimmed.substring(2, trimmed.length() - 1).trim() : trimmed;
   }
 
   /** Thrown when a runtime expression cannot be compiled or evaluated. */

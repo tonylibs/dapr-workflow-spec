@@ -12,6 +12,7 @@ import io.dapr.workflows.WorkflowActivityContext;
 import io.dws.step.config.SingleNodeDefinition;
 import io.dws.step.failure.StepConfigException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -27,9 +28,7 @@ class StepActivityTest {
   void routesToTheHandlerRegisteredForTheNodesKindAndNoOther(TaskKind kind) throws Exception {
     List<TaskKind> invoked = new ArrayList<>();
     List<TaskHandler> handlers =
-        java.util.Arrays.stream(TaskKind.values())
-            .<TaskHandler>map(k -> recording(k, invoked))
-            .toList();
+        Arrays.stream(TaskKind.values()).<TaskHandler>map(k -> recording(k, invoked)).toList();
     StepActivity activity =
         new StepActivity(definitionFor(kind), new TaskHandlerRegistry(handlers));
 
