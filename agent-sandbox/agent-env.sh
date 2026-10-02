@@ -3,7 +3,7 @@
 if [ -r "$HOME/.config/agent-sandbox/credentials.env" ]; then
     while IFS= read -r agent_credential_line || [ -n "$agent_credential_line" ]; do
         case ${agent_credential_line%%=*} in
-            ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|OPENAI_API_KEY|COPILOT_GITHUB_TOKEN|GEMINI_API_KEY)
+            ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|OPENAI_API_KEY|COPILOT_GITHUB_TOKEN|GEMINI_API_KEY|GH_TOKEN)
                 case $agent_credential_line in
                     *=*) export "$agent_credential_line" ;;
                 esac

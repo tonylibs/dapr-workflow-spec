@@ -115,14 +115,20 @@ locally built images need to be rebuilt from the current Dockerfile.
 
 Both helpers forward these host environment variables into the sandbox when they are set, so the
 agent CLIs start already signed in. Unset variables are skipped; those CLIs keep their manual login.
+They also copy the host's global `git config user.name` and `user.email` into the sandbox's global
+Git config. For GitHub, set `GH_TOKEN` on the host or sign in to the host's `gh` CLI; the helpers
+fall back to `gh auth token` when `GH_TOKEN` is unset. The sandbox configures `gh` and Git's HTTPS
+credential helper from that token. `COPILOT_GITHUB_TOKEN` is kept separate because its permission
+scope is for Copilot Requests, not repository access.
 
 | Variable | CLI | Notes |
 |---|---|---|
 | `CLAUDE_CODE_OAUTH_TOKEN` | Claude Code | Subscription token from `claude setup-token` on the host. |
 | `ANTHROPIC_API_KEY` | Claude Code | API billing. Pre-approved, so interactive `claude` does not prompt for it. Takes precedence over the OAuth token when both are set. |
 | `OPENAI_API_KEY` | Codex | Codex ignores the env var, so the sandbox runs `codex login --with-api-key` once (stored in `~/.codex/auth.json`). |
-| `COPILOT_GITHUB_TOKEN` | Copilot CLI | Fine-grained PAT with only the **Copilot Requests** account permission; classic PATs are not supported. Deliberately not `GH_TOKEN`, which would also sign in `gh`/git. |
+| `COPILOT_GITHUB_TOKEN` | Copilot CLI | Fine-grained PAT with only the **Copilot Requests** account permission; classic PATs are not supported. It is not used for `gh`/Git. |
 | `GEMINI_API_KEY` | Antigravity (`agy`) | Also sets `"modelProvider": "gemini"` in `~/.gemini/antigravity-cli/settings.json`, so `agy` uses Gemini API billing instead of your Google account sign-in. |
+| `GH_TOKEN` | GitHub CLI and Git HTTPS | A GitHub token with the repository permissions needed for your intended `gh` and Git operations. Falls back to the host's `gh auth token`. |
 
 ```powershell
 $env:CLAUDE_CODE_OAUTH_TOKEN = "..."   # plus any of the others
@@ -147,8 +153,9 @@ the existing host environment variable rather than typing a token into command h
 "COPILOT_GITHUB_TOKEN=$env:COPILOT_GITHUB_TOKEN" | docker exec -i sandbox-<id> agent-auth-setup
 ```
 
-Names left out are removed from the files, except Codex's stored login, which stays until
-`codex logout`. Open a fresh Orca terminal to load the updated credentials. Existing processes
+Names left out are removed from the credential files, except Codex's stored login, which stays until
+`codex logout`; previously configured global Git name/email stay until changed with `git config`.
+Open a fresh Orca terminal to load the updated credentials. Existing processes
 retain their old environment; restarting the terminal is required to remove omitted tokens.
 To reload added or changed tokens in an existing Bash terminal, run:
 
