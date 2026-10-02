@@ -162,5 +162,7 @@ public sealed class SequencerRunnerTests
             FlowCalls.Add((appId, instanceId, input));
             return Task.FromResult(input.Data);
         }
+
+        public async Task<(bool TimedOut, JsonNode? Result)> WithTimeout(TimeSpan timeout, Task<JsonNode?> call) => (false, await call);
     }
 }

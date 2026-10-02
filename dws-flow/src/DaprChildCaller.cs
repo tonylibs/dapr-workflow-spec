@@ -31,6 +31,20 @@ public sealed class DaprChildCaller : IChildCaller
             input,
             new ChildWorkflowTaskOptions(InstanceId: instanceId, TargetAppId: appId)));
 
+    public async Task<(bool TimedOut, JsonNode? Result)> WithTimeout(TimeSpan timeout, Task<JsonNode?> call)
+    {
+        using CancellationTokenSource timerCancellation = new();
+        Task timer = context.CreateTimer(timeout, timerCancellation.Token);
+        Task winner = await Task.WhenAny(call, timer);
+        if (winner == timer)
+        {
+            return (true, null);
+        }
+
+        timerCancellation.Cancel();
+        return (false, await call);
+    }
+
     /// <summary>The <c>Step</c> activity's constant name, shared with the dws-step package's contract.</summary>
     public const string StepActivityName = "Step";
 

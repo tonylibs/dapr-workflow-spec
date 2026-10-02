@@ -57,14 +57,23 @@ public static class SequencerRunner
         string appId = ChildAppId(definition, name);
         FlowInput childInput = input with { Data = data };
 
-        if (ChildClassifier.Classify(body) == ChildKind.Step)
+        Task<JsonNode?> call = ChildClassifier.Classify(body) == ChildKind.Step
+            ? caller.CallStep(appId, childInput)
+            : caller.CallFlow(appId, InstanceIds.For(input.RootInstanceId!, appId, input.IterationIndex ?? InstanceIds.DefaultIteration), childInput);
+
+        TimeSpan? timeout = TaskTimeout.Parse(body["timeout"]);
+        return timeout is null ? call : AwaitWithTimeout(caller, timeout.Value, call, name);
+    }
+
+    private static async Task<JsonNode?> AwaitWithTimeout(IChildCaller caller, TimeSpan timeout, Task<JsonNode?> call, string name)
+    {
+        (bool timedOut, JsonNode? result) = await caller.WithTimeout(timeout, call);
+        if (timedOut)
         {
-            return caller.CallStep(appId, childInput);
+            throw new InvalidOperationException($"task '{name}' timed out after {TaskTimeout.Format(timeout)}");
         }
 
-        string iteration = input.IterationIndex ?? InstanceIds.DefaultIteration;
-        string instanceId = InstanceIds.For(input.RootInstanceId!, appId, iteration);
-        return caller.CallFlow(appId, instanceId, childInput);
+        return result;
     }
 
     private static string ChildAppId(SingleNodeDefinition definition, string name)
