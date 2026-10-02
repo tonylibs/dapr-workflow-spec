@@ -3,7 +3,8 @@
 Implements [Workflow Runtime Architecture](workflow-runtime-architecture.md) (the spec —
 read that first). This roadmap is the build order for turning it from target-state into running
 code. Status: 🟡 in progress — Phases 0 and 1 done (2026-09-04, 2026-09-09); Phase 2 is split into
-sub-phases 2.0–2g (see [Phase 2 breakdown](#phase-2-breakdown)).
+sub-phases 2.0–2g (see [Phase 2 breakdown](#phase-2-breakdown)) and Phase 3 into sub-phases 3a–3h
+(see [Phase 3 breakdown](#phase-3-breakdown)).
 
 ## Scope note: `dws-console` is unaffected
 
@@ -208,8 +209,8 @@ flowchart TD
 |---|---|---|---|
 | **0** | Write the ADR covering both decisions above ([ADR 0001](../adr/0001-workflow-runtime-v2-decisions.md) — done, 2026-08-29) (per-node app IDs; uniform plain-HTTP function images behind a uniform `dws-step`); scaffold `dws-flow` (.NET, Dapr Workflow SDK) and `dws-step` (Java/Spring, Dapr Workflow SDK) as new, per-node-deployable component templates — one running instance hosts exactly one compiled node, same "generic image, pinned definition at startup" shape `dws-orchestrator` uses today, just one node's definition instead of the whole workflow — alongside, not replacing, `dws-orchestrator`. Define the language-neutral single-node definition JSON contract (a node's own task list plus its children's target app IDs) the controller hands each instance | new repos/modules | ✅ done, 2026-09-04 (`workflow-runtime-v2-phase0-scaffolding`; schema + both runtime scaffolds, loaders, activities, Dockerfiles, READMEs, unit tests all landed; only the deferred follow-up — path-filtered CI for `dws-flow`/`dws-step` — remains open) |
 | **1** | Structural compiler: extract `WorkflowCompiler` into an interface with `V1OrchestratorCompiler`/`V2StructuralCompiler` strategies over a widened `DeploymentPlan`, selected via a Dapr Configuration resource, not local app config (see [Design decision](#design-decision-workflowcompiler-as-two-strategies-over-a-widened-deploymentplan) above, [ADR 0002](../adr/0002-workflow-compiler-strategy-split.md)) — do this refactor first. Then `V2StructuralCompiler` gains a pass that emits the Flow/Step/fork-branch graph per the [classification rules](workflow-runtime-architecture.md#classification-rules), with derived identifiers (`<workflow>.main`, `<try-task>.catch`, `<fork-task>.branch.<branch-root-task>`) that become each node's Dapr app ID once sanitized to a DNS-1123 label (dots → dashes). Every Step node — no exceptions — gets a `dws-step` app-id entry; for `call`/`run` Step nodes, apply the resolved naming rule to avoid the app-ID collision with the existing function's Knative Service — `dws-step` keeps the task-derived name, the function's Knative Service app ID gets a `-fn` suffix (see worked example above). Plus duplicate/ambiguous-id rejection. Golden tests against the spec's 5 worked examples | `dws-controller/compile` | ✅ done, 2026-09-09 — three OpenSpec changes, all archived: `phase-1-compiler-strategy-split` (2026-09-06), `phase-1-structural-classification` (2026-09-08), `scope-node-sequencer-controller-split` (2026-09-09, [ADR 0004](../adr/0004-scope-nodes-carry-their-own-configuration.md)). Open follow-ups: v2 has no semantic validation yet (v1's `semanticErrors`) — close before the Phase 5 default flip; `FlowNode.withChild`/`withChildren` have no production caller — Phase 4's call |
-| **2** | `dws-step` runtime: new `WorkflowActivity` implementations for `set`/`switch`/`wait`/`listen`/`emit`/`raise` (ported from the in-process orchestrator — no prebuilt image exists for these today); one uniform proxy `WorkflowActivity` for every `call`/`run` kind (`http`/`openapi`/`grpc`/`asyncapi`/`shell`/`script`) that does the same Dapr-service-invocation `POST /run` call `CallServiceActivity` already makes for `call: openapi` today, generalized to all six. In parallel: add a plain HTTP `POST /run` handler to `dws-call-http`/`dws-run-*`/`dws-call-grpc` (matching `dws-call-openapi`/`dws-call-asyncapi`'s existing shape) **without removing their current `Run` activity-worker registration yet** — see the sequencing note above; that removal is deferred to Phase 5's cleanup so v1 keeps working throughout | new `dws-step` | 🔜 unblocked — split into sub-phases 2.0–2g, see [Phase 2 breakdown](#phase-2-breakdown) |
-| **3** | `dws-flow` runtime: .NET Dapr Workflow host where each deployed instance hosts the single compiled Flow scope it was built for as its one registered workflow type, sequences that scope's tasks, and calls `CallActivityAsync`/`CallChildWorkflowAsync` per the classification rules — every Step child, with no exceptions, is invoked by calling its deployed `dws-step` app-id (never the underlying function image directly). Ports `try`/`catch`/`retry` (backoff, jitter, limits) from Java; `fork` is its own `FlowNode` too (see [Design decision](#design-decision-fork-as-a-standalone-flow-node) above, [ADR 0003](../adr/0003-fork-as-a-flow-node.md)) — it fans out to its branch app-ids and does `allOf`/`anyOf` itself, not the parent | new `dws-flow` | ❌ not started |
+| **2** | `dws-step` runtime: new `WorkflowActivity` implementations for `set`/`switch`/`emit`/`raise` (`wait`/`listen` moved to `dws-flow` by [ADR 0006](../adr/0006-wait-and-listen-as-flow-controllers.md), see Phase 3) (ported from the in-process orchestrator — no prebuilt image exists for these today); one uniform proxy `WorkflowActivity` for every `call`/`run` kind (`http`/`openapi`/`grpc`/`asyncapi`/`shell`/`script`) that does the same Dapr-service-invocation `POST /run` call `CallServiceActivity` already makes for `call: openapi` today, generalized to all six. In parallel: add a plain HTTP `POST /run` handler to `dws-call-http`/`dws-run-*`/`dws-call-grpc` (matching `dws-call-openapi`/`dws-call-asyncapi`'s existing shape) **without removing their current `Run` activity-worker registration yet** — see the sequencing note above; that removal is deferred to Phase 5's cleanup so v1 keeps working throughout | new `dws-step` | 🔜 unblocked — split into sub-phases 2.0–2g (2f moved to Phase 3), see [Phase 2 breakdown](#phase-2-breakdown) |
+| **3** | `dws-flow` runtime: .NET Dapr Workflow host where each deployed instance hosts the single compiled Flow node it was built for as its one registered workflow type. Every Flow node is a **Sequencer** (`main`/`do`: runs its task list) or a **Controller** (`for`, `try-catch`, `fork` and, per [ADR 0006](../adr/0006-wait-and-listen-as-flow-controllers.md), `wait` and `listen`: carries that scope's own configuration, empty `tasks`), per [ADR 0004](../adr/0004-scope-nodes-carry-their-own-configuration.md). Calls `CallActivityAsync`/`CallChildWorkflowAsync` per the classification rules — every Step child, with no exceptions, is invoked by calling its deployed `dws-step` app-id (never the underlying function image directly). Ports `try`/`catch`/`retry` (backoff, jitter, limits) from Java; `fork` does `allOf`/`anyOf` itself, not the parent ([ADR 0003](../adr/0003-fork-as-a-flow-node.md)); `wait` is a durable timer; `listen` waits for an external event and is its own pub/sub event bridge. Split into sub-phases 3a–3h, see the [Phase 3 breakdown](#phase-3-breakdown) | new `dws-flow` | 🔜 unblocked (3a can start now) — split into sub-phases 3a–3h, see the Phase 3 breakdown below |
 | **4** | Deploy synthesis v2: `StackSynthesizer`/`StackApplier` gain a path that emits one `dws-flow` Deployment per compiled Flow node and one `dws-step` Deployment per compiled Step node — every Step node, no exceptions — per workflow version, each carrying its own node's compiled definition as its definition key; version-drain/GC logic extended to both. Knative synthesis for `dws-call-*`/`dws-run-*` is unchanged and still runs — `dws-step` is a new layer deployed *in front of* those functions, not a replacement for their synthesis. No new Helm templates — same "deployed dynamically per-workflow, not chart-managed" pattern `dws-orchestrator` already follows — only new base images to build/push in CI. **Observability obligation (added 2026-09-19, from [observability.md](observability.md) Phase 2a′):** stamp the OTel annotations *inside* this synthesis rather than bolting them on afterwards — `instrumentation.opentelemetry.io/inject-java` for `dws-step`, `inject-dotnet` for `dws-flow`, plus `container-names` and `dapr.io/config`, and `OTEL_RESOURCE_ATTRIBUTES` carrying `service.name` (= the node's Dapr app ID), `dws.workflow.name`/`version` and `dws.node.id`/`kind`. The observability roadmap cannot instrument `dws-flow`/`dws-step` until this phase exists, because nothing deploys them today; the stamping helper built for its Phase 2a (orchestrator) applies here unchanged, so adding it now costs almost nothing and retrofitting later costs a second pass over the same code | `dws-controller/k8s`, CI | ❌ not started |
 | **5** | Parity verification and cutover: cross-app integration tests (.NET Flow → child Flow, .NET Flow → Java Step, Java Step → function `POST /run`; success/retry/failure propagation); run v1 and v2 side by side behind a controller flag — `dws-call-http`/`dws-run-*`/`dws-call-grpc` keep serving both interfaces (activity worker for v1, plain HTTP for v2's `dws-step`) throughout this window; parity-tested against the full [OWS feature matrix](openworkflow-features.md#1-current-task-type-coverage). On cutover: retire `dws-orchestrator`, **then** remove the now-unused activity-worker registration from those three images as cleanup, update [deployed-workflow.md](../../openwiki/architecture/deployed-workflow.md) | `dws-orchestrator` (retired), `dws-call-http`/`dws-run-*`/`dws-call-grpc` (cleanup), openwiki | ❌ not started |
 
@@ -223,7 +224,7 @@ dependencies live here.
 
 ```mermaid
 flowchart LR
-  A0["2.0 ADR"] --> F["2f wait/listen"]
+  A0["2.0 ADR"]
   A["2a core"] --> B["2b set/switch"]
   A --> C["2c emit/raise"]
   A --> D["2d call/run proxy"]
@@ -231,28 +232,80 @@ flowchart LR
   B --> G
   C --> G
   D --> G
-  F --> G
 ```
 
 | Sub-phase | Deliverable | Depends on | Status |
 |---|---|---|---|
-| **2.0** | ADR (docs only): where `wait`/`listen` run (see below); where the v1 data-flow input/output transforms (`DataFlowPipeline`) live in v2; the step error contract — what crosses the activity boundary so a Flow's `catch` can filter on `status` | — | ❌ not started |
+| **2.0** | ADR (docs only): where `wait`/`listen` run — **decided: [ADR 0006](../adr/0006-wait-and-listen-as-flow-controllers.md), 2026-10-01, Flow controller nodes, see Phase 3**; where the v1 data-flow input/output transforms (`DataFlowPipeline`) live in v2; the step error contract — what crosses the activity boundary so a Flow's `catch` can filter on `status` | — | ❌ not started |
 | **2a** | Step core: dispatch by task kind off the pinned definition, the activity's input/output data envelope, the error shape (502 reserved for transport failure, same contract as v1's `StepInvocationException`), and the jq evaluator port from `dws-orchestrator` | — | ❌ not started |
 | **2b** | `set` + `switch` — ports of `EvaluateSetActivity` / `EvaluateSwitchActivity` | 2a | ❌ not started |
 | **2c** | `emit` + `raise` — ports of `EmitEventActivity` / `RaiseErrorActivity` | 2a | ❌ not started |
 | **2d** | `call`/`run` proxy — one activity for all six kinds: Dapr `invokeMethod` `POST /run` to the node's `functionAppId`, carrying `X-Dws-Workflow-Instance-Id` / `X-Dws-Iteration-Index` as `CallServiceActivity` does today. Testable against `dws-call-openapi`/`-asyncapi`/`-a2a`, which are already plain HTTP | 2a | ❌ not started |
 | **2e** | Go images, dual surface — add a plain-HTTP `POST /run` to `dws-call-http`, `dws-run-*` and `dws-call-grpc` while **keeping** their `Run` activity-worker registration (v1 depends on it until Phase 5). One change per image | — | ❌ not started |
-| **2f** | `wait` + `listen`, as decided by the 2.0 ADR | 2.0 | ❌ not started |
-| **2g** | Exit gate: sidecar integration test per task kind, plus path-filtered CI for `dws-flow`/`dws-step` (the follow-up deferred from Phase 0) | 2b, 2c, 2d, 2e, 2f | ❌ not started |
+| **2f** | ~~`wait` + `listen`~~ — **moved to Phase 3 (3e, 3f, 3g)** by [ADR 0006](../adr/0006-wait-and-listen-as-flow-controllers.md): they run as `dws-flow` controller nodes, not Steps | — | ↪ moved |
+| **2g** | Exit gate: sidecar integration test per task kind, plus path-filtered CI for `dws-flow`/`dws-step` (the follow-up deferred from Phase 0) | 2b, 2c, 2d, 2e | ❌ not started |
 
-2.0, 2a and 2e have no prerequisites and can run in parallel; 2b, 2c and 2d fan out once 2a lands.
+2.0, 2a and 2e have no prerequisites and can run in parallel; 2b, 2c and 2d fan out once 2a lands. The remaining 2.0 questions (data-flow transforms, step error contract) gate parts of Phase 3 — see its dependency table.
 
-**Open question behind 2.0 / 2f.** In v1, `wait` is `ctx.createTimer` and `listen` is
-`ctx.waitForExternalEvent`, both called in the workflow body (`InterpreterWorkflow`), not in an activity —
-and an activity cannot create a timer or wait for an external event durably. The Phase 2 row above says
-"`WorkflowActivity` implementations for … `wait`/`listen`"; the 2.0 ADR has to settle whether `dws-flow`
-handles them inline, or `dws-step` runs them as a small workflow instead of an activity. Until it does, 2f
-is blocked and nothing else is. The ADR takes the next free ADR number (0006 as of 2026-10-01).
+**Resolved: where `wait`/`listen` run (ADR 0006, 2026-10-01).** In v1, `wait` is `ctx.createTimer` and `listen` is
+`ctx.waitForExternalEvent`, both called in the workflow body, not in an activity, and an activity cannot do either
+durably. They therefore run as `dws-flow` controller nodes and are built in Phase 3 (3e–3g); `dws-step` keeps
+`set`, `switch`, `emit`, `raise`, `call` and `run`.
+
+## Phase 3 breakdown
+
+Phase 3 holds six different kinds of logic in one runtime: sequencing, looping, error handling with retry,
+parallel fan-out, durable timers, and event waiting with a pub/sub bridge. Two of them (retry, `listen`) are each
+large on their own. It is split into sub-phases, each **one OpenSpec change and one handoff prompt**, the same
+convention as Phase 2. Rules shared by every sub-phase: each node is a Sequencer or a Controller
+([ADR 0004](../adr/0004-scope-nodes-carry-their-own-configuration.md)); a parent calls every child by the child's
+type alone ([ADR 0003](../adr/0003-fork-as-a-flow-node.md)); every Step child is called through its `dws-step`
+app ID ([ADR 0001](../adr/0001-workflow-runtime-v2-decisions.md)).
+
+```mermaid
+flowchart LR
+  P1F["Phase 1 follow-up<br/>wait/listen classification + schema"]
+  SP["ADR 0006 spikes"]
+  A["3a Flow core<br/>Sequencer"] --> B["3b for"]
+  A --> C["3c try-catch + retry"]
+  A --> D["3d fork"]
+  A --> E["3e wait"]
+  A --> F["3f listen workflow + registry"]
+  P1F --> E
+  P1F --> F
+  SP --> F
+  F --> G["3g listen bridge"]
+  B --> H["3h exit gate"]
+  C --> H
+  D --> H
+  E --> H
+  G --> H
+```
+
+| Sub-phase | Deliverable (expected behavior) | Depends on | Status |
+|---|---|---|---|
+| **3a** | **Flow core (Sequencer).** Load the node's pinned definition and register its one workflow type. A `main`/`do` node runs its task list in source order, with flow directives (`then`) and `switch` outcomes choosing the next task as v1 does. Each child is dispatched by its type alone: a Step child by `CallActivityAsync` to its `dws-step` app ID, a Flow child by `CallChildWorkflowAsync` with a deterministic instance ID (`<root>:<nodePath>:<iteration>`). Passes the same envelope the Step receives (workflow data, scope-local variables, root instance ID, iteration index). A task-level `timeout` races a timer against the call. A child failure fails the parent unless a catching scope handles it. Tested against stand-in children, so it does not wait for Phase 2 | — | ❌ not started |
+| **3b** | **`for` controller.** Iterates its own `each`/`in`/`at`/`while` and calls its single `do` child once per item, passing the iteration index and loop variables. Output matches v1 | 3a | ❌ not started |
+| **3c** | **`try-catch` controller.** Runs the `try` child; on failure applies its own `errors` filter (including `status`) against the failure wording defined by the Step error contract, applies `retry` (backoff, jitter, limits, ported from v1), and runs the `catch` child with the caught error as a scope-local variable. Exhausted or unmatched failures fail the node. Flow-side error classification lives here | 3a; 2a error contract | ❌ not started |
+| **3d** | **`fork` controller.** Fans out to its branch nodes in parallel. `forkMode: all` waits for every branch, `any` completes on the first; merged output matches v1. No new failure-semantics category ([ADR 0003](../adr/0003-fork-as-a-flow-node.md)) | 3a | ❌ not started |
+| **3e** | **`wait` controller.** Leaf controller (no tasks, no children). Creates a durable timer for the node's duration and returns the incoming data unchanged. The smallest controller, so it also proves the leaf-controller shape end to end | 3a; Phase 1 follow-up | ❌ not started |
+| **3f** | **`listen` workflow and waiter registry.** Leaf controller. Registers the waiting instance (idempotent) *before* waiting, then waits on one external event per filter in `to`: `one`/`any` race them, `all` joins them, `until` loops. Merges the event payload into the data as v1 does, deregisters on completion, timeout or error, and every registry entry carries a TTL. Tested by raising events directly, without pub/sub | 3a; Phase 1 follow-up; ADR 0006 spikes | ❌ not started |
+| **3g** | **`listen` bridge.** The `listen` app receives broker events at `POST /events`, matches them exactly per waiter and per filter (CloudEvents attributes, regex, `data` expressions, `correlate`), skips duplicates by CloudEvent ID, and raises the matching filter event on every matching waiter. Unmatched events go to a no-op default route. Broadcast semantics, [ADR 0006](../adr/0006-wait-and-listen-as-flow-controllers.md) | 3f | ❌ not started |
+| **3h** | **Exit gate.** Sidecar integration tests per node kind: Flow → child Flow, Flow → Step stand-in, success, retry, failure and timeout propagation, a waiting `wait`/`listen` child surviving a restart, and terminating a root instance cascading to a waiting child. Runs on the path-filtered `dws-flow` CI (delivered by 2g, or here if Phase 3 lands first) | 3b, 3c, 3d, 3e, 3g | ❌ not started |
+
+3a has no prerequisites beyond Phase 1 and can run in parallel with Phase 2. 3b, 3c, 3d and 3e fan out once 3a
+lands. 3f and 3g come last because they are the only sub-phases gated by open ADR 0006 spikes.
+
+**Dependencies outside Phase 3**
+
+| Dependency | Affects | What it decides |
+|---|---|---|
+| Phase 2.0 ADR: where the v1 data-flow input/output transforms live | 3a | Whether the Flow applies them around each task. Until decided, 3a passes data through untouched |
+| 2a Step error contract | 3c | The failure wording the `errors` filter and retry classification match on |
+| Phase 1 follow-up: classify `wait`/`listen` as Controller nodes (classifier, scope enum and fields in the single-node schema, `dws-step`'s known kinds, `dws-flow` loader) | 3e, 3f | The node shape these controllers load. Not yet scheduled as its own change |
+| ADR 0006 spikes: raise-event scoping, early-event buffering, rule matching, registry store and TTL, `listen` output shape and timeout default, the sequential-`listen` race | 3f, 3g | Registry design and bridge behavior |
+| Phase 4 | 3g | Generating one scoped `Subscription` per `listen` node is controller work; schedule it with deploy synthesis |
+| Phase 5 | 3g | v1's name-matching event endpoint is replaced by selector matching; how long both are supported |
 
 ## Non-goals (inherited from the spec, plus our own)
 
