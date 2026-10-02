@@ -115,6 +115,21 @@ public sealed class SequencerRunnerTests
     }
 
     [Fact]
+    public async Task FailsWithAFriendlyConfigMessageWhenATaskHasNoChildAppIdDeclared()
+    {
+        JsonArray tasks = JsonNode.Parse("""[ { "a": { "call": "http" } } ]""")!.AsArray();
+        JsonObject children = new JsonObject();
+        SingleNodeDefinition definition = Definition(tasks, children);
+        RecordingChildCaller caller = new();
+        FlowInput input = new(JsonValue.Create("data"), null, "root", null);
+
+        Func<Task> action = () => SequencerRunner.Run(input, definition, caller);
+
+        (await action.Should().ThrowAsync<InvalidOperationException>()).Which.Message
+            .Should().Be("flow references task 'a', which has no app ID declared in children");
+    }
+
+    [Fact]
     public async Task FailsAfterTenThousandSteps()
     {
         JsonArray tasks = JsonNode.Parse("""
