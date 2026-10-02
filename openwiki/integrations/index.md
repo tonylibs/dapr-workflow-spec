@@ -6,3 +6,4 @@
 - [DWS lifecycle events](lifecycle-events.md) - Shared Dapr pub/sub contract for advisory controller deployment and orchestrator instance/task lifecycle events.
 - [OpenAPI step runner](openapi-step-runner.md) - Runtime and configuration contract for dws-call-openapi, the generic Fastify service that executes a pinned OpenAPI operation for DWS call openapi tasks.
 - [gRPC and AsyncAPI step runners](protocol-step-runners.md) - How DWS deploys generic call: grpc and call: asyncapi services, including dynamic gRPC descriptors and AsyncAPI-to-Dapr output-binding dispatch.
+- [DWS Step activity host](step-activity-host.md) - Runtime and contract for dws-step, the Java Dapr Workflow activity host that loads one immutable step-node definition and routes its constant Step activity by task kind.
