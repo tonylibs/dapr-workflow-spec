@@ -164,7 +164,7 @@ RUN mkdir -p /run/sshd /root/.ssh /etc/ssh/sshd_config.d \
         'PermitRootLogin prohibit-password' \
         'PubkeyAuthentication yes' \
         'SetEnv KUBECONFIG=/root/.kube-local/config' \
-        'PermitUserEnvironment ANTHROPIC_API_KEY,CLAUDE_CODE_OAUTH_TOKEN,OPENAI_API_KEY,COPILOT_GITHUB_TOKEN,GEMINI_API_KEY' \
+        'PermitUserEnvironment ANTHROPIC_API_KEY,CLAUDE_CODE_OAUTH_TOKEN,OPENAI_API_KEY,COPILOT_GITHUB_TOKEN,GEMINI_API_KEY,GH_TOKEN' \
         'X11Forwarding no' \
         'PrintMotd no' \
         > /etc/ssh/sshd_config.d/99-agent-sandbox.conf \

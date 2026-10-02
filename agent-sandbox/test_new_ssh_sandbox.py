@@ -11,6 +11,26 @@ import new_ssh_sandbox as helper
 
 
 class CredentialSetupTests(unittest.TestCase):
+    def test_forwards_host_gh_login_and_git_identity(self):
+        def host_run(command, *, check=True):
+            values = {
+                ("gh", "auth", "token"): "github-token\n",
+                ("git", "config", "--global", "--get", "user.name"): "Jane Doe\n",
+                ("git", "config", "--global", "--get", "user.email"): "jane@example.com\n",
+            }
+            return subprocess.CompletedProcess(command, 0, stdout=values[tuple(command)], stderr="")
+
+        with patch.dict(helper.os.environ, {}, clear=True), patch.object(
+            helper.shutil, "which", return_value="gh"
+        ), patch.object(helper, "run", side_effect=host_run), patch.object(
+            helper.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, stdout="ok", stderr="")
+        ) as docker_run:
+            helper.forward_agent_tokens("sandbox-test")
+        self.assertEqual(
+            docker_run.call_args.kwargs["input"].splitlines(),
+            ["GH_TOKEN=github-token", "GIT_USER_NAME=Jane Doe", "GIT_USER_EMAIL=jane@example.com"],
+        )
+
     def test_reports_docker_stdout_when_stderr_is_empty(self):
         result = subprocess.CompletedProcess([], 127, stdout="exec: agent-auth-setup: not found", stderr="")
         with patch.dict(helper.os.environ, {"OPENAI_API_KEY": "test-secret"}, clear=True), patch.object(

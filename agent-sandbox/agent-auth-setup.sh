@@ -13,7 +13,7 @@
 # Values are never printed.
 set -eu
 
-ALLOWED_NAMES="ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN OPENAI_API_KEY COPILOT_GITHUB_TOKEN GEMINI_API_KEY"
+ALLOWED_NAMES="ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN OPENAI_API_KEY COPILOT_GITHUB_TOKEN GEMINI_API_KEY GH_TOKEN GIT_USER_NAME GIT_USER_EMAIL"
 ENV_FILE="$HOME/.config/agent-sandbox/credentials.env"
 SSH_ENV_FILE="$HOME/.ssh/environment"
 CLAUDE_CONFIG="$HOME/.claude.json"
@@ -53,18 +53,28 @@ tr -d '\r' | while IFS= read -r line || [ -n "$line" ]; do
         exit 1
     fi
     case $value in
-        '' | *[[:space:]]*)
-            echo "agent-auth-setup: $name is empty or contains whitespace" >&2
+        '')
+            echo "agent-auth-setup: $name is empty" >&2
             exit 1
             ;;
+    esac
+    case $name in
+        GIT_USER_NAME|GIT_USER_EMAIL) ;;
+        *) case $value in *[[:space:]]*)
+            echo "agent-auth-setup: $name contains whitespace" >&2
+            exit 1
+        esac ;;
     esac
     printf '%s=%s\n' "$name" "$value" >> "$staged"
 done
 
-mv "$staged" "$ENV_FILE"
+git_name=$(sed -n 's/^GIT_USER_NAME=//p' "$staged" | tail -n 1)
+git_email=$(sed -n 's/^GIT_USER_EMAIL=//p' "$staged" | tail -n 1)
+sed '/^GIT_USER_NAME=/d; /^GIT_USER_EMAIL=/d' "$staged" > "$ENV_FILE"
 cp "$ENV_FILE" "$SSH_ENV_FILE"
 chmod 600 "$SSH_ENV_FILE"
 trap - EXIT
+rm -f "$staged"
 
 # Read one value back from the environment file without exporting it into this shell.
 token() {
@@ -72,6 +82,20 @@ token() {
 }
 
 configured=""
+
+if [ -n "$git_name" ]; then
+    git config --global user.name "$git_name"
+    configured="$configured git(name)"
+fi
+if [ -n "$git_email" ]; then
+    git config --global user.email "$git_email"
+    configured="$configured git(email)"
+fi
+if [ -n "$(token GH_TOKEN)" ]; then
+    # gh reads GH_TOKEN directly; configure Git's HTTPS credential helper as well.
+    GH_TOKEN=$(token GH_TOKEN) gh auth setup-git
+    configured="$configured gh"
+fi
 
 # Claude Code reads CLAUDE_CODE_OAUTH_TOKEN and ANTHROPIC_API_KEY from the session
 # environment. An interactive session asks once before using ANTHROPIC_API_KEY;

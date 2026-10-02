@@ -14,7 +14,8 @@ $agentTokenNames = @(
     "CLAUDE_CODE_OAUTH_TOKEN",
     "OPENAI_API_KEY",
     "COPILOT_GITHUB_TOKEN",
-    "GEMINI_API_KEY"
+    "GEMINI_API_KEY",
+    "GH_TOKEN"
 )
 
 foreach ($commandName in @("osb", "docker", "ssh-keygen", "ssh")) {
@@ -182,10 +183,28 @@ try {
 
     # Forward whichever agent tokens are set in this shell. Stream them over stdin so they
     # never appear on a command line, in `docker inspect`, or in the OpenSandbox store.
-    $agentTokenLines = foreach ($tokenName in $agentTokenNames) {
+    $agentTokenLines = @(foreach ($tokenName in $agentTokenNames) {
         $tokenValue = [Environment]::GetEnvironmentVariable($tokenName)
         if (-not [string]::IsNullOrWhiteSpace($tokenValue)) {
             "$tokenName=$($tokenValue.Trim())"
+        }
+    })
+    if (-not [Environment]::GetEnvironmentVariable("GH_TOKEN") -and
+        (Get-Command gh -ErrorAction SilentlyContinue)) {
+        $hostGhToken = (& gh auth token 2>$null | Out-String).Trim()
+        if ($LASTEXITCODE -eq 0 -and $hostGhToken) {
+            $agentTokenLines += "GH_TOKEN=$hostGhToken"
+        }
+    }
+    foreach ($gitIdentity in @(
+        @{ Key = "user.name"; Name = "GIT_USER_NAME" },
+        @{ Key = "user.email"; Name = "GIT_USER_EMAIL" }
+    )) {
+        if (Get-Command git -ErrorAction SilentlyContinue) {
+            $gitValue = (& git config --global --get $gitIdentity.Key 2>$null | Out-String).Trim()
+            if ($LASTEXITCODE -eq 0 -and $gitValue) {
+                $agentTokenLines += "$($gitIdentity.Name)=$gitValue"
+            }
         }
     }
     if ($agentTokenLines) {
@@ -195,7 +214,7 @@ try {
         }
     }
     else {
-        Write-Host "No agent tokens set ($($agentTokenNames -join ', ')); agent CLIs will need a manual login."
+        Write-Host "No host credentials or Git identity found; agent CLIs and Git will need manual setup."
     }
 
     $sandboxIp = (& docker inspect --format "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" $containerName).Trim()

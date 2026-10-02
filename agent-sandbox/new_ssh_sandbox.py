@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -28,6 +29,7 @@ AGENT_TOKEN_NAMES = (
     "OPENAI_API_KEY",
     "COPILOT_GITHUB_TOKEN",
     "GEMINI_API_KEY",
+    "GH_TOKEN",
 )
 
 
@@ -175,10 +177,19 @@ def forward_agent_tokens(container: str) -> None:
         for name in AGENT_TOKEN_NAMES
         if (value := os.environ.get(name, "")).strip()
     ]
+    if not os.environ.get("GH_TOKEN", "").strip():
+        gh = run(["gh", "auth", "token"], check=False) if shutil.which("gh") else None
+        if gh and gh.returncode == 0 and gh.stdout.strip():
+            lines.append(f"GH_TOKEN={gh.stdout.strip()}")
+    if shutil.which("git"):
+        for key, name in (("user.name", "GIT_USER_NAME"), ("user.email", "GIT_USER_EMAIL")):
+            identity = run(["git", "config", "--global", "--get", key], check=False)
+            if identity.returncode == 0 and identity.stdout.strip():
+                lines.append(f"{name}={identity.stdout.strip()}")
     if not lines:
         print(
             f"No agent tokens set ({', '.join(AGENT_TOKEN_NAMES)}); "
-            "agent CLIs will need a manual login."
+            "agent CLIs and Git will need manual setup."
         )
         return
 
