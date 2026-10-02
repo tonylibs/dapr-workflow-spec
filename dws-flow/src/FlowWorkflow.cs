@@ -1,20 +1,24 @@
+using System.Text.Json.Nodes;
 using Dapr.Workflow;
 
 namespace Dws.Flow;
 
-/// <summary>Phase-zero no-op workflow; sequencing and child dispatch land in a later phase.</summary>
-public sealed class FlowWorkflow : Workflow<object?, object?>
+/// <summary>Thin entry point: routes the pinned node's scope through <see cref="ScopeDispatch"/> and runs it.</summary>
+public sealed class FlowWorkflow : Workflow<FlowInput, JsonNode?>
 {
     public const string Name = "Flow";
 
-    public override Task<object?> RunAsync(WorkflowContext context, object? input)
+    public override Task<JsonNode?> RunAsync(WorkflowContext context, FlowInput? input)
     {
-        if (!context.IsReplaying)
+        SingleNodeDefinition definition = FlowDefinitionHolder.Definition;
+        FlowInput effectiveInput = input ?? new FlowInput(null, null, null, null);
+        FlowInput resolvedInput = effectiveInput with { RootInstanceId = effectiveInput.RootInstanceId ?? context.InstanceId };
+
+        if (ScopeDispatch.Resolve(definition.Scope) == ScopeKind.NotImplemented)
         {
-            SingleNodeDefinition definition = FlowDefinitionHolder.Definition;
-            Console.WriteLine($"Running no-op Flow workflow for scope '{definition.Scope}' with {definition.Tasks.Count} task(s)");
+            throw new InvalidOperationException(ScopeDispatch.NotImplementedMessage(definition.Scope));
         }
 
-        return Task.FromResult<object?>(null);
+        return Task.FromResult(resolvedInput.Data);
     }
 }
