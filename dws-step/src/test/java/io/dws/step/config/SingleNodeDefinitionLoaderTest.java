@@ -67,6 +67,61 @@ class SingleNodeDefinitionLoaderTest {
         .hasMessageContaining("failed to load");
   }
 
+  @Test
+  void rejectsWaitNamingAdr0006() throws IOException {
+    assertThatThrownBy(() -> load(write("wait.json", stepWith("{\"wait\":{\"seconds\":5}}"))))
+        .isInstanceOf(DefinitionLoadException.class)
+        .hasMessageContaining("ADR 0006")
+        .hasMessageContaining("wait");
+  }
+
+  @Test
+  void rejectsListenNamingAdr0006() throws IOException {
+    assertThatThrownBy(() -> load(write("listen.json", stepWith("{\"listen\":{\"to\":{}}}"))))
+        .isInstanceOf(DefinitionLoadException.class)
+        .hasMessageContaining("ADR 0006")
+        .hasMessageContaining("listen");
+  }
+
+  @Test
+  void rejectsWaitCombinedWithAnotherKind() throws IOException {
+    assertThatThrownBy(
+            () ->
+                load(write("mixed.json", stepWith("{\"set\":{\"a\":1},\"wait\":{\"seconds\":1}}"))))
+        .isInstanceOf(DefinitionLoadException.class)
+        .hasMessageContaining("ADR 0006");
+  }
+
+  @Test
+  void rejectsUnknownKindAtStartup() throws IOException {
+    assertThatThrownBy(() -> load(write("unknown.json", stepWith("{\"frobnicate\":{}}"))))
+        .isInstanceOf(DefinitionLoadException.class)
+        .hasMessageContaining("supported task kind");
+  }
+
+  @Test
+  void rejectsMoreThanOneKindAtStartup() throws IOException {
+    assertThatThrownBy(() -> load(write("two.json", stepWith("{\"set\":{\"a\":1},\"emit\":{}}"))))
+        .isInstanceOf(DefinitionLoadException.class)
+        .hasMessageContaining("exactly one");
+  }
+
+  @Test
+  void acceptsEveryStillSupportedKind() throws IOException {
+    for (String kind : new String[] {"set", "emit", "raise"}) {
+      SingleNodeDefinition definition =
+          load(write(kind + ".json", stepWith("{\"" + kind + "\":{}}")));
+      assertThat(definition.taskKind()).isEqualTo(kind);
+    }
+  }
+
+  private String stepWith(String task) {
+    return "{\"workflow\":\"order\",\"version\":\"order@v1\",\"nodeId\":\"n-1\","
+        + "\"kind\":\"step\",\"task\":"
+        + task
+        + "}";
+  }
+
   private SingleNodeDefinition load(Path file) {
     return new SingleNodeDefinitionLoader(mapper, file.toString()).load();
   }

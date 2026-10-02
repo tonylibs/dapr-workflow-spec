@@ -20,6 +20,7 @@
   <properties>
     <java.version>25</java.version>
     <dapr.sdk.version>1.18.0</dapr.sdk.version>
+    <jackson-jq.version>1.2.0</jackson-jq.version>
     <streamex.version>0.8.3</streamex.version>
     <spotless-plugin.version>3.8.0</spotless-plugin.version>
     <google-java-format.version>1.32.0</google-java-format.version>
@@ -54,6 +55,11 @@
       <groupId>org.projectlombok</groupId>
       <artifactId>lombok</artifactId>
       <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>net.thisptr</groupId>
+      <artifactId>jackson-jq</artifactId>
+      <version>${jackson-jq.version}</version>
     </dependency>
     <dependency>
       <groupId>one.util</groupId>
