@@ -76,7 +76,7 @@ public class SingleNodeDefinitionLoader {
   private void validateTaskKind(JsonNode task) {
     List<String> flowOnly =
         StreamEx.of(SingleNodeDefinition.FLOW_ONLY_TASK_KINDS).filter(task::has).toList();
-    if(CollectionUtils.isNotEmpty(flowOnly)) {
+    if (CollectionUtils.isNotEmpty(flowOnly)) {
       throw new DefinitionLoadException(
           "task kind(s) "
               + flowOnly
