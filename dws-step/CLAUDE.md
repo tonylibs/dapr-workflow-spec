@@ -9,6 +9,7 @@ the repo root [`CLAUDE.md`](../CLAUDE.md). This file is dws-step-specific idioms
 
 ```shell
 cd dws-step
+./mvnw spotless:check   # CI runs this first: fails on formatting drift instead of fixing it
 ./mvnw verify
 ```
 
@@ -102,4 +103,5 @@ enough that the inline helpers stop pulling their weight.
 ### Formatting
 
 Same Spotless + `googleJavaFormat` 1.32.0 config as the other two Java packages, auto-applied on
-`process-sources`.
+`process-sources`, which is why CI runs `spotless:check` before `verify` (otherwise drift would be fixed on
+the runner and pass).

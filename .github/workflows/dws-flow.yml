@@ -1,52 +1,47 @@
-name: dws-step
+name: dws-flow
 
 on:
   push:
     branches: [main]
     tags:
-      - 'dws-step-v*'
+      - 'dws-flow-v*'
     paths:
-      - 'dws-step/**'
-      - '.github/workflows/dws-step.yml'
+      - 'dws-flow/**'
+      - '.github/workflows/dws-flow.yml'
   pull_request:
     paths:
-      - 'dws-step/**'
-      - '.github/workflows/dws-step.yml'
+      - 'dws-flow/**'
+      - '.github/workflows/dws-flow.yml'
   workflow_dispatch:
 
 concurrency:
-  group: dws-step-${{ github.workflow }}-${{ github.ref }}
+  group: dws-flow-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/dws-step
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/dws-flow
 
 jobs:
   test:
-    name: format, compile & test
+    name: build & test
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: dws-step
+        working-directory: dws-flow
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 25
-        uses: actions/setup-java@v4
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
         with:
-          distribution: temurin
-          java-version: 25
-          cache: maven
-          cache-dependency-path: dws-step/pom.xml
+          dotnet-version: 10.0.x
 
-      # The pom binds spotless:apply to process-sources, so a plain `verify` would
-      # reformat the code on the runner and pass. Check first so drift fails the job.
-      - name: Check formatting
-        run: ./mvnw -B -ntp spotless:check
-
-      - name: Verify
-        run: ./mvnw -B -ntp verify
+      # The test project is named explicitly on purpose. A bare `dotnet test` in
+      # dws-flow/ only sees dws-flow.csproj (the app), which has no tests and
+      # excludes test/** from compilation, so it restores, runs nothing and exits 0.
+      - name: Test
+        run: dotnet test test/dws-flow.Tests.csproj --configuration Release
 
   build-image:
     name: build & push image
@@ -78,7 +73,7 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
-            type=match,pattern=^dws-step-v(.*)$,group=1
+            type=match,pattern=^dws-flow-v(.*)$,group=1
             type=sha,prefix=,format=short
             type=raw,value=latest,enable={{is_default_branch}}
 
@@ -87,16 +82,16 @@ jobs:
       - name: Build
         uses: docker/build-push-action@v6
         with:
-          context: dws-step
+          context: dws-flow
           load: true
-          tags: dws-step:smoke
-          cache-from: type=gha,scope=dws-step
-          cache-to: type=gha,mode=max,scope=dws-step
+          tags: dws-flow:smoke
+          cache-from: type=gha,scope=dws-flow
+          cache-to: type=gha,mode=max,scope=dws-flow
 
       # The service needs a pinned single-node definition at startup and exits if
       # it is missing or invalid. It does not need a Dapr sidecar to boot: the
-      # workflow worker logs that the sidecar is unavailable and keeps retrying
-      # while the HTTP server serves /healthz. Require that answer.
+      # workflow worker logs gRPC failures and keeps retrying while Kestrel serves
+      # /healthz. Require that answer.
       - name: Smoke-test the image
         run: |
           dir=$(mktemp -d)
@@ -104,24 +99,26 @@ jobs:
           {
             "workflow": "smoke",
             "version": "smoke@v1",
-            "nodeId": "smoke-step",
-            "kind": "step",
-            "task": { "set": { "validated": true } }
+            "nodeId": "smoke-main",
+            "kind": "flow",
+            "scope": "main",
+            "tasks": [ { "validateOrder": { "set": { "validated": true } } } ],
+            "children": { "validateOrder": "validate-order" }
           }
           JSON
           chmod -R a+rX "$dir"
-          docker run -d --name dws-step-smoke -p 8080:8080 \
+          docker run -d --name dws-flow-smoke -p 8080:8080 \
             -v "$dir:/definition:ro" \
-            -e DWS_STEP_DEFINITION_PATH=/definition/definition.json \
-            dws-step:smoke
+            -e DWS_FLOW_DEFINITION_PATH=/definition/definition.json \
+            dws-flow:smoke
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8080/healthz; then echo; break; fi
             if [ "$i" -eq 30 ]; then
-              echo "container did not become healthy"; docker logs dws-step-smoke; exit 1
+              echo "container did not become healthy"; docker logs dws-flow-smoke; exit 1
             fi
             sleep 2
           done
-          docker rm -f dws-step-smoke
+          docker rm -f dws-flow-smoke
 
       # Fully cached by the build above, so this re-tags and uploads rather
       # than rebuilding. Skipped on PRs — validated there, published on merge.
@@ -129,8 +126,8 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
-          context: dws-step
+          context: dws-flow
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=dws-step
+          cache-from: type=gha,scope=dws-flow
