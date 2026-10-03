@@ -19,7 +19,7 @@ index: a package map plus rules that apply across every package. Each package al
 | [`dws-call-a2a`](dws-call-a2a) | Python 3.13, FastAPI | Prebuilt step image for `call: a2a` tasks. |
 | [`dws-admin`](dws-admin) | Node, TypeScript, NestJS, Drizzle | Admin/query API + lifecycle-event projection. |
 | [`dws-console`](dws-console) | TypeScript, React, TanStack Start/Router, Vite | Admin console frontend. |
-| [`dws-flow`](dws-flow) | .NET 10 | Generic `kind: flow` single-node host (early phase, no CI yet). |
+| [`dws-flow`](dws-flow) | .NET 10 | Generic `kind: flow` single-node host (early phase). |
 | [`charts/dws`](charts/dws) | Helm | Chart packaging the control plane (`dws-controller`, `dws-admin` + Postgres, optional console/Dapr/Redis/Dex/APISIX). Not a code package — see its own [`README.md`](charts/dws/README.md). |
 
 `dws-call-grpc`, `dws-call-asyncapi`, `dws-call-a2a`, `dws-admin`, `dws-console`, and `dws-flow` are
@@ -74,7 +74,7 @@ each package's own config:
 |---|---|
 | `dws-controller` | `./mvnw verify` (Spotless auto-formats on `process-sources`; `./mvnw spotless:check` to check without applying) |
 | `dws-orchestrator` | `./mvnw verify` |
-| `dws-step` | `./mvnw verify` |
+| `dws-step` | `./mvnw verify` (Spotless auto-formats on `process-sources`; `./mvnw spotless:check` first to see drift, as CI does) |
 | `dws-call-http` | `make lint && make test` |
 | `dws-call-grpc` | `make lint && make test` |
 | `dws-run` | `make lint && make test` |
@@ -83,7 +83,7 @@ each package's own config:
 | `dws-call-a2a` | `uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest` |
 | `dws-admin` | `pnpm lint && pnpm test && pnpm build` |
 | `dws-console` | `pnpm check && pnpm typecheck && pnpm test && pnpm build` (`check` = Biome lint+format) |
-| `dws-flow` | `dotnet test` (no lint/format gate configured yet — no `.editorconfig`, no analyzers) |
+| `dws-flow` | `dotnet test test/dws-flow.Tests.csproj` (name the test project: a bare `dotnet test` in `dws-flow/` only finds the app project, runs no tests and exits 0). No lint/format gate configured yet — no `.editorconfig`, no analyzers |
 
 Windows: Java packages use `mvnw.cmd` instead of `./mvnw`.
 

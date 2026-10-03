@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+TestResults/
+.git/
+.idea/
+.vs/
+.vscode/
+*.user
+*.log
+README.md
+CLAUDE.md

@@ -10,6 +10,10 @@ determines the scope it represents. Phase 0 only validates and logs the scope an
 dotnet test test/dws-flow.Tests.csproj
 ```
 
+Name the test project: a bare `dotnet test` in this directory only sees `dws-flow.csproj`, runs no
+tests and still exits 0. CI (`.github/workflows/dws-flow.yml`) runs the same command. The version
+is in `version.txt` (bumped by release-please, read by the build).
+
 ## Run locally with Dapr
 
 Start the app against the hand-written main-flow fixture. It needs the standard local Dapr workflow
