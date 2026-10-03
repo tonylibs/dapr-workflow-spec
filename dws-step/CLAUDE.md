@@ -29,13 +29,14 @@ an `Optional` chain ending in `orElseThrow` rather than a compound `if`:
 
 ```java
 // SingleNodeDefinitionLoader.java pattern
-String functionAppId =
-    Optional.ofNullable(definition.get("functionAppId"))
-        .filter(JsonNode::isTextual)
-        .map(JsonNode::textValue)
+String path =
+    Optional.ofNullable(definitionPath)
         .filter(StringUtils::isNotBlank)
-        .orElseThrow(() -> new DefinitionLoadException("functionAppId is required ..."));
+        .orElseThrow(() -> new DefinitionLoadException("... is required but was not set"));
 ```
+
+If the same chain is needed more than once, pull it into a helper returning `Optional<T>` and let each
+caller supply its own `orElseThrow` message (`nonBlankText` in `SingleNodeDefinitionLoader`).
 
 A bare null check with nothing else stays a plain `if (x == null)` guard — wrapping a single
 check in `Optional` adds nothing. Use `commons-lang3` (`StringUtils`, `BooleanUtils`) for the
