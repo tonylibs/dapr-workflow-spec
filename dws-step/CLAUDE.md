@@ -21,18 +21,24 @@ conventions below are "the one example that exists," not a statistically establi
 that matters, it's called out; when in doubt, follow `dws-orchestrator`'s equivalent choice since
 both are Spring Boot and share the `@Bean`/constructor-injection wiring style.
 
-### Null handling: explicit `if (x == null)` guard clauses, not `Optional`
+### Null handling: `Optional` chain when there's more than a null check, plain guard otherwise
 
-Unlike `dws-orchestrator`, nothing in this package's main source imports `Optional` — every null
-check is explicit. Keep it that way here; this package's validation logic is a straight-line
-load-and-check, not a value-transformation pipeline, so a chain would add nothing:
+When a value needs a null check *plus* further checks (type, blank, shape) before use, express it as
+an `Optional` chain ending in `orElseThrow` rather than a compound `if`:
 
 ```java
-// SingleNodeDefinitionLoader.java:51-56 pattern
-if (kind == null || kind.isBlank()) {
-    throw new DefinitionLoadException("single-node definition missing 'kind'");
-}
+// SingleNodeDefinitionLoader.java pattern
+String functionAppId =
+    Optional.ofNullable(definition.get("functionAppId"))
+        .filter(JsonNode::isTextual)
+        .map(JsonNode::textValue)
+        .filter(StringUtils::isNotBlank)
+        .orElseThrow(() -> new DefinitionLoadException("functionAppId is required ..."));
 ```
+
+A bare null check with nothing else stays a plain `if (x == null)` guard — wrapping a single
+check in `Optional` adds nothing. Use `commons-lang3` (`StringUtils`, `BooleanUtils`) for the
+predicates in these chains; it's a declared dependency.
 
 ### Loops: StreamEx for a filter-to-list, matching dws-orchestrator's library choice
 
