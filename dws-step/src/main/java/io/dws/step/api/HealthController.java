@@ -1,6 +1,7 @@
 package io.dws.step.api;
 
 import java.util.Map;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -9,7 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class HealthController {
 
   @GetMapping("/healthz")
-  public Map<String, String> healthz() {
-    return Map.of("status", "ok");
+  public ResponseEntity<Object> healthz() {
+    return ResponseEntity.ok(Map.of("status", "ok"));
   }
 }

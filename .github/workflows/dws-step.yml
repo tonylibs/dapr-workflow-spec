@@ -93,14 +93,35 @@ jobs:
           cache-from: type=gha,scope=dws-step
           cache-to: type=gha,mode=max,scope=dws-step
 
-      # No smoke test yet, deliberately. Booting the image needs only a pinned
-      # single-node definition (DWS_STEP_DEFINITION_PATH) -- the Dapr workflow worker
-      # runs on a background thread and just retries when no sidecar is reachable --
-      # but today the image does not start at all: StepRuntimeConfig asks for a
-      # com.fasterxml ObjectMapper bean, and Spring Boot 4 only auto-configures
-      # Jackson 3, so the context fails with NoSuchBeanDefinition. The unit tests
-      # never start the context, so nothing else catches it. Add a /healthz smoke
-      # step (see dws-flow.yml) once that is fixed; until then it would be red.
+      # The service needs a pinned single-node definition at startup and exits if
+      # it is missing or invalid. It does not need a Dapr sidecar to boot: the
+      # workflow worker logs that the sidecar is unavailable and keeps retrying
+      # while the HTTP server serves /healthz. Require that answer.
+      - name: Smoke-test the image
+        run: |
+          dir=$(mktemp -d)
+          cat > "$dir/definition.json" <<'JSON'
+          {
+            "workflow": "smoke",
+            "version": "smoke@v1",
+            "nodeId": "smoke-step",
+            "kind": "step",
+            "task": { "set": { "validated": true } }
+          }
+          JSON
+          chmod -R a+rX "$dir"
+          docker run -d --name dws-step-smoke -p 8080:8080 \
+            -v "$dir:/definition:ro" \
+            -e DWS_STEP_DEFINITION_PATH=/definition/definition.json \
+            dws-step:smoke
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/healthz; then echo; break; fi
+            if [ "$i" -eq 30 ]; then
+              echo "container did not become healthy"; docker logs dws-step-smoke; exit 1
+            fi
+            sleep 2
+          done
+          docker rm -f dws-step-smoke
 
       # Fully cached by the build above, so this re-tags and uploads rather
       # than rebuilding. Skipped on PRs — validated there, published on merge.

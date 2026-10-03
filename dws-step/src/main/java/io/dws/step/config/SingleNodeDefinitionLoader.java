@@ -1,13 +1,18 @@
 package io.dws.step.config;
 
+import static org.apache.commons.lang3.BooleanUtils.negate;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Pattern;
 import one.util.streamex.StreamEx;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 
 /** Loads and validates the Step half of the shared single-node definition contract. */
 public class SingleNodeDefinitionLoader {
@@ -24,14 +29,19 @@ public class SingleNodeDefinitionLoader {
   }
 
   public SingleNodeDefinition load() {
-    if (definitionPath == null || definitionPath.isBlank()) {
-      throw new DefinitionLoadException(DEFINITION_PATH_ENV + " is required but was not set");
-    }
+    String path =
+        Optional.ofNullable(definitionPath)
+            .filter(StringUtils::isNotBlank)
+            .orElseThrow(
+                () ->
+                    new DefinitionLoadException(
+                        DEFINITION_PATH_ENV + " is required but was not set"));
 
-    JsonNode definition = readDefinition();
-    if (definition == null || !definition.isObject()) {
-      throw new DefinitionLoadException("single-node definition must be a JSON object");
-    }
+    JsonNode definition =
+        Optional.ofNullable(readDefinition(path))
+            .filter(JsonNode::isObject)
+            .orElseThrow(
+                () -> new DefinitionLoadException("single-node definition must be a JSON object"));
 
     String workflow = requiredText(definition, "workflow");
     String version = requiredText(definition, "version");
@@ -43,35 +53,33 @@ public class SingleNodeDefinitionLoader {
       throw new DefinitionLoadException("definition kind must be 'step'");
     }
 
-    JsonNode task = definition.path("task");
-    if (!task.isObject() || task.size() == 0) {
-      throw new DefinitionLoadException("step definition must contain a non-empty object 'task'");
-    }
+    JsonNode task =
+        Optional.of(definition.path("task"))
+            .filter(JsonNode::isObject)
+            .filter(node -> negate(node.isEmpty()))
+            .orElseThrow(
+                () ->
+                    new DefinitionLoadException(
+                        "step definition must contain a non-empty object 'task'"));
 
     validateTaskKind(task);
 
-    boolean delegatesToFunction = task.has("call") || task.has("run");
-    JsonNode functionAppId = definition.get("functionAppId");
-    if (delegatesToFunction
-        && (functionAppId == null
-            || !functionAppId.isTextual()
-            || functionAppId.textValue().isBlank())) {
-      throw new DefinitionLoadException(
-          "functionAppId is required when task.call or task.run is set");
-    }
-    if (!delegatesToFunction && functionAppId != null) {
-      throw new DefinitionLoadException(
-          "functionAppId must be absent unless task.call or task.run is set");
-    }
+    String functionAppId =
+        StreamEx.of("call", "run").anyMatch(task::has)
+            ? nonBlankText(definition, "functionAppId")
+                .orElseThrow(
+                    () ->
+                        new DefinitionLoadException(
+                            "functionAppId is required when task.call or task.run is set"))
+            : null;
 
-    return new SingleNodeDefinition(
-        workflow, version, nodeId, task, functionAppId == null ? null : functionAppId.textValue());
+    return new SingleNodeDefinition(workflow, version, nodeId, task, functionAppId);
   }
 
   private void validateTaskKind(JsonNode task) {
     List<String> flowOnly =
         StreamEx.of(SingleNodeDefinition.FLOW_ONLY_TASK_KINDS).filter(task::has).toList();
-    if (!flowOnly.isEmpty()) {
+    if (CollectionUtils.isNotEmpty(flowOnly)) {
       throw new DefinitionLoadException(
           "task kind(s) "
               + flowOnly
@@ -85,20 +93,27 @@ public class SingleNodeDefinitionLoader {
     }
   }
 
-  private JsonNode readDefinition() {
+  private JsonNode readDefinition(String path) {
     try {
-      return mapper.readTree(Files.readString(Path.of(definitionPath)));
+      return mapper.readTree(Files.readString(Path.of(path)));
     } catch (IOException | IllegalArgumentException e) {
       throw new DefinitionLoadException(
-          "failed to load definition '" + definitionPath + "': " + e.getMessage(), e);
+          "failed to load definition '" + path + "': " + e.getMessage(), e);
     }
   }
 
   private String requiredText(JsonNode definition, String field) {
-    JsonNode value = definition.get(field);
-    if (value == null || !value.isTextual() || value.textValue().isBlank()) {
-      throw new DefinitionLoadException("definition must contain non-empty string '" + field + "'");
-    }
-    return value.textValue();
+    return nonBlankText(definition, field)
+        .orElseThrow(
+            () ->
+                new DefinitionLoadException(
+                    "definition must contain non-empty string '" + field + "'"));
+  }
+
+  private Optional<String> nonBlankText(JsonNode definition, String field) {
+    return Optional.ofNullable(definition.get(field))
+        .filter(JsonNode::isTextual)
+        .map(JsonNode::textValue)
+        .filter(StringUtils::isNotBlank);
   }
 }
