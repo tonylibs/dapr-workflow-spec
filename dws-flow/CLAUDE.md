@@ -9,17 +9,22 @@ This is a small, early-phase package (6 source files) — a generic Dapr Workflo
 immutable `kind: "flow"` single-node definition, loaded from `DWS_FLOW_DEFINITION_PATH`. Its workflow
 run body is presently a documented no-op ("Phase 0" — see `FlowWorkflow.cs`); real task
 sequencing/child dispatch lands in a later phase. Some patterns below are drawn from very few data
-points and may need revisiting once that lands. No CI workflow exists for this package yet, unlike
-every sibling component.
+points and may need revisiting once that lands. CI is `.github/workflows/dws-flow.yml`: tests, then an
+image build with a `/healthz` smoke test. The version lives in `version.txt` (release-please bumps it;
+`dws-flow.csproj` reads it into `<Version>`), so don't hand-edit it.
 
 ## Commands
 
 ```shell
 cd dws-flow
 dotnet build
-dotnet test
+dotnet test test/dws-flow.Tests.csproj
 dotnet test test/dws-flow.Tests.csproj --filter "FullyQualifiedName~RejectsMalformedJson"   # single test
 ```
+
+Always name the test project. A bare `dotnet test` in `dws-flow/` resolves to `dws-flow.csproj` (the
+only project file in that folder), which has no tests and compiles none of `test/**`, so it restores,
+runs nothing and exits 0 — a silently vacuous gate.
 
 No lint/format gate is configured — no `.editorconfig`, no analyzers referenced in either `.csproj`,
 no `<TreatWarningsAsErrors>`. Don't assume one exists; if you add one, that's a project-wide decision

@@ -3,7 +3,8 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-COPY dws-flow.csproj ./
+# version.txt feeds <Version> in the csproj, so restore needs it too.
+COPY dws-flow.csproj version.txt ./
 RUN dotnet restore
 
 COPY . ./

@@ -64,7 +64,7 @@ all components. The tagging step above does the relabel itself, only after the t
 exists. If a run is still blocked, create the tag and relabel the merged PR by hand
 (`autorelease: pending` → `autorelease: tagged`), then re-run release-please.
 
-`dws-controller` and `dws-orchestrator` (Maven) also set `skip-snapshot: true`. We publish
+`dws-controller`, `dws-orchestrator` and `dws-step` (Maven) also set `skip-snapshot: true`. We publish
 container images only, so the post-release `-SNAPSHOT` version-bump PRs add noise (they
 show up as empty PRs) and are suppressed.
 
@@ -72,9 +72,10 @@ show up as empty PRs) and are suppressed.
 `git log -1 --first-parent -- <component>/CHANGELOG.md`, i.e. the merged release-please PR —
 not `main`'s HEAD. release-please uses the tagged commit as the cut-off when collecting
 commits for the next release PR, and that commit has to touch `<component>/`; a tag on an
-unrelated commit makes it re-list old commits. The workflow falls back to HEAD only when
-`force=true` and the component has no `CHANGELOG.md` history (bootstrap); without `force`
-it fails instead.
+unrelated commit makes it re-list old commits. When the component has no
+`CHANGELOG.md` history (bootstrap), the workflow needs `force=true` and then tags the latest
+first-parent commit that touches `<component>/` (not bare `HEAD`, which would leak history, see
+[First release of a new component](#first-release-of-a-new-component)); without `force` it fails.
 
 ## Ordering rules (enforced)
 
@@ -103,8 +104,64 @@ it fails instead.
 | chart-release | `.github/workflows/chart-release.yml` | `workflow_dispatch` |
 | helm-chart (publish) | `.github/workflows/helm.yml` | push to `charts/**` on main |
 | per-component build | `.github/workflows/dws-*.yml` | push to path / `<component>-v*` tag |
+| dws-step | `.github/workflows/dws-step.yml` | PR / push to `dws-step/**` on main / `dws-step-v*` tag / manual. Gate: `spotless:check` then `./mvnw verify`; image job builds (PR) or publishes `:latest` + `:<sha>` (+ `:<X.Y.Z>` on a tag). No image smoke test yet, see the workflow comment |
+| dws-flow | `.github/workflows/dws-flow.yml` | same triggers on `dws-flow/**` / `dws-flow-v*`. Gate: `dotnet test test/dws-flow.Tests.csproj`; image job smoke-tests `GET /healthz` before pushing |
+
+## First release of a new component
+
+A component added to `release-please-config.json` before it has any tag (`dws-step` and
+`dws-flow` at the time of writing) needs a one-time bootstrap, or release-please lists its
+whole pre-existing history in the first release PR. Behaviour below was checked by running
+release-please 17's own `Manifest.buildPullRequests()` against a local git history (no GitHub
+needed); the numbers are from that run.
+
+How release-please decides the cut-off:
+
+- With a manifest version but no tag, the component counts as "needs bootstrap". The commit walk
+  then only stops at `bootstrap-sha` from `release-please-config.json`; without it, merging the PR
+  that adds the component opens an immediate, wrong `0.2.0` PR listing old `feat`/`fix` commits
+  (reproduced: 4 old commits for `dws-step`, 1 for `dws-flow`).
+- `bootstrap-sha` is top-level and global, but it is ignored once every configured component has
+  a tag, and every other component already has one. It is set to the `main` commit just before
+  the CI PR (`63f261d`). **If `main` moved before the CI PR merges, move it to the then-current
+  `main` HEAD** (or work between the two lands in the first release as post-0.1.0).
+- A tag only trims history if the tagged commit **touches `<component>/`**. A tag on a commit that
+  does not (e.g. bare `main` HEAD after an unrelated merge) makes release-please re-list the
+  component's whole history (reproduced: 6 and 1 old commits listed). `component-release` with
+  `force=true` therefore tags the latest first-parent commit touching `<component>/`.
+
+Runbook (once per new component; do all steps for `dws-step` and `dws-flow`):
+
+1. **Merge the CI PR.** Its title must be a non-releasable type (`ci`/`docs`/`chore`), otherwise the
+   merge itself is a release-worthy commit. release-please runs on the push and, thanks to
+   `bootstrap-sha`, opens **no** PR for the two components.
+2. **Seed the tag and cut `:0.1.0` right away**, before further work lands under `dws-step/` or
+   `dws-flow/`: run `component-release` with `component = dws-step`, leave `version` blank (the
+   manifest says `0.1.0`), `force = true`; repeat for `dws-flow`. This tags the CI PR's merge
+   commit `dws-step-v0.1.0` / `dws-flow-v0.1.0` and dispatches the component workflow on the tag,
+   which publishes `ghcr.io/tonylibs/<component>:0.1.0`. `force` is needed because there is no
+   `CHANGELOG.md` yet; it only skips the "release PR merged" guard, which cannot apply to a first
+   release.
+3. **From then on, the normal three cuts apply**: the next `feat`/`fix` under the component opens
+   its release PR, listing only commits after the seeded tag (reproduced: after seeding, a later
+   `feat(step)` and `fix(flow)` are the only entries; an unrelated `docs` commit is absent).
+
+`bootstrap-sha` is inert after step 2 and can be deleted in a later cleanup; leaving it is harmless.
+
+Checks that need a real GitHub run: that the tag push and the `workflow_dispatch` on a tag work with
+the repo's permissions (as for every other component), and the first real release-please run after
+the merge.
 
 ## Notes on current state
+
+- `dws-step` and `dws-flow` build and publish images (`:latest`, `:<sha>`, and `:<X.Y.Z>` from a
+  tag) but are **not pinned by the chart** until Phase 4 of the workflow-runtime roadmap: the
+  controller deploys them per workflow node, and `chart_release.py` only pins components it knows,
+  so their tags are not consumed by the chart yet.
+- `dws-flow` has a single version source, `dws-flow/version.txt`: release-please bumps it (the
+  `simple` release type, like the Go components), and `dws-flow.csproj` reads it into
+  `<Version>`, so the version is also on the assembly (`0.1.0` verified). release-please has no
+  native .NET type.
 
 - `values.yaml` today pins `latest` for most components and `"1.0"` for
   controller/admin/console. `chart_release.py` self-heals these to real semver on the

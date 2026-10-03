@@ -44,6 +44,11 @@ jobs:
           docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace/dws-orchestrator \
             ${{ env.VALIDATE_TAG }} ./mvnw -B -ntp verify
 
+      - name: dws-step -- ./mvnw verify
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace/dws-step \
+            ${{ env.VALIDATE_TAG }} ./mvnw -B -ntp verify
+
       - name: dws-call-http -- make vet && make test
         run: |
           docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace/dws-call-http \
