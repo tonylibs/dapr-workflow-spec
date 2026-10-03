@@ -23,6 +23,8 @@ on:
           - dws-console
           - dws-controller
           - dws-orchestrator
+          - dws-step
+          - dws-flow
           - dws-call-http
           - dws-call-grpc
           - dws-call-openapi
@@ -117,10 +119,18 @@ jobs:
             sha=$(git log -1 --first-parent --format=%H -- "${COMPONENT}/CHANGELOG.md")
             if [ -z "$sha" ]; then
               if [ "$FORCE" = "true" ]; then
-                sha=$(git rev-parse HEAD)
-                echo "::notice::${COMPONENT}/CHANGELOG.md has no history -- force=true, tagging HEAD ($sha)."
+                # Bootstrap: no CHANGELOG yet. Tag the latest commit that touches the
+                # component, not bare HEAD -- release-please only trims the next release PR
+                # at a tagged commit that touches <component>/; any other sha makes it
+                # re-list the component's whole history.
+                sha=$(git log -1 --first-parent --format=%H -- "${COMPONENT}/")
+                if [ -z "$sha" ]; then
+                  echo "::error::No commit touches ${COMPONENT}/, so there is nothing to tag."
+                  exit 1
+                fi
+                echo "::notice::${COMPONENT}/CHANGELOG.md has no history -- force=true, tagging the latest commit touching ${COMPONENT}/ ($sha)."
               else
-                echo "::error::No commit found for ${COMPONENT}/CHANGELOG.md, so there is no release commit to tag. Re-run with force=true to tag HEAD."
+                echo "::error::No commit found for ${COMPONENT}/CHANGELOG.md, so there is no release commit to tag. Re-run with force=true to tag the component's latest commit (bootstrap)."
                 exit 1
               fi
             fi

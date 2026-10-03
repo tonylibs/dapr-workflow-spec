@@ -1,5 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "63f261de9f1ee7397b1e4af7c5cd614f28c01e6f",
   "separate-pull-requests": true,
   "include-component-in-tag": true,
   "tag-separator": "-",
@@ -27,6 +28,13 @@
     "dws-orchestrator": {
       "release-type": "maven",
       "component": "dws-orchestrator",
+      "changelog-path": "CHANGELOG.md",
+      "skip-github-release": true,
+      "skip-snapshot": true
+    },
+    "dws-step": {
+      "release-type": "maven",
+      "component": "dws-step",
       "changelog-path": "CHANGELOG.md",
       "skip-github-release": true,
       "skip-snapshot": true
@@ -68,6 +76,13 @@
       "release-type": "python",
       "component": "dws-call-a2a",
       "changelog-path": "CHANGELOG.md",
+      "skip-github-release": true
+    },
+    "dws-flow": {
+      "release-type": "simple",
+      "component": "dws-flow",
+      "changelog-path": "CHANGELOG.md",
+      "version-file": "version.txt",
       "skip-github-release": true
     }
   }

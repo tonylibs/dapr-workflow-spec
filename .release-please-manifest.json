@@ -3,10 +3,12 @@
   "dws-console": "0.3.0",
   "dws-controller": "1.0.0",
   "dws-orchestrator": "0.1.0",
+  "dws-step": "0.1.0",
   "dws-call-http": "0.2.0",
   "dws-call-grpc": "0.2.0",
   "dws-call-openapi": "1.1.0",
   "dws-call-asyncapi": "1.1.0",
   "dws-run": "0.2.0",
-  "dws-call-a2a": "0.2.0"
+  "dws-call-a2a": "0.2.0",
+  "dws-flow": "0.1.0"
 }

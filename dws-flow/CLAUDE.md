@@ -12,8 +12,9 @@ tasks in source order, resolves each task's `then` directive, and dispatches eac
 activity or Flow child workflow (`ChildClassifier`/`IChildCaller`/`InstanceIds`/`TaskTimeout`); a node
 whose scope is `for`/`try-catch`/`fork` fails with a not-implemented configuration failure — those
 controller scopes land in a later phase. Some patterns below are drawn from very few data points and
-may need revisiting once that lands. No CI workflow exists for this package yet, unlike every sibling
-component.
+may need revisiting once that lands. CI is `.github/workflows/dws-flow.yml`: tests, then an image
+build with a `/healthz` smoke test. The version lives in `version.txt` (release-please bumps it;
+`dws-flow.csproj` reads it into `<Version>`), so don't hand-edit it.
 
 ## Commands
 
@@ -24,9 +25,9 @@ dotnet test test/dws-flow.Tests.csproj
 dotnet test test/dws-flow.Tests.csproj --filter "FullyQualifiedName~RejectsMalformedJson"   # single test
 ```
 
-Bare `dotnet test` run from `dws-flow/` silently resolves to the directory's one other `.csproj`
-(`dws-flow.csproj`, the Web SDK host project, not a test project) and reports no tests — always pass
-`test/dws-flow.Tests.csproj` explicitly.
+Always name the test project. A bare `dotnet test` in `dws-flow/` resolves to `dws-flow.csproj` (the
+only project file in that folder), which has no tests and compiles none of `test/**`, so it restores,
+runs nothing and exits 0 — a silently vacuous gate.
 
 No lint/format gate is configured — no `.editorconfig`, no analyzers referenced in either `.csproj`,
 no `<TreatWarningsAsErrors>`. Don't assume one exists; if you add one, that's a project-wide decision
