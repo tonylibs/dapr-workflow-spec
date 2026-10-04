@@ -120,9 +120,17 @@ if [ -n "$openai_key" ]; then
     configured="$configured codex"
 fi
 
-# Copilot CLI reads COPILOT_GITHUB_TOKEN from the session environment directly.
+# Copilot CLI reads COPILOT_GITHUB_TOKEN from the session environment directly, but
+# omnigent strips it from the agents it spawns; omnigent-copilot-bootstrap writes it to
+# files those agents can still reach. Runs here because this is when tokens arrive,
+# before anyone can start `omnigent run`.
 if [ -n "$(token COPILOT_GITHUB_TOKEN)" ]; then
     configured="$configured copilot"
+fi
+if [ -n "$(token COPILOT_GITHUB_TOKEN)$(token GH_TOKEN)" ]; then
+    COPILOT_GITHUB_TOKEN=$(token COPILOT_GITHUB_TOKEN) GH_TOKEN=$(token GH_TOKEN) \
+        omnigent-copilot-bootstrap >/dev/null
+    configured="$configured omnigent(copilot)"
 fi
 
 # agy only honours GEMINI_API_KEY with modelProvider=gemini, and refuses to start with

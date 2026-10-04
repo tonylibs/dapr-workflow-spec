@@ -177,8 +177,10 @@ RUN chmod 755 /usr/local/bin/sshd-start
 # Bash loads the private credentials file for login and interactive Orca terminals;
 # sshd's environment file remains available for direct SSH commands.
 COPY agent-auth-setup.sh /usr/local/bin/agent-auth-setup
+COPY omnigent-copilot-bootstrap.sh /usr/local/bin/omnigent-copilot-bootstrap
 COPY agent-env.sh /etc/profile.d/agent-env.sh
 RUN chmod 755 /usr/local/bin/agent-auth-setup \
+    && chmod 755 /usr/local/bin/omnigent-copilot-bootstrap \
     && chmod 644 /etc/profile.d/agent-env.sh \
     && printf '\n%s\n' '. /etc/profile.d/agent-env.sh' >> /etc/bash.bashrc
 
