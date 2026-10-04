@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/test/">
+    <Project Path="test/dws-flow.Tests.csproj" />
+  </Folder>
+  <Project Path="dws-flow.csproj" />
+</Solution>
