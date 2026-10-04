@@ -92,6 +92,10 @@ os_env:
     type: auto
     # Linked worktree metadata lives outside the workspace on this host.
     write_paths: [".", "/home/dapr-workflow-spec/.git"]
+    # The copilot CLI authenticates from gh's hosts.yml, which
+    # agent-sandbox/omnigent-copilot-bootstrap.sh provisions; omnigent strips
+    # COPILOT_GITHUB_TOKEN from the agent env, so this is its only credential source.
+    read_paths: ["~/.config/gh"]
     allow_network: true
     # Git must see all tracked dotfiles to report the real working tree.
     cwd_allow_hidden: ["*"]

@@ -15,11 +15,13 @@ skills:
   - 'csharp-testing'
 executor:
   type: omnigent
-  # copilot: pilot harness for .NET (deep C#/VS-ecosystem training); dws-flow
-  # has no CI gate yet, so blast radius is low. Fall back to claude-sdk /
-  # claude-sonnet-5 if copilot credentials aren't set up (`omnigent setup`).
+  # codex: tight edit -> `dotnet test` loop; dws-flow has no CI gate yet, so
+  # blast radius is low. gpt-5.6-luna is omnigent's GPT-family counterpart to
+  # the claude-sonnet-5 the other implementation agents use.
+  # Fall back to claude-sdk / claude-sonnet-5 if codex credentials aren't set up.
   config:
-    harness: copilot
+    harness: codex
+    model: gpt-5.6-luna
 tools:
   context7:
     type: mcp
