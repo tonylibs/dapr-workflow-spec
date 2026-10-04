@@ -17,12 +17,14 @@
 #        -> read by _build_copilot_spawn_env; fixes `harness: copilot`
 #   2. ~/.config/gh/hosts.yml oauth_token for the GitHub host
 #        -> read by the copilot CLI (and gh/git when GH_TOKEN is absent); fixes agents
-#           shelling out to `copilot`
+#           shelling out to `copilot`, but only for agents whose bwrap sandbox mounts it:
+#           the spec must grant `read_paths: ["~/.config/gh"]` (see .omnigent/config.yaml)
 # Both are required: (1) alone leaves agents that shell out to `copilot` broken.
 #
-# The file secret store is only consulted when OMNIGENT_DISABLE_KEYRING=1 (set by the
-# Dockerfile): load_secret() otherwise asks the OS keyring first and returns None when it is
-# reachable but empty, falling back to the file only on a KeyringError.
+# load_secret() asks the OS keyring first and reads the file store only when
+# OMNIGENT_DISABLE_KEYRING=1 or the keyring raises a KeyringError. This image has no
+# keyring backend (keyring.get_keyring() is the fail backend, which always raises), so the
+# file store is used; a reachable-but-empty keyring would instead return None.
 #
 # Token: COPILOT_GITHUB_TOKEN, else GH_TOKEN, else GITHUB_TOKEN; no-op when none is set.
 # COPILOT_GH_HOST (default github.com) picks the hosts.yml entry; COPILOT_GH_USER skips the
