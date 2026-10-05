@@ -8,7 +8,9 @@ COPY dws-flow.csproj version.txt ./
 RUN dotnet restore
 
 COPY . ./
-RUN dotnet publish --configuration Release --no-restore --output /app/publish
+# Name the project: dws-flow.slnx sits beside it, and a bare publish would build the
+# (never restored) test project through the solution.
+RUN dotnet publish dws-flow.csproj --configuration Release --no-restore --output /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app

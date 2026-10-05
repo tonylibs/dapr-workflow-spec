@@ -2,7 +2,10 @@
 
 `dws-flow` is the generic Dapr Workflow host for one immutable `kind: "flow"` single-node
 definition. Every instance registers the constant Workflow name `Flow`; the pinned definition
-determines the scope it represents. Phase 0 only validates and logs the scope and task count.
+determines the scope it represents. A `main`/`do` node's tasks run in order through the Sequencer
+(`SequencerRunner`), which resolves each task's `then` directive and dispatches it to a Step activity
+or Flow child workflow by task shape; `for`/`try-catch`/`fork` scopes are not implemented yet and fail
+fast with a configuration-failure message.
 
 ## Build and test
 
