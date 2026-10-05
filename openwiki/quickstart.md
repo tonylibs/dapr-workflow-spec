@@ -19,18 +19,20 @@ DWS (`dapr-workflow-spec`) is a config-driven workflow platform for Kubernetes. 
 - [gRPC and AsyncAPI step runners](integrations/protocol-step-runners.md) explains the generic `call: grpc` dynamic-descriptor worker and `call: asyncapi` output-binding dispatcher.
 - [A2A step runner](integrations/a2a-step-runner.md) explains the generic `call: a2a` service's supported JSON-RPC operations, agent discovery, and retry-safety contract.
 - [DWS Step activity host](integrations/step-activity-host.md) explains the new pinned-definition `Step` activity, its routing and input envelope, and its compatibility boundary with Flow and the orchestrator.
+- [DWS Flow workflow host](architecture/flow-host.md) explains the new pinned-definition `Flow` workflow, its sequencer, and its current structural-scope boundary.
 - [OWS DSL feature roadmap](architecture/roadmap.md) tracks DSL 1.0 task-type and cross-cutting feature coverage against the current implementation, phased into build order.
 - [Agent sandbox](architecture/agent-sandbox.md) explains the CI-validated development image, cluster-hosted session templates, and local Docker-backed alternative for persistent agent work.
 - [Console OIDC login](architecture/console-auth.md) explains the additive browser PKCE login, its Helm Dex configuration agreement, and the deferred bundled-provider acceptance gap.
 - [Helm chart packaging](architecture/helm-chart-roadmap.md) explains how `charts/dws` installs the controller and administrative read model, including its database and CI/release checks.
 
-The repository has four independently built components; run builds and tests from each component directory rather than from the repository root:
+The repository has several independently built components; run builds and tests from each component directory rather than from the repository root:
 
 | Component | Responsibility | Primary verification |
 |---|---|---|
 | `dws-controller` | Quarkus API that validates/compiles definitions and applies Kubernetes resources | `./mvnw test`; `./mvnw verify` |
 | `dws-orchestrator` | Spring Boot Dapr Workflow interpreter for one pinned definition per pod | `./mvnw verify` |
 | `dws-step` | Java Dapr Workflow activity host for one immutable step-node definition | `./mvnw verify` |
+| `dws-flow` | .NET Dapr Workflow host for one immutable flow-node definition | `dotnet test test/dws-flow.Tests.csproj` |
 | `dws-call-http` | Go step image for `call: http` tasks | `make test` |
 | `dws-call-openapi` | TypeScript/Fastify step image for `call: openapi` tasks | `pnpm lint && pnpm test && pnpm build` |
 | `dws-call-grpc` | Go step image for unary `call: grpc` tasks | `make test` |
@@ -44,6 +46,7 @@ The repository has four independently built components; run builds and tests fro
 - For definition-to-resource behavior, begin with `dws-controller/src/main/java/io/dws/controller/compile/` and `k8s/`; preserve content-addressed versioning and stable task-derived app IDs described in the [deployed workflow](architecture/deployed-workflow.md).
 - For interpreter semantics, begin with `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/InterpreterWorkflow.java`; task execution also produces the [orchestrator lifecycle events](integrations/lifecycle-events.md#orchestrator-events).
 - For the generic pinned-node activity boundary, start with `dws-step/src/main/java/io/dws/step/`; preserve its Flow and orchestrator compatibility contract described in the [DWS Step activity host](integrations/step-activity-host.md).
+- For pinned structural-node sequencing, start with `dws-flow/src/`; preserve its `Flow` and envelope contract with the [DWS Step activity host](integrations/step-activity-host.md), and keep unsupported structural scopes documented in the [DWS Flow workflow host](architecture/flow-host.md).
 - For cross-component telemetry, treat `docs/events.md` as the source contract; changes also affect the [administrative read model](integrations/admin-read-model.md) that consumes this stream.
 
 The GitHub Actions workflow at `.github/workflows/openwiki-update.yml` refreshes this generated documentation on every merge to `main` (or on manual dispatch).
