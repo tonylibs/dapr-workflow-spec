@@ -36,8 +36,8 @@ Two different readiness axes get conflated below — worth separating:
 | Data flow (`input.from/schema`, `output.as/schema`, `export.as/schema`) | ❌ raw data passed through untransformed |
 | Errors as Problem Details (RFC 7807) + standard error types | ✅ |
 | Timeouts (workflow/task) | ✅ |
-| Authentication (basic/bearer/oauth2) | ⚠️ implemented, blocked on live-cluster verification — see Phase 4 |
-| Secrets | ⚠️ implemented, blocked on live-cluster verification — see Phase 4 |
+| Authentication (basic/bearer/oauth2) | ✅ done — see Phase 4 |
+| Secrets | ✅ done — see Phase 4 |
 | Catalogs / custom functions | ❌ |
 | Extensions (`before`/`after` hooks) | ❌ |
 | External resources | ❌ |
@@ -56,7 +56,7 @@ flowchart TD
   P2c --> P2d[Phase 2.4: fork parallel +<br/>generalize nested do ✅]
   P1 --> P3[Phase 3: Fault Tolerance<br/>Problem Details, timeouts ✅]
   P2d --> P3
-  P3 --> P4[Phase 4: Authentication + Secrets<br/>⚠️ impl done, verification blocked]
+  P3 --> P4[Phase 4: Authentication + Secrets ✅]
   P4 --> P5[Phase 5: Protocol Expansion<br/>gRPC ✅, AsyncAPI ✅]
   P5 --> P55[Phase 5.5: A2A protocol<br/>next — design settled, ADR 0004]
   P1 --> P6[Phase 6: Scheduling<br/>cron/every/after/on<br/>next — unblocked]
@@ -74,7 +74,7 @@ Data flow is the foundation: retry/catch, extensions, and error handling all rea
 | **1** ✅ | `input.from/schema`, `output.as/schema`, `export.as/schema`, validation faults | orchestrator | done — `2026-07-27-data-flow-pipeline`, merged |
 | **2** ✅ | `try`/`catch`/`retry`, `raise`, `for`, `fork` (parallel), nested `do` | orchestrator, controller | done — `try-catch-retry`, `raise-task`, `for-task`, `fork-task` |
 | **3** ✅ | RFC 7807 error model, standard error types, task/workflow timeouts | orchestrator | complete |
-| **4** ⚠️ | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi | opsx — `workflow-auth`, 19/21 tasks done, code committed; blocked on live-cluster verification (see §4b) |
+| **4** ✅ | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi | done — archived as `2026-10-05-workflow-auth` (21/21 tasks; live OAuth probe passed, see §4c) |
 | **5** ✅ | gRPC, AsyncAPI call protocols | new `dws-call-grpc`, `dws-call-asyncapi` images | done — both slices archived (`2026-08-25-dws-call-grpc`, `2026-08-26-dws-call-asyncapi`); live-cluster integration test deferred, see §4e |
 | **5.5** (next) | A2A (Agent2Agent) call protocol | new `dws-call-a2a` image | design settled — [ADR 0004](../adr/0004-call-a2a-runner-design.md), §4f; not yet implemented |
 | **6** (next, parallel) | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) | not started — independent of Phases 4/5, can run alongside 5.5 |
@@ -111,17 +111,29 @@ proposal/tasks/specs), is an abandoned earlier attempt at the same scope, supers
 `ows-phase3-errors-timeouts` — **still present and still worth deleting**, so it doesn't get
 mistaken for open work.
 
-## 4c. Phase 4 status
+## 4c. Phase 4 status — done
 
-`openspec/changes/workflow-auth`: **19/21 tasks done**, implementation code committed
-(`de42dd98..91f9b269`, 18 commits), and every component's own test suite is green:
+`workflow-auth` is archived as `openspec/changes/archive/2026-10-05-workflow-auth` with **21/21
+tasks** (implementation `de42dd98..91f9b269`, 18 commits). Its `workflow-authentication` and
+`workflow-secrets` delta specs are synced into `openspec/specs/`. Verification: PASS WITH WARNINGS.
+
+The last two tasks (6.2/6.3) closed on 2026-10-05. `scripts/verify-dapr-oauth-path-filter.sh`
+passed live: the intended path received `Bearer issued-oauth-token` and the unrelated path
+received no `Authorization` header. Named warnings, detailed in the archived `verify.md`:
+
+- The live run used the cluster's existing Dapr **1.18.2** control plane (probe Helm install
+  skipped), not the 1.18.1 default. The project owner accepted this.
+- `dws-controller` `verify` is red on Windows only (6 `V2GoldenTest` cases, OS line separator);
+  Linux CI is green for the identical tree.
+
+Component gates at verification time:
 
 | Component | Command | Result |
 |---|---|---|
-| `dws-controller` | `mvnw test` | 99 tests, 0 failures |
-| `dws-orchestrator` | `mvnw verify` | 152 tests, 0 failures |
-| `dws-call-openapi` | `pnpm test` / `lint` / `build` | 95 tests + lint/build pass |
-| `dws-call-http` | `go vet` / `go test` | all pass |
+| `dws-controller` | `mvn -Dexec.skip=true verify` (Windows) / `mvnw test` (Linux CI) | 224 tests; 6 Windows-only failures / 0 on CI |
+| `dws-orchestrator` | `mvnw verify` | 162 tests, 0 failures |
+| `dws-call-openapi` | `pnpm lint` / `test` / `build` | 95 tests + lint/build pass |
+| `dws-call-http` | `make lint && make test` | all pass |
 
 Delivered: scalar `use.secrets` → Kubernetes `secretKeyRef` projection (no plaintext in compiled
 plans/ConfigMaps), inline/named `basic`/`bearer`/OAuth2 `client_credentials` policies for `call:
@@ -129,11 +141,8 @@ http`/`call: openapi`, version-scoped Dapr `HTTPEndpoint`/OAuth2-middleware `Com
 `Configuration` synthesis, and the `$secrets` jq extension in `set`/`switch` (leakage-warned, per
 §5a).
 
-**Blocked** — tasks 6.2/6.3 need a disposable Docker/Helm/kind environment to run
-`scripts/verify-dapr-oauth-path-filter.sh`, proving the OAuth middleware only injects tokens on the
-intended filtered endpoint path and doesn't leak onto unrelated sidecar traffic. Every other check
-is static (synthesizer/compiler tests); this is the one live-cluster proof still outstanding, and it
-gates both archiving `workflow-auth` and starting Phase 5.
+An earlier version of this section claimed that the live-cluster proof gated starting Phase 5.
+That was false: Phase 5 shipped while Phase 4 was still waiting on verification.
 
 ## 4d. Phase 5 slice 2 design (AsyncAPI) and the A2A split
 
@@ -173,11 +182,11 @@ Phase 5 is done. Slice 1 (`dws-call-grpc`) archived as
 `dws-call-asyncapi` component now exists at the repo root alongside its CI workflow.
 
 The one unchecked task is **8.2 — an integration test against a real Dapr sidecar + Kafka binding**,
-deferred for the same reason Phase 4's tasks 6.2/6.3 are (§4c): no disposable cluster to run it on.
+deferred because there was no cluster to run it on.
 
-**Live-cluster verification is the single shared blocker across Phases 4 and 5** — it holds
-Phase 4's archive (tasks 6.2/6.3) and Phase 5's last task (8.2). One disposable kind/Docker
-environment clears both. Phase 5.5 and Phase 6 are both free of it.
+Phase 4's live check (tasks 6.2/6.3) has since passed on the local cluster (§4c). Task 8.2 is the
+only live-cluster item still open. That cluster (Dapr 1.18.2, Strimzi operator installed; its `default/fo-cluster` Kafka is not Ready) can be reused
+for it. Phase 5.5 and Phase 6 don't depend on it.
 
 ## 4f. Phase 5.5 design (A2A) — settled
 
