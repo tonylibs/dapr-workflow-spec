@@ -34,5 +34,5 @@
 ## 6. Dapr integration and release validation
 
 - [x] 6.1 Upgrade `charts/dws` to stable Dapr 1.18.1 and add a mock-IdP integration suite parameterized by Dapr version, defaulting to that runtime.
-- [ ] 6.2 Verify OAuth middleware injects tokens only on the intended filtered external endpoint path and does not affect unrelated sidecar traffic. (Probe added; live cluster execution is environment-blocked.)
-- [ ] 6.3 Run all component-specific validation commands and record the default-version integration result and any deployment prerequisites in the change verification artifact. (Go and live Dapr validation remain environment-blocked.)
+- [x] 6.2 Verify OAuth middleware injects tokens only on the intended filtered external endpoint path and does not affect unrelated sidecar traffic. (Probe passed live on Dapr 1.18.2 on 2026-10-05; see `verify.md` §5.)
+- [x] 6.3 Run all component-specific validation commands and record the default-version integration result and any deployment prerequisites in the change verification artifact. (Recorded in `verify.md` §5–§6; the integration run used Dapr 1.18.2 instead of the 1.18.1 default, accepted as a named warning.)
