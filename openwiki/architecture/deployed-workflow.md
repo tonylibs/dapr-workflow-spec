@@ -76,7 +76,7 @@ sequenceDiagram
 
 This sequence shows the OAuth path: Dapr owns token acquisition and external authorization, while the runner owns only request construction and sidecar invocation. Basic and Bearer calls instead attach their generated header directly.
 
-Source: `dws-controller/src/main/java/io/dws/controller/compile/WorkflowCompiler.java`, `dws-controller/src/main/java/io/dws/controller/k8s/StackSynthesizer.java`, `dws-orchestrator/src/main/java/io/dws/orchestrator/config/WorkflowRuntimeBootstrap.java`, `dws-call-http/internal/runner/runner.go`, and `dws-call-openapi/src/request.ts`. The live Dapr path-isolation probe exists but remains environment-blocked, so treat production verification of its narrow OAuth path filter as an operator/CI prerequisite.
+Source: `dws-controller/src/main/java/io/dws/controller/compile/WorkflowCompiler.java`, `dws-controller/src/main/java/io/dws/controller/k8s/StackSynthesizer.java`, `dws-orchestrator/src/main/java/io/dws/orchestrator/config/WorkflowRuntimeBootstrap.java`, `dws-call-http/internal/runner/runner.go`, and `dws-call-openapi/src/request.ts`. The live Dapr path-isolation probe passed on 2026-10-05: the intended external path received the issued bearer token and an unrelated path received no `Authorization` header. The probe used an existing Dapr 1.18.2 control plane, one patch above the chart's 1.18.1 default, so repeat the check against the deployed Dapr version when upgrading it; its evidence is in `openspec/changes/archive/2026-10-05-workflow-auth/verify.md`.
 
 ### For iteration
 
