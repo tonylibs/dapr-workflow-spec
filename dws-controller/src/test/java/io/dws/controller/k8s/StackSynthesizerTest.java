@@ -1,6 +1,7 @@
 package io.dws.controller.k8s;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import io.dws.controller.compile.V1OrchestratorCompiler;
 import io.dws.controller.compile.WorkflowCompiler;
@@ -13,13 +14,16 @@ import io.dws.controller.model.OrchestratorSpec;
 import io.dws.controller.model.StepService;
 import io.dws.controller.model.TaskKind;
 import io.fabric8.kubernetes.api.model.EnvVar;
+import io.fabric8.kubernetes.api.model.EnvVarBuilder;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
+import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder;
 import io.fabric8.kubernetes.client.utils.Serialization;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -390,12 +394,11 @@ class StackSynthesizerTest {
   }
 
   private static DeploymentPlan orchestratorPlan() {
-    return orchestratorPlan(
-        "order-fulfilment",
-        "v1a2b3c4d",
-        Map.of(
-            "DEFINITION_STORE", new Literal("dws-def-order-fulfilment-v1a2b3c4d"),
-            "DEFINITION_KEY", new Literal("definition")));
+    // Ordered: the rendered env list follows the map's iteration order.
+    Map<String, io.dws.controller.model.EnvValue> env = new LinkedHashMap<>();
+    env.put("DEFINITION_STORE", new Literal("dws-def-order-fulfilment-v1a2b3c4d"));
+    env.put("DEFINITION_KEY", new Literal("definition"));
+    return orchestratorPlan("order-fulfilment", "v1a2b3c4d", env);
   }
 
   private static Map<String, String> podAnnotations(Deployment deployment) {
@@ -406,19 +409,90 @@ class StackSynthesizerTest {
     return deployment.getSpec().getTemplate().getSpec().getContainers().getFirst().getEnv();
   }
 
+  /** The orchestrator Deployment exactly as rendered before observability existed, by hand. */
+  private static Deployment todaysOrchestratorDeployment() {
+    return new DeploymentBuilder()
+        .withNewMetadata()
+        .withName("order-fulfilment-v1a2b3c4d")
+        .withNamespace(NAMESPACE)
+        .withLabels(
+            Map.of(
+                "dws.io/workflow", "order-fulfilment",
+                "dws.io/version", "v1a2b3c4d",
+                "dws.io/managed-by", "dws-controller"))
+        .endMetadata()
+        .withNewSpec()
+        .withReplicas(1)
+        .withNewSelector()
+        .withMatchLabels(Map.of("app", "order-fulfilment-v1a2b3c4d"))
+        .endSelector()
+        .withNewTemplate()
+        .withNewMetadata()
+        .withLabels(
+            Map.of(
+                "dws.io/workflow", "order-fulfilment",
+                "dws.io/version", "v1a2b3c4d",
+                "dws.io/managed-by", "dws-controller",
+                "app", "order-fulfilment-v1a2b3c4d"))
+        .withAnnotations(
+            Map.of(
+                "dapr.io/enabled", "true",
+                "dapr.io/app-id", "order-fulfilment",
+                "dapr.io/app-port", "8080"))
+        .endMetadata()
+        .withNewSpec()
+        .addNewContainer()
+        .withName("orchestrator")
+        .withImage("sw-orchestrator:1.0")
+        .withEnv(
+            new EnvVarBuilder()
+                .withName("DEFINITION_STORE")
+                .withValue("dws-def-order-fulfilment-v1a2b3c4d")
+                .build(),
+            new EnvVarBuilder().withName("DEFINITION_KEY").withValue("definition").build())
+        .addNewPort()
+        .withContainerPort(8080)
+        .endPort()
+        .endContainer()
+        .endSpec()
+        .endTemplate()
+        .endSpec()
+        .build();
+  }
+
   @Test
-  @DisplayName("observability off renders exactly today's orchestrator Deployment")
-  void offSettingsEqualTodaysDeployment() {
+  @DisplayName("observability off renders exactly the hand-built pre-observability Deployment")
+  void offSettingsRenderTodaysDeployment() {
     DeploymentPlan plan = orchestratorPlan();
 
     Deployment off = synthesizer.orchestratorDeployment(plan, NAMESPACE, ObservabilitySettings.OFF);
 
-    assertThat(off).isEqualTo(synthesizer.orchestratorDeployment(plan, NAMESPACE));
+    assertThat(off).isEqualTo(todaysOrchestratorDeployment());
+    // Spelled out so a failure names the drifting part rather than a whole-object diff.
     assertThat(podAnnotations(off))
-        .containsOnlyKeys("dapr.io/enabled", "dapr.io/app-id", "dapr.io/app-port");
+        .containsExactlyInAnyOrderEntriesOf(
+            Map.of(
+                "dapr.io/enabled", "true",
+                "dapr.io/app-id", "order-fulfilment",
+                "dapr.io/app-port", "8080"));
     assertThat(orchestratorEnv(off))
-        .extracting(EnvVar::getName)
-        .noneMatch(name -> name.startsWith("OTEL_"));
+        .extracting(EnvVar::getName, EnvVar::getValue)
+        .containsExactly(
+            tuple("DEFINITION_STORE", "dws-def-order-fulfilment-v1a2b3c4d"),
+            tuple("DEFINITION_KEY", "definition"));
+    assertThat(off.getSpec().getTemplate().getSpec().getContainers())
+        .extracting(container -> container.getName())
+        .containsExactly("orchestrator");
+  }
+
+  @Test
+  @DisplayName("the two-argument overload renders the same Deployment as OFF settings")
+  void twoArgumentOverloadMatchesOffSettings() {
+    DeploymentPlan plan = orchestratorPlan();
+
+    assertThat(synthesizer.orchestratorDeployment(plan, NAMESPACE))
+        .isEqualTo(synthesizer.orchestratorDeployment(plan, NAMESPACE, ObservabilitySettings.OFF))
+        .isEqualTo(todaysOrchestratorDeployment());
   }
 
   @Test
@@ -557,6 +631,41 @@ class StackSynthesizerTest {
   }
 
   @Test
+  @DisplayName("a secret-sourced resource-attributes value logs exactly one WARN per synthesis")
+  void secretSourcedResourceAttributesLogOneWarning() {
+    DeploymentPlan plan =
+        orchestratorPlan(
+            "wf",
+            "v1",
+            Map.of("OTEL_RESOURCE_ATTRIBUTES", new SecretKeyRef("otel-attrs", "value")));
+
+    try (LogCapture logs = new LogCapture(StackSynthesizer.class)) {
+      synthesizer.orchestratorDeployment(plan, NAMESPACE, ON);
+
+      assertThat(logs.at(Level.WARNING)).hasSize(1);
+      assertThat(LogCapture.message(logs.at(Level.WARNING).getFirst()))
+          .contains("OTEL_RESOURCE_ATTRIBUTES", "Secret", "wf-v1");
+    }
+  }
+
+  @Test
+  @DisplayName("literal resource attributes and tracing off log no WARN")
+  void literalResourceAttributesAndOffLogNoWarning() {
+    DeploymentPlan plan =
+        orchestratorPlan("wf", "v1", Map.of("OTEL_RESOURCE_ATTRIBUTES", new Literal("team=x")));
+    DeploymentPlan secret =
+        orchestratorPlan(
+            "wf", "v1", Map.of("OTEL_RESOURCE_ATTRIBUTES", new SecretKeyRef("otel-attrs", "v")));
+
+    try (LogCapture logs = new LogCapture(StackSynthesizer.class)) {
+      synthesizer.orchestratorDeployment(plan, NAMESPACE, ON);
+      synthesizer.orchestratorDeployment(secret, NAMESPACE, ObservabilitySettings.OFF);
+
+      assertThat(logs.at(Level.WARNING)).isEmpty();
+    }
+  }
+
+  @Test
   @DisplayName("an existing dapr.io/config is preserved and nothing is stamped")
   void existingDaprConfigIsPreserved() {
     Map<String, String> existing = new LinkedHashMap<>();
@@ -571,8 +680,9 @@ class StackSynthesizerTest {
   }
 
   @Test
-  @DisplayName("only the orchestrator Deployment takes observability settings")
-  void otherGeneratedResourcesUnaffected() {
+  @DisplayName(
+      "signature-level isolation: only the orchestrator Deployment synthesis accepts settings")
+  void onlyOrchestratorSynthesisMethodsAcceptSettings() {
     assertThat(StackSynthesizer.class.getDeclaredMethods())
         .filteredOn(method -> !method.isSynthetic())
         .filteredOn(

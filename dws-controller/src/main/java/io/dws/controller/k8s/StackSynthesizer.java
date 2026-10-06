@@ -606,7 +606,7 @@ public class StackSynthesizer {
     if (existing == null) {
       vars.add(new EnvVarBuilder().withName(OTEL_RESOURCE_ATTRIBUTES).withValue(identity).build());
     } else if (existing.getValueFrom() != null) {
-      LOG.debugf(
+      LOG.warnf(
           "%s is sourced from a Secret on %s; not appending workflow identity",
           OTEL_RESOURCE_ATTRIBUTES, plan.orchestrator().name());
     } else {

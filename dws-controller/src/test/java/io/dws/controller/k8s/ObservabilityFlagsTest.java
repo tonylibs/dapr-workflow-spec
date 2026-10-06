@@ -19,7 +19,10 @@ import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -190,10 +193,128 @@ class ObservabilityFlagsTest {
         .thenReturn(Mono.never());
     tracingConfigurationExists(true);
 
+    long start = System.nanoTime();
     ObservabilitySettings resolved =
         assertTimeoutPreemptively(Duration.ofSeconds(3), () -> flags.resolve(NAMESPACE));
+    Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
 
     assertThat(resolved).isEqualTo(ObservabilitySettings.OFF);
+    assertThat(ObservabilityFlags.STORE_TIMEOUT).isEqualTo(Duration.ofSeconds(1));
+    assertThat(elapsed).isLessThan(Duration.ofMillis(1500));
+  }
+
+  // ---- logging: one WARN per failure that could matter, nothing louder than DEBUG otherwise ----
+
+  private static void assertSingleLineWarning(LogCapture logs, String... fragments) {
+    List<LogRecord> warnings = logs.at(Level.WARNING);
+    assertThat(warnings).hasSize(1);
+    LogRecord warning = warnings.getFirst();
+    assertThat(warning.getThrown()).as("single line, no stack trace").isNull();
+    assertThat(LogCapture.message(warning)).doesNotContain("\n").contains(fragments);
+  }
+
+  @Test
+  @DisplayName("a missing dws-tracing Configuration logs exactly one WARN")
+  void missingTracingConfigurationLogsOneWarning() {
+    stubStore(Map.of(ENABLED_KEY, "true"));
+    tracingConfigurationExists(false);
+
+    try (LogCapture logs = new LogCapture(ObservabilityFlags.class)) {
+      flags.resolve(NAMESPACE);
+
+      assertSingleLineWarning(logs, "dws-tracing", "not found");
+    }
+  }
+
+  @Test
+  @DisplayName("a forbidden Configuration lookup logs exactly one WARN")
+  void forbiddenConfigurationLookupLogsOneWarning() {
+    stubStore(Map.of(ENABLED_KEY, "true"));
+    when(tracingLookup().get()).thenThrow(new KubernetesClientException("forbidden", 403, null));
+
+    try (LogCapture logs = new LogCapture(ObservabilityFlags.class)) {
+      flags.resolve(NAMESPACE);
+
+      assertSingleLineWarning(logs, "dws-tracing", "could not be read", "forbidden");
+    }
+  }
+
+  @Test
+  @DisplayName("an API error on the Configuration lookup logs exactly one WARN")
+  void apiErrorConfigurationLookupLogsOneWarning() {
+    stubStore(Map.of(ENABLED_KEY, "true"));
+    when(tracingLookup().get()).thenThrow(new IllegalStateException("api server down"));
+
+    try (LogCapture logs = new LogCapture(ObservabilityFlags.class)) {
+      flags.resolve(NAMESPACE);
+
+      assertSingleLineWarning(logs, "dws-tracing", "could not be read", "api server down");
+    }
+  }
+
+  @Test
+  @DisplayName("a throwing store logs exactly one single-line WARN")
+  void storeErrorLogsOneWarning() {
+    when(daprClient.getConfiguration(STORE, ENABLED_KEY, INSTRUMENTATION_KEY))
+        .thenReturn(Mono.error(new RuntimeException("sidecar down")));
+
+    try (LogCapture logs = new LogCapture(ObservabilityFlags.class)) {
+      assertThat(flags.resolve(NAMESPACE)).isEqualTo(ObservabilitySettings.OFF);
+
+      assertSingleLineWarning(logs, "sidecar down");
+    }
+  }
+
+  @Test
+  @DisplayName("a synchronously throwing store call logs exactly one single-line WARN")
+  void storeCallThrowingLogsOneWarning() {
+    when(daprClient.getConfiguration(STORE, ENABLED_KEY, INSTRUMENTATION_KEY))
+        .thenThrow(new IllegalStateException("boom"));
+
+    try (LogCapture logs = new LogCapture(ObservabilityFlags.class)) {
+      flags.resolve(NAMESPACE);
+
+      assertSingleLineWarning(logs, "boom");
+    }
+  }
+
+  @Test
+  @DisplayName("a store that times out logs exactly one single-line WARN")
+  void storeTimeoutLogsOneWarning() {
+    when(daprClient.getConfiguration(STORE, ENABLED_KEY, INSTRUMENTATION_KEY))
+        .thenReturn(Mono.never());
+
+    try (LogCapture logs = new LogCapture(ObservabilityFlags.class)) {
+      assertThat(flags.resolve(NAMESPACE)).isEqualTo(ObservabilitySettings.OFF);
+
+      assertSingleLineWarning(logs, "Observability flags unavailable");
+    }
+  }
+
+  @Test
+  @DisplayName("an absent flag key logs no WARN")
+  void absentFlagKeyLogsNoWarning() {
+    stubStore(Map.of());
+    tracingConfigurationExists(true);
+
+    try (LogCapture logs = new LogCapture(ObservabilityFlags.class)) {
+      assertThat(flags.resolve(NAMESPACE)).isEqualTo(ObservabilitySettings.OFF);
+
+      assertThat(logs.at(Level.WARNING)).isEmpty();
+    }
+  }
+
+  @Test
+  @DisplayName("a disabled flag and a missing sidecar log no WARN")
+  void disabledFlagAndNoSidecarLogNoWarning() {
+    stubStore(Map.of(ENABLED_KEY, "false"));
+
+    try (LogCapture logs = new LogCapture(ObservabilityFlags.class)) {
+      flags.resolve(NAMESPACE);
+      new ObservabilityFlags(null, client).resolve(NAMESPACE);
+
+      assertThat(logs.at(Level.WARNING)).isEmpty();
+    }
   }
 
   @Test

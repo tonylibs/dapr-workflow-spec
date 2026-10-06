@@ -21,6 +21,7 @@ import io.fabric8.kubernetes.api.model.GenericKubernetesResourceBuilder;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.NonDeletingOperation;
+import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.kubernetes.client.WithKubernetesTestServer;
 import jakarta.inject.Inject;
@@ -28,8 +29,10 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -466,15 +469,96 @@ class StackApplierTest {
     assertTodaysOrchestrator(orchestratorOf(first));
 
     storeSays(Map.of(ObservabilitySettings.ENABLED_KEY, "true"));
-
-    // Nothing is applied yet, so the existing Deployment is still today's.
-    assertTodaysOrchestrator(orchestratorOf(first));
     DeploymentPlan next =
         compiler.compile(fixture("order.yaml").replace("/api/charge", "/api/charge-v2"));
     applier.apply(next);
+
     assertThat(orchestratorOf(next).getSpec().getTemplate().getMetadata().getAnnotations())
         .containsEntry("dapr.io/config", "dws-tracing");
-    assertTodaysOrchestrator(orchestratorOf(first));
+    // Re-read from the server after the second apply: the first version's Deployment (now
+    // draining) was not re-rendered and is still un-instrumented.
+    Deployment previous = orchestratorOf(first);
+    assertThat(previous.getMetadata().getAnnotations()).containsEntry(Labels.DRAIN, "true");
+    assertTodaysOrchestrator(previous);
+  }
+
+  /**
+   * Everything the apply pass stored for {@code workflow} except the orchestrator Deployment, keyed
+   * by kind/name and reduced to the parts the controller renders (labels, annotations, spec/data)
+   * so server-assigned metadata cannot cause false differences.
+   */
+  private Map<String, Object> storedNonOrchestratorResources(String workflow) {
+    Map<String, Object> stored = new TreeMap<>();
+    client
+        .configMaps()
+        .inNamespace(NAMESPACE)
+        .withLabels(Labels.workflow(workflow))
+        .list()
+        .getItems()
+        .forEach(
+            configMap ->
+                stored.put(
+                    "ConfigMap/" + configMap.getMetadata().getName(),
+                    List.of(
+                        configMap.getMetadata().getLabels(),
+                        configMap.getData(),
+                        String.valueOf(configMap.getImmutable()))));
+    Map<String, ResourceDefinitionContext> dynamic = new LinkedHashMap<>();
+    dynamic.put("KnativeService", ResourceContexts.KNATIVE_SERVICE);
+    dynamic.put("DaprComponent", ResourceContexts.DAPR_COMPONENT);
+    dynamic.put("DaprHttpEndpoint", ResourceContexts.DAPR_HTTP_ENDPOINT);
+    dynamic.put("DaprConfiguration", ResourceContexts.DAPR_CONFIGURATION);
+    dynamic.put("WorkflowAccessPolicy", ResourceContexts.WORKFLOW_ACCESS_POLICY);
+    dynamic.forEach(
+        (kind, context) ->
+            client
+                .genericKubernetesResources(context)
+                .inNamespace(NAMESPACE)
+                .withLabels(Labels.workflow(workflow))
+                .list()
+                .getItems()
+                .forEach(
+                    resource ->
+                        stored.put(
+                            kind + "/" + resource.getMetadata().getName(),
+                            List.of(
+                                resource.getMetadata().getLabels(),
+                                String.valueOf(resource.getMetadata().getAnnotations()),
+                                resource.getAdditionalProperties()))));
+    return stored;
+  }
+
+  @Test
+  @DisplayName("the flag changes only the orchestrator: every other stored resource is identical")
+  void otherStoredResourcesAreIdenticalWithFlagOnAndOff() {
+    for (String[] fixtureAndWorkflow :
+        new String[][] {{"order.yaml", "order"}, {"oauth.yaml", "oauth-apply"}}) {
+      String fixture = fixtureAndWorkflow[0];
+      String workflow = fixtureAndWorkflow[1];
+      try {
+        reset(daprClient);
+        when(daprClient.publishEvent(anyString(), anyString(), any())).thenReturn(Mono.empty());
+        storeSays(Map.of(ObservabilitySettings.ENABLED_KEY, "false"));
+        applier.apply(compiler.compile(fixture(fixture)));
+        Map<String, Object> flagOff = storedNonOrchestratorResources(workflow);
+        applier.deleteWorkflow(workflow);
+
+        storeSays(Map.of(ObservabilitySettings.ENABLED_KEY, "true"));
+        tracingConfigurationInCluster();
+        DeploymentPlan plan = compiler.compile(fixture(fixture));
+        applier.apply(plan);
+        Map<String, Object> flagOn = storedNonOrchestratorResources(workflow);
+
+        // The flag really took effect, so the comparison below is not vacuous.
+        assertThat(orchestratorOf(plan).getSpec().getTemplate().getMetadata().getAnnotations())
+            .as(fixture)
+            .containsEntry("dapr.io/config", "dws-tracing");
+        assertThat(flagOff).as(fixture).hasSizeGreaterThan(2);
+        assertThat(flagOn).as(fixture).isEqualTo(flagOff);
+      } finally {
+        applier.deleteWorkflow(workflow);
+      }
+    }
   }
 
   @SuppressWarnings("unchecked")
