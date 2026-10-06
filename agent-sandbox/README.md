@@ -97,6 +97,11 @@ By default, both helpers reuse the local image. Pass `-PullImage` to the PowerSh
 py -3 .\agent-sandbox\new_ssh_sandbox.py --pull-image
 ```
 
+SSH does not inherit the image's Docker `ENV` values. The image sets Java, Go, pnpm, and uv
+paths for direct SSH commands and restores them in Bash shells. After changing these settings,
+rebuild or pull the updated image and create a new sandbox; existing containers keep their
+original SSH configuration.
+
 The equivalent Python command is:
 
 ```powershell

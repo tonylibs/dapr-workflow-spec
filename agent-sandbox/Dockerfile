@@ -163,7 +163,7 @@ RUN mkdir -p /run/sshd /root/.ssh /etc/ssh/sshd_config.d \
         'KbdInteractiveAuthentication no' \
         'PermitRootLogin prohibit-password' \
         'PubkeyAuthentication yes' \
-        'SetEnv KUBECONFIG=/root/.kube-local/config' \
+        'SetEnv KUBECONFIG=/root/.kube-local/config JAVA_HOME=/opt/java/openjdk GOPATH=/root/go GOMODCACHE=/root/go/pkg/mod UV_TOOL_BIN_DIR=/root/.local/bin PATH=/root/.local/bin:/root/.local/share/pnpm/bin:/usr/local/go/bin:/root/go/bin:/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
         'PermitUserEnvironment ANTHROPIC_API_KEY,CLAUDE_CODE_OAUTH_TOKEN,OPENAI_API_KEY,COPILOT_GITHUB_TOKEN,GEMINI_API_KEY,GH_TOKEN' \
         'X11Forwarding no' \
         'PrintMotd no' \
@@ -174,8 +174,8 @@ RUN chmod 755 /usr/local/bin/sshd-start
 
 # --- Agent CLI credentials ---
 # The launchers stream host tokens into agent-auth-setup after the sandbox starts.
-# Bash loads the private credentials file for login and interactive Orca terminals;
-# sshd's environment file remains available for direct SSH commands.
+# Bash restores the image toolchain environment and loads the private credentials file for
+# login and interactive Orca terminals. sshd's SetEnv covers direct SSH commands.
 COPY agent-auth-setup.sh /usr/local/bin/agent-auth-setup
 COPY omnigent-copilot-bootstrap.sh /usr/local/bin/omnigent-copilot-bootstrap
 COPY agent-env.sh /etc/profile.d/agent-env.sh
@@ -212,6 +212,8 @@ RUN set -eux; \
     clawteam --help >/dev/null; \
     ssh-keygen -A; \
     /usr/sbin/sshd -t; \
+    /usr/sbin/sshd -T | grep -q 'JAVA_HOME=/opt/java/openjdk'; \
+    env -i HOME=/root /bin/bash -lc 'test "$JAVA_HOME" = /opt/java/openjdk && command -v java && command -v go && command -v node && command -v pnpm' >/dev/null; \
     rm -f /etc/ssh/ssh_host_*
 
 EXPOSE 22
