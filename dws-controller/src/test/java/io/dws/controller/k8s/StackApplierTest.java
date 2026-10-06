@@ -10,21 +10,27 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.dapr.client.DaprClient;
+import io.dapr.client.domain.ConfigurationItem;
 import io.dws.controller.compile.WorkflowCompiler;
 import io.dws.controller.model.ApplyResult;
 import io.dws.controller.model.DeploymentPlan;
 import io.fabric8.kubernetes.api.model.ConfigMap;
+import io.fabric8.kubernetes.api.model.EnvVar;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
+import io.fabric8.kubernetes.api.model.GenericKubernetesResourceBuilder;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.dsl.NonDeletingOperation;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.kubernetes.client.WithKubernetesTestServer;
 import jakarta.inject.Inject;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -330,6 +336,145 @@ class StackApplierTest {
                 .list()
                 .getItems())
         .isNotEmpty();
+  }
+
+  // ---- orchestrator tracing (observability-orchestrator-tracing) ----
+
+  private void storeSays(Map<String, String> values) {
+    Map<String, ConfigurationItem> items = new HashMap<>();
+    values.forEach((key, value) -> items.put(key, new ConfigurationItem(key, value, "1")));
+    when(daprClient.getConfiguration(
+            ObservabilitySettings.STORE,
+            ObservabilitySettings.ENABLED_KEY,
+            ObservabilitySettings.INSTRUMENTATION_KEY))
+        .thenReturn(Mono.just(items));
+  }
+
+  private void tracingConfigurationInCluster() {
+    client
+        .genericKubernetesResources(ResourceContexts.DAPR_CONFIGURATION)
+        .inNamespace(NAMESPACE)
+        .resource(
+            new GenericKubernetesResourceBuilder()
+                .withApiVersion("dapr.io/v1alpha1")
+                .withKind("Configuration")
+                .withNewMetadata()
+                .withName(ObservabilitySettings.TRACING_CONFIGURATION)
+                .withNamespace(NAMESPACE)
+                .endMetadata()
+                .build())
+        .createOr(NonDeletingOperation::update);
+  }
+
+  @AfterEach
+  void removeTracingConfiguration() {
+    client
+        .genericKubernetesResources(ResourceContexts.DAPR_CONFIGURATION)
+        .inNamespace(NAMESPACE)
+        .withName(ObservabilitySettings.TRACING_CONFIGURATION)
+        .delete();
+  }
+
+  private Deployment orchestratorOf(DeploymentPlan plan) {
+    return client
+        .apps()
+        .deployments()
+        .inNamespace(NAMESPACE)
+        .withName(plan.orchestrator().name())
+        .get();
+  }
+
+  private void assertTodaysOrchestrator(Deployment deployment) {
+    assertThat(deployment.getSpec().getTemplate().getMetadata().getAnnotations())
+        .containsOnlyKeys("dapr.io/enabled", "dapr.io/app-id", "dapr.io/app-port");
+    assertThat(deployment.getSpec().getTemplate().getSpec().getContainers().get(0).getEnv())
+        .extracting(EnvVar::getName)
+        .noneMatch(name -> name.startsWith("OTEL_"));
+  }
+
+  @Test
+  @DisplayName("flag on with dws-tracing present stores an instrumented orchestrator Deployment")
+  void instrumentsOrchestratorWhenFlagOnAndConfigurationPresent() {
+    storeSays(Map.of(ObservabilitySettings.ENABLED_KEY, "true"));
+    tracingConfigurationInCluster();
+    DeploymentPlan plan = compiler.compile(fixture("order.yaml"));
+
+    applier.apply(plan);
+
+    Deployment deployment = orchestratorOf(plan);
+    assertThat(deployment.getSpec().getTemplate().getMetadata().getAnnotations())
+        .containsEntry("dapr.io/config", "dws-tracing")
+        .containsEntry("instrumentation.opentelemetry.io/container-names", "orchestrator")
+        .containsEntry("instrumentation.opentelemetry.io/inject-java", "true")
+        .containsEntry("dapr.io/app-id", "order");
+    assertThat(deployment.getSpec().getTemplate().getSpec().getContainers().get(0).getEnv())
+        .extracting(e -> Map.entry(e.getName(), e.getValue()))
+        .contains(
+            Map.entry("OTEL_SERVICE_NAME", "order"),
+            Map.entry(
+                "OTEL_RESOURCE_ATTRIBUTES",
+                "dws.workflow.name=order,dws.workflow.version=" + plan.versionId()));
+  }
+
+  @Test
+  @DisplayName("flag on but dws-tracing absent stores today's orchestrator and still succeeds")
+  void flagOnWithoutConfigurationKeepsTodaysOrchestrator() {
+    storeSays(Map.of(ObservabilitySettings.ENABLED_KEY, "true"));
+    DeploymentPlan plan = compiler.compile(fixture("order.yaml"));
+
+    ApplyResult result = applier.apply(plan);
+
+    assertThat(result.created()).isTrue();
+    assertTodaysOrchestrator(orchestratorOf(plan));
+  }
+
+  @Test
+  @DisplayName("an unreadable store stores today's orchestrator and still succeeds")
+  void unreadableStoreKeepsTodaysOrchestrator() {
+    when(daprClient.getConfiguration(
+            ObservabilitySettings.STORE,
+            ObservabilitySettings.ENABLED_KEY,
+            ObservabilitySettings.INSTRUMENTATION_KEY))
+        .thenReturn(Mono.error(new RuntimeException("store down")));
+    tracingConfigurationInCluster();
+    DeploymentPlan plan = compiler.compile(fixture("order.yaml"));
+
+    ApplyResult result = applier.apply(plan);
+
+    assertThat(result.created()).isTrue();
+    assertTodaysOrchestrator(orchestratorOf(plan));
+  }
+
+  @Test
+  @DisplayName("flag absent stores today's orchestrator even when dws-tracing exists")
+  void absentFlagKeepsTodaysOrchestrator() {
+    storeSays(Map.of());
+    tracingConfigurationInCluster();
+    DeploymentPlan plan = compiler.compile(fixture("order.yaml"));
+
+    applier.apply(plan);
+
+    assertTodaysOrchestrator(orchestratorOf(plan));
+  }
+
+  @Test
+  @DisplayName("a flag change applies on the next deploy only; the stored Deployment is untouched")
+  void flagChangeAppliesOnNextDeployOnly() {
+    tracingConfigurationInCluster();
+    DeploymentPlan first = compiler.compile(fixture("order.yaml"));
+    applier.apply(first);
+    assertTodaysOrchestrator(orchestratorOf(first));
+
+    storeSays(Map.of(ObservabilitySettings.ENABLED_KEY, "true"));
+
+    // Nothing is applied yet, so the existing Deployment is still today's.
+    assertTodaysOrchestrator(orchestratorOf(first));
+    DeploymentPlan next =
+        compiler.compile(fixture("order.yaml").replace("/api/charge", "/api/charge-v2"));
+    applier.apply(next);
+    assertThat(orchestratorOf(next).getSpec().getTemplate().getMetadata().getAnnotations())
+        .containsEntry("dapr.io/config", "dws-tracing");
+    assertTodaysOrchestrator(orchestratorOf(first));
   }
 
   @SuppressWarnings("unchecked")

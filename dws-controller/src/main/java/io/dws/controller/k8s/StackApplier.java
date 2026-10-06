@@ -33,16 +33,19 @@ public class StackApplier {
   private final KubernetesClient client;
   private final StackSynthesizer synthesizer;
   private final EventPublisher events;
+  private final ObservabilityFlags observability;
   private final String namespace;
 
   public StackApplier(
       KubernetesClient client,
       StackSynthesizer synthesizer,
       EventPublisher events,
-      DwsConfig config) {
+      DwsConfig config,
+      ObservabilityFlags observability) {
     this.client = client;
     this.synthesizer = synthesizer;
     this.events = events;
+    this.observability = observability;
     this.namespace = config.namespace();
   }
 
@@ -91,8 +94,11 @@ public class StackApplier {
       for (GenericKubernetesResource policy : synthesizer.workflowAccessPolicies(plan, namespace)) {
         applyDynamic(ResourceContexts.WORKFLOW_ACCESS_POLICY, policy);
       }
+      // Resolved per deploy (never throws; OFF on any doubt) so a flag change reaches a workflow
+      // only on its next deploy.
       client
-          .resource(synthesizer.orchestratorDeployment(plan, namespace))
+          .resource(
+              synthesizer.orchestratorDeployment(plan, namespace, observability.resolve(namespace)))
           .inNamespace(namespace)
           .createOr(NonDeletingOperation::update);
 

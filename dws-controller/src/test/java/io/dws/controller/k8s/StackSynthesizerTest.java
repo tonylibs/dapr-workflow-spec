@@ -14,6 +14,7 @@ import io.dws.controller.model.StepService;
 import io.dws.controller.model.TaskKind;
 import io.fabric8.kubernetes.api.model.EnvVar;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
+import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.client.utils.Serialization;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -366,6 +367,220 @@ class StackSynthesizerTest {
         .extracting(OAuthEndpoint::name)
         .doesNotHaveDuplicates()
         .allSatisfy(name -> assertThat(name).startsWith("oauth-policy-split-" + plan.versionId()));
+  }
+
+  // ---- orchestrator tracing (observability-orchestrator-tracing) ----
+
+  private static final ObservabilitySettings ON = new ObservabilitySettings(true, "true");
+
+  private static DeploymentPlan orchestratorPlan(
+      String workflow, String versionId, Map<String, io.dws.controller.model.EnvValue> env) {
+    OrchestratorSpec orchestrator =
+        new OrchestratorSpec(
+            workflow + "-" + versionId, "sw-orchestrator:1.0", workflow, 8080, 1, env);
+    return new DeploymentPlan(
+        workflow,
+        versionId,
+        workflow + "@" + versionId,
+        "dws-def-" + workflow + "-" + versionId,
+        "spec: text",
+        List.of(),
+        List.of(),
+        orchestrator);
+  }
+
+  private static DeploymentPlan orchestratorPlan() {
+    return orchestratorPlan(
+        "order-fulfilment",
+        "v1a2b3c4d",
+        Map.of(
+            "DEFINITION_STORE", new Literal("dws-def-order-fulfilment-v1a2b3c4d"),
+            "DEFINITION_KEY", new Literal("definition")));
+  }
+
+  private static Map<String, String> podAnnotations(Deployment deployment) {
+    return deployment.getSpec().getTemplate().getMetadata().getAnnotations();
+  }
+
+  private static List<EnvVar> orchestratorEnv(Deployment deployment) {
+    return deployment.getSpec().getTemplate().getSpec().getContainers().getFirst().getEnv();
+  }
+
+  @Test
+  @DisplayName("observability off renders exactly today's orchestrator Deployment")
+  void offSettingsEqualTodaysDeployment() {
+    DeploymentPlan plan = orchestratorPlan();
+
+    Deployment off = synthesizer.orchestratorDeployment(plan, NAMESPACE, ObservabilitySettings.OFF);
+
+    assertThat(off).isEqualTo(synthesizer.orchestratorDeployment(plan, NAMESPACE));
+    assertThat(podAnnotations(off))
+        .containsOnlyKeys("dapr.io/enabled", "dapr.io/app-id", "dapr.io/app-port");
+    assertThat(orchestratorEnv(off))
+        .extracting(EnvVar::getName)
+        .noneMatch(name -> name.startsWith("OTEL_"));
+  }
+
+  @Test
+  @DisplayName("enabled stamps targeted injection and the tracing Configuration reference")
+  void enabledStampsTargetedInjection() {
+    Deployment deployment = synthesizer.orchestratorDeployment(orchestratorPlan(), NAMESPACE, ON);
+
+    assertThat(podAnnotations(deployment))
+        .containsEntry("instrumentation.opentelemetry.io/inject-java", "true")
+        .containsEntry("instrumentation.opentelemetry.io/container-names", "orchestrator")
+        .containsEntry("dapr.io/config", "dws-tracing")
+        .containsEntry("dapr.io/enabled", "true")
+        .containsEntry("dapr.io/app-id", "order-fulfilment")
+        .containsEntry("dapr.io/app-port", "8080")
+        .hasSize(6);
+    assertThat(deployment.getSpec().getTemplate().getSpec().getContainers())
+        .extracting(container -> container.getName())
+        .containsExactly("orchestrator");
+  }
+
+  @Test
+  @DisplayName("enabled carries a custom Instrumentation reference into inject-java")
+  void enabledCarriesCustomInstrumentationReference() {
+    Deployment deployment =
+        synthesizer.orchestratorDeployment(
+            orchestratorPlan(),
+            NAMESPACE,
+            new ObservabilitySettings(true, "dws-system/dws-instrumentation"));
+
+    assertThat(podAnnotations(deployment))
+        .containsEntry(
+            "instrumentation.opentelemetry.io/inject-java", "dws-system/dws-instrumentation");
+  }
+
+  @Test
+  @DisplayName("enabled asserts service name and workflow identity, with no node or sampling input")
+  void enabledAssertsIdentityValues() {
+    Deployment deployment = synthesizer.orchestratorDeployment(orchestratorPlan(), NAMESPACE, ON);
+
+    List<EnvVar> env = orchestratorEnv(deployment);
+    assertThat(envVar(env, "OTEL_SERVICE_NAME").getValue()).isEqualTo("order-fulfilment");
+    assertThat(envVar(env, "OTEL_RESOURCE_ATTRIBUTES").getValue())
+        .isEqualTo("dws.workflow.name=order-fulfilment,dws.workflow.version=v1a2b3c4d");
+    assertThat(env)
+        .extracting(EnvVar::getName)
+        .noneMatch(name -> name.contains("dws.node") || name.contains("SAMPLER"));
+    assertThat(podAnnotations(deployment).keySet())
+        .noneMatch(key -> key.contains("dws.node") || key.toLowerCase().contains("sampl"));
+    assertThat(envVar(env, "OTEL_RESOURCE_ATTRIBUTES").getValue())
+        .doesNotContain("dws.node")
+        .doesNotContain("service.name");
+  }
+
+  @Test
+  @DisplayName("identity values are percent-encoded so ',' and '=' never split the list")
+  void identityValuesArePercentEncoded() {
+    DeploymentPlan plan = orchestratorPlan("a,b=c", "v1,2=3", Map.of());
+
+    String attributes =
+        envVar(
+                orchestratorEnv(synthesizer.orchestratorDeployment(plan, NAMESPACE, ON)),
+                "OTEL_RESOURCE_ATTRIBUTES")
+            .getValue();
+
+    assertThat(attributes).isEqualTo("dws.workflow.name=a%2Cb%3Dc,dws.workflow.version=v1%2C2%3D3");
+    assertThat(attributes.split(",")).hasSize(2);
+  }
+
+  @Test
+  @DisplayName("a literal percent sign is encoded too, so decoding is lossless")
+  void percentSignIsEncoded() {
+    DeploymentPlan plan = orchestratorPlan("50%off", "v1", Map.of());
+
+    String attributes =
+        envVar(
+                orchestratorEnv(synthesizer.orchestratorDeployment(plan, NAMESPACE, ON)),
+                "OTEL_RESOURCE_ATTRIBUTES")
+            .getValue();
+
+    assertThat(attributes).startsWith("dws.workflow.name=50%25off,");
+  }
+
+  @Test
+  @DisplayName("existing resource attributes are appended to and an existing service name is kept")
+  void appendsToExistingResourceAttributes() {
+    Map<String, io.dws.controller.model.EnvValue> env = new LinkedHashMap<>();
+    env.put("OTEL_RESOURCE_ATTRIBUTES", new Literal("team=x"));
+    env.put("OTEL_SERVICE_NAME", new Literal("custom-name"));
+    DeploymentPlan plan = orchestratorPlan("order-fulfilment", "v1a2b3c4d", env);
+
+    List<EnvVar> rendered =
+        orchestratorEnv(synthesizer.orchestratorDeployment(plan, NAMESPACE, ON));
+
+    assertThat(envVar(rendered, "OTEL_RESOURCE_ATTRIBUTES").getValue())
+        .isEqualTo("team=x,dws.workflow.name=order-fulfilment,dws.workflow.version=v1a2b3c4d");
+    assertThat(envVar(rendered, "OTEL_SERVICE_NAME").getValue()).isEqualTo("custom-name");
+    assertThat(rendered)
+        .extracting(EnvVar::getName)
+        .filteredOn(name -> name.startsWith("OTEL_"))
+        .containsExactlyInAnyOrder("OTEL_RESOURCE_ATTRIBUTES", "OTEL_SERVICE_NAME");
+  }
+
+  @Test
+  @DisplayName("a blank existing resource-attributes value gains no leading comma")
+  void blankExistingResourceAttributesGainNoLeadingComma() {
+    DeploymentPlan plan =
+        orchestratorPlan("wf", "v1", Map.of("OTEL_RESOURCE_ATTRIBUTES", new Literal("  ")));
+
+    assertThat(
+            envVar(
+                    orchestratorEnv(synthesizer.orchestratorDeployment(plan, NAMESPACE, ON)),
+                    "OTEL_RESOURCE_ATTRIBUTES")
+                .getValue())
+        .isEqualTo("dws.workflow.name=wf,dws.workflow.version=v1");
+  }
+
+  @Test
+  @DisplayName("a secret-sourced resource-attributes value is left untouched")
+  void secretSourcedResourceAttributesAreLeftUntouched() {
+    DeploymentPlan plan =
+        orchestratorPlan(
+            "wf",
+            "v1",
+            Map.of("OTEL_RESOURCE_ATTRIBUTES", new SecretKeyRef("otel-attrs", "value")));
+
+    List<EnvVar> rendered =
+        orchestratorEnv(synthesizer.orchestratorDeployment(plan, NAMESPACE, ON));
+
+    EnvVar attributes = envVar(rendered, "OTEL_RESOURCE_ATTRIBUTES");
+    assertThat(attributes.getValue()).isNull();
+    assertThat(attributes.getValueFrom().getSecretKeyRef().getName()).isEqualTo("otel-attrs");
+    assertThat(rendered)
+        .extracting(EnvVar::getName)
+        .filteredOn(name -> name.equals("OTEL_RESOURCE_ATTRIBUTES"))
+        .hasSize(1);
+  }
+
+  @Test
+  @DisplayName("an existing dapr.io/config is preserved and nothing is stamped")
+  void existingDaprConfigIsPreserved() {
+    Map<String, String> existing = new LinkedHashMap<>();
+    existing.put("dapr.io/enabled", "true");
+    existing.put("dapr.io/config", "other");
+
+    Map<String, String> annotations = StackSynthesizer.orchestratorAnnotations(existing, ON);
+
+    assertThat(annotations).isEqualTo(existing).containsEntry("dapr.io/config", "other");
+    assertThat(annotations).doesNotContainKey("instrumentation.opentelemetry.io/inject-java");
+    assertThat(StackSynthesizer.isInstrumented(annotations)).isFalse();
+  }
+
+  @Test
+  @DisplayName("only the orchestrator Deployment takes observability settings")
+  void otherGeneratedResourcesUnaffected() {
+    assertThat(StackSynthesizer.class.getDeclaredMethods())
+        .filteredOn(method -> !method.isSynthetic())
+        .filteredOn(
+            method ->
+                java.util.Arrays.asList(method.getParameterTypes())
+                    .contains(ObservabilitySettings.class))
+        .extracting(method -> method.getName())
+        .containsOnly("orchestratorDeployment", "orchestratorAnnotations");
   }
 
   private Map<String, String> synthesizeStepAnnotations(TaskKind kind) {

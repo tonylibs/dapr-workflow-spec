@@ -24,6 +24,33 @@ Configure the prebuilt images and target namespace in `src/main/resources/applic
 
 See [k8s/README.md](k8s/README.md) for deployment, RBAC and a worked `POST order.yaml` flow.
 
+## Observability
+
+Tracing of the compiled orchestrator is **off by default**. It is switched on through two keys in
+the Dapr configuration store `dws-controller-config` (the same store that holds `compiler.version`),
+not through controller environment variables:
+
+| Key | Meaning |
+|-----|---------|
+| `observability.enabled` | On only when the trimmed value equals `true` (case-insensitive). Absent, any other value, or an unreadable store means off. |
+| `observability.instrumentation` | Optional OpenTelemetry `Instrumentation` to inject: `<name>` or `<namespace>/<name>`. Blank or absent means `true` (the single Instrumentation in the namespace). |
+
+When on, and the Dapr `Configuration` **`dws-tracing`** (tracing only; rendered by the Helm chart
+when `observability.enabled` and `observability.workflows.enabled` are set) exists in the workflow
+namespace, the orchestrator pod template gets `instrumentation.opentelemetry.io/inject-java`,
+`instrumentation.opentelemetry.io/container-names: orchestrator` and `dapr.io/config: dws-tracing`.
+The agent is injected into the container named **`orchestrator`** only, never the Dapr sidecar. The
+container also gets `OTEL_SERVICE_NAME` (the Dapr app ID) and `dws.workflow.name` /
+`dws.workflow.version` in `OTEL_RESOURCE_ATTRIBUTES` (values percent-encoded; existing values are
+kept). If `dws-tracing` is missing or cannot be read, the controller logs one warning and renders
+the orchestrator exactly as before. A store failure never fails a deploy (the read is bounded to
+one second).
+
+The flags are read **per deploy**, so a change applies to a workflow on its **next deploy only**;
+already-deployed orchestrators are not modified. To roll back, set the key to `false` (or delete it)
+and redeploy. The controller Role needs `get` on `configurations.dapr.io` for the existence check
+(see `k8s/controller-rbac.yaml`).
+
 ## Quarkus
 
 This project uses Quarkus, the Supersonic Subatomic Java Framework.

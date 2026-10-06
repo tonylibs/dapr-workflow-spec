@@ -55,6 +55,7 @@ import java.util.regex.Pattern;
 import org.cdk8s.ApiObjectMetadata;
 import org.cdk8s.Chart;
 import org.cdk8s.Testing;
+import org.jboss.logging.Logger;
 
 /**
  * Renders a {@link DeploymentPlan} into concrete Kubernetes objects. Knative Services and Dapr
@@ -64,7 +65,15 @@ import org.cdk8s.Testing;
 @ApplicationScoped
 public class StackSynthesizer {
 
+  private static final Logger LOG = Logger.getLogger(StackSynthesizer.class);
+
   static final String DEFINITION_KEY = "definition";
+  private static final String DAPR_CONFIG = "dapr.io/config";
+  private static final String INJECT_JAVA = "instrumentation.opentelemetry.io/inject-java";
+  private static final String INJECT_CONTAINER_NAMES =
+      "instrumentation.opentelemetry.io/container-names";
+  private static final String OTEL_SERVICE_NAME = "OTEL_SERVICE_NAME";
+  private static final String OTEL_RESOURCE_ATTRIBUTES = "OTEL_RESOURCE_ATTRIBUTES";
   private static final String CONTAINER_PORT_VALUE = "8080";
   private static final int CONTAINER_PORT = 8080;
   private static final String OAUTH_MIDDLEWARE_TYPE = "middleware.http.oauth2clientcredentials";
@@ -473,9 +482,24 @@ public class StackSynthesizer {
         .build();
   }
 
-  /** The dedicated orchestrator Deployment for this workflow version. */
+  /** The dedicated orchestrator Deployment for this workflow version, without tracing. */
   public Deployment orchestratorDeployment(DeploymentPlan plan, String namespace) {
+    return orchestratorDeployment(plan, namespace, ObservabilitySettings.OFF);
+  }
+
+  /**
+   * The dedicated orchestrator Deployment for this workflow version. With {@link
+   * ObservabilitySettings#OFF} the output is identical to the two-argument form; with tracing on it
+   * additionally carries targeted Java-agent injection, the tracing-only Dapr Configuration
+   * reference and the workflow's identity (see {@link #orchestratorAnnotations} and {@link
+   * #orchestratorEnv}). No other generated resource takes settings.
+   */
+  public Deployment orchestratorDeployment(
+      DeploymentPlan plan, String namespace, ObservabilitySettings settings) {
     OrchestratorSpec orchestrator = plan.orchestrator();
+    Map<String, String> annotations =
+        orchestratorAnnotations(orchestratorAnnotations(orchestrator), settings);
+    List<EnvVar> env = orchestratorEnv(plan, orchestrator.env(), isInstrumented(annotations));
     Map<String, String> labels = Labels.forPlan(plan);
     Map<String, String> selector = Map.of("app", orchestrator.name());
     Map<String, String> podLabels = new LinkedHashMap<>(labels);
@@ -495,13 +519,13 @@ public class StackSynthesizer {
         .withNewTemplate()
         .withNewMetadata()
         .withLabels(podLabels)
-        .withAnnotations(orchestratorAnnotations(orchestrator))
+        .withAnnotations(annotations)
         .endMetadata()
         .withNewSpec()
         .addNewContainer()
-        .withName("orchestrator")
+        .withName(ObservabilitySettings.ORCHESTRATOR_CONTAINER)
         .withImage(orchestrator.image())
-        .withEnv(envVars(orchestrator.env()))
+        .withEnv(env)
         .addNewPort()
         .withContainerPort(orchestrator.appPort())
         .endPort()
@@ -512,12 +536,92 @@ public class StackSynthesizer {
         .build();
   }
 
+  /** The orchestrator pod annotations as rendered before observability existed. */
   private static Map<String, String> orchestratorAnnotations(OrchestratorSpec orchestrator) {
     Map<String, String> annotations = new LinkedHashMap<>();
     annotations.put("dapr.io/enabled", "true");
     annotations.put("dapr.io/app-id", orchestrator.appId());
     annotations.put("dapr.io/app-port", String.valueOf(orchestrator.appPort()));
     return annotations;
+  }
+
+  /**
+   * Adds the tracing annotations to {@code base} when observability is on. {@code putIfAbsent}
+   * semantics: a pod that already names a Dapr Configuration keeps it, and then nothing is stamped
+   * (a comma list is not a merge — {@code dapr.io/config} takes exactly one name).
+   */
+  static Map<String, String> orchestratorAnnotations(
+      Map<String, String> base, ObservabilitySettings settings) {
+    if (!settings.enabled()) {
+      return base;
+    }
+    if (base.containsKey(DAPR_CONFIG)) {
+      LOG.warnf(
+          "Orchestrator already references Dapr Configuration %s; leaving it without tracing",
+          base.get(DAPR_CONFIG));
+      return base;
+    }
+    Map<String, String> annotations = new LinkedHashMap<>(base);
+    annotations.putIfAbsent(INJECT_JAVA, settings.instrumentation());
+    annotations.putIfAbsent(INJECT_CONTAINER_NAMES, ObservabilitySettings.ORCHESTRATOR_CONTAINER);
+    annotations.putIfAbsent(DAPR_CONFIG, ObservabilitySettings.TRACING_CONFIGURATION);
+    return annotations;
+  }
+
+  /** Whether {@link #orchestratorAnnotations(Map, ObservabilitySettings)} stamped tracing. */
+  static boolean isInstrumented(Map<String, String> annotations) {
+    return ObservabilitySettings.TRACING_CONFIGURATION.equals(annotations.get(DAPR_CONFIG))
+        && annotations.containsKey(INJECT_JAVA);
+  }
+
+  /**
+   * The orchestrator container environment. Untouched unless instrumented, when it gains {@code
+   * OTEL_SERVICE_NAME} (the Dapr app ID — the OpenTelemetry Operator would otherwise inject the
+   * Deployment name, which outranks a {@code service.name} resource attribute) and the workflow
+   * identity appended to {@code OTEL_RESOURCE_ATTRIBUTES}. Existing values are never overwritten.
+   */
+  private static List<EnvVar> orchestratorEnv(
+      DeploymentPlan plan, Map<String, EnvValue> env, boolean instrumented) {
+    List<EnvVar> vars = envVars(env);
+    if (!instrumented) {
+      return vars;
+    }
+    if (vars.stream().noneMatch(var -> OTEL_SERVICE_NAME.equals(var.getName()))) {
+      vars.add(
+          new EnvVarBuilder()
+              .withName(OTEL_SERVICE_NAME)
+              .withValue(plan.orchestrator().appId())
+              .build());
+    }
+    String identity =
+        "dws.workflow.name="
+            + encodeResourceValue(plan.workflow())
+            + ",dws.workflow.version="
+            + encodeResourceValue(plan.versionId());
+    EnvVar existing =
+        vars.stream()
+            .filter(var -> OTEL_RESOURCE_ATTRIBUTES.equals(var.getName()))
+            .findFirst()
+            .orElse(null);
+    if (existing == null) {
+      vars.add(new EnvVarBuilder().withName(OTEL_RESOURCE_ATTRIBUTES).withValue(identity).build());
+    } else if (existing.getValueFrom() != null) {
+      LOG.debugf(
+          "%s is sourced from a Secret on %s; not appending workflow identity",
+          OTEL_RESOURCE_ATTRIBUTES, plan.orchestrator().name());
+    } else {
+      String current = existing.getValue();
+      existing.setValue(current == null || current.isBlank() ? identity : current + "," + identity);
+    }
+    return vars;
+  }
+
+  /**
+   * Percent-encodes the characters that would split or corrupt an {@code OTEL_RESOURCE_ATTRIBUTES}
+   * list ({@code ,} and {@code =}) plus {@code %} itself, so decoding is lossless.
+   */
+  private static String encodeResourceValue(String value) {
+    return value.replace("%", "%25").replace(",", "%2C").replace("=", "%3D");
   }
 
   private static List<EnvVar> envVars(Map<String, EnvValue> env) {
