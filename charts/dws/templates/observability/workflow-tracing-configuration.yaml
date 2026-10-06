@@ -1,0 +1,37 @@
+{{- /*
+  `dws-tracing`: the tracing-only Dapr Configuration for COMPILED WORKFLOW sidecars (openspec
+  observability-orchestrator-tracing, D1). dws-controller stamps `dapr.io/config: dws-tracing` onto
+  the orchestrator Deployment it generates for each workflow, when its own out-of-band store flag
+  `observability.enabled` is on (see controller/config-component.yaml) AND this resource exists.
+
+  Rendered only when observability.enabled AND observability.workflows.enabled. The name is fixed
+  on purpose: the controller looks it up by this exact name, like the fixed dws-controller-config
+  store.
+
+  This Configuration deliberately carries ONLY spec.tracing and NO pipeline (no appHttpPipeline,
+  no httpPipeline, no other middleware):
+
+    - The controller and admin Configurations (controller/configuration.yaml,
+      admin/configuration.yaml) fold tracing together with the auth pipeline because dapr.io/config
+      is single-valued. A compiled orchestrator sidecar has no bearer token to present, so reusing
+      either of those would put bearer middleware on it. This one cannot touch auth anywhere.
+    - samplingRate is the literal "1" (ADR 0005 Decision 2): the application agent
+      (parentbased_traceidratio, observability.traces.samplingRate) is the only sampling root and
+      daprd must honour the parent decision rather than make a second, multiplicative one.
+
+  The tracing block comes from the same dws.observability.daprTracing helper the controller and
+  admin Configurations use, so the endpoint scheme stripping, isSecure and protocol mapping have
+  exactly one definition. Do not copy that translation here.
+*/}}
+{{- if and .Values.observability.enabled .Values.observability.workflows.enabled }}
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: dws-tracing
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: workflow-tracing
+spec:
+  {{- include "dws.observability.daprTracing" . | nindent 2 }}
+{{- end }}

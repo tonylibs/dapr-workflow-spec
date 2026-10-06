@@ -47,7 +47,7 @@ Facts that shape the design (verified against source; see `brainstorm.md`):
 
 - **Choice:** when the store says on, the controller does one Kubernetes GET for `configurations.dapr.io/dws-tracing` in the workflow namespace. Present -> instrument. Absent, forbidden, or any error -> render exactly as today and log one WARN naming the cause.
 - **Why:** a referenced-but-missing Configuration crashloops daprd, so a half-configured install (store on, chart off) would break the deploy. This keeps "never fail a deploy" true and "Configuration exists before the pod needs it" enforced rather than hoped for.
-- **Cost:** `get` on `configurations.dapr.io` in the chart Role and `dws-controller/k8s/controller-rbac.yaml`. Note: the Role also lacks verbs for configurations create/delete that the oauth path already needs; that pre-existing gap is out of scope and is not widened here beyond `get`.
+- **Cost:** `get` on `configurations.dapr.io` in `dws-controller/k8s/controller-rbac.yaml` (unconditional) and in the chart Role, rendered only together with `dws-tracing` so the default render stays byte-identical to the Phase 1 baseline. Note: the Role also lacks verbs for configurations create/delete that the oauth path already needs; that pre-existing gap is out of scope and is not widened here beyond `get`.
 - **Alternative rejected:** trust the flag blindly.
 
 ### D4: Workflow identity via `OTEL_SERVICE_NAME` plus `OTEL_RESOURCE_ATTRIBUTES`

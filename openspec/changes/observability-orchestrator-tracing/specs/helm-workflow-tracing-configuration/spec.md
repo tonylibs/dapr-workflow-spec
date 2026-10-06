@@ -35,9 +35,14 @@ When `observability.enabled=true` and `observability.workflows.enabled=true`, th
 
 ### Requirement: The controller may read Dapr Configurations in its namespace
 
-The chart Role bound to the controller's service account, and the raw `dws-controller/k8s/controller-rbac.yaml`, SHALL grant `get` on `configurations.dapr.io`. No other new verb or resource SHALL be added by this change. Owning component: `charts/dws` for the chart Role; `dws-controller` for the raw manifest.
+When `dws-tracing` renders (`observability.enabled` and `observability.workflows.enabled`), the chart Role bound to the controller's service account SHALL grant `get` on `configurations.dapr.io`; with the defaults the Role SHALL be unchanged so the default render stays byte-identical to the Phase 1 baseline. The raw `dws-controller/k8s/controller-rbac.yaml` SHALL grant `get` on `configurations.dapr.io` unconditionally. No other new verb or resource SHALL be added by this change. Owning component: `charts/dws` for the chart Role; `dws-controller` for the raw manifest.
 
-#### Scenario: Role grants get on configurations
+#### Scenario: Role grants get on configurations when dws-tracing renders
 
-- **WHEN** the chart is rendered
+- **WHEN** the chart is rendered with `observability.enabled=true`
 - **THEN** the controller Role includes a rule with apiGroup `dapr.io`, resource `configurations`, verb `get`
+
+#### Scenario: Default Role is unchanged
+
+- **WHEN** the chart is rendered with default values
+- **THEN** the controller Role has no `configurations` rule
