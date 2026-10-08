@@ -25,7 +25,7 @@ totals: items 60, passed 58, failed 2   (changes: 6/5 passed, specs: 54/53 passe
 
 ## 2. Task Completion (`tasks.md`)
 
-- [ ] Every `- [ ]` is now `- [x]` — **no: 7.2 stays open on purpose**
+- [x] Every `- [ ]` is now `- [x]` — **7.2 was closed on 2026-10-08, after this report was written** (see the addendum at the end)
 
 | Task | Reason not complete | Blocks archive? |
 |---|---|---|
@@ -106,3 +106,24 @@ These gaps go into the retrospective Misses and the PR description.
 - [ ] ❌ FAIL
 
 **Next step**: write `retrospective.md`, sync and archive the change, then open the PR as a draft with the live-run and replay items called out as outstanding.
+
+---
+
+## Addendum 2026-10-08: task 7.2 executed
+
+Sections 2 and 5 above describe the state on 2026-10-06 and are left as written. Task 7.2 has since
+been run on a local `kind` cluster; the result is in
+[`docs/roadmaps/observability-phase2a-evidence.md`](../../../../docs/roadmaps/observability-phase2a-evidence.md)
+and [ADR 0009](../../../../docs/adr/0009-trace-context-across-workflow-replay.md).
+
+- **Confirmed live:** orchestrator-only agent injection, `dapr.io/config: dws-tracing`, and
+  `OTEL_SERVICE_NAME` surviving the Operator (Jaeger service is the app ID, not the Deployment
+  name).
+- **Replay is clean for the span model**: a pod killed mid-timer left one trace, one root and the
+  same activity executions as an uninterrupted run.
+- **Not met:** one client-side span per step call. Step sidecars and code are untraced (Track B).
+- **Caveats:** the run substituted several components (see "Deviations" in the evidence file), and
+  the clean replay runs used an *uncommitted* guard against a separate `dws-orchestrator` defect
+  (`InterpreterWorkflow` catches `OrchestratorBlockedException`). The committed orchestrator
+  stalls and emits spurious failure events. That defect, and four chart/controller wiring gaps hit
+  on the way, are unrelated to this change and remain open.
