@@ -14,12 +14,25 @@ public interface DwsConfig {
 
   Images images();
 
+  Orchestrator orchestrator();
+
   Reconcile reconcile();
 
   /** Garbage-collection cadence for drained previous versions. */
   interface Reconcile {
     @WithDefault("30s")
     String every();
+  }
+
+  interface Orchestrator {
+    /**
+     * ServiceAccount orchestrator pods run as. It must be able to read ConfigMaps in {@link
+     * #namespace()}: the definition Component reads its ConfigMap as the pod's service account. The
+     * Helm chart and {@code k8s/controller-rbac.yaml} create it and set {@code
+     * DWS_ORCHESTRATOR_SERVICE_ACCOUNT} to match.
+     */
+    @WithDefault("dws-orchestrator")
+    String serviceAccount();
   }
 
   interface Images {

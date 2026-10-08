@@ -33,6 +33,7 @@ public class StackApplier {
   private final KubernetesClient client;
   private final StackSynthesizer synthesizer;
   private final EventPublisher events;
+  private final DwsConfig config;
   private final String namespace;
 
   public StackApplier(
@@ -43,6 +44,7 @@ public class StackApplier {
     this.client = client;
     this.synthesizer = synthesizer;
     this.events = events;
+    this.config = config;
     this.namespace = config.namespace();
   }
 
@@ -92,7 +94,9 @@ public class StackApplier {
         applyDynamic(ResourceContexts.WORKFLOW_ACCESS_POLICY, policy);
       }
       client
-          .resource(synthesizer.orchestratorDeployment(plan, namespace))
+          .resource(
+              synthesizer.orchestratorDeployment(
+                  plan, namespace, config.orchestrator().serviceAccount()))
           .inNamespace(namespace)
           .createOr(NonDeletingOperation::update);
 

@@ -8,24 +8,37 @@ metadata:
     {{- include "dws.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller
 rules:
-  # Immutable definition ConfigMaps.
+  # Immutable definition ConfigMaps. `deletecollection` is required on every managed kind:
+  # the controller removes a workflow or a drained version with label-selector deletes, which
+  # the API server authorizes as a collection DELETE (fabric8 withLabels(...).delete()).
   - apiGroups: [""]
     resources: ["configmaps"]
-    verbs: ["get", "list", "create", "delete"]
+    verbs: ["get", "list", "create", "delete", "deletecollection"]
   # Orchestrator Deployments. `update`/`patch` are needed to stamp dws.io/drain=true on
   # the superseded version during rollout.
   - apiGroups: ["apps"]
     resources: ["deployments"]
-    verbs: ["get", "list", "create", "delete", "update", "patch"]
+    verbs: ["get", "list", "create", "delete", "deletecollection", "update", "patch"]
   # Step services. `update`/`patch` let a new version re-label an existing, same-named
   # Knative Service instead of failing on create.
   - apiGroups: ["serving.knative.dev"]
     resources: ["services"]
-    verbs: ["get", "list", "create", "delete", "update", "patch"]
-  # Dapr configuration components backing the definition store.
+    verbs: ["get", "list", "create", "delete", "deletecollection", "update", "patch"]
+  # Dapr resources the controller applies per workflow version: the definition-store and
+  # binding/middleware Components, the OAuth HTTPEndpoints and sidecar Configurations, and
+  # the per-step WorkflowAccessPolicies (ResourceContexts in dws-controller).
   - apiGroups: ["dapr.io"]
     resources: ["components"]
-    verbs: ["get", "list", "create", "delete", "update", "patch"]
+    verbs: ["get", "list", "create", "delete", "deletecollection", "update", "patch"]
+  - apiGroups: ["dapr.io"]
+    resources: ["httpendpoints"]
+    verbs: ["get", "list", "create", "delete", "deletecollection", "update", "patch"]
+  - apiGroups: ["dapr.io"]
+    resources: ["configurations"]
+    verbs: ["get", "list", "create", "delete", "deletecollection", "update", "patch"]
+  - apiGroups: ["dapr.io"]
+    resources: ["workflowaccesspolicies"]
+    verbs: ["get", "list", "create", "delete", "deletecollection", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

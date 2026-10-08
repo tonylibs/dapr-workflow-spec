@@ -473,8 +473,14 @@ public class StackSynthesizer {
         .build();
   }
 
-  /** The dedicated orchestrator Deployment for this workflow version. */
-  public Deployment orchestratorDeployment(DeploymentPlan plan, String namespace) {
+  /**
+   * The dedicated orchestrator Deployment for this workflow version. {@code serviceAccount} is the
+   * identity the pod runs as: the definition Component ({@code configuration.kubernetes}) reads its
+   * ConfigMap with the pod's service account, so it must be one that can read ConfigMaps — never
+   * the namespace {@code default} account.
+   */
+  public Deployment orchestratorDeployment(
+      DeploymentPlan plan, String namespace, String serviceAccount) {
     OrchestratorSpec orchestrator = plan.orchestrator();
     Map<String, String> labels = Labels.forPlan(plan);
     Map<String, String> selector = Map.of("app", orchestrator.name());
@@ -498,6 +504,7 @@ public class StackSynthesizer {
         .withAnnotations(orchestratorAnnotations(orchestrator))
         .endMetadata()
         .withNewSpec()
+        .withServiceAccountName(serviceAccount)
         .addNewContainer()
         .withName("orchestrator")
         .withImage(orchestrator.image())

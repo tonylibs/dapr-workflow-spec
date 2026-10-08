@@ -219,6 +219,7 @@ bash tests/values-schema-test.sh .
 bash tests/api-gateway-render-test.sh .
 bash tests/auth-pipeline-placement-test.sh .
 bash tests/observability-render-test.sh .
+bash tests/orchestrator-wiring-render-test.sh .
 ```
 
 `scripts/verify-console-ingress-migration.sh` (repo root) additionally rehearses the pre-Gateway

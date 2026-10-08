@@ -33,6 +33,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 class StackSynthesizerTest {
 
   private static final String NAMESPACE = "default";
+  private static final String SERVICE_ACCOUNT = "dws-orchestrator";
   private static final ImageCatalog IMAGES =
       new ImageCatalog(
           "sw-call-http:1.0",
@@ -161,7 +162,7 @@ class StackSynthesizerTest {
 
     List<EnvVar> rendered =
         synthesizer
-            .orchestratorDeployment(plan, NAMESPACE)
+            .orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT)
             .getSpec()
             .getTemplate()
             .getSpec()
@@ -179,13 +180,49 @@ class StackSynthesizerTest {
   }
 
   @Test
+  @DisplayName("the orchestrator pod runs as the configured dedicated service account")
+  void orchestratorRunsAsDedicatedServiceAccount() {
+    DeploymentPlan plan = compiler.compile(noSecretDefinition());
+
+    var podSpec =
+        synthesizer
+            .orchestratorDeployment(plan, NAMESPACE, "custom-orchestrator")
+            .getSpec()
+            .getTemplate()
+            .getSpec();
+
+    assertThat(podSpec.getServiceAccountName()).isEqualTo("custom-orchestrator");
+  }
+
+  @Test
+  @DisplayName(
+      "the definition store is handed over as DAPR_CONFIG_STORE, the name the orchestrator reads")
+  void definitionStoreUsesTheOrchestratorsEnvVarName() {
+    DeploymentPlan plan = compiler.compile(noSecretDefinition());
+
+    List<EnvVar> rendered =
+        synthesizer
+            .orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT)
+            .getSpec()
+            .getTemplate()
+            .getSpec()
+            .getContainers()
+            .getFirst()
+            .getEnv();
+
+    assertThat(envVar(rendered, "DAPR_CONFIG_STORE").getValue())
+        .isEqualTo(plan.definitionResource());
+    assertThat(rendered).extracting(EnvVar::getName).doesNotContain("DEFINITION_STORE");
+  }
+
+  @Test
   @DisplayName("declared workflow secrets are projected to the orchestrator with SECRET_ names")
   void declaredSecretsAreProjectedToOrchestrator() {
     DeploymentPlan plan = compiler.compile(sharedOAuthDefinition());
 
     List<EnvVar> rendered =
         synthesizer
-            .orchestratorDeployment(plan, NAMESPACE)
+            .orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT)
             .getSpec()
             .getTemplate()
             .getSpec()
@@ -210,7 +247,7 @@ class StackSynthesizerTest {
 
     List<EnvVar> rendered =
         synthesizer
-            .orchestratorDeployment(plan, NAMESPACE)
+            .orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT)
             .getSpec()
             .getTemplate()
             .getSpec()
@@ -220,7 +257,7 @@ class StackSynthesizerTest {
 
     assertThat(rendered)
         .extracting(EnvVar::getName)
-        .containsExactlyInAnyOrder("DEFINITION_STORE", "DEFINITION_KEY");
+        .containsExactlyInAnyOrder("DAPR_CONFIG_STORE", "DEFINITION_KEY");
     assertThat(rendered).allSatisfy(value -> assertThat(value.getValueFrom()).isNull());
   }
 

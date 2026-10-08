@@ -1,7 +1,17 @@
 {{- /*
-  Dapr actor/workflow state store. Not consumed by anything yet — dws-orchestrator does
-  not call the Dapr Workflow runtime today — but provisioned per Helm packaging Phase 5's
-  stated scope so it is ready when that lands.
+  Dapr actor/workflow state store, shared by every Dapr Workflow host in the namespace: each
+  controller-compiled orchestrator and every activity-invoked step service registers as a
+  workflow worker and needs it, so that daprd can start the actor runtime ("the state store is
+  not configured to use the actor runtime" otherwise).
+  Deliberately UNSCOPED. Dapr scopes list app ids, and a compiled workflow's app ids are its
+  workflow name and its task names — unknown at chart time and different per workflow — so no
+  static list can be right (the previous `scopes: [dws-orchestrator]` matched none of them). The
+  controller does not edit this chart-owned object to track membership either: a shared object
+  mutated per deploy races, needs update RBAC on a Helm-managed resource, and `helm upgrade`
+  would revert it. Actor state is keyed by app id, so sharing the store does not mix tenants.
+  The cost of being unscoped is that unrelated sidecars (admin, controller) also initialise a
+  state.redis Component whose init issues CONFIG SET against Redis; `initTimeout` below keeps
+  that inside the window for a still-warming Redis instead of Dapr's 5s default.
   Always rendered: `dapr.enabled=false` means "Dapr is externally managed, its CRDs are
   already in the cluster" (the preflight check enforces this), so a `dapr.io/v1alpha1`
   Component still applies cleanly. Only the chart-installed Dapr *control plane* is
@@ -36,11 +46,3 @@ spec:
       value: "false"
 auth:
   secretStore: kubernetes
-# Only dws-orchestrator uses the actor/workflow state store (once it adopts the
-# Dapr Workflow runtime). Scoping prevents unrelated pods' daprd sidecars (admin,
-# controller) from trying to initialize a state.redis Component that also does a
-# CONFIG SET on Redis for keyspace notifications — under load or before Redis is
-# fully warm this exceeds Dapr's 5s per-component init timeout and fatally crashes
-# the sidecar.
-scopes:
-  - dws-orchestrator

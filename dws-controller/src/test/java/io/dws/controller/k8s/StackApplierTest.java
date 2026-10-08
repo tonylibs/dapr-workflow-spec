@@ -210,8 +210,11 @@ class StackApplierTest {
     assertThat(container.getEnv())
         .extracting(e -> Map.entry(e.getName(), e.getValue()))
         .contains(
-            Map.entry("DEFINITION_STORE", plan.definitionResource()),
+            Map.entry("DAPR_CONFIG_STORE", plan.definitionResource()),
             Map.entry("DEFINITION_KEY", "definition"));
+    // Not `default`: the definition Component reads its ConfigMap as the pod's service account.
+    assertThat(deployment.getSpec().getTemplate().getSpec().getServiceAccountName())
+        .isEqualTo("dws-orchestrator");
     assertThat(deployment.getSpec().getTemplate().getMetadata().getAnnotations())
         .containsEntry("dapr.io/enabled", "true")
         .containsEntry("dapr.io/app-id", "order")
