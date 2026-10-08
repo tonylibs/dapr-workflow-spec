@@ -1,5 +1,8 @@
 package io.dws.controller.k8s;
 
+import java.util.Optional;
+import org.apache.commons.lang3.StringUtils;
+
 /**
  * Resolved orchestrator-tracing settings for one workflow deploy. {@link #OFF} is the default and
  * makes {@link StackSynthesizer#orchestratorDeployment} take its unmodified code path.
@@ -31,6 +34,15 @@ public record ObservabilitySettings(boolean enabled, String instrumentation) {
 
   public static final ObservabilitySettings OFF =
       new ObservabilitySettings(false, DEFAULT_INSTRUMENTATION);
+
+  public ObservabilitySettings(boolean enabled, Optional<String> instrumentation) {
+    this(
+        enabled,
+        instrumentation
+            .filter(StringUtils::isNotBlank)
+            .map(String::trim)
+            .orElse(DEFAULT_INSTRUMENTATION));
+  }
 
   public ObservabilitySettings {
     instrumentation =

@@ -52,20 +52,19 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
+import lombok.extern.slf4j.Slf4j;
 import org.cdk8s.ApiObjectMetadata;
 import org.cdk8s.Chart;
 import org.cdk8s.Testing;
-import org.jboss.logging.Logger;
 
 /**
  * Renders a {@link DeploymentPlan} into concrete Kubernetes objects. Knative Services and Dapr
  * Components are synthesized with cdk8s (using the generated imports) and handed on as dynamic
  * resources; the ConfigMap and orchestrator Deployment use the built-in fabric8 models.
  */
+@Slf4j
 @ApplicationScoped
 public class StackSynthesizer {
-
-  private static final Logger LOG = Logger.getLogger(StackSynthesizer.class);
 
   static final String DEFINITION_KEY = "definition";
   private static final String DAPR_CONFIG = "dapr.io/config";
@@ -556,8 +555,8 @@ public class StackSynthesizer {
       return base;
     }
     if (base.containsKey(DAPR_CONFIG)) {
-      LOG.warnf(
-          "Orchestrator already references Dapr Configuration %s; leaving it without tracing",
+      log.warn(
+          "Orchestrator already references Dapr Configuration {}; leaving it without tracing",
           base.get(DAPR_CONFIG));
       return base;
     }
@@ -606,9 +605,10 @@ public class StackSynthesizer {
     if (existing == null) {
       vars.add(new EnvVarBuilder().withName(OTEL_RESOURCE_ATTRIBUTES).withValue(identity).build());
     } else if (existing.getValueFrom() != null) {
-      LOG.warnf(
-          "%s is sourced from a Secret on %s; not appending workflow identity",
-          OTEL_RESOURCE_ATTRIBUTES, plan.orchestrator().name());
+      log.warn(
+          "{} is sourced from a Secret on {}; not appending workflow identity",
+          OTEL_RESOURCE_ATTRIBUTES,
+          plan.orchestrator().name());
     } else {
       String current = existing.getValue();
       existing.setValue(current == null || current.isBlank() ? identity : current + "," + identity);

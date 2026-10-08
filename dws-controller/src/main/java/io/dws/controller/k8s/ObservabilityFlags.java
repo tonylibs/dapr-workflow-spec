@@ -2,12 +2,14 @@ package io.dws.controller.k8s;
 
 import io.dapr.client.DaprClient;
 import io.dapr.client.domain.ConfigurationItem;
+import io.dws.controller.config.DaprConfigurationItem;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
-import org.jboss.logging.Logger;
+import java.util.function.Function;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Resolves {@link ObservabilitySettings} once per workflow deploy from the {@code
@@ -21,10 +23,9 @@ import org.jboss.logging.Logger;
  * Configuration lookup each log one single-line WARN (the operator may have set the flag to {@code
  * true}); a simply absent or non-{@code true} flag or a missing sidecar logs nothing at WARN.
  */
+@Slf4j
 @ApplicationScoped
 public class ObservabilityFlags {
-
-  private static final Logger LOG = Logger.getLogger(ObservabilityFlags.class);
 
   /** Upper bound on the single store round trip. */
   static final Duration STORE_TIMEOUT = Duration.ofSeconds(1);
@@ -46,7 +47,7 @@ public class ObservabilityFlags {
           .filter(ignored -> tracingConfigurationPresent(namespace))
           .orElse(ObservabilitySettings.OFF);
     } catch (RuntimeException e) {
-      LOG.warnf(e, "Observability settings could not be resolved; deploying without tracing");
+      log.warn("Observability settings could not be resolved; deploying without tracing", e);
       return ObservabilitySettings.OFF;
     }
   }
@@ -69,17 +70,41 @@ public class ObservabilityFlags {
           .map(
               present ->
                   new ObservabilitySettings(
-                      true,
-                      valueOf(present, ObservabilitySettings.INSTRUMENTATION_KEY).orElse(null)));
+                      true, valueOf(present, ObservabilitySettings.INSTRUMENTATION_KEY)));
     } catch (Exception e) {
       // The store call itself failed or timed out, so the operator may have set the flag to true:
       // say so, on one line (no stack trace), then deploy without tracing as always.
-      LOG.warnf(
-          "Observability flags unavailable (%s); observability.enabled could not be read, so"
-              + " deploying the orchestrator without tracing",
+      log.warn(
+          "Observability flags unavailable ({}); observability.enabled could not be read, so deploying the orchestrator without tracing",
           oneLine(e));
       return Optional.empty();
     }
+  }
+
+  private Optional<ObservabilitySettings> readStoreV2() {
+    return Optional.ofNullable(daprClient)
+        .map(
+            dc ->
+                dc.getConfiguration(
+                        ObservabilitySettings.STORE,
+                        ObservabilitySettings.ENABLED_KEY,
+                        ObservabilitySettings.INSTRUMENTATION_KEY)
+                    .map(
+                        items ->
+                            Optional.ofNullable(items)
+                                .filter(
+                                    present ->
+                                        isOn(
+                                            valueOf(present, ObservabilitySettings.ENABLED_KEY)
+                                                .orElse(null)))
+                                .map(
+                                    present ->
+                                        new ObservabilitySettings(
+                                            true,
+                                            valueOf(
+                                                present,
+                                                ObservabilitySettings.INSTRUMENTATION_KEY)))))
+        .flatMap(opt -> Optional.ofNullable(opt.block()).flatMap(Function.identity()));
   }
 
   /** {@code e.toString()} collapsed onto a single line. */
@@ -88,7 +113,9 @@ public class ObservabilityFlags {
   }
 
   private static Optional<String> valueOf(Map<String, ConfigurationItem> items, String key) {
-    return Optional.ofNullable(items.get(key)).map(ConfigurationItem::getValue);
+    return Optional.ofNullable(items.get(key))
+        .map(DaprConfigurationItem::new)
+        .flatMap(DaprConfigurationItem::getValue);
   }
 
   private static boolean isOn(String value) {
@@ -106,17 +133,18 @@ public class ObservabilityFlags {
                   .get()
               != null;
       if (!present) {
-        LOG.warnf(
-            "observability.enabled is true but Dapr Configuration %s was not found in namespace %s;"
-                + " deploying the orchestrator without tracing",
-            ObservabilitySettings.TRACING_CONFIGURATION, namespace);
+        log.warn(
+            "observability.enabled is true but Dapr Configuration {} was not found in namespace {}; deploying the orchestrator without tracing",
+            ObservabilitySettings.TRACING_CONFIGURATION,
+            namespace);
       }
       return present;
     } catch (RuntimeException e) {
-      LOG.warnf(
-          "observability.enabled is true but Dapr Configuration %s could not be read in namespace"
-              + " %s (%s); deploying the orchestrator without tracing",
-          ObservabilitySettings.TRACING_CONFIGURATION, namespace, e);
+      log.warn(
+          "observability.enabled is true but Dapr Configuration {} could not be read in namespace {} ({}); deploying the orchestrator without tracing",
+          ObservabilitySettings.TRACING_CONFIGURATION,
+          namespace,
+          e);
       return false;
     }
   }

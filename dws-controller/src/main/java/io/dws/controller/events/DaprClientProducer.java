@@ -5,7 +5,7 @@ import io.dapr.client.DaprClientBuilder;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Disposes;
 import jakarta.enterprise.inject.Produces;
-import org.jboss.logging.Logger;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * CDI producer for the Dapr client used to publish lifecycle events. Mirrors the orchestrator's
@@ -14,10 +14,9 @@ import org.jboss.logging.Logger;
  * sidecar-injected environment; when no sidecar is present, publishing simply fails and is
  * swallowed by {@link EventPublisher} (fire-and-forget).
  */
+@Slf4j
 @ApplicationScoped
 public class DaprClientProducer {
-
-  private static final Logger LOG = Logger.getLogger(DaprClientProducer.class);
 
   @Produces
   @ApplicationScoped
@@ -29,7 +28,7 @@ public class DaprClientProducer {
     try {
       client.close();
     } catch (Exception e) {
-      LOG.warnf(e, "Error closing Dapr client");
+      log.warn("Error closing Dapr client", e);
     }
   }
 }
