@@ -11,7 +11,7 @@
 
   <groupId>io.dws</groupId>
   <artifactId>dws-orchestrator</artifactId>
-  <version>0.1.1-SNAPSHOT</version>
+  <version>0.1.1</version>
   <name>dws-orchestrator</name>
   <description>Generic, config-driven Dapr workflow orchestrator (interpreter pattern) for Open Workflow Specification DSL 1.0</description>
 

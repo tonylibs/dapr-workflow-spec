@@ -2,7 +2,7 @@
   "dws-admin": "0.2.1",
   "dws-console": "0.3.0",
   "dws-controller": "1.1.0",
-  "dws-orchestrator": "0.1.0",
+  "dws-orchestrator": "0.1.1",
   "dws-step": "0.1.0",
   "dws-call-http": "0.2.0",
   "dws-call-grpc": "0.2.0",
