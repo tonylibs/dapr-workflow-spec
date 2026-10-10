@@ -144,7 +144,7 @@ public class ObservabilityFlags {
           "observability.enabled is true but Dapr Configuration {} could not be read in namespace {} ({}); deploying the orchestrator without tracing",
           ObservabilitySettings.TRACING_CONFIGURATION,
           namespace,
-          e);
+          oneLine(e));
       return false;
     }
   }
