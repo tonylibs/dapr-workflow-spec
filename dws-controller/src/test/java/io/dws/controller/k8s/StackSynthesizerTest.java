@@ -87,6 +87,29 @@ class StackSynthesizerTest {
   }
 
   @ParameterizedTest
+  @EnumSource(TaskKind.class)
+  @DisplayName("every Knative step moves daprd metrics off queue-proxy's 9090")
+  void knativeStepMovesDaprMetricsPort(TaskKind kind) {
+    Map<String, String> annotations = synthesizeStepAnnotations(kind);
+
+    assertThat(annotations).containsEntry("dapr.io/metrics-port", "9095");
+  }
+
+  @Test
+  @DisplayName("the step daprd metrics port clashes with no other listener in the pod")
+  void daprMetricsPortIsFreeInAKnativePod() {
+    // Knative Serving's queue-proxy (pkg/networking/constants.go, k8s_validation.go
+    // reservedPorts): 8012 http, 8013 h2c, 8112 https, 8022 admin, 9090 autoscaler metrics,
+    // 9091 request metrics, 8008 profiling. daprd's own injector defaults: 3500 http,
+    // 3501 public/healthz, 40000 debug, 50001 api gRPC, 50002 internal gRPC. 8080 is the step
+    // container's app port.
+    List<Integer> taken =
+        List.of(8012, 8013, 8112, 8022, 9090, 9091, 8008, 3500, 3501, 40000, 50001, 50002, 8080);
+
+    assertThat(Integer.parseInt(StackSynthesizer.STEP_DAPR_METRICS_PORT)).isNotIn(taken);
+  }
+
+  @ParameterizedTest
   @EnumSource(
       value = TaskKind.class,
       names = {"CALL_HTTP", "RUN_SHELL", "RUN_SCRIPT_JS", "RUN_SCRIPT_PYTHON"})
