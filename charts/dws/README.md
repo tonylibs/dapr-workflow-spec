@@ -191,10 +191,13 @@ Configuration whose `spec` contains **only** `tracing`, built by the same
 (scheme stripped), `isSecure` and protocol mapping are identical and `samplingRate` is the literal
 `"1"`. It has no `appHttpPipeline`/`httpPipeline`: an orchestrator sidecar has no bearer token, so it
 must not reuse the controller's Configuration when `auth.enabled=true`. The controller Role gains one
-rule for it, `get` on `configurations.dapr.io`, so the controller can confirm the Configuration
-exists before referencing it (a pod naming a missing Configuration crash-loops its daprd). If the
-store flag is on but `dws-tracing` is absent or unreadable the controller deploys the orchestrator
-un-instrumented and logs a warning; it never fails a deploy.
+rule for it, `get` on `configurations.dapr.io`. No pod references `dws-tracing` itself: the
+controller reads its `spec.tracing` and copies that block into the one Dapr Configuration it renders
+for the orchestrator of each workflow version (`<workflow>-<version>-cfg`), next to any other sidecar
+settings that workload needs, so tracing never competes with another feature for `dapr.io/config`.
+`dws-tracing` therefore stays the single definition of the tracing settings. If the store flag is on
+but `dws-tracing` is absent, unreadable or has no `spec.tracing`, the controller deploys the
+orchestrator un-instrumented and logs a warning; it never fails a deploy.
 
 **Store keys** live in the chart-managed `dws-controller-config` Dapr configuration store (the same
 one that holds the compiler-version flag). They are runtime flags set out of band and are **not**
