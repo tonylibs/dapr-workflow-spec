@@ -32,6 +32,11 @@ rules:
   - apiGroups: ["dapr.io"]
     resources: ["components"]
     verbs: ["get", "list", "create", "delete", "update", "patch"]
+  # Read-only existence check for the chart-rendered tracing-only Configuration `dws-tracing`
+  # before an orchestrator pod references it (a missing Configuration crash-loops daprd).
+  - apiGroups: ["dapr.io"]
+    resources: ["configurations"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

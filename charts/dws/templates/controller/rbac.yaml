@@ -26,6 +26,17 @@ rules:
   - apiGroups: ["dapr.io"]
     resources: ["components"]
     verbs: ["get", "list", "create", "delete", "update", "patch"]
+  {{- if and .Values.observability.enabled .Values.observability.workflows.enabled }}
+  # Read-only existence check for the tracing-only `dws-tracing` Configuration
+  # (templates/observability/workflow-tracing-configuration.yaml). The controller verifies it
+  # before stamping dapr.io/config onto a compiled orchestrator, because a pod that references a
+  # missing Configuration crash-loops its daprd. `get` only; no other verb on configurations.
+  # Gated like dws-tracing itself so the default render stays byte-identical to the Phase 1
+  # baseline (tests/fixtures/default-render-baseline.yaml).
+  - apiGroups: ["dapr.io"]
+    resources: ["configurations"]
+    verbs: ["get"]
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

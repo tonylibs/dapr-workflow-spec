@@ -15,17 +15,16 @@ import jakarta.enterprise.context.ApplicationScoped;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import org.jboss.logging.Logger;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Apply pass: materializes a {@link DeploymentPlan} in the cluster, drives the rollout of a new
  * version over the previous one, and garbage-collects drained versions. All mutation is keyed on
  * the {@code dws.io/*} labels, so the cluster stays the single source of truth.
  */
+@Slf4j
 @ApplicationScoped
 public class StackApplier {
-
-  private static final Logger LOG = Logger.getLogger(StackApplier.class);
 
   /** Dapr app-id annotation on the orchestrator pod template; equals the workflow name. */
   private static final String DAPR_APP_ID = "dapr.io/app-id";
@@ -33,16 +32,19 @@ public class StackApplier {
   private final KubernetesClient client;
   private final StackSynthesizer synthesizer;
   private final EventPublisher events;
+  private final ObservabilityFlags observability;
   private final String namespace;
 
   public StackApplier(
       KubernetesClient client,
       StackSynthesizer synthesizer,
       EventPublisher events,
-      DwsConfig config) {
+      DwsConfig config,
+      ObservabilityFlags observability) {
     this.client = client;
     this.synthesizer = synthesizer;
     this.events = events;
+    this.observability = observability;
     this.namespace = config.namespace();
   }
 
@@ -91,16 +93,21 @@ public class StackApplier {
       for (GenericKubernetesResource policy : synthesizer.workflowAccessPolicies(plan, namespace)) {
         applyDynamic(ResourceContexts.WORKFLOW_ACCESS_POLICY, policy);
       }
+      // Resolved per deploy (never throws; OFF on any doubt) so a flag change reaches a workflow
+      // only on its next deploy.
       client
-          .resource(synthesizer.orchestratorDeployment(plan, namespace))
+          .resource(
+              synthesizer.orchestratorDeployment(plan, namespace, observability.resolve(namespace)))
           .inNamespace(namespace)
           .createOr(NonDeletingOperation::update);
 
       rollOut(plan);
 
-      LOG.infof(
-          "Applied workflow %s version %s (created=%s)",
-          plan.workflow(), plan.version(), !alreadyDeployed);
+      log.info(
+          "Applied workflow {} version {} (created={})",
+          plan.workflow(),
+          plan.version(),
+          !alreadyDeployed);
       events.deploymentApplied(
           plan.workflow(), plan.versionId(), stepNames(plan), plan.orchestrator().appId());
       return new ApplyResult(plan.workflow(), plan.versionId(), plan.version(), !alreadyDeployed);
@@ -149,7 +156,7 @@ public class StackApplier {
     if (!hasZeroReplicas(deployment)) {
       return;
     }
-    LOG.infof("Garbage-collecting drained version %s of workflow %s", versionId, workflow);
+    log.info("Garbage-collecting drained version {} of workflow {}", versionId, workflow);
     deleteByLabels(Labels.version(workflow, versionId));
     events.deploymentCollected(workflow, versionId, orchestratorAppId(deployment, workflow));
   }

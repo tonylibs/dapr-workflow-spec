@@ -142,3 +142,24 @@ self-instrumented one.
   currently deferred pending the Istio decision (roadmap ADR candidate 6).
 - **It does not settle OTel Operator packaging** — prerequisite versus chart dependency is
   answered in the roadmap's Phase 0-A(b) findings and belongs with candidate 5, not here.
+
+## Addendum 2026-10-06: Phase 2a orchestrator identity
+
+Recorded while implementing `observability-orchestrator-tracing`. It refines Decision 1 for the
+compiled orchestrator and does not change the other decisions.
+
+- **`service.name` is stamped as `OTEL_SERVICE_NAME`, not inside `OTEL_RESOURCE_ATTRIBUTES`.** The
+  OTel Operator (0.159.0) injects `OTEL_SERVICE_NAME` into every instrumented container, derived
+  from the Deployment name (`<workflow>-<versionId>` for the orchestrator), unless the container
+  already defines it. Per the OTel SDK specification `OTEL_SERVICE_NAME` outranks a `service.name`
+  entry in `OTEL_RESOURCE_ATTRIBUTES`. A `service.name` carried only in `OTEL_RESOURCE_ATTRIBUTES`
+  would therefore silently lose, and the trace would list a per-version Deployment name instead of
+  the Dapr app ID. The controller sets `OTEL_SERVICE_NAME` to the app ID; the operator leaves a
+  container-defined value alone and appends to a container-defined `OTEL_RESOURCE_ATTRIBUTES`, so
+  `dws.workflow.name` and `dws.workflow.version` ride there. The same rule applies to any later
+  compiled node.
+- **`dws.node.id` and `dws.node.kind` are not emitted for the orchestrator.** It is not a
+  `CompiledNode`. They apply once `dws-flow` / `dws-step` are deployed (runtime-v2 Phase 4).
+- **The orchestrator's sidecar uses the chart's standalone `dws-tracing` Configuration**, tracing
+  only, pinned to `samplingRate: "1"` (Decision 2 unchanged; daprd's sampler is parent-based, so
+  it follows the agent's decision).

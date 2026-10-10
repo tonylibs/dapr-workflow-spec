@@ -5,7 +5,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.jboss.logging.Logger;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Publishes {@code dws-controller} lifecycle events to the shared {@code dws.events} topic as a
@@ -13,6 +13,7 @@ import org.jboss.logging.Logger;
  * never propagates out of this class, so it can never fail an apply pass (see {@code
  * controller-event-publishing} spec and {@code docs/events.md}).
  */
+@Slf4j
 @ApplicationScoped
 public class EventPublisher {
 
@@ -26,8 +27,6 @@ public class EventPublisher {
   static final String DEPLOYMENT_FAILED = "io.dws.deployment.failed";
   static final String DEPLOYMENT_DRAINED = "io.dws.deployment.drained";
   static final String DEPLOYMENT_COLLECTED = "io.dws.deployment.collected";
-
-  private static final Logger LOG = Logger.getLogger(EventPublisher.class);
 
   private final DaprClient client;
 
@@ -112,7 +111,7 @@ public class EventPublisher {
       EventEnvelope envelope = EventEnvelope.create(type, SOURCE, data);
       client.publishEvent(COMPONENT, TOPIC, envelope.asMap()).block();
     } catch (Exception e) {
-      LOG.warnf(e, "Failed to publish lifecycle event %s (swallowed)", type);
+      log.warn("Failed to publish lifecycle event {} (swallowed)", type, e);
     }
   }
 }

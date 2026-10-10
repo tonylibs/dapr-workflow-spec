@@ -48,7 +48,8 @@ class StackApplierFailurePublishTest {
     // Fail on the first cluster interaction inside apply's try block.
     when(client.configMaps()).thenThrow(new RuntimeException("boom"));
 
-    StackApplier applier = new StackApplier(client, synthesizer, events, config);
+    StackApplier applier =
+        new StackApplier(client, synthesizer, events, config, mock(ObservabilityFlags.class));
 
     assertThatThrownBy(() -> applier.apply(plan()))
         .isInstanceOf(RuntimeException.class)

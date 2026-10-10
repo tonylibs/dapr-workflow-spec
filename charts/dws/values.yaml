@@ -455,9 +455,14 @@ observability:
     enabled: true
     # Reserved for the Phase 4 log/trace correlation work: json or text.
     format: json
-  # Whether compiled workflow stacks get instrumented. Separate from the master switch so an
-  # operator can observe the control plane without paying per-workflow span volume. Reserved
-  # for Phase 2b — Phase 1 does not instrument compiled workflow resources.
+  # Whether the tracing-only Dapr Configuration `dws-tracing` renders for compiled workflow
+  # sidecars. Separate from the master switch so an operator can observe the control plane
+  # without paying per-workflow span volume. Requires observability.enabled=true. This value
+  # only controls the chart-rendered Configuration; dws-controller additionally needs its own
+  # out-of-band store keys (`observability.enabled`, optional `observability.instrumentation`
+  # in the dws-controller-config Component) before it instruments a compiled orchestrator, and
+  # only on that workflow's NEXT deploy. See the chart README, "Compiled workflow orchestrators".
+  # Only the orchestrator is covered; step services and dws-flow are later phases.
   workflows:
     enabled: true
   operator:
