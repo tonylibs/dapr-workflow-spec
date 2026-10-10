@@ -30,6 +30,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: DWS_ORCHESTRATOR_SERVICE_ACCOUNT
+              value: dws-orchestrator
             - name: DWS_IMAGES_CALL_HTTP
               value: ghcr.io/tonylibs/dws-call-http:latest
             - name: DWS_IMAGES_CALL_OPENAPI

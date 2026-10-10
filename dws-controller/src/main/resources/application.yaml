@@ -4,6 +4,10 @@ dws:
   # How often drained previous versions are garbage-collected.
   reconcile:
     every: 30s
+  orchestrator:
+    # ServiceAccount orchestrator pods run as; needs configmaps get/list/watch (the definition
+    # Component reads its ConfigMap as the pod's service account). Env: DWS_ORCHESTRATOR_SERVICE_ACCOUNT.
+    service-account: dws-orchestrator
   # Prebuilt step/orchestrator images. Override registry and tags per environment.
   images:
     call-http: ghcr.io/tonylibs/dws-call-http:latest

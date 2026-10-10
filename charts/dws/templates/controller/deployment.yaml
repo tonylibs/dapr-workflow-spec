@@ -74,6 +74,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: DWS_ORCHESTRATOR_SERVICE_ACCOUNT
+              value: {{ include "dws.orchestrator.serviceAccountName" . | quote }}
             - name: DWS_IMAGES_CALL_HTTP
               value: "{{ .Values.controller.images.callHttp.repository }}:{{ .Values.controller.images.callHttp.tag }}"
             - name: DWS_IMAGES_CALL_OPENAPI

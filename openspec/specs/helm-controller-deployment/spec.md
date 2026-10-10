@@ -105,18 +105,52 @@ SHALL continue to expose `DWS_NAMESPACE` from the pod's own namespace via the do
 ### Requirement: RBAC scope is preserved exactly
 
 The controller Role SHALL grant exactly the permissions from
-`dws-controller/k8s/controller-rbac.yaml` and no more:
-`configmaps` (`get`, `list`, `create`, `delete`); `apps/deployments`
-(`get`, `list`, `create`, `delete`, `update`, `patch`);
-`serving.knative.dev/services` (`get`, `list`, `create`, `delete`, `update`, `patch`);
-`dapr.io/components` (`get`, `list`, `create`, `delete`, `update`, `patch`).
-No additional API groups, resources, or verbs SHALL be added.
+`dws-controller/k8s/controller-rbac.yaml` and no more. Every kind the controller manages
+(`ResourceContexts` plus the ConfigMaps and Deployments it builds with fabric8 models) needs
+`deletecollection` as well as `delete`, because label-selector deletes — workflow deletion and
+garbage collection of drained versions — are authorized as collection deletes:
+`configmaps` (`get`, `list`, `create`, `delete`, `deletecollection`); `apps/deployments`
+(`get`, `list`, `create`, `delete`, `deletecollection`, `update`, `patch`);
+`serving.knative.dev/services` (`get`, `list`, `create`, `delete`, `deletecollection`, `update`,
+`patch`); and each of `dapr.io/components`, `dapr.io/httpendpoints`, `dapr.io/configurations`
+and `dapr.io/workflowaccesspolicies` (`get`, `list`, `create`, `delete`, `deletecollection`,
+`update`, `patch`). No additional API groups, resources, or verbs SHALL be added.
 
 #### Scenario: Role rules match the reference exactly
 - **WHEN** the controller Role is rendered
-- **THEN** it contains exactly four rules covering `configmaps`, `apps/deployments`,
-  `serving.knative.dev/services`, and `dapr.io/components` with the verbs listed above
+- **THEN** it contains exactly the seven rules above, covering `configmaps`, `apps/deployments`,
+  `serving.knative.dev/services`, `dapr.io/components`, `dapr.io/httpendpoints`,
+  `dapr.io/configurations` and `dapr.io/workflowaccesspolicies`, with the verbs listed above
 - **AND** no rule references `secrets`, `pods`, cluster-scoped resources, or the `*` wildcard
+
+#### Scenario: Creating a workflow does not fail on WorkflowAccessPolicy
+- **WHEN** a workflow with activity-invoked steps is applied by the controller running as the
+  rendered ServiceAccount
+- **THEN** the controller can create its `dapr.io/workflowaccesspolicies`, and `POST /workflows`
+  does not return HTTP 500 for a missing grant
+
+### Requirement: Orchestrator pods run as a dedicated service account
+
+The chart SHALL render, from `templates/controller/orchestrator-rbac.yaml` and gated by
+`controller.enabled`, a dedicated orchestrator ServiceAccount, a Role granting only `get`, `list`
+and `watch` on `configmaps`, and a RoleBinding between them. The definition Component
+(`configuration.kubernetes`) reads its ConfigMap with the pod's service account, so an
+orchestrator running as the namespace `default` account crash-loops its sidecar on "failed to sync
+informer cache for ConfigMap". The controller Deployment SHALL set
+`DWS_ORCHESTRATOR_SERVICE_ACCOUNT` to that ServiceAccount's name, and the controller SHALL set it
+as `serviceAccountName` on every orchestrator Deployment it creates. Owning components:
+`charts/dws` (the objects and the env var) and `dws-controller` (stamping the pod spec).
+
+#### Scenario: Orchestrator identity renders and is handed to the controller
+- **WHEN** `helm template` is run with any release name
+- **THEN** a ServiceAccount, a read-only ConfigMap Role and a RoleBinding to that ServiceAccount
+  are rendered
+- **AND** the controller Deployment's `DWS_ORCHESTRATOR_SERVICE_ACCOUNT` equals the rendered
+  ServiceAccount's name
+
+#### Scenario: Controller disabled
+- **WHEN** `controller.enabled=false`
+- **THEN** no orchestrator ServiceAccount, Role or RoleBinding is rendered
 
 ### Requirement: Controller pod carries Dapr sidecar annotations unconditionally
 

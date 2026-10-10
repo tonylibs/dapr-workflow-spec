@@ -185,6 +185,20 @@ metadata:
     app.kubernetes.io/version: 8.10.1
     helm.sh/chart: redis-28.0.6
 ---
+# Source: dws/templates/controller/orchestrator-rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dws-orchestrator
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.1
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: orchestrator
+---
 # Source: dws/templates/controller/serviceaccount.yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -192,7 +206,7 @@ metadata:
   name: dws-controller
   namespace: default
   labels:
-    helm.sh/chart: dws-1.1.0
+    helm.sh/chart: dws-1.1.1
     app.kubernetes.io/name: dws
     app.kubernetes.io/instance: dws
     app.kubernetes.io/version: "1.18.0"
@@ -254,7 +268,7 @@ metadata:
   name: dws-postgres
   namespace: default
   labels:
-    helm.sh/chart: dws-1.1.0
+    helm.sh/chart: dws-1.1.1
     app.kubernetes.io/name: dws
     app.kubernetes.io/instance: dws
     app.kubernetes.io/version: "1.18.0"
@@ -769,6 +783,25 @@ rules:
     resources: ["configurations"]
     verbs: ["list", "get", "watch"]
 ---
+# Source: dws/templates/controller/orchestrator-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dws-orchestrator
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.1
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: orchestrator
+rules:
+  # Read-only: the definition ConfigMaps are immutable and written by the controller.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+---
 # Source: dws/templates/controller/rbac.yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -776,31 +809,44 @@ metadata:
   name: dws-controller
   namespace: default
   labels:
-    helm.sh/chart: dws-1.1.0
+    helm.sh/chart: dws-1.1.1
     app.kubernetes.io/name: dws
     app.kubernetes.io/instance: dws
     app.kubernetes.io/version: "1.18.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: controller
 rules:
-  # Immutable definition ConfigMaps.
+  # Immutable definition ConfigMaps. `deletecollection` is required on every managed kind:
+  # the controller removes a workflow or a drained version with label-selector deletes, which
+  # the API server authorizes as a collection DELETE (fabric8 withLabels(...).delete()).
   - apiGroups: [""]
     resources: ["configmaps"]
-    verbs: ["get", "list", "create", "delete"]
+    verbs: ["get", "list", "create", "delete", "deletecollection"]
   # Orchestrator Deployments. `update`/`patch` are needed to stamp dws.io/drain=true on
   # the superseded version during rollout.
   - apiGroups: ["apps"]
     resources: ["deployments"]
-    verbs: ["get", "list", "create", "delete", "update", "patch"]
+    verbs: ["get", "list", "create", "delete", "deletecollection", "update", "patch"]
   # Step services. `update`/`patch` let a new version re-label an existing, same-named
   # Knative Service instead of failing on create.
   - apiGroups: ["serving.knative.dev"]
     resources: ["services"]
-    verbs: ["get", "list", "create", "delete", "update", "patch"]
-  # Dapr configuration components backing the definition store.
+    verbs: ["get", "list", "create", "delete", "deletecollection", "update", "patch"]
+  # Dapr resources the controller applies per workflow version: the definition-store and
+  # binding/middleware Components, the OAuth HTTPEndpoints and sidecar Configurations, and
+  # the per-step WorkflowAccessPolicies (ResourceContexts in dws-controller).
   - apiGroups: ["dapr.io"]
     resources: ["components"]
-    verbs: ["get", "list", "create", "delete", "update", "patch"]
+    verbs: ["get", "list", "create", "delete", "deletecollection", "update", "patch"]
+  - apiGroups: ["dapr.io"]
+    resources: ["httpendpoints"]
+    verbs: ["get", "list", "create", "delete", "deletecollection", "update", "patch"]
+  - apiGroups: ["dapr.io"]
+    resources: ["configurations"]
+    verbs: ["get", "list", "create", "delete", "deletecollection", "update", "patch"]
+  - apiGroups: ["dapr.io"]
+    resources: ["workflowaccesspolicies"]
+    verbs: ["get", "list", "create", "delete", "deletecollection", "update", "patch"]
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/injector.yaml
 kind: RoleBinding
@@ -885,6 +931,28 @@ roleRef:
   kind: Role
   name: dapr-sentry
 ---
+# Source: dws/templates/controller/orchestrator-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dws-orchestrator
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.1
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: orchestrator
+subjects:
+  - kind: ServiceAccount
+    name: dws-orchestrator
+    namespace: default
+roleRef:
+  kind: Role
+  name: dws-orchestrator
+  apiGroup: rbac.authorization.k8s.io
+---
 # Source: dws/templates/controller/rbac.yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -892,7 +960,7 @@ metadata:
   name: dws-controller
   namespace: default
   labels:
-    helm.sh/chart: dws-1.1.0
+    helm.sh/chart: dws-1.1.1
     app.kubernetes.io/name: dws
     app.kubernetes.io/instance: dws
     app.kubernetes.io/version: "1.18.0"
@@ -1246,7 +1314,7 @@ metadata:
   name: dws-admin
   namespace: default
   labels:
-    helm.sh/chart: dws-1.1.0
+    helm.sh/chart: dws-1.1.1
     app.kubernetes.io/name: dws
     app.kubernetes.io/instance: dws
     app.kubernetes.io/version: "1.18.0"
@@ -1269,7 +1337,7 @@ metadata:
   name: dws-controller
   namespace: default
   labels:
-    helm.sh/chart: dws-1.1.0
+    helm.sh/chart: dws-1.1.1
     app.kubernetes.io/name: dws
     app.kubernetes.io/instance: dws
     app.kubernetes.io/version: "1.18.0"
@@ -1657,7 +1725,7 @@ metadata:
   name: dws-admin
   namespace: default
   labels:
-    helm.sh/chart: dws-1.1.0
+    helm.sh/chart: dws-1.1.1
     app.kubernetes.io/name: dws
     app.kubernetes.io/instance: dws
     app.kubernetes.io/version: "1.18.0"
@@ -1673,7 +1741,7 @@ spec:
   template:
     metadata:
       labels:
-        helm.sh/chart: dws-1.1.0
+        helm.sh/chart: dws-1.1.1
         app.kubernetes.io/name: dws
         app.kubernetes.io/instance: dws
         app.kubernetes.io/version: "1.18.0"
@@ -1722,7 +1790,7 @@ spec:
               done
       containers:
         - name: admin
-          image: "ghcr.io/tonylibs/dws-admin:0.2.0"
+          image: "ghcr.io/tonylibs/dws-admin:0.2.1"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -1763,7 +1831,7 @@ metadata:
   name: dws-controller
   namespace: default
   labels:
-    helm.sh/chart: dws-1.1.0
+    helm.sh/chart: dws-1.1.1
     app.kubernetes.io/name: dws
     app.kubernetes.io/instance: dws
     app.kubernetes.io/version: "1.18.0"
@@ -1779,7 +1847,7 @@ spec:
   template:
     metadata:
       labels:
-        helm.sh/chart: dws-1.1.0
+        helm.sh/chart: dws-1.1.1
         app.kubernetes.io/name: dws
         app.kubernetes.io/instance: dws
         app.kubernetes.io/version: "1.18.0"
@@ -1814,7 +1882,7 @@ spec:
               done
       containers:
         - name: controller
-          image: "ghcr.io/tonylibs/dws-controller:1.0"
+          image: "ghcr.io/tonylibs/dws-controller:1.0.0"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -1824,6 +1892,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: DWS_ORCHESTRATOR_SERVICE_ACCOUNT
+              value: "dws-orchestrator"
             - name: DWS_IMAGES_CALL_HTTP
               value: "ghcr.io/tonylibs/dws-call-http:0.2.0"
             - name: DWS_IMAGES_CALL_OPENAPI
@@ -1833,7 +1903,7 @@ spec:
             - name: DWS_IMAGES_CALL_ASYNCAPI
               value: "ghcr.io/tonylibs/dws-call-asyncapi:1.1.0"
             - name: DWS_IMAGES_CALL_A2A
-              value: "ghcr.io/tonylibs/dws-call-a2a:latest"
+              value: "ghcr.io/tonylibs/dws-call-a2a:0.2.0"
             - name: DWS_IMAGES_RUN_SHELL
               value: "ghcr.io/tonylibs/dws-run-shell:0.2.0"
             - name: DWS_IMAGES_RUN_SCRIPT_JS
@@ -1841,7 +1911,7 @@ spec:
             - name: DWS_IMAGES_RUN_SCRIPT_PYTHON
               value: "ghcr.io/tonylibs/dws-run-script-python:0.2.0"
             - name: DWS_IMAGES_ORCHESTRATOR
-              value: "ghcr.io/tonylibs/dws-orchestrator:latest"
+              value: "ghcr.io/tonylibs/dws-orchestrator:0.1.0"
           livenessProbe:
             httpGet:
               path: /q/health/live
@@ -2545,7 +2615,7 @@ metadata:
   name: dws-actor-statestore
   namespace: default
   labels:
-    helm.sh/chart: dws-1.1.0
+    helm.sh/chart: dws-1.1.1
     app.kubernetes.io/name: dws
     app.kubernetes.io/instance: dws
     app.kubernetes.io/version: "1.18.0"
@@ -2572,14 +2642,6 @@ spec:
       value: "false"
 auth:
   secretStore: kubernetes
-# Only dws-orchestrator uses the actor/workflow state store (once it adopts the
-# Dapr Workflow runtime). Scoping prevents unrelated pods' daprd sidecars (admin,
-# controller) from trying to initialize a state.redis Component that also does a
-# CONFIG SET on Redis for keyspace notifications — under load or before Redis is
-# fully warm this exceeds Dapr's 5s per-component init timeout and fatally crashes
-# the sidecar.
-scopes:
-  - dws-orchestrator
 ---
 # Source: dws/templates/controller/config-component.yaml
 apiVersion: dapr.io/v1alpha1
@@ -2588,7 +2650,7 @@ metadata:
   name: dws-controller-config
   namespace: default
   labels:
-    helm.sh/chart: dws-1.1.0
+    helm.sh/chart: dws-1.1.1
     app.kubernetes.io/name: dws
     app.kubernetes.io/instance: dws
     app.kubernetes.io/version: "1.18.0"
@@ -2628,7 +2690,7 @@ metadata:
   name: dws-definitions
   namespace: default
   labels:
-    helm.sh/chart: dws-1.1.0
+    helm.sh/chart: dws-1.1.1
     app.kubernetes.io/name: dws
     app.kubernetes.io/instance: dws
     app.kubernetes.io/version: "1.18.0"
@@ -2667,7 +2729,7 @@ metadata:
   name: pubsub
   namespace: default
   labels:
-    helm.sh/chart: dws-1.1.0
+    helm.sh/chart: dws-1.1.1
     app.kubernetes.io/name: dws
     app.kubernetes.io/instance: dws
     app.kubernetes.io/version: "1.18.0"
@@ -2754,7 +2816,7 @@ metadata:
   name: dws-dapr-ready
   namespace: default
   labels:
-    helm.sh/chart: dws-1.1.0
+    helm.sh/chart: dws-1.1.1
     app.kubernetes.io/name: dws
     app.kubernetes.io/instance: dws
     app.kubernetes.io/version: "1.18.0"
@@ -2772,7 +2834,7 @@ metadata:
   name: dws-dapr-ready
   namespace: default
   labels:
-    helm.sh/chart: dws-1.1.0
+    helm.sh/chart: dws-1.1.1
     app.kubernetes.io/name: dws
     app.kubernetes.io/instance: dws
     app.kubernetes.io/version: "1.18.0"
@@ -2799,7 +2861,7 @@ metadata:
   name: dws-dapr-ready
   namespace: default
   labels:
-    helm.sh/chart: dws-1.1.0
+    helm.sh/chart: dws-1.1.1
     app.kubernetes.io/name: dws
     app.kubernetes.io/instance: dws
     app.kubernetes.io/version: "1.18.0"
@@ -2825,7 +2887,7 @@ metadata:
   name: "dws-admin-db-connection-test"
   namespace: default
   labels:
-    helm.sh/chart: dws-1.1.0
+    helm.sh/chart: dws-1.1.1
     app.kubernetes.io/name: dws
     app.kubernetes.io/instance: dws
     app.kubernetes.io/version: "1.18.0"
@@ -2861,7 +2923,7 @@ metadata:
   name: dws-dapr-ready
   namespace: default
   labels:
-    helm.sh/chart: dws-1.1.0
+    helm.sh/chart: dws-1.1.1
     app.kubernetes.io/name: dws
     app.kubernetes.io/instance: dws
     app.kubernetes.io/version: "1.18.0"
@@ -2876,7 +2938,7 @@ spec:
   template:
     metadata:
       labels:
-        helm.sh/chart: dws-1.1.0
+        helm.sh/chart: dws-1.1.1
         app.kubernetes.io/name: dws
         app.kubernetes.io/instance: dws
         app.kubernetes.io/version: "1.18.0"

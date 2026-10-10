@@ -534,30 +534,28 @@ assert_count '^kind: Configuration$' "$(render "${base_args[@]}" "${auth_args[@]
   "${config_only[@]}" "${tracing_template[@]}")" 3 \
   "auth+observability must render the controller, admin and dws-tracing Configurations (3 total)"
 
-# Controller Role: exactly one new rule — get on configurations.dapr.io — gated together with
-# dws-tracing so the default render stays byte-identical. The pre-existing components rule must
-# be untouched, and no other verb is granted on configurations.
+# Controller Role: the dapr.io `configurations` rule is UNCONDITIONAL. The controller already
+# applies and deletes sidecar Configurations for OAuth workflows (ResourceContexts.DAPR_CONFIGURATION),
+# so it needs the full verb set whether or not observability is on; the `get` the tracing-only
+# `dws-tracing` existence check needs is part of that set. The Role must therefore not depend on
+# any auth/observability flag. Per-kind verb coverage lives in orchestrator-wiring-render-test.sh.
 role="$(render "${base_args[@]}" "${obs_args[@]}" -s templates/controller/rbac.yaml)"
 config_rule="$(awk 'BEGIN{RS="\n  - apiGroups:"} /"dapr.io"/ && /"configurations"/' <<<"$role")"
 [ -n "$config_rule" ] || fail "the controller Role has no dapr.io rule for configurations"
-grep -Eq 'verbs: \["get"\]$' <<<"$config_rule" \
-  || fail "the controller Role's configurations rule must grant exactly the get verb, got: $config_rule"
+grep -Eq 'verbs: \[[^]]*"get"' <<<"$config_rule" \
+  || fail "the controller Role's configurations rule must grant get (dws-tracing existence check), got: $config_rule"
 assert_count '"configurations"' "$role" 1 "exactly one Role rule may name configurations"
-assert_count '^    resources: \["components"\]$' "$role" 1 "the pre-existing dapr.io components rule changed"
-assert_count '^    verbs: \["get", "list", "create", "delete", "update", "patch"\]$' "$role" 3 \
-  "the pre-existing Role verb sets changed (deployments, Knative services, components)"
-assert_count '^  - apiGroups:' "$role" 5 "the controller Role must have exactly five rules (four existing + configurations get)"
 # The Role is the same with auth on.
 role_auth="$(render "${base_args[@]}" "${auth_args[@]}" "${obs_args[@]}" -s templates/controller/rbac.yaml)"
 [ "$role" = "$role_auth" ] || fail "auth.enabled changed the controller Role"
 
-# Without dws-tracing there is nothing to read: the rule disappears (default, workflows off).
+# ...and the same with dws-tracing not rendered (default, workflows off): nothing in the Role is
+# gated by observability any more.
 for off_flags in "" "--set observability.enabled=true --set observability.workflows.enabled=false"; do
   read -r -a off_arr <<<"$off_flags"
   role_off="$(render "${base_args[@]}" "${off_arr[@]}" -s templates/controller/rbac.yaml)"
-  assert_absent 'configurations' "$role_off" \
-    "the controller Role grants configurations access although dws-tracing does not render (flags: '$off_flags')"
-  assert_count '^  - apiGroups:' "$role_off" 4 "the controller Role must keep exactly its four original rules (flags: '$off_flags')"
+  [ "$role" = "$role_off" ] \
+    || fail "the controller Role depends on observability flags (flags: '$off_flags')"
 done
 
 echo "observability-render-test.sh: all checks passed"

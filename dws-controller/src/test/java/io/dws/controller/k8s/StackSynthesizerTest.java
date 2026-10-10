@@ -38,6 +38,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 class StackSynthesizerTest {
 
   private static final String NAMESPACE = "default";
+  private static final String SERVICE_ACCOUNT = "dws-orchestrator";
   private static final ImageCatalog IMAGES =
       new ImageCatalog(
           "sw-call-http:1.0",
@@ -166,7 +167,7 @@ class StackSynthesizerTest {
 
     List<EnvVar> rendered =
         synthesizer
-            .orchestratorDeployment(plan, NAMESPACE)
+            .orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT)
             .getSpec()
             .getTemplate()
             .getSpec()
@@ -184,13 +185,49 @@ class StackSynthesizerTest {
   }
 
   @Test
+  @DisplayName("the orchestrator pod runs as the configured dedicated service account")
+  void orchestratorRunsAsDedicatedServiceAccount() {
+    DeploymentPlan plan = compiler.compile(noSecretDefinition());
+
+    var podSpec =
+        synthesizer
+            .orchestratorDeployment(plan, NAMESPACE, "custom-orchestrator")
+            .getSpec()
+            .getTemplate()
+            .getSpec();
+
+    assertThat(podSpec.getServiceAccountName()).isEqualTo("custom-orchestrator");
+  }
+
+  @Test
+  @DisplayName(
+      "the definition store is handed over as DAPR_CONFIG_STORE, the name the orchestrator reads")
+  void definitionStoreUsesTheOrchestratorsEnvVarName() {
+    DeploymentPlan plan = compiler.compile(noSecretDefinition());
+
+    List<EnvVar> rendered =
+        synthesizer
+            .orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT)
+            .getSpec()
+            .getTemplate()
+            .getSpec()
+            .getContainers()
+            .getFirst()
+            .getEnv();
+
+    assertThat(envVar(rendered, "DAPR_CONFIG_STORE").getValue())
+        .isEqualTo(plan.definitionResource());
+    assertThat(rendered).extracting(EnvVar::getName).doesNotContain("DEFINITION_STORE");
+  }
+
+  @Test
   @DisplayName("declared workflow secrets are projected to the orchestrator with SECRET_ names")
   void declaredSecretsAreProjectedToOrchestrator() {
     DeploymentPlan plan = compiler.compile(sharedOAuthDefinition());
 
     List<EnvVar> rendered =
         synthesizer
-            .orchestratorDeployment(plan, NAMESPACE)
+            .orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT)
             .getSpec()
             .getTemplate()
             .getSpec()
@@ -215,7 +252,7 @@ class StackSynthesizerTest {
 
     List<EnvVar> rendered =
         synthesizer
-            .orchestratorDeployment(plan, NAMESPACE)
+            .orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT)
             .getSpec()
             .getTemplate()
             .getSpec()
@@ -225,7 +262,7 @@ class StackSynthesizerTest {
 
     assertThat(rendered)
         .extracting(EnvVar::getName)
-        .containsExactlyInAnyOrder("DEFINITION_STORE", "DEFINITION_KEY");
+        .containsExactlyInAnyOrder("DAPR_CONFIG_STORE", "DEFINITION_KEY");
     assertThat(rendered).allSatisfy(value -> assertThat(value.getValueFrom()).isNull());
   }
 
@@ -396,7 +433,7 @@ class StackSynthesizerTest {
   private static DeploymentPlan orchestratorPlan() {
     // Ordered: the rendered env list follows the map's iteration order.
     Map<String, io.dws.controller.model.EnvValue> env = new LinkedHashMap<>();
-    env.put("DEFINITION_STORE", new Literal("dws-def-order-fulfilment-v1a2b3c4d"));
+    env.put("DAPR_CONFIG_STORE", new Literal("dws-def-order-fulfilment-v1a2b3c4d"));
     env.put("DEFINITION_KEY", new Literal("definition"));
     return orchestratorPlan("order-fulfilment", "v1a2b3c4d", env);
   }
@@ -409,7 +446,10 @@ class StackSynthesizerTest {
     return deployment.getSpec().getTemplate().getSpec().getContainers().getFirst().getEnv();
   }
 
-  /** The orchestrator Deployment exactly as rendered before observability existed, by hand. */
+  /**
+   * The orchestrator Deployment exactly as rendered with tracing off, by hand: the
+   * pre-observability shape plus the dedicated service account.
+   */
   private static Deployment todaysOrchestratorDeployment() {
     return new DeploymentBuilder()
         .withNewMetadata()
@@ -441,12 +481,13 @@ class StackSynthesizerTest {
                 "dapr.io/app-port", "8080"))
         .endMetadata()
         .withNewSpec()
+        .withServiceAccountName(SERVICE_ACCOUNT)
         .addNewContainer()
         .withName("orchestrator")
         .withImage("sw-orchestrator:1.0")
         .withEnv(
             new EnvVarBuilder()
-                .withName("DEFINITION_STORE")
+                .withName("DAPR_CONFIG_STORE")
                 .withValue("dws-def-order-fulfilment-v1a2b3c4d")
                 .build(),
             new EnvVarBuilder().withName("DEFINITION_KEY").withValue("definition").build())
@@ -465,7 +506,9 @@ class StackSynthesizerTest {
   void offSettingsRenderTodaysDeployment() {
     DeploymentPlan plan = orchestratorPlan();
 
-    Deployment off = synthesizer.orchestratorDeployment(plan, NAMESPACE, ObservabilitySettings.OFF);
+    Deployment off =
+        synthesizer.orchestratorDeployment(
+            plan, NAMESPACE, SERVICE_ACCOUNT, ObservabilitySettings.OFF);
 
     assertThat(off).isEqualTo(todaysOrchestratorDeployment());
     // Spelled out so a failure names the drifting part rather than a whole-object diff.
@@ -478,7 +521,7 @@ class StackSynthesizerTest {
     assertThat(orchestratorEnv(off))
         .extracting(EnvVar::getName, EnvVar::getValue)
         .containsExactly(
-            tuple("DEFINITION_STORE", "dws-def-order-fulfilment-v1a2b3c4d"),
+            tuple("DAPR_CONFIG_STORE", "dws-def-order-fulfilment-v1a2b3c4d"),
             tuple("DEFINITION_KEY", "definition"));
     assertThat(off.getSpec().getTemplate().getSpec().getContainers())
         .extracting(container -> container.getName())
@@ -486,19 +529,22 @@ class StackSynthesizerTest {
   }
 
   @Test
-  @DisplayName("the two-argument overload renders the same Deployment as OFF settings")
-  void twoArgumentOverloadMatchesOffSettings() {
+  @DisplayName("the three-argument overload renders the same Deployment as OFF settings")
+  void threeArgumentOverloadMatchesOffSettings() {
     DeploymentPlan plan = orchestratorPlan();
 
-    assertThat(synthesizer.orchestratorDeployment(plan, NAMESPACE))
-        .isEqualTo(synthesizer.orchestratorDeployment(plan, NAMESPACE, ObservabilitySettings.OFF))
+    assertThat(synthesizer.orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT))
+        .isEqualTo(
+            synthesizer.orchestratorDeployment(
+                plan, NAMESPACE, SERVICE_ACCOUNT, ObservabilitySettings.OFF))
         .isEqualTo(todaysOrchestratorDeployment());
   }
 
   @Test
   @DisplayName("enabled stamps targeted injection and the tracing Configuration reference")
   void enabledStampsTargetedInjection() {
-    Deployment deployment = synthesizer.orchestratorDeployment(orchestratorPlan(), NAMESPACE, ON);
+    Deployment deployment =
+        synthesizer.orchestratorDeployment(orchestratorPlan(), NAMESPACE, SERVICE_ACCOUNT, ON);
 
     assertThat(podAnnotations(deployment))
         .containsEntry("instrumentation.opentelemetry.io/inject-java", "true")
@@ -520,6 +566,7 @@ class StackSynthesizerTest {
         synthesizer.orchestratorDeployment(
             orchestratorPlan(),
             NAMESPACE,
+            SERVICE_ACCOUNT,
             new ObservabilitySettings(true, "dws-system/dws-instrumentation"));
 
     assertThat(podAnnotations(deployment))
@@ -530,7 +577,8 @@ class StackSynthesizerTest {
   @Test
   @DisplayName("enabled asserts service name and workflow identity, with no node or sampling input")
   void enabledAssertsIdentityValues() {
-    Deployment deployment = synthesizer.orchestratorDeployment(orchestratorPlan(), NAMESPACE, ON);
+    Deployment deployment =
+        synthesizer.orchestratorDeployment(orchestratorPlan(), NAMESPACE, SERVICE_ACCOUNT, ON);
 
     List<EnvVar> env = orchestratorEnv(deployment);
     assertThat(envVar(env, "OTEL_SERVICE_NAME").getValue()).isEqualTo("order-fulfilment");
@@ -553,7 +601,8 @@ class StackSynthesizerTest {
 
     String attributes =
         envVar(
-                orchestratorEnv(synthesizer.orchestratorDeployment(plan, NAMESPACE, ON)),
+                orchestratorEnv(
+                    synthesizer.orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT, ON)),
                 "OTEL_RESOURCE_ATTRIBUTES")
             .getValue();
 
@@ -568,7 +617,8 @@ class StackSynthesizerTest {
 
     String attributes =
         envVar(
-                orchestratorEnv(synthesizer.orchestratorDeployment(plan, NAMESPACE, ON)),
+                orchestratorEnv(
+                    synthesizer.orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT, ON)),
                 "OTEL_RESOURCE_ATTRIBUTES")
             .getValue();
 
@@ -584,7 +634,7 @@ class StackSynthesizerTest {
     DeploymentPlan plan = orchestratorPlan("order-fulfilment", "v1a2b3c4d", env);
 
     List<EnvVar> rendered =
-        orchestratorEnv(synthesizer.orchestratorDeployment(plan, NAMESPACE, ON));
+        orchestratorEnv(synthesizer.orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT, ON));
 
     assertThat(envVar(rendered, "OTEL_RESOURCE_ATTRIBUTES").getValue())
         .isEqualTo("team=x,dws.workflow.name=order-fulfilment,dws.workflow.version=v1a2b3c4d");
@@ -603,7 +653,8 @@ class StackSynthesizerTest {
 
     assertThat(
             envVar(
-                    orchestratorEnv(synthesizer.orchestratorDeployment(plan, NAMESPACE, ON)),
+                    orchestratorEnv(
+                        synthesizer.orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT, ON)),
                     "OTEL_RESOURCE_ATTRIBUTES")
                 .getValue())
         .isEqualTo("dws.workflow.name=wf,dws.workflow.version=v1");
@@ -619,7 +670,7 @@ class StackSynthesizerTest {
             Map.of("OTEL_RESOURCE_ATTRIBUTES", new SecretKeyRef("otel-attrs", "value")));
 
     List<EnvVar> rendered =
-        orchestratorEnv(synthesizer.orchestratorDeployment(plan, NAMESPACE, ON));
+        orchestratorEnv(synthesizer.orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT, ON));
 
     EnvVar attributes = envVar(rendered, "OTEL_RESOURCE_ATTRIBUTES");
     assertThat(attributes.getValue()).isNull();
@@ -640,7 +691,7 @@ class StackSynthesizerTest {
             Map.of("OTEL_RESOURCE_ATTRIBUTES", new SecretKeyRef("otel-attrs", "value")));
 
     try (LogCapture logs = new LogCapture(StackSynthesizer.class)) {
-      synthesizer.orchestratorDeployment(plan, NAMESPACE, ON);
+      synthesizer.orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT, ON);
 
       assertThat(logs.at(Level.WARNING)).hasSize(1);
       assertThat(LogCapture.message(logs.at(Level.WARNING).getFirst()))
@@ -658,8 +709,9 @@ class StackSynthesizerTest {
             "wf", "v1", Map.of("OTEL_RESOURCE_ATTRIBUTES", new SecretKeyRef("otel-attrs", "v")));
 
     try (LogCapture logs = new LogCapture(StackSynthesizer.class)) {
-      synthesizer.orchestratorDeployment(plan, NAMESPACE, ON);
-      synthesizer.orchestratorDeployment(secret, NAMESPACE, ObservabilitySettings.OFF);
+      synthesizer.orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT, ON);
+      synthesizer.orchestratorDeployment(
+          secret, NAMESPACE, SERVICE_ACCOUNT, ObservabilitySettings.OFF);
 
       assertThat(logs.at(Level.WARNING)).isEmpty();
     }

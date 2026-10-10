@@ -65,6 +65,9 @@ jobs:
       - name: Verify observability rendering
         run: bash ${{ env.CHART_DIR }}/tests/observability-render-test.sh ${{ env.CHART_DIR }}
 
+      - name: Verify orchestrator wiring (RBAC, service account, actor state store)
+        run: bash ${{ env.CHART_DIR }}/tests/orchestrator-wiring-render-test.sh ${{ env.CHART_DIR }}
+
       - name: Template (default values)
         run: helm template dws ${{ env.CHART_DIR }} > /tmp/render-default.yaml
 

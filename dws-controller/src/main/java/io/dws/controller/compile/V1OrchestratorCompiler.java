@@ -162,7 +162,10 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
   private static Map<String, EnvValue> orchestratorEnv(
       String definitionResource, Set<String> secrets) {
     Map<String, EnvValue> env = new LinkedHashMap<>();
-    env.put("DEFINITION_STORE", new EnvValue.Literal(definitionResource));
+    // Name and meaning are the orchestrator's contract (dws-orchestrator application.yaml reads
+    // DAPR_CONFIG_STORE); the controller used to stamp DEFINITION_STORE, which nothing read, so
+    // the orchestrator fell back to its "dws-definitions" default store.
+    env.put("DAPR_CONFIG_STORE", new EnvValue.Literal(definitionResource));
     env.put("DEFINITION_KEY", new EnvValue.Literal(DEFINITION_KEY));
     for (String secret : secrets) {
       env.put("SECRET_" + secret, new EnvValue.SecretKeyRef(secret, SECRET_KEY));

@@ -4,7 +4,7 @@
 
 | File | Purpose |
 |------|---------|
-| `controller-rbac.yaml` | ServiceAccount + Role + RoleBinding for the controller |
+| `controller-rbac.yaml` | ServiceAccount + Role + RoleBinding for the controller, plus the `dws-orchestrator` ServiceAccount (+ read-only ConfigMap Role/RoleBinding) that orchestrator pods run as |
 | `controller-deployment.yaml` | The controller's own Deployment and Service |
 | `dapr-crds.yaml` | Pinned Dapr CRD bundle (input to `cdk8s import`, not applied by the controller) |
 | `serving-crds.yaml` | Pinned Knative Serving CRD bundle (same) |
@@ -31,7 +31,13 @@ kubectl rollout status deployment/dws-controller
 ```
 
 The Role is namespaced to `default`. To manage workflows in another namespace, change
-`dws.namespace` (env `DWS_NAMESPACE`) and move the Role/RoleBinding accordingly.
+`dws.namespace` (env `DWS_NAMESPACE`) and move the Roles/RoleBindings accordingly.
+
+Orchestrator pods run as the `dws-orchestrator` ServiceAccount, not `default`: the per-version
+definition Component reads its ConfigMap with the pod's service account. The controller reads the
+name from `dws.orchestrator.service-account` (env `DWS_ORCHESTRATOR_SERVICE_ACCOUNT`, default
+`dws-orchestrator`), so if you rename the account in `controller-rbac.yaml` set that env var in
+`controller-deployment.yaml` to match.
 
 ## Example flow
 
@@ -63,7 +69,7 @@ kubectl get configmap,deployment,ksvc,components.dapr.io \
 
 # NAME                                TYPE
 # configmap/dws-def-order-$V          immutable definition, key `definition`
-# deployment.apps/order-$V            orchestrator, DEFINITION_STORE=dws-def-order-$V
+# deployment.apps/order-$V            orchestrator, DAPR_CONFIG_STORE=dws-def-order-$V
 # service.serving.knative.dev/check-inventory        ghcr.io/tonylibs/dws-call-http:latest
 # service.serving.knative.dev/charge-payment         ghcr.io/tonylibs/dws-call-http:latest
 # service.serving.knative.dev/notify-out-of-stock    ghcr.io/tonylibs/dws-call-http:latest

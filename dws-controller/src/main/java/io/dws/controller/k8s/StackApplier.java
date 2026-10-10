@@ -32,6 +32,7 @@ public class StackApplier {
   private final KubernetesClient client;
   private final StackSynthesizer synthesizer;
   private final EventPublisher events;
+  private final DwsConfig config;
   private final ObservabilityFlags observability;
   private final String namespace;
 
@@ -44,6 +45,7 @@ public class StackApplier {
     this.client = client;
     this.synthesizer = synthesizer;
     this.events = events;
+    this.config = config;
     this.observability = observability;
     this.namespace = config.namespace();
   }
@@ -97,7 +99,11 @@ public class StackApplier {
       // only on its next deploy.
       client
           .resource(
-              synthesizer.orchestratorDeployment(plan, namespace, observability.resolve(namespace)))
+              synthesizer.orchestratorDeployment(
+                  plan,
+                  namespace,
+                  config.orchestrator().serviceAccount(),
+                  observability.resolve(namespace)))
           .inNamespace(namespace)
           .createOr(NonDeletingOperation::update);
 

@@ -481,20 +481,31 @@ public class StackSynthesizer {
         .build();
   }
 
-  /** The dedicated orchestrator Deployment for this workflow version, without tracing. */
-  public Deployment orchestratorDeployment(DeploymentPlan plan, String namespace) {
-    return orchestratorDeployment(plan, namespace, ObservabilitySettings.OFF);
+  /**
+   * The dedicated orchestrator Deployment for this workflow version, without tracing. {@code
+   * serviceAccount} is the identity the pod runs as: the definition Component ({@code
+   * configuration.kubernetes}) reads its ConfigMap with the pod's service account, so it must be
+   * one that can read ConfigMaps — never the namespace {@code default} account. It is a required
+   * parameter on every overload so no caller can render a pod that silently falls back to {@code
+   * default}.
+   */
+  public Deployment orchestratorDeployment(
+      DeploymentPlan plan, String namespace, String serviceAccount) {
+    return orchestratorDeployment(plan, namespace, serviceAccount, ObservabilitySettings.OFF);
   }
 
   /**
    * The dedicated orchestrator Deployment for this workflow version. With {@link
-   * ObservabilitySettings#OFF} the output is identical to the two-argument form; with tracing on it
-   * additionally carries targeted Java-agent injection, the tracing-only Dapr Configuration
+   * ObservabilitySettings#OFF} the output is identical to the three-argument form; with tracing on
+   * it additionally carries targeted Java-agent injection, the tracing-only Dapr Configuration
    * reference and the workflow's identity (see {@link #orchestratorAnnotations} and {@link
    * #orchestratorEnv}). No other generated resource takes settings.
    */
   public Deployment orchestratorDeployment(
-      DeploymentPlan plan, String namespace, ObservabilitySettings settings) {
+      DeploymentPlan plan,
+      String namespace,
+      String serviceAccount,
+      ObservabilitySettings settings) {
     OrchestratorSpec orchestrator = plan.orchestrator();
     Map<String, String> annotations =
         orchestratorAnnotations(orchestratorAnnotations(orchestrator), settings);
@@ -521,6 +532,7 @@ public class StackSynthesizer {
         .withAnnotations(annotations)
         .endMetadata()
         .withNewSpec()
+        .withServiceAccountName(serviceAccount)
         .addNewContainer()
         .withName(ObservabilitySettings.ORCHESTRATOR_CONTAINER)
         .withImage(orchestrator.image())

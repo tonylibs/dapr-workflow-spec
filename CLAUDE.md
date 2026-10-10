@@ -49,6 +49,25 @@ Types in use: `feat`, `fix`, `refactor`, `docs`, `chore`, `perf`, `ci`, `test`.
   the Knative Service) and `dws-orchestrator` (derives the same name to invoke it) — see
   `AGENTS.md` "Task name → Dapr app-id" section. Changing this logic in one without the other
   breaks routing silently (wrong app-id, 404 at runtime, not a compile-time error).
+- **Orchestrator environment contract** (`dws-controller` → `dws-orchestrator`): the controller
+  stamps env vars on every orchestrator Deployment (`V1OrchestratorCompiler.orchestratorEnv`) and
+  the orchestrator reads them through `dws-orchestrator/src/main/resources/application.yaml`
+  (`DAPR_CONFIG_STORE`, `DEFINITION_KEY`, `SECRET_*`). A name that differs on either side is not a
+  compile error: the orchestrator silently falls back to its defaults.
+  - **Drift, fixed**: the controller used to stamp `DEFINITION_STORE`, which the orchestrator never
+    read, so it looked in its default `dws-definitions` store ("configuration store
+    dws-definitions not found"). The controller now stamps `DAPR_CONFIG_STORE` — the orchestrator's
+    documented name (its README, `application.yaml` and `k8s/deployment.yaml` all use it, and the
+    controller was its only producer). `OrchestratorEnvContractTest` in `dws-controller` reads the
+    sibling `application.yaml` and fails if a stamped non-secret name is not one the orchestrator
+    reads; keep it green rather than editing the name on one side only.
+  - The orchestrator pod's **ServiceAccount** is part of the same contract: the definition
+    Component reads its ConfigMap as the pod's service account, so the controller stamps
+    `serviceAccountName` from `dws.orchestrator.service-account`
+    (`DWS_ORCHESTRATOR_SERVICE_ACCOUNT`, default `dws-orchestrator`), and the chart
+    (`templates/controller/orchestrator-rbac.yaml`) and `dws-controller/k8s/controller-rbac.yaml`
+    must create an account of that name with configmaps `get`/`list`/`watch`. Renaming it in one
+    place only fails at runtime (pods are rejected, or the sidecar crash-loops), not at render time.
 - **Step-service request/response shape** (`dws-call-http`, `dws-call-grpc`, `dws-call-openapi`,
   `dws-call-asyncapi`, `dws-run`) is consumed by `dws-orchestrator`'s retry/error-classification
   logic (`WorkflowErrors.classify`). If you change a step-service's error/response contract,
@@ -100,6 +119,7 @@ bash charts/dws/tests/values-schema-test.sh charts/dws
 bash charts/dws/tests/api-gateway-render-test.sh charts/dws
 bash charts/dws/tests/auth-pipeline-placement-test.sh charts/dws
 bash charts/dws/tests/observability-render-test.sh charts/dws
+bash charts/dws/tests/orchestrator-wiring-render-test.sh charts/dws
 ```
 
 `helm lint`/`helm template` do not run Kubernetes' apimachinery validation, so a manifest that

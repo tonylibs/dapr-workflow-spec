@@ -670,7 +670,7 @@ class WorkflowCompilerTest {
     assertThat(plan.orchestrator().env())
         .isEqualTo(
             Map.of(
-                "DEFINITION_STORE", new Literal(plan.definitionResource()),
+                "DAPR_CONFIG_STORE", new Literal(plan.definitionResource()),
                 "DEFINITION_KEY", new Literal("definition")));
     assertThat(plan.definitionResource()).isEqualTo("dws-def-order-" + plan.versionId());
   }

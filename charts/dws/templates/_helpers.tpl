@@ -65,6 +65,16 @@ Controller fully qualified name.
 {{- end }}
 
 {{/*
+Dedicated ServiceAccount for controller-compiled orchestrator pods. The definition
+`configuration.kubernetes` Component reads its ConfigMap as the pod's service account, so the
+orchestrator cannot run as `default`. The controller is handed this name through
+DWS_ORCHESTRATOR_SERVICE_ACCOUNT and stamps it on every orchestrator Deployment it creates.
+*/}}
+{{- define "dws.orchestrator.serviceAccountName" -}}
+{{- printf "%s-orchestrator" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
 Controller selector labels — the common selector labels plus a component marker so the
 controller Deployment/Service cannot match sibling components (admin, postgres).
 */}}

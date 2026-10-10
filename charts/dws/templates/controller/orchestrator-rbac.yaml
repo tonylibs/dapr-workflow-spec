@@ -1,0 +1,52 @@
+{{- if .Values.controller.enabled }}
+{{- /*
+  Identity for controller-compiled orchestrator pods. Each workflow version gets a
+  `configuration.kubernetes` Dapr Component backed by its definition ConfigMap, and daprd
+  reads that ConfigMap with the pod's service account — so without this the orchestrator
+  runs as `default`, which has no grant, and its sidecar crash-loops on
+  "failed to sync informer cache for ConfigMap".
+  The grant is namespace-wide read on ConfigMaps (get/list/watch) and nothing else. It cannot be
+  narrowed with resourceNames: definition ConfigMaps are created per version at runtime, so a
+  static Role cannot name them. The controller stamps this ServiceAccount's name on every
+  orchestrator Deployment (DWS_ORCHESTRATOR_SERVICE_ACCOUNT, see controller/deployment.yaml).
+*/}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "dws.orchestrator.serviceAccountName" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: orchestrator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "dws.orchestrator.serviceAccountName" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: orchestrator
+rules:
+  # Read-only: the definition ConfigMaps are immutable and written by the controller.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "dws.orchestrator.serviceAccountName" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: orchestrator
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "dws.orchestrator.serviceAccountName" . }}
+    namespace: {{ include "dws.namespace" . }}
+roleRef:
+  kind: Role
+  name: {{ include "dws.orchestrator.serviceAccountName" . }}
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
