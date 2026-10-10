@@ -1,6 +1,6 @@
 # ADR 0010: `use` Components as a Shared, Version-Scoped Store
 
-- **Status:** Accepted — Decision 4a pending its spike (see Decision 4a)
+- **Status:** Accepted (Decision 4a validated by spike, 2026-10-10 — see Decision 4a)
 - **Date:** 2026-10-09
 - **Context:** [`docs/roadmaps/openworkflow-features.md`](../roadmaps/openworkflow-features.md)
   §4g (Phase 7 split). This is the `UseResolver` refactor that comes before Phases 7a–7c.
@@ -183,15 +183,16 @@ are removed. Applies to `dws-call-http`, `dws-call-openapi`, `dws-call-a2a`.
 
 **Delivering the Wasm binary.**
 
-- Built with TinyGo and wrapped in a small image (`busybox` base, for `cp`), published **public**
+- Built with **TinyGo 0.34.0** (pinned — see spike results) and wrapped in a small image (`busybox` base, for `cp`), published **public**
   on GHCR alongside the other component images — no pull secret. Versioned by release-please and
   released by hand, like every component.
 - The controller adds to each step service that uses Decision 4a: an `emptyDir` volume, an init
   container (image pinned by digest) that copies the binary into it, and
   `dapr.io/volume-mounts: "<volume>:/mnt/dws-wasm"` so daprd reads it **read-only**.
 - Init containers complete before a classic daprd sidecar starts, so the file exists when the
-  component loads. `dapr.io/enable-native-sidecar` stays off for step services (ordering vs. app
-  init containers is undocumented).
+  component loads. `dapr.io/enable-native-sidecar` stays off for step services by default; the
+  spike observed native daprd ordered after the app init container and working, but Dapr does not
+  document that ordering.
 
 **Why the controller composes the config (and copies secret values).** `guestConfig` is one
 metadata field: one literal or one `secretKeyRef`, never a mix. A JSON combining the endpoint
@@ -204,11 +205,34 @@ JSON Secret (breaks the OWS-to-Secret mapping).
 **Exception — gRPC.** The HTTP pipeline does not see `call: grpc`. `dws-call-grpc` keeps today's
 `secretKeyRef` env vars for basic/bearer.
 
-**Pending a spike** (handoff: `claude/handoff-spike-wasm-auth-middleware.md` in the project):
-request-header mutation from the guest, `secretKeyRef` on `guestConfig`, the header surviving
-invocation to an `HTTPEndpoint`, path isolation, the Knative feature flags, init-container
-ordering. If it fails, the fallback is `HTTPEndpoint.headers[].secretKeyRef` pointing at the same
-controller-composed Secret (full header value per key) — same copy cost, no Wasm.
+**Spike results (2026-10-10)** — `spikes/wasm-auth-middleware/FINDINGS.md`, repeatable probe
+`spikes/wasm-auth-middleware/verify.sh`. Local Docker Desktop cluster, daprd 1.18.1 (control plane
+1.18.2), Knative Serving 1.21.2. **All 9 checks passed; verdict: adopt with changes.**
+
+| Check | Result |
+|---|---|
+| Bearer / Basic header composed from the Secret JSON | ✅ `Bearer …` and `Basic base64(user:pass)` observed **at the target** (forwarded request, not response) |
+| `secretKeyRef` on `guestConfig`, built-in `kubernetes` store | ✅ no secret value in any resource, pod spec, env var or default-level daprd log |
+| Path / endpoint isolation | ✅ other path and other endpoint from the same pod received no `Authorization`; a caller-supplied header is overwritten |
+| Init-container delivery, restart | ✅ file present before daprd loads components; also after restart |
+| Native sidecar | ✅ worked (ordering observed, not documented) |
+| Knative Service, scale-from-zero | ✅ after enabling the two `config-features` flags; one paired sample: +0.59 s cold start |
+| One merged Configuration (2 Wasm handlers + tracing) | ✅ — direction for open question 1 |
+
+**Changes the spike adds to this decision:**
+
+- **Pin TinyGo 0.34.0** for `http-wasm-guest-tinygo` v0.4.0. TinyGo ≥ 0.35 builds a module that
+  fails at request time (`module closed with exit_code(0)`). Revisit when the guest SDK supports
+  newer TinyGo. Guest binary: 218 KB.
+- **Step images must wait for their sidecar** before the first invocation. On a Knative cold start
+  the app called daprd before it listened and got a 502; a retry after startup passed.
+- **Dapr metrics port collides with Knative's queue-proxy (9090).** The spike moved daprd metrics to
+  9095. The controller does not set `dapr.io/metrics-port` on Knative step services today, so this
+  applies to **every** Dapr-enabled Knative step, not only Wasm ones — verify against current
+  deployments.
+
+**Fallback (not needed):** `HTTPEndpoint.headers[].secretKeyRef` pointing at the same
+controller-composed Secret.
 
 ## Decision 5: OAuth2 stays deploy-time infrastructure
 
@@ -246,7 +270,9 @@ the controller, to fetch function definitions; it is never read at runtime.
 - **Knative must allow init containers and `emptyDir`** — `config-features`:
   `kubernetes.podspec-init-containers` and `kubernetes.podspec-volumes-emptydir` (extensions, off
   unless enabled). Belongs with Helm Phase 11 (Knative) and a chart preflight.
-- **A new component to release:** the Wasm image.
+- **A new component to release:** the Wasm image, built with TinyGo 0.34.0 pinned.
+- **Step-service pod changes beyond Wasm:** sidecar-readiness wait in step images, and
+  `dapr.io/metrics-port` moved off 9090 on Knative step services.
 - **Each host sidecar initializes 2 more components** at startup. Both are scoped to the version's
   host app IDs only.
 - **RBAC:** every host's service account needs `get`/`list`/`watch` on ConfigMaps and `get` on
@@ -256,13 +282,24 @@ the controller, to fetch function definitions; it is never read at runtime.
 - **Rollout order:** v2 hosts first (they cannot work without it); the v1 orchestrator migrates last,
   removing its `WorkflowSupport.definition()` lookups.
 
+## Implementation plan
+
+| Track | Where | Content |
+|---|---|---|
+| **Credentials** (Decision 4a + merged Configuration) | OWS roadmap **Phase 4.1** (4.1a–4.1h), `docs/roadmaps/openworkflow-features.md` §4h | Applies to v1 now |
+| **Data + `$secrets`** (Decisions 2, 3, 4) | v2 runtime phases 2b, 2c, 3a, 3c, 4, `docs/roadmaps/workflow-runtime-architecture-roadmap.md` "ADR 0010 integration" | No consumer before v2; v1's orchestrator is not migrated |
+| **Code kinds** (Decision 6) | OWS Phases 7a/7b/7c | Unchanged |
+
 ## Open questions
 
 1. **One Configuration per pod.** A pod names exactly one Dapr `Configuration` via `dapr.io/config`,
    already contended by OAuth2 and tracing (`StackSynthesizer.orchestratorAnnotations`); Decision 4a
-   adds a third claimant, and a host's secret allowlist (`secrets.scopes`) would be a fourth. The
-   controller likely needs to compose **one merged Configuration per workload** (pipeline handlers +
-   tracing + secret scopes). Required before Decision 4a ships for traced steps.
+   adds a third claimant, and a host's secret allowlist (`secrets.scopes`) would be a fourth.
+   **Direction:** the controller composes **one merged Configuration per workload** (pipeline
+   handlers + tracing + secret scopes); the spike proved two Wasm handlers + tracing in one
+   Configuration work. Open: naming and lifecycle of per-workload Configurations, and how the
+   chart-level `dws-tracing` Configuration's settings are copied in. Required before Decision 4a
+   ships for traced steps.
 2. **`$secrets` in jq** (`set`/`switch`): fetch per evaluation, or once per activity.
 
 ## Non-goals

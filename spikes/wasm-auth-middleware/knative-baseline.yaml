@@ -1,0 +1,21 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: wasm-auth-baseline
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/min-scale: "0"
+        dapr.io/enabled: "true"
+        dapr.io/app-id: wasm-auth-baseline
+        dapr.io/app-port: "8080"
+        dapr.io/metrics-port: "9095"
+        dapr.io/sidecar-image: ghcr.io/dapr/daprd:1.18.1
+    spec:
+      containers:
+        - name: caller
+          image: python:3.13-alpine
+          command: [python, -u, -m, http.server, "8080"]
+          ports:
+            - containerPort: 8080

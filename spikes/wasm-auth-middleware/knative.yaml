@@ -1,0 +1,63 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: wasm-auth-knative
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/min-scale: "0"
+        dapr.io/enabled: "true"
+        dapr.io/app-id: wasm-auth-caller
+        dapr.io/app-port: "8080"
+        dapr.io/metrics-port: "9095"
+        dapr.io/config: wasm-auth-merged
+        dapr.io/sidecar-image: ghcr.io/dapr/daprd:1.18.1
+        dapr.io/volume-mounts: wasm-auth-binary:/mnt/dws-wasm
+        dapr.io/enable-native-sidecar: "false"
+    spec:
+      serviceAccountName: wasm-auth-caller
+      initContainers:
+        - name: install-wasm
+          image: docker.io/library/dws-wasm-auth-spike@sha256:cf6acaf42fe3845048b197ca3ba3b86207f967c6396297f5da9699d19e98c6c5
+          imagePullPolicy: Never
+          command: [sh, -c, "cp /auth.wasm /mnt/dws-wasm/auth.wasm"]
+          volumeMounts:
+            - name: wasm-auth-binary
+              mountPath: /mnt/dws-wasm
+      containers:
+        - name: caller
+          image: python:3.13-alpine
+          command: [python, -u, -c]
+          args:
+            - |
+              from http.server import BaseHTTPRequestHandler, HTTPServer
+              from time import sleep
+              from urllib.request import Request, urlopen
+
+              class Handler(BaseHTTPRequestHandler):
+                  def do_GET(self):
+                      endpoint = 'unrelated-target' if self.path == '/unrelated' else 'bearer-target'
+                      request = Request('http://127.0.0.1:3500/v1.0/invoke/' + endpoint + '/method/intended')
+                      if self.path == '/overwrite':
+                          request.add_header('Authorization', 'Bearer caller-supplied')
+                      for attempt in range(60):
+                          try:
+                              result = urlopen(request, timeout=5).read()
+                              self.send_response(200)
+                              break
+                          except Exception as error:
+                              if attempt == 59:
+                                  result = str(error).encode()
+                                  self.send_response(502)
+                              else:
+                                  sleep(0.2)
+                      self.end_headers()
+                      self.wfile.write(result)
+
+              HTTPServer(('', 8080), Handler).serve_forever()
+          ports:
+            - containerPort: 8080
+      volumes:
+        - name: wasm-auth-binary
+          emptyDir: {}
