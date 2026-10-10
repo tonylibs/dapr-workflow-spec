@@ -155,8 +155,10 @@ collector you install yourself.
 | `dws-controller` | Java, injected into container `controller` only | exports spans via its shared Dapr `Configuration` |
 | `dws-admin` | Node.js, injected into container `admin` only | exports spans via its shared Dapr `Configuration` |
 
-`dws-orchestrator`, `dws-flow`, `dws-step`, and the compiled Knative step Services are later
-phases (see [`docs/roadmaps/observability.md`](../../docs/roadmaps/observability.md)).
+The compiled workflow orchestrators `dws-controller` generates are covered by the controller-driven
+path in [Compiled workflow orchestrators](#compiled-workflow-orchestrators) below. `dws-flow`,
+`dws-step`, and the compiled Knative step Services are later phases (see
+[`docs/roadmaps/observability.md`](../../docs/roadmaps/observability.md)).
 
 Two things worth knowing before enabling it:
 
@@ -169,6 +171,61 @@ Two things worth knowing before enabling it:
   `samplingRate: "1"` so daprd honours the parent decision instead of sampling again (ADR 0005
   Decision 2). Two independent samplers would compose multiplicatively and produce partial traces
   that look like exporter failures.
+
+### Compiled workflow orchestrators
+
+`dws-controller` generates one orchestrator Deployment per workflow version. With observability on,
+that Deployment gets targeted Java injection (container `orchestrator` only, never the Dapr
+sidecar), workflow identity in the agent's resource attributes, and a Dapr sidecar pointed at a
+tracing-only Configuration. This is a two-part switch because the chart and the controller own
+different halves:
+
+| Half | Owner | Switch |
+|---|---|---|
+| `dws-tracing` Dapr `Configuration` | this chart | `observability.enabled=true` **and** `observability.workflows.enabled=true` (default `true`) |
+| Stamp the generated orchestrator Deployment | `dws-controller`, at each workflow deploy | keys in the `dws-controller-config` store (below) |
+
+**`dws-tracing`** (`templates/observability/workflow-tracing-configuration.yaml`) is a standalone
+Configuration whose `spec` contains **only** `tracing`, built by the same
+`dws.observability.daprTracing` helper as the controller and admin Configurations, so the endpoint
+(scheme stripped), `isSecure` and protocol mapping are identical and `samplingRate` is the literal
+`"1"`. It has no `appHttpPipeline`/`httpPipeline`: an orchestrator sidecar has no bearer token, so it
+must not reuse the controller's Configuration when `auth.enabled=true`. The controller Role gains one
+rule for it, `get` on `configurations.dapr.io`, so the controller can confirm the Configuration
+exists before referencing it (a pod naming a missing Configuration crash-loops its daprd). If the
+store flag is on but `dws-tracing` is absent or unreadable the controller deploys the orchestrator
+un-instrumented and logs a warning; it never fails a deploy.
+
+**Store keys** live in the chart-managed `dws-controller-config` Dapr configuration store (the same
+one that holds the compiler-version flag). They are runtime flags set out of band and are **not**
+templated by this chart:
+
+| Key | Value |
+|---|---|
+| `observability.enabled` | `true` (trimmed, case-insensitive) turns it on; anything else or absent is off |
+| `observability.instrumentation` | optional OpenTelemetry Operator `Instrumentation` reference, `<name>` or `<namespace>/<name>`; default `"true"` (the Operator's namespace-default behaviour) |
+
+Note `observability.instrumentation` defaults to `"true"`, which asks the Operator to pick the
+Instrumentation in the workflow's namespace. Compiled workflows deploy into the controller's own
+namespace (`DWS_NAMESPACE`, the release namespace by default), where the chart renders its
+Instrumentation, so the default works for a single-namespace install. If that namespace holds more
+than one Instrumentation, set the key to a named reference such as `dws-instrumentation` (or
+`<namespace>/dws-instrumentation`), because the Operator cannot choose between several.
+
+**Enable procedure**
+
+1. Upgrade the chart with `observability.enabled=true` (and leave `observability.workflows.enabled`
+   at its default `true`). This renders `dws-tracing` and the Role rule. Confirm with
+   `kubectl get configurations.dapr.io dws-tracing -n <release-namespace>`.
+2. Set `observability.enabled` to `true` in the `dws-controller-config` store, and optionally
+   `observability.instrumentation`.
+3. Deploy (or redeploy) a workflow. **Only the next deploy of each workflow is affected**; already
+   running orchestrators are not retrofitted, and each new version recreates its pod set anyway.
+
+**Rollback:** set the store key to `false` (or delete it); the next deploy of each workflow reverts
+to the un-instrumented orchestrator. To also remove `dws-tracing`, set
+`observability.workflows.enabled=false` or `observability.enabled=false` and upgrade the chart,
+after redeploying (or deleting) workflows that still reference it.
 
 ### OTLP headers
 

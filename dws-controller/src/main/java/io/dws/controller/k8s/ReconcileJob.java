@@ -2,16 +2,15 @@ package io.dws.controller.k8s;
 
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
-import org.jboss.logging.Logger;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Collects drained previous versions without waiting for the next POST. Disabled by default in
  * tests via {@code dws.reconcile.every}.
  */
+@Slf4j
 @ApplicationScoped
 public class ReconcileJob {
-
-  private static final Logger LOG = Logger.getLogger(ReconcileJob.class);
 
   private final StackApplier applier;
 
@@ -26,7 +25,7 @@ public class ReconcileJob {
     try {
       applier.reconcile();
     } catch (RuntimeException e) {
-      LOG.warn("Reconcile pass failed; will retry on next tick", e);
+      log.warn("Reconcile pass failed; will retry on next tick", e);
     }
   }
 }

@@ -1,12 +1,13 @@
 package io.dws.controller.compile;
 
 import io.dapr.client.DaprClient;
-import io.dapr.client.domain.ConfigurationItem;
 import io.dws.controller.compile.v1.OpenApiDocumentFetcher;
+import io.dws.controller.config.DaprConfigurationItem;
 import io.dws.controller.config.DwsConfig;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
-import org.jboss.logging.Logger;
+import java.util.Optional;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Selects and wires the active {@link WorkflowCompiler} strategy (ADR 0002).
@@ -22,10 +23,9 @@ import org.jboss.logging.Logger;
  * flips via {@code subscribeConfiguration} are a deliberately deferred Phase 1 choice (they would
  * need re-checking per {@code compile()} call).
  */
+@Slf4j
 @ApplicationScoped
 public class CompilerProducer {
-
-  private static final Logger LOG = Logger.getLogger(CompilerProducer.class);
 
   /** Dapr Configuration store (Component) holding the compiler-version flag. */
   static final String CONFIG_STORE = "dws-controller-config";
@@ -42,7 +42,7 @@ public class CompilerProducer {
       DwsConfig config, OpenApiDocumentFetcher documentFetcher, DaprClient daprClient) {
     V1OrchestratorCompiler v1 = new V1OrchestratorCompiler(config.catalog(), documentFetcher);
     if (selectsV2(daprClient)) {
-      LOG.info(
+      log.info(
           "Compiler strategy: v2 (structural) selected via " + CONFIG_STORE + '/' + VERSION_KEY);
       return new V2StructuralCompiler();
     }
@@ -58,11 +58,14 @@ public class CompilerProducer {
       return false;
     }
     try {
-      ConfigurationItem item = daprClient.getConfiguration(CONFIG_STORE, VERSION_KEY).block();
-      String value = item == null ? null : item.getValue();
-      return value != null && V2_VALUE.equalsIgnoreCase(value.trim());
+      return Optional.ofNullable(daprClient.getConfiguration(CONFIG_STORE, VERSION_KEY).block())
+          .map(DaprConfigurationItem::new)
+          .flatMap(DaprConfigurationItem::getValue)
+          .map(String::trim)
+          .filter(V2_VALUE::equalsIgnoreCase)
+          .isPresent();
     } catch (Exception e) {
-      LOG.debugf(e, "Compiler-version flag unavailable; defaulting to v1");
+      log.debug("Compiler-version flag unavailable; defaulting to v1", e);
       return false;
     }
   }

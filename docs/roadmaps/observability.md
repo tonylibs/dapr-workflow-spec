@@ -443,7 +443,7 @@ visibility actually arrives — it is deferred, not dropped, and Phase 7 cannot 
 
 | # | Decision | Why it needs a record |
 |---|---|---|
-| 1 | **Trace context across Dapr Workflow replay** | Durable workflow re-executes activity code on replay. Naive span creation produces duplicate spans per replay, or a fresh trace per replay. Needs a stated rule for what the workflow-level span is, and whether replayed activity work is suppressed. Highest-risk item in this roadmap |
+| 1 | **Trace context across Dapr Workflow replay** | Durable workflow re-executes activity code on replay. Naive span creation produces duplicate spans per replay, or a fresh trace per replay. Needs a stated rule for what the workflow-level span is, and whether replayed activity work is suppressed. Highest-risk item in this roadmap. **Resolved 2026-10-08: [ADR 0009](../adr/0009-trace-context-across-workflow-replay.md)** — the engine owns the spans and they are replay-stable; no span-model change needed |
 | 2 | **Compiled nodes carry their own telemetry identity** | `service.name` = Dapr app-id, plus `dws.workflow.*`/`dws.node.*` resource attributes stamped at compile time. Sits directly alongside ADR 0004 and should be consistent with it |
 | 3 | App is the sampling root; Dapr **and Knative** pinned to `1` | Non-obvious and easy to "fix" wrongly later by lowering one of the downstream rates, which silently shreds traces. Three layers now, not two |
 | 4 | Go rejects `inject-go` in favour of an in-code SDK | Asymmetry between Go and the other stacks will otherwise look like an oversight |
@@ -514,6 +514,10 @@ compile-only path was not used as evidence.
   `dapr_runtime_service_invocation_*` counters (framed around remote Dapr apps) or only the
   `dapr_http_client_*` family. Settle by curling the sidecar's metrics endpoint after one OAuth2
   call step, before Phase 5 fixes any naming.
+- **Phase 2a live run (2026-10-08):** see [Phase 2a live evidence](observability-phase2a-evidence.md). Injection and
+  identity behaved as designed; replay is clean for the span model (ADR 0009). Per-step-call spans are absent (Track B).
+  The run also showed the committed `InterpreterWorkflow` is not replay-deterministic and surfaced four chart/controller
+  wiring gaps; none is a tracing defect and none is fixed by that change.
 - **Next up:** Phase 2a (`dws-orchestrator`) will add workflow-node identity and provide the runnable Dapr Workflow replay probe. Phase 0-A is closed — (b), (e), (f) answered, and (c) is recorded as not exercised because no orchestrator image was available in the live cluster. Track B waits.
 - **Phase 1 blocker found before implementation (2026-09-19):** `dapr.io/config` is a
   **single-valued annotation** — a pod names exactly one Dapr `Configuration` resource. The

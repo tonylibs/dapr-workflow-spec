@@ -427,4 +427,135 @@ assert_rejected 'must be a base endpoint without a path' \
 assert_rejected 'contains a comma' \
   --set 'observability.otlp.headers.x=a\,b'
 
+# =============================================================================================
+# 10. Standalone tracing-only `dws-tracing` Configuration for compiled workflow sidecars
+#     (openspec observability-orchestrator-tracing, D1)
+# =============================================================================================
+# The controller stamps dapr.io/config: dws-tracing onto the orchestrator pods it generates, so
+# the Configuration must exist at install time, carry ONLY spec.tracing (a pipeline would put
+# bearer middleware on a sidecar that has no token), and reuse the Phase 1 helper so there is one
+# copy of the endpoint/protocol translation.
+tracing_template=(-s templates/observability/workflow-tracing-configuration.yaml)
+
+# Print the `tracing:` block (from `  tracing:` to the end of the document) of a rendered doc.
+tracing_block() { awk '/^  tracing:$/ {p=1} p' <<<"$1"; }
+
+wf_tracing="$(render "${base_args[@]}" "${obs_args[@]}" "${tracing_template[@]}")"
+assert_count '^kind: Configuration$' "$wf_tracing" 1 \
+  "observability.enabled=true must render exactly one dws-tracing Configuration"
+assert_count '^apiVersion: dapr\.io/v1alpha1$' "$wf_tracing" 1 "dws-tracing apiVersion"
+assert_count '^  name: dws-tracing$' "$wf_tracing" 1 "the workflow Configuration must be named exactly dws-tracing"
+assert_count '^  namespace: ' "$wf_tracing" 1 "dws-tracing must carry the release namespace"
+assert_count '^  tracing:$' "$wf_tracing" 1 "dws-tracing must carry spec.tracing"
+assert_absent '[hH]ttpPipeline|middleware|handlers:' "$wf_tracing" \
+  "dws-tracing contains a pipeline or middleware — it must be tracing only"
+assert_count '^    samplingRate: "1"$' "$wf_tracing" 1 'dws-tracing samplingRate must be the literal string "1"'
+# spec contains ONLY tracing: the sole direct child of `spec:` is `tracing:`.
+wf_spec="$(awk '/^spec:$/ {p=1; next} p' <<<"$wf_tracing")"
+assert_count '^  [A-Za-z]' "$wf_spec" 1 "dws-tracing spec must contain only the tracing key"
+
+# Each other (default) cell of the matrix renders exactly one dws-tracing, with no pipeline,
+# even with auth on.
+wf_tracing_auth="$(render "${base_args[@]}" "${auth_args[@]}" "${obs_args[@]}" "${tracing_template[@]}")"
+assert_count '^  name: dws-tracing$' "$wf_tracing_auth" 1 "auth+observability must still render one dws-tracing"
+assert_absent '[hH]ttpPipeline|middleware|handlers:' "$wf_tracing_auth" \
+  "auth.enabled=true leaked a pipeline into dws-tracing"
+[ "$(tracing_block "$wf_tracing")" = "$(tracing_block "$wf_tracing_auth")" ] \
+  || fail "auth.enabled changed the dws-tracing tracing block"
+
+# Translation parity with the controller Configuration (same helper, no second copy): the
+# default http/protobuf + http:// endpoint, and an https:// grpc endpoint.
+ctrl_obs="$(render "${base_args[@]}" "${obs_args[@]}" -s templates/controller/configuration.yaml)"
+[ "$(tracing_block "$wf_tracing")" = "$(tracing_block "$ctrl_obs")" ] \
+  || fail "dws-tracing tracing block differs from the controller Configuration's (default endpoint/protocol)"
+
+tls_flags=(--set observability.otlp.endpoint=https://collector.example:4318 --set observability.otlp.protocol=http/protobuf)
+wf_tls="$(render "${base_args[@]}" "${obs_args[@]}" "${tls_flags[@]}" "${tracing_template[@]}")"
+ctrl_tls="$(render "${base_args[@]}" "${obs_args[@]}" "${tls_flags[@]}" -s templates/controller/configuration.yaml)"
+assert_count '^      endpointAddress: "collector.example:4318"$' "$wf_tls" 1 "https endpoint must be a bare host:port"
+assert_count '^      isSecure: true$' "$wf_tls" 1 "https endpoint must render isSecure true"
+assert_count '^      protocol: "http"$' "$wf_tls" 1 "http/protobuf must map to Dapr protocol http"
+[ "$(tracing_block "$wf_tls")" = "$(tracing_block "$ctrl_tls")" ] \
+  || fail "dws-tracing tracing block differs from the controller Configuration's (https http/protobuf)"
+
+grpc_flags=(--set observability.otlp.endpoint=https://otlp.example.test:4317 --set observability.otlp.protocol=grpc)
+wf_grpc="$(render "${base_args[@]}" "${obs_args[@]}" "${grpc_flags[@]}" "${tracing_template[@]}")"
+ctrl_grpc="$(render "${base_args[@]}" "${obs_args[@]}" "${grpc_flags[@]}" -s templates/controller/configuration.yaml)"
+assert_count '^      endpointAddress: "otlp.example.test:4317"$' "$wf_grpc" 1 "grpc endpoint must be a bare host:port"
+assert_count '^      isSecure: true$' "$wf_grpc" 1 "https grpc endpoint must render isSecure true"
+assert_count '^      protocol: "grpc"$' "$wf_grpc" 1 "grpc must stay grpc"
+[ "$(tracing_block "$wf_grpc")" = "$(tracing_block "$ctrl_grpc")" ] \
+  || fail "dws-tracing tracing block differs from the controller Configuration's (https grpc)"
+
+# The application agent's sampling rate must not leak into the sidecar Configuration.
+wf_rate="$(render "${base_args[@]}" "${obs_args[@]}" --set observability.traces.samplingRate=0.25 "${tracing_template[@]}")"
+assert_count '^    samplingRate: "1"$' "$wf_rate" 1 \
+  "observability.traces.samplingRate leaked into dws-tracing's Dapr sampling value"
+
+# observability.workflows.enabled=false suppresses it (Helm -s exits non-zero on an empty doc).
+if render "${base_args[@]}" "${obs_args[@]}" --set observability.workflows.enabled=false \
+  "${tracing_template[@]}" > /dev/null 2>&1; then
+  fail "dws-tracing rendered with observability.workflows.enabled=false"
+fi
+wf_off_full="$(render "${base_args[@]}" "${obs_args[@]}" --set observability.workflows.enabled=false)"
+assert_absent '^  name: dws-tracing$' "$wf_off_full" \
+  "dws-tracing present in a full render with observability.workflows.enabled=false"
+
+# observability.enabled=false suppresses it even though workflows.enabled defaults to true.
+if render "${base_args[@]}" "${tracing_template[@]}" > /dev/null 2>&1; then
+  fail "dws-tracing rendered with observability.enabled=false"
+fi
+assert_absent 'dws-tracing' "$default_render" "the default render mentions dws-tracing"
+assert_absent 'dws-tracing' "$(render "${base_args[@]}" "${auth_args[@]}")" \
+  "auth-only render mentions dws-tracing"
+
+# Exactly one in a full enabled render, and nothing else references it from the chart's own pods:
+# the controller/admin Deployments keep naming only their own Configuration.
+full_obs="$(render "${base_args[@]}" "${obs_args[@]}")"
+assert_count '^  name: dws-tracing$' "$full_obs" 1 "a full observability render must contain exactly one dws-tracing"
+assert_absent 'dapr\.io/config: "?dws-tracing' "$full_obs" \
+  "a chart-rendered pod references dws-tracing — only controller-generated orchestrator pods may"
+
+# Four-way matrix: the controller and admin Configurations and dapr.io/config annotations are
+# identical whether or not dws-tracing renders (i.e. with workflows.enabled true vs false).
+for cell_flags_str in "" "${auth_args[*]}" "${obs_args[*]}" "${auth_args[*]} ${obs_args[*]}"; do
+  read -r -a cell_flags <<<"$cell_flags_str"
+  with_wf="$(render "${base_args[@]}" "${cell_flags[@]}" --set observability.workflows.enabled=true \
+    "${config_only[@]}" "${deployments_only[@]}" 2>&1 || true)"
+  without_wf="$(render "${base_args[@]}" "${cell_flags[@]}" --set observability.workflows.enabled=false \
+    "${config_only[@]}" "${deployments_only[@]}" 2>&1 || true)"
+  [ "$with_wf" = "$without_wf" ] \
+    || fail "observability.workflows.enabled changed the controller/admin Configurations or Deployments (cell: '${cell_flags_str}')"
+done
+
+# auth.enabled=true + observability.enabled=true: dws-tracing has no pipeline, and the controller
+# and admin Configurations keep exactly their pipelines (placement is asserted in section 2).
+assert_count '^kind: Configuration$' "$(render "${base_args[@]}" "${auth_args[@]}" "${obs_args[@]}" \
+  "${config_only[@]}" "${tracing_template[@]}")" 3 \
+  "auth+observability must render the controller, admin and dws-tracing Configurations (3 total)"
+
+# Controller Role: the dapr.io `configurations` rule is UNCONDITIONAL. The controller already
+# applies and deletes sidecar Configurations for OAuth workflows (ResourceContexts.DAPR_CONFIGURATION),
+# so it needs the full verb set whether or not observability is on; the `get` the tracing-only
+# `dws-tracing` existence check needs is part of that set. The Role must therefore not depend on
+# any auth/observability flag. Per-kind verb coverage lives in orchestrator-wiring-render-test.sh.
+role="$(render "${base_args[@]}" "${obs_args[@]}" -s templates/controller/rbac.yaml)"
+config_rule="$(awk 'BEGIN{RS="\n  - apiGroups:"} /"dapr.io"/ && /"configurations"/' <<<"$role")"
+[ -n "$config_rule" ] || fail "the controller Role has no dapr.io rule for configurations"
+grep -Eq 'verbs: \[[^]]*"get"' <<<"$config_rule" \
+  || fail "the controller Role's configurations rule must grant get (dws-tracing existence check), got: $config_rule"
+assert_count '"configurations"' "$role" 1 "exactly one Role rule may name configurations"
+# The Role is the same with auth on.
+role_auth="$(render "${base_args[@]}" "${auth_args[@]}" "${obs_args[@]}" -s templates/controller/rbac.yaml)"
+[ "$role" = "$role_auth" ] || fail "auth.enabled changed the controller Role"
+
+# ...and the same with dws-tracing not rendered (default, workflows off): nothing in the Role is
+# gated by observability any more.
+for off_flags in "" "--set observability.enabled=true --set observability.workflows.enabled=false"; do
+  read -r -a off_arr <<<"$off_flags"
+  role_off="$(render "${base_args[@]}" "${off_arr[@]}" -s templates/controller/rbac.yaml)"
+  [ "$role" = "$role_off" ] \
+    || fail "the controller Role depends on observability flags (flags: '$off_flags')"
+done
+
 echo "observability-render-test.sh: all checks passed"

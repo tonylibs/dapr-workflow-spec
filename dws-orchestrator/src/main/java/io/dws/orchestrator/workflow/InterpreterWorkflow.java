@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.dapr.durabletask.interruption.ContinueAsNewInterruption;
+import io.dapr.durabletask.interruption.OrchestratorBlockedException;
 import io.dapr.workflows.Workflow;
 import io.dapr.workflows.WorkflowContext;
 import io.dapr.workflows.WorkflowStub;
@@ -56,6 +58,29 @@ public class InterpreterWorkflow implements Workflow {
   }
 
   /**
+   * Rethrows the Dapr SDK's control-flow interruptions before a {@code catch (RuntimeException)}
+   * block does anything else.
+   *
+   * <p>The SDK parks a workflow on an unfinished task by throwing {@link
+   * OrchestratorBlockedException} out of {@code Task.await()}, and restarts it with {@link
+   * ContinueAsNewInterruption}. Both extend {@link RuntimeException}, but neither is a task
+   * failure: the runtime catches them to end the current replay pass. A catch block that treats
+   * them as failures and then publishes a lifecycle event or schedules a catch decision adds an
+   * activity during that unwind, so the task-ID sequence differs between the first execution and
+   * the replay — a non-deterministic workflow (spurious {@code task.failed}/{@code instance.failed}
+   * events, duplicate-completion warnings, and an instance stuck RUNNING after a timer fires).
+   *
+   * <p>Call this first in every catch around a workflow-context await, before any side effect.
+   * Package-private so {@link ScopeRunnerWorkflow} and {@link ForkBranchWorkflow}, which delegate
+   * here, share the one definition.
+   */
+  static void rethrowIfInterruption(RuntimeException e) {
+    if (e instanceof OrchestratorBlockedException || e instanceof ContinueAsNewInterruption) {
+      throw e;
+    }
+  }
+
+  /**
    * Runs the interpreter loop. Extracted from the {@link WorkflowStub} lambda so it can be driven
    * directly against a mocked {@link WorkflowContext} in tests.
    */
@@ -96,6 +121,7 @@ public class InterpreterWorkflow implements Workflow {
       publish(ctx, events.instanceCompleted());
       ctx.complete(result.data());
     } catch (RuntimeException e) {
+      rethrowIfInterruption(e);
       publish(ctx, events.instanceFailed(String.valueOf(e.getMessage())));
       throw e;
     }
@@ -199,6 +225,7 @@ public class InterpreterWorkflow implements Workflow {
           return new ScopeResult(data, context, ScopeEnd.END);
         }
       } catch (RuntimeException e) {
+        rethrowIfInterruption(e);
         publish(ctx, events.taskFailed(name, taskType, String.valueOf(e.getMessage())));
         throw e;
       }
@@ -621,6 +648,7 @@ public class InterpreterWorkflow implements Workflow {
                     dispatchContext);
         return new Body(body.data(), body.context(), FlowOutcome.of(tryTask.getThen()), body.end());
       } catch (RuntimeException failure) {
+        rethrowIfInterruption(failure);
         long now = ctx.getCurrentInstant().toEpochMilli();
         if (attempt == 1) {
           firstFailureMillis = now;

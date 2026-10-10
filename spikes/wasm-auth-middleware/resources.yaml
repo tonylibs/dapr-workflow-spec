@@ -1,0 +1,196 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: wasm-auth-caller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: wasm-auth-secret-reader
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [bearer-auth, basic-auth]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: wasm-auth-secret-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: wasm-auth-secret-reader
+subjects:
+  - kind: ServiceAccount
+    name: wasm-auth-caller
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wasm-auth-echo
+data:
+  server.py: |
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            authorization = self.headers.get("Authorization", "<none>")
+            print(f"path={self.path} authorization={authorization}", flush=True)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(authorization.encode())
+
+    HTTPServer(("", 8080), Handler).serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wasm-auth-echo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wasm-auth-echo
+  template:
+    metadata:
+      labels:
+        app: wasm-auth-echo
+    spec:
+      containers:
+        - name: echo
+          image: python:3.13-alpine
+          command: [python, /app/server.py]
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: source
+              mountPath: /app
+      volumes:
+        - name: source
+          configMap:
+            name: wasm-auth-echo
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wasm-auth-echo
+spec:
+  selector:
+    app: wasm-auth-echo
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: dapr.io/v1alpha1
+kind: HTTPEndpoint
+metadata:
+  name: bearer-target
+spec:
+  baseUrl: http://wasm-auth-echo.dws-wasm-auth-spike.svc.cluster.local:8080
+scopes: [wasm-auth-caller]
+---
+apiVersion: dapr.io/v1alpha1
+kind: HTTPEndpoint
+metadata:
+  name: basic-target
+spec:
+  baseUrl: http://wasm-auth-echo.dws-wasm-auth-spike.svc.cluster.local:8080
+scopes: [wasm-auth-caller]
+---
+apiVersion: dapr.io/v1alpha1
+kind: HTTPEndpoint
+metadata:
+  name: unrelated-target
+spec:
+  baseUrl: http://wasm-auth-echo.dws-wasm-auth-spike.svc.cluster.local:8080
+scopes: [wasm-auth-caller]
+---
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: bearer-auth
+spec:
+  type: middleware.http.wasm
+  version: v1
+  metadata:
+    - name: url
+      value: file:///mnt/dws-wasm/auth.wasm
+    - name: guestConfig
+      secretKeyRef:
+        name: bearer-auth
+        key: guestConfig
+auth:
+  secretStore: kubernetes
+scopes: [wasm-auth-caller]
+---
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: basic-auth
+spec:
+  type: middleware.http.wasm
+  version: v1
+  metadata:
+    - name: url
+      value: file:///mnt/dws-wasm/auth.wasm
+    - name: guestConfig
+      secretKeyRef:
+        name: basic-auth
+        key: guestConfig
+auth:
+  secretStore: kubernetes
+scopes: [wasm-auth-caller]
+---
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: wasm-auth-merged
+spec:
+  tracing:
+    samplingRate: "0.1"
+    stdout: true
+  httpPipeline:
+    handlers:
+      - name: bearer-auth
+        type: middleware.http.wasm
+      - name: basic-auth
+        type: middleware.http.wasm
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wasm-auth-caller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wasm-auth-caller
+  template:
+    metadata:
+      labels:
+        app: wasm-auth-caller
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: wasm-auth-caller
+        dapr.io/config: wasm-auth-merged
+        dapr.io/sidecar-image: ghcr.io/dapr/daprd:1.18.1
+        dapr.io/volume-mounts: wasm-auth-binary:/mnt/dws-wasm
+        dapr.io/enable-native-sidecar: "false"
+    spec:
+      serviceAccountName: wasm-auth-caller
+      initContainers:
+        - name: install-wasm
+          image: docker.io/library/dws-wasm-auth-spike@sha256:cf6acaf42fe3845048b197ca3ba3b86207f967c6396297f5da9699d19e98c6c5
+          imagePullPolicy: Never
+          command: [sh, -c, "cp /auth.wasm /mnt/dws-wasm/auth.wasm"]
+          volumeMounts:
+            - name: wasm-auth-binary
+              mountPath: /mnt/dws-wasm
+      containers:
+        - name: caller
+          image: curlimages/curl:8.11.1
+          command: [sh, -ec, "while true; do sleep 3600; done"]
+      volumes:
+        - name: wasm-auth-binary
+          emptyDir: {}

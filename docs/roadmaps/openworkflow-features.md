@@ -38,9 +38,10 @@ Two different readiness axes get conflated below — worth separating:
 | Timeouts (workflow/task) | ✅ |
 | Authentication (basic/bearer/oauth2) | ✅ done — see Phase 4 |
 | Secrets | ✅ done — see Phase 4 |
-| Catalogs / custom functions | ❌ |
-| Extensions (`before`/`after` hooks) | ❌ |
-| External resources | ❌ |
+| Custom functions (`use.functions`, `call: <name>`) | ❌ — Phase 7a |
+| Catalogs (`use.catalogs`, `call: <name>:<version>@<catalog>`) | ❌ — Phase 7b |
+| Extensions (`use.extensions`, `before`/`after` hooks) | ❌ — Phase 7c |
+| External resources | ⚠️ partial — only `call: openapi` `document` is fetched today; generalized in Phase 7b |
 | Scheduling (`every`/`cron`/`after`/`on`) | ❌ controller deploys on `POST` only |
 | Lifecycle events (CloudEvents) | ✅ done — controller + orchestrator publish to `dws.events` (Epic 1, merged) |
 
@@ -57,10 +58,15 @@ flowchart TD
   P1 --> P3[Phase 3: Fault Tolerance<br/>Problem Details, timeouts ✅]
   P2d --> P3
   P3 --> P4[Phase 4: Authentication + Secrets ✅]
+  P4 --> P41[Phase 4.1: Credentials via sidecar<br/>ADR 0010 — not started]
   P4 --> P5[Phase 5: Protocol Expansion<br/>gRPC ✅, AsyncAPI ✅]
   P5 --> P55[Phase 5.5: A2A protocol<br/>next — design settled, ADR 0004]
   P1 --> P6[Phase 6: Scheduling<br/>cron/every/after/on<br/>next — unblocked]
-  P4 --> P7[Phase 7: Catalogs + Extensions]
+  P2d --> P7a[Phase 7a: Custom functions<br/>use.functions]
+  P7a --> P7b[Phase 7b: Catalogs +<br/>external resources]
+  P4 --> P7b
+  P1 --> P7c[Phase 7c: Extensions<br/>before/after hooks]
+  P2d --> P7c
 ```
 
 Data flow is the foundation: retry/catch, extensions, and error handling all read/write through `input`/`output`/`context`, so it must land before Phases 2–7 are worth building correctly.
@@ -75,10 +81,13 @@ Data flow is the foundation: retry/catch, extensions, and error handling all rea
 | **2** ✅ | `try`/`catch`/`retry`, `raise`, `for`, `fork` (parallel), nested `do` | orchestrator, controller | done — `try-catch-retry`, `raise-task`, `for-task`, `fork-task` |
 | **3** ✅ | RFC 7807 error model, standard error types, task/workflow timeouts | orchestrator | complete |
 | **4** ✅ | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi | done — archived as `2026-10-05-workflow-auth` (21/21 tasks; live OAuth probe passed, see §4c) |
+| **4.1** | `basic`/`bearer` injected by a Wasm sidecar middleware; one merged Dapr Configuration per workload ([ADR 0010](../adr/0010-use-components-as-a-shared-store.md)) | controller, `charts/dws`, call-http, call-openapi, call-a2a, new Wasm image | not started — split into 4.1a–4.1h, see §4h |
 | **5** ✅ | gRPC, AsyncAPI call protocols | new `dws-call-grpc`, `dws-call-asyncapi` images | done — both slices archived (`2026-08-25-dws-call-grpc`, `2026-08-26-dws-call-asyncapi`); live-cluster integration test deferred, see §4e |
 | **5.5** (next) | A2A (Agent2Agent) call protocol | new `dws-call-a2a` image | design settled — [ADR 0004](../adr/0004-call-a2a-runner-design.md), §4f; not yet implemented |
 | **6** (next, parallel) | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) | not started — independent of Phases 4/5, can run alongside 5.5 |
-| **7** | Catalogs, custom functions, extensions (`before`/`after`), external resources | controller, orchestrator | opsx — new capability |
+| **7a** | Custom functions: `use.functions` and `call: <name>` with `with` arguments | controller (+ orchestrator if resolved at runtime) | not started — opsx, new capability; see §4g |
+| **7b** | Catalogs: `use.catalogs` and `call: <name>:<version>@<catalog>`; generalized external-resource fetching | controller | not started — opsx, new capability; needs 7a + Phase 4 auth; see §4g |
+| **7c** | Extensions: `use.extensions` `before`/`after` task lists, matched by `extend` and `when` | orchestrator, controller | not started — opsx, new capability; independent of 7a/7b; see §4g |
 | **8** ✅ | `dws-admin` consumes lifecycle events into read model, exposes read API | dws-admin | done — Epics 2–3, merged |
 
 ## 4a. Phase 2 slice detail
@@ -234,11 +243,66 @@ pacing to the author is undecided — see ADR 0004's consequences.
 Unlike Phases 4 and 5, Phase 5.5 needs **no live cluster** — a mock transport, an in-repo fake A2A
 server, and a CI conformance job against the official `a2a-sdk` server cover it end to end.
 
+## 4g. Phase 7 split — functions, catalogs, extensions
+
+Phase 7 was one row ("catalogs, custom functions, extensions, external resources"). It is split into
+three phases on 2026-10-09, one per `use.*` component, so each can be designed, shipped and archived
+on its own.
+
+**Current behavior (gap):** `dws-controller` does not validate `use.functions`, `use.catalogs` or
+`use.extensions` at all. A definition that declares them is accepted and the keys are silently
+ignored; a `call: <customFunction>` task is not resolved. Before any of 7a–7c lands, the controller
+should reject these three keys with an explicit "not supported" compile error, the same way it already
+rejects external `run.script` sources. Each phase then removes its own rejection.
+
+**Prerequisite — one `use` model ([ADR 0010](../adr/0010-use-components-as-a-shared-store.md)).**
+The data kinds (`errors`, `retries`, `timeouts`) compile into a shared, version-scoped Dapr
+configuration store that hosts read by name through one `UseResolver`; `secrets` are pulled by name
+from a version-scoped Dapr secret store by hosts; `basic`/`bearer` on HTTP calls are injected by a
+Wasm sidecar middleware configured from a controller-composed Secret (validated by spike, 2026-10-10); `oauth2`
+stays deploy-time infrastructure. Catalogs
+join functions and extensions as compile-time "code" kinds, which is why 7b sits on 7a.
+
+| Phase | DSL surface | Likely shape | Open questions for its design pass |
+|---|---|---|---|
+| **7a** Custom functions | `use.functions: map[string, task]`; `call: <name>` with `with` | Compile-time expansion in `dws-controller`: replace `call: <name>` with the named task, bind `with` as its input, then compile it like any inline task (so the right step service is deployed) | Expand at compile time vs resolve at runtime in the orchestrator; may a function be any task type or only `call`/`run`; how `with` merges with the function's own `with`/`input`; name collisions with built-in call types (`http`, `grpc`, `openapi`, `asyncapi`, `a2a`) |
+| **7b** Catalogs + external resources | `use.catalogs: map[string, {endpoint}]`; `call: <name>:<version>@<catalog>`; external resources (`{name?, endpoint}`) | Controller fetches the function definition from the catalog endpoint at compile time (reusing the `OpenApiDocumentFetcher` pattern and `use.authentications`), pins the version, then hands it to 7a's expansion. Generalize the same fetcher for other external resources | Support for a runtime-configured `default` catalog (chart value?); fetch-time caching and digest pinning; behavior when the catalog is unreachable at compile time; whether to lift the external `run.script` source rejection here |
+| **7c** Extensions | `use.extensions: [ {name: {extend, when?, before?, after?}} ]`; `extend` = a task type or `all` | Orchestrator wraps each matching task with the `before`/`after` task lists, evaluating `when` per task. Controller walks extension task lists too, so any `call`/`run` inside them deploys its step service | Order when several extensions match; whether extension tasks are themselves extended (recursion guard); how failures in `before`/`after` surface (Phase 3 error model); placement in the v2 runtime (`dws-flow`/`dws-step` per-node graph) |
+
+## 4h. Phase 4.1 — Credentials via sidecar ([ADR 0010](../adr/0010-use-components-as-a-shared-store.md)) — split
+
+Moves `basic`/`bearer` on HTTP calls out of step images into a Wasm middleware on the step's
+sidecar, and puts every per-pod Dapr setting into one merged Configuration. Applies to v1 now; v2's
+Phase 4 deploy synthesis reuses the same pieces for `-fn` function services. Design and spike
+results: ADR 0010 Decision 4a, `spikes/wasm-auth-middleware/FINDINGS.md`.
+
+| Sub | Scope | Components | Depends on | Status |
+|---|---|---|---|---|
+| **4.1a** | Fixes found by the spike: Dapr metrics port collides with Knative queue-proxy (9090) on **every** Dapr-enabled Knative step; verify the controller Role covers `httpendpoints` and Dapr `configurations` (the OAuth2 path creates both) | controller, `charts/dws` | — | ❌ not started |
+| **4.1b** | **One merged Configuration per workload**: pipeline handlers (OAuth2 today, Wasm next) + tracing in the single `dapr.io/config` slot; naming and lifecycle per version | controller | — | ❌ not started |
+| **4.1c** | Wasm guest image as a new component: TinyGo **0.34.0** pinned, `http-wasm-guest-tinygo` v0.4.0, `busybox` base, public GHCR, CI, release-please (released by hand) | new image | — | ❌ not started |
+| **4.1d** | Controller emits, per (base URL, policy): composed `guestConfig` Secret, `HTTPEndpoint`, `middleware.http.wasm` Component; adds the init container, `emptyDir` and `dapr.io/volume-mounts` to the step service; Role gains Secret `get`/`create`/`delete` | controller, `charts/dws` | 4.1a, 4.1b, 4.1c, 4.1g | ❌ not started |
+| **4.1e** | Step images `dws-call-http`, `dws-call-openapi`, `dws-call-a2a`: drop credential env vars, one sidecar-invocation path for every scheme, wait for sidecar readiness before the first call. Ships with 4.1d | step images | 4.1d | ❌ not started |
+| **4.1f** | Design note: authenticated **secondary fetches** — the OpenAPI document (controller at compile time, runner at boot) and the a2a agent card — still use direct HTTP with credentials | docs | — | ❌ not started |
+| **4.1g** | Platform: Knative `config-features` `kubernetes.podspec-init-containers` + `kubernetes.podspec-volumes-emptydir` set by the chart (Helm Phase 11) and checked by a preflight | `charts/dws` | — | ❌ not started |
+| **4.1h** | Promote the spike's `verify.sh` to a maintained live probe under `scripts/`, run against the current kubectl context | scripts | 4.1e | ❌ not started |
+
+Unchanged, documented exceptions: `call: grpc` keeps `secretKeyRef` env vars (the HTTP pipeline
+does not see gRPC); `asyncapi` broker credentials stay in the binding Component's metadata;
+`oauth2` keeps its middleware and only moves into the merged Configuration (4.1b).
+
+**Not here:** the data kinds (`errors`, `retries`, `timeouts`) and `$secrets` have no consumer
+until the v2 runtime exists, so their store and resolvers are built inside the v2 phases — see
+[workflow-runtime-architecture-roadmap.md](workflow-runtime-architecture-roadmap.md), "ADR 0010
+integration".
+
 ## 5. Rationale for ordering
 
 - **1 before 2/3**: retry/catch and error handling are meaningless without a real input/output/context pipeline to operate on.
 - **2 before 3**: `try`/`raise` define the fault surface that timeouts and Problem Details formatting attach to.
-- **4 before 5/7**: new protocols and catalogs both need auth to call real external services.
+- **4 before 5/7b**: new protocols and catalogs both need auth to call real external services.
+- **7a before 7b**: a catalog function is a custom function that comes from a remote source, so 7b reuses 7a's `call: <name>` resolution and only adds fetching and versioning.
+- **7c is independent of 7a/7b**: extensions wrap tasks of any type and do not depend on how a `call` is resolved. They need Phase 1 data flow and the Phase 2 nested-`do` runner.
 - **6 is independent**: scheduling only touches the controller's trigger path, not the interpreter — can be pulled forward if needed.
 - **8 last**: read model is a pure consumer of Phase 0's event contract; no orchestrator/controller changes required once events exist.
 

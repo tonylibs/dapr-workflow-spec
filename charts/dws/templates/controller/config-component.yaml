@@ -5,6 +5,19 @@
   Dapr Configuration API (DaprClient.getConfiguration) by CompilerProducer, which defaults to v1
   when the key is absent or the store is unreachable. Applications only READ from this store; the
   compiler-version key(s) are set out of band (kubectl/redis-cli) until a later Phase 1 task.
+
+  The same store carries the controller's observability keys, also set out of band and NOT
+  templated by this chart (like the compiler-version key, they are runtime flags, not install
+  configuration):
+
+    observability.enabled          "true" (trimmed, case-insensitive) turns on instrumentation of
+                                   compiled orchestrators; anything else, or absent, is off.
+    observability.instrumentation  optional OpenTelemetry Operator Instrumentation reference
+                                   (`<name>` or `<namespace>/<name>`); defaults to "true".
+
+  The controller reads them at each workflow deploy and instruments the orchestrator only if the
+  `dws-tracing` Configuration also exists (templates/observability/workflow-tracing-configuration.yaml,
+  rendered when observability.enabled and observability.workflows.enabled are both true).
   Always rendered — see actor-statestore-component.yaml for the rationale
   (`dapr.enabled=false` means externally-managed Dapr, CRDs already present).
 */}}
