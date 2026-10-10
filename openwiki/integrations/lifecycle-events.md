@@ -51,7 +51,13 @@ The interpreter schedules lifecycle publishing as Dapr workflow activities befor
 | `io.dws.task.completed` | After task dispatch succeeds. |
 | `io.dws.task.failed` | Task dispatch throws a runtime exception. |
 
-`AdminEventBuilder` derives its event IDs from `<instanceId>-<sequence>` and timestamps from `WorkflowContext.getCurrentInstant()`. Because `InterpreterWorkflow` delegates publication to `AdminEventActivity` instead of calling Dapr in workflow code, replay emits deterministic envelopes rather than creating new UUIDs or wall-clock times. The source is `dws-orchestrator/<appId>`; the version is extracted from the immutable definition key. This replay-safe mechanism is part of the runtime flow described in [deployed workflow](../architecture/deployed-workflow.md#interpreter-conventions).
+`AdminEventBuilder` derives its event IDs from `<instanceId>-<sequence>` and timestamps from `WorkflowContext.getCurrentInstant()`. Delegating publication to `AdminEventActivity` rather than directly calling Dapr from workflow code is designed to make replay use deterministic envelopes rather than new UUIDs or wall-clock times. The source is `dws-orchestrator/<appId>`; the version is extracted from the immutable definition key. The current replay limitation below qualifies that design intent; the activity boundary remains part of the runtime flow described in [deployed workflow](../architecture/deployed-workflow.md#interpreter-conventions).
+
+### Replay tracing and current limitation
+
+The controller can opt a newly deployed orchestrator into Java-agent and Dapr-sidecar tracing through the configuration boundary described in [Helm chart packaging](../architecture/helm-chart-roadmap.md#control-plane-observability). Live evidence in `docs/adr/0009-trace-context-across-workflow-replay.md` found that the Dapr engine owns the workflow-level spans and that activity publication runs under a child span; creating spans in workflow code would therefore risk replay duplicates. With a local probe-only guard, a replacement pod continued the same workflow trace after a restart without repeating activity executions.
+
+That guard is not committed. The current `InterpreterWorkflow` catches the Dapr blocked-workflow runtime exception around awaited execution and schedules failed lifecycle publication before rethrowing. This can make replay non-deterministic: the live probe recorded spurious `task.failed` and `instance.failed` events, duplicate completion warnings, and a stalled instance. Treat it as a workflow correctness defect, not an event-delivery guarantee or a tracing issue. Any change to the interpreter's catch paths or lifecycle scheduling must verify replay as well as the ordinary event tests.
 
 ## Change and verification guide
 
