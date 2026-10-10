@@ -38,9 +38,10 @@ Two different readiness axes get conflated below — worth separating:
 | Timeouts (workflow/task) | ✅ |
 | Authentication (basic/bearer/oauth2) | ✅ done — see Phase 4 |
 | Secrets | ✅ done — see Phase 4 |
-| Catalogs / custom functions | ❌ |
-| Extensions (`before`/`after` hooks) | ❌ |
-| External resources | ❌ |
+| Custom functions (`use.functions`, `call: <name>`) | ❌ — Phase 7a |
+| Catalogs (`use.catalogs`, `call: <name>:<version>@<catalog>`) | ❌ — Phase 7b |
+| Extensions (`use.extensions`, `before`/`after` hooks) | ❌ — Phase 7c |
+| External resources | ⚠️ partial — only `call: openapi` `document` is fetched today; generalized in Phase 7b |
 | Scheduling (`every`/`cron`/`after`/`on`) | ❌ controller deploys on `POST` only |
 | Lifecycle events (CloudEvents) | ✅ done — controller + orchestrator publish to `dws.events` (Epic 1, merged) |
 
@@ -60,7 +61,11 @@ flowchart TD
   P4 --> P5[Phase 5: Protocol Expansion<br/>gRPC ✅, AsyncAPI ✅]
   P5 --> P55[Phase 5.5: A2A protocol<br/>next — design settled, ADR 0004]
   P1 --> P6[Phase 6: Scheduling<br/>cron/every/after/on<br/>next — unblocked]
-  P4 --> P7[Phase 7: Catalogs + Extensions]
+  P2d --> P7a[Phase 7a: Custom functions<br/>use.functions]
+  P7a --> P7b[Phase 7b: Catalogs +<br/>external resources]
+  P4 --> P7b
+  P1 --> P7c[Phase 7c: Extensions<br/>before/after hooks]
+  P2d --> P7c
 ```
 
 Data flow is the foundation: retry/catch, extensions, and error handling all read/write through `input`/`output`/`context`, so it must land before Phases 2–7 are worth building correctly.
@@ -78,7 +83,9 @@ Data flow is the foundation: retry/catch, extensions, and error handling all rea
 | **5** ✅ | gRPC, AsyncAPI call protocols | new `dws-call-grpc`, `dws-call-asyncapi` images | done — both slices archived (`2026-08-25-dws-call-grpc`, `2026-08-26-dws-call-asyncapi`); live-cluster integration test deferred, see §4e |
 | **5.5** (next) | A2A (Agent2Agent) call protocol | new `dws-call-a2a` image | design settled — [ADR 0004](../adr/0004-call-a2a-runner-design.md), §4f; not yet implemented |
 | **6** (next, parallel) | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) | not started — independent of Phases 4/5, can run alongside 5.5 |
-| **7** | Catalogs, custom functions, extensions (`before`/`after`), external resources | controller, orchestrator | opsx — new capability |
+| **7a** | Custom functions: `use.functions` and `call: <name>` with `with` arguments | controller (+ orchestrator if resolved at runtime) | not started — opsx, new capability; see §4g |
+| **7b** | Catalogs: `use.catalogs` and `call: <name>:<version>@<catalog>`; generalized external-resource fetching | controller | not started — opsx, new capability; needs 7a + Phase 4 auth; see §4g |
+| **7c** | Extensions: `use.extensions` `before`/`after` task lists, matched by `extend` and `when` | orchestrator, controller | not started — opsx, new capability; independent of 7a/7b; see §4g |
 | **8** ✅ | `dws-admin` consumes lifecycle events into read model, exposes read API | dws-admin | done — Epics 2–3, merged |
 
 ## 4a. Phase 2 slice detail
@@ -234,11 +241,39 @@ pacing to the author is undecided — see ADR 0004's consequences.
 Unlike Phases 4 and 5, Phase 5.5 needs **no live cluster** — a mock transport, an in-repo fake A2A
 server, and a CI conformance job against the official `a2a-sdk` server cover it end to end.
 
+## 4g. Phase 7 split — functions, catalogs, extensions
+
+Phase 7 was one row ("catalogs, custom functions, extensions, external resources"). It is split into
+three phases on 2026-10-09, one per `use.*` component, so each can be designed, shipped and archived
+on its own.
+
+**Current behavior (gap):** `dws-controller` does not validate `use.functions`, `use.catalogs` or
+`use.extensions` at all. A definition that declares them is accepted and the keys are silently
+ignored; a `call: <customFunction>` task is not resolved. Before any of 7a–7c lands, the controller
+should reject these three keys with an explicit "not supported" compile error, the same way it already
+rejects external `run.script` sources. Each phase then removes its own rejection.
+
+**Prerequisite — one `use` model ([ADR 0010](../adr/0010-use-components-as-a-shared-store.md)).**
+The data kinds (`errors`, `retries`, `timeouts`) compile into a shared, version-scoped Dapr
+configuration store that hosts read by name through one `UseResolver`; `secrets` are pulled by name
+from a version-scoped Dapr secret store by hosts; `basic`/`bearer` on HTTP calls are injected by a
+Wasm sidecar middleware configured from a controller-composed Secret (pending a spike); `oauth2`
+stays deploy-time infrastructure. Catalogs
+join functions and extensions as compile-time "code" kinds, which is why 7b sits on 7a.
+
+| Phase | DSL surface | Likely shape | Open questions for its design pass |
+|---|---|---|---|
+| **7a** Custom functions | `use.functions: map[string, task]`; `call: <name>` with `with` | Compile-time expansion in `dws-controller`: replace `call: <name>` with the named task, bind `with` as its input, then compile it like any inline task (so the right step service is deployed) | Expand at compile time vs resolve at runtime in the orchestrator; may a function be any task type or only `call`/`run`; how `with` merges with the function's own `with`/`input`; name collisions with built-in call types (`http`, `grpc`, `openapi`, `asyncapi`, `a2a`) |
+| **7b** Catalogs + external resources | `use.catalogs: map[string, {endpoint}]`; `call: <name>:<version>@<catalog>`; external resources (`{name?, endpoint}`) | Controller fetches the function definition from the catalog endpoint at compile time (reusing the `OpenApiDocumentFetcher` pattern and `use.authentications`), pins the version, then hands it to 7a's expansion. Generalize the same fetcher for other external resources | Support for a runtime-configured `default` catalog (chart value?); fetch-time caching and digest pinning; behavior when the catalog is unreachable at compile time; whether to lift the external `run.script` source rejection here |
+| **7c** Extensions | `use.extensions: [ {name: {extend, when?, before?, after?}} ]`; `extend` = a task type or `all` | Orchestrator wraps each matching task with the `before`/`after` task lists, evaluating `when` per task. Controller walks extension task lists too, so any `call`/`run` inside them deploys its step service | Order when several extensions match; whether extension tasks are themselves extended (recursion guard); how failures in `before`/`after` surface (Phase 3 error model); placement in the v2 runtime (`dws-flow`/`dws-step` per-node graph) |
+
 ## 5. Rationale for ordering
 
 - **1 before 2/3**: retry/catch and error handling are meaningless without a real input/output/context pipeline to operate on.
 - **2 before 3**: `try`/`raise` define the fault surface that timeouts and Problem Details formatting attach to.
-- **4 before 5/7**: new protocols and catalogs both need auth to call real external services.
+- **4 before 5/7b**: new protocols and catalogs both need auth to call real external services.
+- **7a before 7b**: a catalog function is a custom function that comes from a remote source, so 7b reuses 7a's `call: <name>` resolution and only adds fetching and versioning.
+- **7c is independent of 7a/7b**: extensions wrap tasks of any type and do not depend on how a `call` is resolved. They need Phase 1 data flow and the Phase 2 nested-`do` runner.
 - **6 is independent**: scheduling only touches the controller's trigger path, not the interpreter — can be pulled forward if needed.
 - **8 last**: read model is a pure consumer of Phase 0's event contract; no orchestrator/controller changes required once events exist.
 
