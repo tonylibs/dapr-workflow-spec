@@ -78,6 +78,16 @@ public class StackSynthesizer {
   private static final String OAUTH_MIDDLEWARE_TYPE = "middleware.http.oauth2clientcredentials";
 
   /**
+   * daprd metrics port on every Knative step. The injector default, 9090, is already bound by
+   * Knative's queue-proxy (autoscaler metrics) in the same pod network namespace, so whichever of
+   * the two starts second exits on "bind: address already in use" and the revision never becomes
+   * Ready. 9095 is outside queue-proxy's ports (8012, 8013, 8112, 8022, 9090, 9091, 8008) and
+   * daprd's own (3500, 3501, 40000, 50001, 50002). Orchestrator Deployments are not Knative and
+   * keep the default.
+   */
+  static final String STEP_DAPR_METRICS_PORT = "9095";
+
+  /**
    * Canonical activity name every migrated Go step image registers and the orchestrator schedules
    * (mirrors {@code io.dws.orchestrator.workflow.activity.StepActivity#NAME}); the access policy
    * allow-lists exactly this activity.
@@ -427,6 +437,7 @@ public class StackSynthesizer {
     annotations.put("dapr.io/enabled", "true");
     annotations.put("dapr.io/app-id", step.name());
     annotations.put("dapr.io/app-port", CONTAINER_PORT_VALUE);
+    annotations.put("dapr.io/metrics-port", STEP_DAPR_METRICS_PORT);
     plan.oauthEndpoints().stream()
         .filter(endpoint -> endpoint.appIds().contains(step.name()))
         .map(OAuthEndpoint::name)
