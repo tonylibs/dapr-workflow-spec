@@ -51,6 +51,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.cdk8s.ApiObjectMetadata;
@@ -75,7 +76,7 @@ public class StackSynthesizer {
   private static final String OTEL_RESOURCE_ATTRIBUTES = "OTEL_RESOURCE_ATTRIBUTES";
   private static final String CONTAINER_PORT_VALUE = "8080";
   private static final int CONTAINER_PORT = 8080;
-  private static final String OAUTH_MIDDLEWARE_TYPE = "middleware.http.oauth2clientcredentials";
+  private static final String OAUTH_MIDDLEWARE_TYPE = SidecarConfiguration.OAUTH_MIDDLEWARE_TYPE;
 
   /**
    * Canonical activity name every migrated Go step image registers and the orchestrator schedules
@@ -181,35 +182,87 @@ public class StackSynthesizer {
   }
 
   /**
-   * One sidecar Configuration per canonical endpoint policy. Kubernetes workloads opt in through
-   * {@code dapr.io/config}; Dapr Configuration resources themselves have no scopes field.
+   * The one merged Dapr Configuration for each workload of this version that needs any: every step
+   * Knative Service whose app-id is scoped to an OAuth endpoint, and the orchestrator when {@code
+   * settings} turn tracing on. A workload that needs nothing gets none. Dapr Configuration
+   * resources have no scopes field; workloads opt in through {@code dapr.io/config}, which {@link
+   * #knativeServices} and {@link #orchestratorDeployment} stamp from the same {@link
+   * SidecarConfiguration} so the reference and the resource cannot disagree.
    */
-  public List<GenericKubernetesResource> oauthConfigurations(
-      DeploymentPlan plan, String namespace) {
-    List<GenericKubernetesResource> resources = new ArrayList<>(plan.oauthEndpoints().size());
-    for (OAuthEndpoint endpoint : plan.oauthEndpoints()) {
-      Chart chart = Testing.chart();
-      new Configuration(
-          chart,
-          endpoint.name(),
-          ConfigurationProps.builder()
-              .metadata(oauthMetadata(plan, endpoint, namespace))
-              .spec(
-                  ConfigurationSpec.builder()
-                      .httpPipeline(
-                          ConfigurationSpecHttpPipeline.builder()
-                              .handlers(
-                                  List.of(
-                                      ConfigurationSpecHttpPipelineHandlers.builder()
-                                          .name(endpoint.name())
-                                          .type(OAUTH_MIDDLEWARE_TYPE)
-                                          .build()))
-                              .build())
-                      .build())
-              .build());
-      resources.add(toDynamicResource(chart));
+  public List<GenericKubernetesResource> daprConfigurations(
+      DeploymentPlan plan, String namespace, ObservabilitySettings settings) {
+    List<GenericKubernetesResource> resources = new ArrayList<>();
+    for (StepService step : plan.steps()) {
+      stepConfiguration(plan, step)
+          .ifPresent(configuration -> resources.add(configuration(plan, configuration, namespace)));
     }
+    orchestratorConfiguration(plan, settings)
+        .ifPresent(configuration -> resources.add(configuration(plan, configuration, namespace)));
     return resources;
+  }
+
+  private static Optional<SidecarConfiguration> stepConfiguration(
+      DeploymentPlan plan, StepService step) {
+    return SidecarConfiguration.forWorkload(plan, step.name(), step.name(), Map.of());
+  }
+
+  private static Optional<SidecarConfiguration> orchestratorConfiguration(
+      DeploymentPlan plan, ObservabilitySettings settings) {
+    OrchestratorSpec orchestrator = plan.orchestrator();
+    // The workflow name, not orchestrator.name(): that already ends in the version id, which the
+    // Configuration name appends itself.
+    return SidecarConfiguration.forWorkload(
+        plan,
+        plan.workflow(),
+        orchestrator.appId(),
+        settings.enabled() ? settings.tracing() : Map.of());
+  }
+
+  private GenericKubernetesResource configuration(
+      DeploymentPlan plan, SidecarConfiguration configuration, String namespace) {
+    Chart chart = Testing.chart();
+    ConfigurationSpec.Builder spec = ConfigurationSpec.builder();
+    if (!configuration.httpPipeline().isEmpty()) {
+      spec.httpPipeline(
+          ConfigurationSpecHttpPipeline.builder()
+              .handlers(
+                  configuration.httpPipeline().stream()
+                      .map(
+                          handler ->
+                              ConfigurationSpecHttpPipelineHandlers.builder()
+                                  .name(handler.name())
+                                  .type(handler.type())
+                                  .build())
+                      .toList())
+              .build());
+    }
+    new Configuration(
+        chart,
+        configuration.name(),
+        ConfigurationProps.builder()
+            .metadata(
+                ApiObjectMetadata.builder()
+                    .name(configuration.name())
+                    .namespace(namespace)
+                    .labels(Labels.forPlan(plan))
+                    .build())
+            .spec(spec.build())
+            .build());
+    GenericKubernetesResource resource = toDynamicResource(chart);
+    if (!configuration.tracing().isEmpty()) {
+      // The tracing block is the chart's own dws-tracing spec.tracing, copied as read rather than
+      // rebuilt from typed fields, so the chart stays its single definition.
+      Map<String, Object> rendered = new LinkedHashMap<>(specOf(resource));
+      rendered.put("tracing", configuration.tracing());
+      resource.setAdditionalProperty("spec", rendered);
+    }
+    return resource;
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> specOf(GenericKubernetesResource resource) {
+    Object spec = resource.getAdditionalProperties().get("spec");
+    return spec == null ? Map.of() : (Map<String, Object>) spec;
   }
 
   /**
@@ -427,11 +480,8 @@ public class StackSynthesizer {
     annotations.put("dapr.io/enabled", "true");
     annotations.put("dapr.io/app-id", step.name());
     annotations.put("dapr.io/app-port", CONTAINER_PORT_VALUE);
-    plan.oauthEndpoints().stream()
-        .filter(endpoint -> endpoint.appIds().contains(step.name()))
-        .map(OAuthEndpoint::name)
-        .findFirst()
-        .ifPresent(configuration -> annotations.put("dapr.io/config", configuration));
+    stepConfiguration(plan, step)
+        .ifPresent(configuration -> annotations.put(DAPR_CONFIG, configuration.name()));
     return annotations;
   }
 
@@ -497,9 +547,10 @@ public class StackSynthesizer {
   /**
    * The dedicated orchestrator Deployment for this workflow version. With {@link
    * ObservabilitySettings#OFF} the output is identical to the three-argument form; with tracing on
-   * it additionally carries targeted Java-agent injection, the tracing-only Dapr Configuration
-   * reference and the workflow's identity (see {@link #orchestratorAnnotations} and {@link
-   * #orchestratorEnv}). No other generated resource takes settings.
+   * it additionally carries targeted Java-agent injection, a reference to the workflow's merged
+   * Dapr Configuration (the one {@link #daprConfigurations} renders, which holds the tracing block)
+   * and the workflow's identity (see {@link #orchestratorAnnotations} and {@link
+   * #orchestratorEnv}). Only this method and {@link #daprConfigurations} take settings.
    */
   public Deployment orchestratorDeployment(
       DeploymentPlan plan,
@@ -508,8 +559,11 @@ public class StackSynthesizer {
       ObservabilitySettings settings) {
     OrchestratorSpec orchestrator = plan.orchestrator();
     Map<String, String> annotations =
-        orchestratorAnnotations(orchestratorAnnotations(orchestrator), settings);
-    List<EnvVar> env = orchestratorEnv(plan, orchestrator.env(), isInstrumented(annotations));
+        orchestratorAnnotations(
+            orchestratorAnnotations(orchestrator),
+            settings,
+            orchestratorConfiguration(plan, settings));
+    List<EnvVar> env = orchestratorEnv(plan, orchestrator.env(), settings.enabled());
     Map<String, String> labels = Labels.forPlan(plan);
     Map<String, String> selector = Map.of("app", orchestrator.name());
     Map<String, String> podLabels = new LinkedHashMap<>(labels);
@@ -557,32 +611,21 @@ public class StackSynthesizer {
   }
 
   /**
-   * Adds the tracing annotations to {@code base} when observability is on. {@code putIfAbsent}
-   * semantics: a pod that already names a Dapr Configuration keeps it, and then nothing is stamped
-   * (a comma list is not a merge — {@code dapr.io/config} takes exactly one name).
+   * Adds the tracing injection annotations to {@code base} when observability is on, and the {@code
+   * dapr.io/config} reference to the workflow's merged Configuration whenever it has one. The
+   * Configuration is always the workload's own, so no other feature can have taken the slot first.
    */
-  static Map<String, String> orchestratorAnnotations(
-      Map<String, String> base, ObservabilitySettings settings) {
-    if (!settings.enabled()) {
-      return base;
-    }
-    if (base.containsKey(DAPR_CONFIG)) {
-      log.warn(
-          "Orchestrator already references Dapr Configuration {}; leaving it without tracing",
-          base.get(DAPR_CONFIG));
-      return base;
-    }
+  private static Map<String, String> orchestratorAnnotations(
+      Map<String, String> base,
+      ObservabilitySettings settings,
+      Optional<SidecarConfiguration> configuration) {
     Map<String, String> annotations = new LinkedHashMap<>(base);
-    annotations.putIfAbsent(INJECT_JAVA, settings.instrumentation());
-    annotations.putIfAbsent(INJECT_CONTAINER_NAMES, ObservabilitySettings.ORCHESTRATOR_CONTAINER);
-    annotations.putIfAbsent(DAPR_CONFIG, ObservabilitySettings.TRACING_CONFIGURATION);
+    if (settings.enabled()) {
+      annotations.put(INJECT_JAVA, settings.instrumentation());
+      annotations.put(INJECT_CONTAINER_NAMES, ObservabilitySettings.ORCHESTRATOR_CONTAINER);
+    }
+    configuration.ifPresent(value -> annotations.put(DAPR_CONFIG, value.name()));
     return annotations;
-  }
-
-  /** Whether {@link #orchestratorAnnotations(Map, ObservabilitySettings)} stamped tracing. */
-  static boolean isInstrumented(Map<String, String> annotations) {
-    return ObservabilitySettings.TRACING_CONFIGURATION.equals(annotations.get(DAPR_CONFIG))
-        && annotations.containsKey(INJECT_JAVA);
   }
 
   /**
