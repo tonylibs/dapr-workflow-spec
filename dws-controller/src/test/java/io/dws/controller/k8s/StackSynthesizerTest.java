@@ -3,6 +3,7 @@ package io.dws.controller.k8s;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
+import io.dws.controller.compile.Names;
 import io.dws.controller.compile.V1OrchestratorCompiler;
 import io.dws.controller.compile.WorkflowCompiler;
 import io.dws.controller.model.DeploymentPlan;
@@ -267,7 +268,8 @@ class StackSynthesizerTest {
   }
 
   @Test
-  @DisplayName("equivalent OAuth calls share one scoped endpoint, middleware, and configuration")
+  @DisplayName(
+      "equivalent OAuth calls share one endpoint and middleware; each step owns one configuration")
   void equivalentOAuthCallsShareScopedResources() {
     DeploymentPlan plan = compiler.compile(sharedOAuthDefinition());
     OAuthEndpoint descriptor = plan.oauthEndpoints().getFirst();
@@ -276,11 +278,15 @@ class StackSynthesizerTest {
     List<GenericKubernetesResource> middleware =
         synthesizer.oauthMiddlewareComponents(plan, NAMESPACE);
     List<GenericKubernetesResource> configurations =
-        synthesizer.oauthConfigurations(plan, NAMESPACE);
+        synthesizer.daprConfigurations(plan, NAMESPACE, ObservabilitySettings.OFF);
 
     assertThat(endpoints).hasSize(1);
     assertThat(middleware).hasSize(1);
-    assertThat(configurations).hasSize(1);
+    assertThat(configurations)
+        .extracting(configuration -> configuration.getMetadata().getName())
+        .containsExactly(
+            Names.daprConfiguration("get-account", plan.versionId()),
+            Names.daprConfiguration("list-accounts", plan.versionId()));
     assertThat(endpoints.getFirst().getMetadata().getName()).isEqualTo(descriptor.name());
     assertThat(endpoints.getFirst().getAdditionalProperties())
         .containsEntry("scopes", List.of("get-account", "list-accounts"));
@@ -293,20 +299,30 @@ class StackSynthesizerTest {
     assertThat(middleware.getFirst().getMetadata().getLabels())
         .containsEntry(Labels.WORKFLOW, "oauth-resource-sharing")
         .containsEntry(Labels.VERSION, plan.versionId());
-    assertThat(configurations.getFirst().getMetadata().getLabels())
-        .containsEntry(Labels.WORKFLOW, "oauth-resource-sharing")
-        .containsEntry(Labels.VERSION, plan.versionId());
-
-    Map<String, Object> handler = firstHttpHandler(configurations.getFirst());
-    assertThat(handler)
-        .containsEntry("name", descriptor.name())
-        .containsEntry("type", "middleware.http.oauth2clientcredentials");
+    assertThat(configurations)
+        .allSatisfy(
+            configuration -> {
+              assertThat(configuration.getMetadata().getLabels())
+                  .containsEntry(Labels.WORKFLOW, "oauth-resource-sharing")
+                  .containsEntry(Labels.VERSION, plan.versionId());
+              assertThat(spec(configuration)).containsOnlyKeys("httpPipeline");
+              assertThat(httpHandlers(configuration))
+                  .containsExactly(
+                      Map.of(
+                          "name",
+                          descriptor.name(),
+                          "type",
+                          "middleware.http.oauth2clientcredentials"));
+            });
 
     assertThat(synthesizer.knativeServices(plan, NAMESPACE))
         .allSatisfy(
             service ->
                 assertThat(templateAnnotations(service))
-                    .containsEntry("dapr.io/config", descriptor.name()));
+                    .containsEntry(
+                        "dapr.io/config",
+                        Names.daprConfiguration(
+                            templateAnnotations(service).get("dapr.io/app-id"), plan.versionId())));
   }
 
   @Test
@@ -320,7 +336,7 @@ class StackSynthesizerTest {
     List<GenericKubernetesResource> middleware =
         synthesizer.oauthMiddlewareComponents(plan, NAMESPACE);
     List<GenericKubernetesResource> configurations =
-        synthesizer.oauthConfigurations(plan, NAMESPACE);
+        synthesizer.daprConfigurations(plan, NAMESPACE, ObservabilitySettings.OFF);
 
     assertThat(endpoints).hasSize(1);
     assertThat(middleware).hasSize(1);
@@ -334,7 +350,9 @@ class StackSynthesizerTest {
         .allSatisfy(
             service ->
                 assertThat(templateAnnotations(service))
-                    .containsEntry("dapr.io/config", descriptor.name())
+                    .containsEntry(
+                        "dapr.io/config",
+                        Names.daprConfiguration("dispatch-agent", plan.versionId()))
                     .containsEntry("dapr.io/app-id", "dispatch-agent"));
   }
 
@@ -399,7 +417,8 @@ class StackSynthesizerTest {
     assertThat(plan.oauthEndpoints()).hasSize(2);
     assertThat(synthesizer.oauthHttpEndpoints(plan, NAMESPACE)).hasSize(2);
     assertThat(synthesizer.oauthMiddlewareComponents(plan, NAMESPACE)).hasSize(2);
-    assertThat(synthesizer.oauthConfigurations(plan, NAMESPACE)).hasSize(2);
+    assertThat(synthesizer.daprConfigurations(plan, NAMESPACE, ObservabilitySettings.OFF))
+        .hasSize(2);
     assertThat(synthesizer.oauthMiddlewareComponents(plan, NAMESPACE))
         .extracting(StackSynthesizerTest::componentMetadata)
         .extracting(metadata -> metadataEntry(metadata, "authStyle").get("value"))
@@ -412,7 +431,16 @@ class StackSynthesizerTest {
 
   // ---- orchestrator tracing (observability-orchestrator-tracing) ----
 
-  private static final ObservabilitySettings ON = new ObservabilitySettings(true, "true");
+  /** What the chart's dws-tracing renders, as ObservabilityFlags copies it from the cluster. */
+  private static final Map<String, Object> TRACING =
+      Map.of(
+          "samplingRate",
+          "1",
+          "otel",
+          Map.of(
+              "endpointAddress", "dws-otel-collector:4318", "isSecure", false, "protocol", "http"));
+
+  private static final ObservabilitySettings ON = new ObservabilitySettings(true, "true", TRACING);
 
   private static DeploymentPlan orchestratorPlan(
       String workflow, String versionId, Map<String, io.dws.controller.model.EnvValue> env) {
@@ -549,7 +577,7 @@ class StackSynthesizerTest {
     assertThat(podAnnotations(deployment))
         .containsEntry("instrumentation.opentelemetry.io/inject-java", "true")
         .containsEntry("instrumentation.opentelemetry.io/container-names", "orchestrator")
-        .containsEntry("dapr.io/config", "dws-tracing")
+        .containsEntry("dapr.io/config", "order-fulfilment-v1a2b3c4d-cfg")
         .containsEntry("dapr.io/enabled", "true")
         .containsEntry("dapr.io/app-id", "order-fulfilment")
         .containsEntry("dapr.io/app-port", "8080")
@@ -567,7 +595,7 @@ class StackSynthesizerTest {
             orchestratorPlan(),
             NAMESPACE,
             SERVICE_ACCOUNT,
-            new ObservabilitySettings(true, "dws-system/dws-instrumentation"));
+            new ObservabilitySettings(true, "dws-system/dws-instrumentation", TRACING));
 
     assertThat(podAnnotations(deployment))
         .containsEntry(
@@ -718,22 +746,150 @@ class StackSynthesizerTest {
   }
 
   @Test
-  @DisplayName("an existing dapr.io/config is preserved and nothing is stamped")
-  void existingDaprConfigIsPreserved() {
-    Map<String, String> existing = new LinkedHashMap<>();
-    existing.put("dapr.io/enabled", "true");
-    existing.put("dapr.io/config", "other");
+  @DisplayName("tracing only: the orchestrator's one Configuration is the chart's tracing block")
+  void tracingOnlyConfigurationCopiesTheTracingBlock() {
+    DeploymentPlan plan = orchestratorPlan();
 
-    Map<String, String> annotations = StackSynthesizer.orchestratorAnnotations(existing, ON);
+    List<GenericKubernetesResource> configurations =
+        synthesizer.daprConfigurations(plan, NAMESPACE, ON);
 
-    assertThat(annotations).isEqualTo(existing).containsEntry("dapr.io/config", "other");
-    assertThat(annotations).doesNotContainKey("instrumentation.opentelemetry.io/inject-java");
-    assertThat(StackSynthesizer.isInstrumented(annotations)).isFalse();
+    assertThat(configurations).hasSize(1);
+    GenericKubernetesResource configuration = configurations.getFirst();
+    assertThat(configuration.getMetadata().getName()).isEqualTo("order-fulfilment-v1a2b3c4d-cfg");
+    assertThat(configuration.getMetadata().getLabels())
+        .containsEntry(Labels.WORKFLOW, "order-fulfilment")
+        .containsEntry(Labels.VERSION, "v1a2b3c4d");
+    assertThat(spec(configuration)).containsOnlyKeys("tracing").containsEntry("tracing", TRACING);
+    assertThat(
+            podAnnotations(
+                synthesizer.orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT, ON)))
+        .containsEntry("dapr.io/config", configuration.getMetadata().getName());
+  }
+
+  @Test
+  @DisplayName("tracing off and no OAuth: no Configuration and no dapr.io/config annotation")
+  void workloadsNeedingNothingGetNoConfiguration() {
+    DeploymentPlan plan = orchestratorPlan();
+
+    assertThat(synthesizer.daprConfigurations(plan, NAMESPACE, ObservabilitySettings.OFF))
+        .isEmpty();
+    assertThat(podAnnotations(synthesizer.orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT)))
+        .doesNotContainKey("dapr.io/config");
+  }
+
+  @Test
+  @DisplayName("enabled settings without a tracing block add injection but no Configuration")
+  void enabledWithoutTracingBlockRendersNoConfiguration() {
+    DeploymentPlan plan = orchestratorPlan();
+    ObservabilitySettings noBlock = new ObservabilitySettings(true, "true");
+
+    assertThat(synthesizer.daprConfigurations(plan, NAMESPACE, noBlock)).isEmpty();
+    assertThat(
+            podAnnotations(
+                synthesizer.orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT, noBlock)))
+        .doesNotContainKey("dapr.io/config");
+  }
+
+  @Test
+  @DisplayName("OAuth only: step Configurations hold handlers, tracing stays on the orchestrator")
+  void oauthOnlyConfigurationHoldsHandlersWithoutTracing() {
+    DeploymentPlan plan = compiler.compile(sharedOAuthDefinition());
+
+    List<GenericKubernetesResource> configurations =
+        synthesizer.daprConfigurations(plan, NAMESPACE, ON);
+
+    assertThat(configurations)
+        .extracting(configuration -> configuration.getMetadata().getName())
+        .containsExactly(
+            Names.daprConfiguration("get-account", plan.versionId()),
+            Names.daprConfiguration("list-accounts", plan.versionId()),
+            Names.daprConfiguration(plan.workflow(), plan.versionId()));
+    assertThat(spec(configurations.get(0))).containsOnlyKeys("httpPipeline");
+    assertThat(spec(configurations.get(1))).containsOnlyKeys("httpPipeline");
+    assertThat(spec(configurations.get(2))).containsOnlyKeys("tracing");
+  }
+
+  @Test
+  @DisplayName("a workload with OAuth handlers and tracing gets both in a single Configuration")
+  void oauthAndTracingShareOneConfiguration() {
+    DeploymentPlan plan = compiler.compile(sharedOAuthDefinition());
+    OAuthEndpoint endpoint = plan.oauthEndpoints().getFirst();
+
+    SidecarConfiguration merged =
+        SidecarConfiguration.forWorkload(plan, "get-account", "get-account", TRACING).orElseThrow();
+
+    assertThat(merged.name()).isEqualTo(Names.daprConfiguration("get-account", plan.versionId()));
+    assertThat(merged.httpPipeline())
+        .containsExactly(
+            new SidecarConfiguration.HttpPipelineHandler(
+                endpoint.name(), SidecarConfiguration.OAUTH_MIDDLEWARE_TYPE));
+    assertThat(merged.tracing()).isEqualTo(TRACING);
+  }
+
+  @Test
+  @DisplayName("pipeline handlers are ordered by name, whatever order the endpoints arrive in")
+  void pipelineHandlersAreDeterministicallyOrdered() {
+    OAuthEndpoint zulu = oauthEndpoint("wf-v1-oauth-zzzzzzzz");
+    OAuthEndpoint alpha = oauthEndpoint("wf-v1-oauth-aaaaaaaa");
+    DeploymentPlan forward = planWithEndpoints(List.of(zulu, alpha));
+    DeploymentPlan reverse = planWithEndpoints(List.of(alpha, zulu));
+
+    SidecarConfiguration first =
+        SidecarConfiguration.forWorkload(forward, "step", "step", Map.of()).orElseThrow();
+    SidecarConfiguration second =
+        SidecarConfiguration.forWorkload(reverse, "step", "step", Map.of()).orElseThrow();
+
+    assertThat(first).isEqualTo(second);
+    assertThat(first.httpPipeline())
+        .extracting(SidecarConfiguration.HttpPipelineHandler::name)
+        .containsExactly("wf-v1-oauth-aaaaaaaa", "wf-v1-oauth-zzzzzzzz");
+  }
+
+  @Test
+  @DisplayName("a step scoped to two endpoints keeps both handlers instead of the first")
+  void stepWithTwoEndpointsKeepsBothHandlers() {
+    DeploymentPlan plan =
+        planWithEndpoints(
+            List.of(oauthEndpoint("wf-v1-oauth-bbbbbbbb"), oauthEndpoint("wf-v1-oauth-aaaaaaaa")));
+
+    GenericKubernetesResource configuration =
+        synthesizer.daprConfigurations(plan, NAMESPACE, ObservabilitySettings.OFF).getFirst();
+
+    assertThat(httpHandlers(configuration))
+        .extracting(handler -> handler.get("name"))
+        .containsExactly("wf-v1-oauth-aaaaaaaa", "wf-v1-oauth-bbbbbbbb");
+    assertThat(templateAnnotations(synthesizer.knativeServices(plan, NAMESPACE).getFirst()))
+        .containsEntry("dapr.io/config", configuration.getMetadata().getName());
+  }
+
+  @Test
+  @DisplayName("synthesizing the same plan twice renders identical Configurations")
+  void configurationsAreDeterministic() {
+    DeploymentPlan plan = compiler.compile(differentOAuthPoliciesDefinition());
+
+    assertThat(synthesizer.daprConfigurations(plan, NAMESPACE, ON))
+        .isEqualTo(synthesizer.daprConfigurations(plan, NAMESPACE, ON));
+  }
+
+  @Test
+  @DisplayName("Configuration names stay within 63 characters and remain distinct when truncated")
+  void configurationNamesAreBounded() {
+    String longStep = "a".repeat(60);
+    String otherStep = "a".repeat(59) + "b";
+
+    String first = Names.daprConfiguration(longStep, "v1a2b3c4d");
+    String second = Names.daprConfiguration(otherStep, "v1a2b3c4d");
+
+    assertThat(first).hasSizeLessThanOrEqualTo(63).endsWith("-cfg");
+    assertThat(second).hasSizeLessThanOrEqualTo(63).isNotEqualTo(first);
+    assertThat(first).isEqualTo(Names.daprConfiguration(longStep, "v1a2b3c4d"));
+    assertThat(Names.daprConfiguration("get-account", "v1a2b3c4d"))
+        .isEqualTo("get-account-v1a2b3c4d-cfg");
   }
 
   @Test
   @DisplayName(
-      "signature-level isolation: only the orchestrator Deployment synthesis accepts settings")
+      "signature-level isolation: only the orchestrator and its Configuration take settings")
   void onlyOrchestratorSynthesisMethodsAcceptSettings() {
     assertThat(StackSynthesizer.class.getDeclaredMethods())
         .filteredOn(method -> !method.isSynthetic())
@@ -742,7 +898,35 @@ class StackSynthesizerTest {
                 java.util.Arrays.asList(method.getParameterTypes())
                     .contains(ObservabilitySettings.class))
         .extracting(method -> method.getName())
-        .containsOnly("orchestratorDeployment", "orchestratorAnnotations");
+        .containsOnly(
+            "orchestratorDeployment",
+            "orchestratorAnnotations",
+            "orchestratorConfiguration",
+            "daprConfigurations");
+  }
+
+  private static OAuthEndpoint oauthEndpoint(String name) {
+    return new OAuthEndpoint(
+        name,
+        "https://api.example.test",
+        java.util.Set.of("/v1/account"),
+        java.util.Set.of("step"),
+        null);
+  }
+
+  private static DeploymentPlan planWithEndpoints(List<OAuthEndpoint> endpoints) {
+    OrchestratorSpec orchestrator =
+        new OrchestratorSpec("wf-v1", "sw-orchestrator:1.0", "wf", 8080, 1, Map.of());
+    return new DeploymentPlan(
+        "wf",
+        "v1",
+        "wf@v1",
+        "dws-def-wf-v1",
+        "spec: text",
+        List.of(new StepService("step", TaskKind.CALL_HTTP, "sw-call-http:1.0", Map.of())),
+        List.of(),
+        orchestrator,
+        endpoints);
   }
 
   private Map<String, String> synthesizeStepAnnotations(TaskKind kind) {
@@ -814,9 +998,9 @@ class StackSynthesizerTest {
   }
 
   @SuppressWarnings("unchecked")
-  private static Map<String, Object> firstHttpHandler(GenericKubernetesResource configuration) {
+  private static List<Map<String, Object>> httpHandlers(GenericKubernetesResource configuration) {
     Map<String, Object> pipeline = (Map<String, Object>) spec(configuration).get("httpPipeline");
-    return ((List<Map<String, Object>>) pipeline.get("handlers")).getFirst();
+    return (List<Map<String, Object>>) pipeline.get("handlers");
   }
 
   private static String sharedOAuthDefinition() {
