@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-controller-v1.1.0...dws-controller-v1.1.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* **controller:** grant orchestrator pods dedicated RBAC and config store access ([f5e0b15](https://github.com/tonylibs/dapr-workflow-spec/commit/f5e0b15b09a23975a027204767380fa023ee0a24))
+
 ## [1.1.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-controller-v1.0.0...dws-controller-v1.1.0) (2026-10-10)
 
 
