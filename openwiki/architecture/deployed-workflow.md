@@ -29,6 +29,12 @@ sequenceDiagram
 
 This sequence shows the ownership boundary: controller apply, runtime interpretation, and advisory telemetry. The event data and delivery boundaries are documented in [lifecycle events](../integrations/lifecycle-events.md).
 
+### Orchestrator tracing and replay boundary
+
+When the Helm/control-plane settings described in [Helm chart packaging](helm-chart-roadmap.md#control-plane-observability) enable it, the controller stamps a newly deployed pinned orchestrator for Java-agent injection and points only its Dapr sidecar at the tracing-only `dws-tracing` Configuration. Deployment supplies `OTEL_SERVICE_NAME` as the workflow app ID plus workflow name/version resource attributes; the generic image remains unchanged. The Dapr engine owns workflow-level `create_orchestration`, `orchestration`, timer, and activity spans, and agent-created activity spans sit beneath them. New instrumentation belongs in activities or step services, not in workflow functions that replay.
+
+Live Phase 2a evidence (`docs/adr/0009-trace-context-across-workflow-replay.md`) showed one replacement pod joining the same workflow trace after a restart without repeating activities when a local guard was applied. It also showed that incoming trace context on a start request does not become the workflow trace, and that step calls remain untraced because their step pods are outside this instrumentation slice. The guard is not committed: `InterpreterWorkflow` currently catches Dapr's blocked-workflow runtime exception in lifecycle-publishing paths, which can schedule extra activities during replay and produce spurious failed events or a stalled instance. That is a determinism defect, not a tracing feature; changes to those catches or lifecycle scheduling must verify replay behavior alongside [lifecycle events](../integrations/lifecycle-events.md).
+
 ## Compile and apply model
 
 A compiled plan contains the workflow definition, step services, an orchestrator specification, and topic bindings. The controller materializes:
