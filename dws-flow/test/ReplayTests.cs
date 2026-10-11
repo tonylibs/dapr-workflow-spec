@@ -86,7 +86,7 @@ public sealed class ReplayTests
     /// again it dequeues the next recorded command, asserts it matches what's being requested now (so a
     /// non-deterministic branch inside the workflow shows up as a mismatch, not a silent pass), and returns
     /// the result captured during the live pass. This is a hand-rolled fake, not an official Dapr
-    /// Workflow replay-testing harness — none ships with the SDK as of 1.18.5.
+    /// Workflow replay-testing harness — none ships with the SDK as of 1.18.10.
     /// </summary>
     private sealed class FakeWorkflowContext : WorkflowContext
     {
