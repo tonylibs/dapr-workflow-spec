@@ -17,7 +17,7 @@
 
   <properties>
     <java.version>25</java.version>
-    <dapr.sdk.version>1.18.0</dapr.sdk.version>
+    <dapr.sdk.version>1.18.1</dapr.sdk.version>
     <jackson-jq.version>1.2.0</jackson-jq.version>
     <json-schema-validator.version>2.0.0</json-schema-validator.version>
     <serverlessworkflow.version>7.26.0.Final</serverlessworkflow.version>

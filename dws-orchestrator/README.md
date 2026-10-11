@@ -7,7 +7,7 @@ It ships as the prebuilt image **`ghcr.io/tonylibs/dws-orchestrator`** and inter
 **Each orchestrator pod serves exactly one workflow definition**, loaded once at startup from a **Dapr Configuration store** by an immutable, versioned key. New versions are rolled out by the controller as **new deployments**, not by mutating a running pod.
 
 - **Java 25**, Spring Boot 4.1.0 (`web`, `actuator`)
-- **Dapr** workflow runtime + client + Configuration API (`dapr-sdk-workflows`, `dapr-sdk`, BOM 1.18.0)
+- **Dapr** workflow runtime + client + Configuration API (`dapr-sdk-workflows`, `dapr-sdk`, BOM 1.18.1)
 - **Open Workflow Specification SDK** `io.serverlessworkflow:serverlessworkflow-api` 7.x (DSL 1.0 model + reader/validation)
 - **jackson-jq** for `jq`-dialect `when`/`set` expressions
 - Base package `io.dws.orchestrator`
