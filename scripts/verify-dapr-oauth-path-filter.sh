@@ -6,7 +6,7 @@
 # script owns only the two namespaces named below and removes them on exit.
 set -euo pipefail
 
-DAPR_VERSION="${DAPR_VERSION:-1.18.1}"
+DAPR_VERSION="${DAPR_VERSION:-1.18.7}"
 TEST_NAMESPACE="${OAUTH_E2E_NAMESPACE:-dws-oauth-e2e}"
 DAPR_NAMESPACE="${OAUTH_E2E_DAPR_NAMESPACE:-dws-oauth-e2e-dapr-system}"
 DAPR_RELEASE="${OAUTH_E2E_DAPR_RELEASE:-dws-oauth-e2e-dapr}"

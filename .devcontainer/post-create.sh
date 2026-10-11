@@ -28,7 +28,7 @@ test "$(openspec --version)" = "${OPENSPEC_NPM_VERSION}"
 
 # Dapr CLI. kubectl/helm come from the kubectl-helm-minikube devcontainer feature; the Dapr CLI
 # has no equivalent feature, so install it here (same script the helm.yml CI workflow uses).
-DAPR_CLI_VERSION="1.15.1"
+DAPR_CLI_VERSION="1.18.2"
 if [ "$(dapr --version 2>/dev/null | awk '/^CLI version/ {print $3}')" != "${DAPR_CLI_VERSION}" ]; then
   wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash -s "${DAPR_CLI_VERSION}"
 fi

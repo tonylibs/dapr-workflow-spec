@@ -39,7 +39,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 spec:
   maxUnavailable: 25%
   selector:
@@ -49,7 +49,7 @@ spec:
       app.kubernetes.io/managed-by: Helm
       app.kubernetes.io/name: dws
       app.kubernetes.io/part-of: dapr
-      app.kubernetes.io/version: 1.18.1
+      app.kubernetes.io/version: 1.18.7
 
 ---
 # Source: dws/charts/postgresql/templates/primary/pdb.yaml
@@ -107,7 +107,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/operator.yaml
@@ -121,7 +121,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/placement.yaml
@@ -135,7 +135,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/scheduler.yaml
@@ -149,7 +149,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/sentry.yaml
@@ -163,7 +163,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 
 ---
 # Source: dws/charts/postgresql/templates/serviceaccount.yaml
@@ -238,7 +238,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 
 
 ---
@@ -307,7 +307,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 
 
 ---
@@ -502,7 +502,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 rules:
   - apiGroups: [""]
     resources: ["serviceaccounts"]
@@ -526,7 +526,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 rules:
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
@@ -570,7 +570,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 rules: []
 
 ---
@@ -584,7 +584,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 rules:
   - apiGroups: [""]
     resources: ["namespaces"]
@@ -601,7 +601,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 rules:
   - apiGroups: ["authentication.k8s.io"]
     resources: ["tokenreviews"]
@@ -624,7 +624,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 subjects:
 - kind: ServiceAccount
   name: dapr-injector
@@ -645,7 +645,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 subjects:
 - kind: ServiceAccount
   name: dapr-operator
@@ -666,7 +666,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 subjects:
 - kind: ServiceAccount
   name: dapr-placement
@@ -687,7 +687,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 subjects:
 - kind: ServiceAccount
   name: dapr-scheduler
@@ -708,7 +708,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 subjects:
 - kind: ServiceAccount
   name: dapr-sentry
@@ -730,7 +730,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
@@ -755,7 +755,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 rules:
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
@@ -786,7 +786,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 rules:
 - apiGroups: [""]
   resources: ["secrets"]
@@ -804,7 +804,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
@@ -897,7 +897,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 subjects:
 - kind: ServiceAccount
   name: dapr-injector
@@ -919,7 +919,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 subjects:
 - kind: ServiceAccount
   name: dapr-operator
@@ -941,7 +941,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 subjects:
 - kind: ServiceAccount
   name: default
@@ -962,7 +962,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 subjects:
 - kind: ServiceAccount
   name: dapr-sentry
@@ -1030,7 +1030,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "9090"
@@ -1070,7 +1070,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 spec:
   type: ClusterIP
   ports:
@@ -1093,7 +1093,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "9090"
@@ -1128,7 +1128,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "9090"
@@ -1166,7 +1166,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "9090"
@@ -1202,7 +1202,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "9090"
@@ -1233,7 +1233,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "9090"
@@ -1422,7 +1422,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 spec:
   replicas: 1
   selector:
@@ -1436,7 +1436,7 @@ spec:
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: dws
         app.kubernetes.io/part-of: dapr
-        app.kubernetes.io/version: 1.18.1
+        app.kubernetes.io/version: 1.18.7
       annotations:
         dapr.io/control-plane: operator
         prometheus.io/scrape: "true"
@@ -1459,7 +1459,7 @@ spec:
           initialDelaySeconds: 1
           periodSeconds: 1
           failureThreshold: 3
-        image: "ghcr.io/dapr/operator:1.18.1"
+        image: "ghcr.io/dapr/operator:1.18.7"
         imagePullPolicy: IfNotPresent
         securityContext:
           runAsNonRoot: true
@@ -1542,7 +1542,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 spec:
   replicas: 1
   selector:
@@ -1556,7 +1556,7 @@ spec:
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: dws
         app.kubernetes.io/part-of: dapr
-        app.kubernetes.io/version: 1.18.1
+        app.kubernetes.io/version: 1.18.7
       annotations:
         dapr.io/control-plane: sentry
         prometheus.io/scrape: "true"
@@ -1579,7 +1579,7 @@ spec:
           initialDelaySeconds: 1
           periodSeconds: 1
           failureThreshold: 3
-        image: "ghcr.io/dapr/sentry:1.18.1"
+        image: "ghcr.io/dapr/sentry:1.18.7"
         imagePullPolicy: IfNotPresent
         securityContext:
           runAsNonRoot: true
@@ -1621,6 +1621,7 @@ spec:
         - name: credentials
           secret:
             secretName: dapr-trust-bundle
+            defaultMode: 0440
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -1644,7 +1645,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 spec:
   replicas: 1
   selector:
@@ -1658,7 +1659,7 @@ spec:
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: dws
         app.kubernetes.io/part-of: dapr
-        app.kubernetes.io/version: 1.18.1
+        app.kubernetes.io/version: 1.18.7
       annotations:
         dapr.io/control-plane: injector
         prometheus.io/scrape: "true"
@@ -1682,7 +1683,7 @@ spec:
           initialDelaySeconds: 1
           periodSeconds: 1
           failureThreshold: 3
-        image: "ghcr.io/dapr/injector:1.18.1"
+        image: "ghcr.io/dapr/injector:1.18.7"
         imagePullPolicy: IfNotPresent
         securityContext:
           allowPrivilegeEscalation: false
@@ -1711,7 +1712,7 @@ spec:
         - name: KUBE_CLUSTER_DOMAIN
           value: cluster.local
         - name: SIDECAR_IMAGE
-          value: "ghcr.io/dapr/daprd:1.18.1"
+          value: "ghcr.io/dapr/daprd:1.18.7"
         - name: SIDECAR_IMAGE_PULL_POLICY
           value: IfNotPresent
         # Configuration for injected sidecars
@@ -2003,7 +2004,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 spec:
   replicas: 1
   serviceName: dapr-placement-server
@@ -2019,7 +2020,7 @@ spec:
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: dws
         app.kubernetes.io/part-of: dapr
-        app.kubernetes.io/version: 1.18.1
+        app.kubernetes.io/version: 1.18.7
       annotations:
         dapr.io/control-plane: placement
         prometheus.io/scrape: "true"
@@ -2044,7 +2045,7 @@ spec:
           initialDelaySeconds: 1
           periodSeconds: 1
           failureThreshold: 3
-        image: "ghcr.io/dapr/placement:1.18.1"
+        image: "ghcr.io/dapr/placement:1.18.7"
         imagePullPolicy: IfNotPresent
         resources:
           {}
@@ -2132,7 +2133,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 spec:
   replicas: 3
   serviceName: dapr-scheduler-server
@@ -2158,7 +2159,7 @@ spec:
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: dws
         app.kubernetes.io/part-of: dapr
-        app.kubernetes.io/version: 1.18.1
+        app.kubernetes.io/version: 1.18.7
       annotations:
         dapr.io/control-plane: scheduler
         prometheus.io/scrape: "true"
@@ -2183,7 +2184,7 @@ spec:
           initialDelaySeconds: 1
           periodSeconds: 1
           failureThreshold: 3
-        image: "ghcr.io/dapr/scheduler:1.18.1"
+        image: "ghcr.io/dapr/scheduler:1.18.7"
         imagePullPolicy: IfNotPresent
         resources:
           {}
@@ -2687,7 +2688,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 webhooks:
 - name: sidecar-injector.dapr.io
   reinvocationPolicy: IfNeeded
@@ -2873,7 +2874,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
+    app.kubernetes.io/version: 1.18.7
 spec:
   mtls:
     enabled: true
