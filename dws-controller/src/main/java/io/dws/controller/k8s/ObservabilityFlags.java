@@ -3,6 +3,7 @@ package io.dws.controller.k8s;
 import io.dapr.client.DaprClient;
 import io.dapr.client.domain.ConfigurationItem;
 import io.dws.controller.config.DaprConfigurationItem;
+import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.time.Duration;
@@ -13,8 +14,10 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Resolves {@link ObservabilitySettings} once per workflow deploy from the {@code
- * dws-controller-config} Dapr Configuration store, then confirms the chart-rendered {@code
- * dws-tracing} Configuration exists (a pod referencing a missing Configuration crash-loops daprd).
+ * dws-controller-config} Dapr Configuration store, then reads {@code spec.tracing} from the
+ * chart-rendered {@code dws-tracing} Configuration. That block is the single definition of the
+ * tracing settings; the controller merges it into the workload's own Configuration rather than
+ * pointing a pod at {@code dws-tracing}, so tracing no longer competes for {@code dapr.io/config}.
  *
  * <p>{@link #resolve} never throws: a missing sidecar, store error, empty response, timeout, absent
  * or non-{@code true} flag, absent Configuration, or a failed lookup all resolve to {@link
@@ -44,7 +47,8 @@ public class ObservabilityFlags {
   public ObservabilitySettings resolve(String namespace) {
     try {
       return readStore()
-          .filter(ignored -> tracingConfigurationPresent(namespace))
+          .flatMap(
+              settings -> tracingBlock(namespace).map(tracing -> settings.withTracing(tracing)))
           .orElse(ObservabilitySettings.OFF);
     } catch (RuntimeException e) {
       log.warn("Observability settings could not be resolved; deploying without tracing", e);
@@ -122,30 +126,51 @@ public class ObservabilityFlags {
     return value != null && "true".equalsIgnoreCase(value.trim());
   }
 
-  /** True when {@code dws-tracing} exists; otherwise logs one warning naming the cause. */
-  private boolean tracingConfigurationPresent(String namespace) {
+  /**
+   * The {@code spec.tracing} block of {@code dws-tracing}; empty, after one warning naming the
+   * cause, when the Configuration is missing, unreadable or carries no tracing block (merging an
+   * empty block would instrument the orchestrator without any tracing export).
+   */
+  private Optional<Map<String, Object>> tracingBlock(String namespace) {
     try {
-      boolean present =
+      GenericKubernetesResource tracing =
           client
-                  .genericKubernetesResources(ResourceContexts.DAPR_CONFIGURATION)
-                  .inNamespace(namespace)
-                  .withName(ObservabilitySettings.TRACING_CONFIGURATION)
-                  .get()
-              != null;
-      if (!present) {
+              .genericKubernetesResources(ResourceContexts.DAPR_CONFIGURATION)
+              .inNamespace(namespace)
+              .withName(ObservabilitySettings.TRACING_CONFIGURATION)
+              .get();
+      if (tracing == null) {
         log.warn(
             "observability.enabled is true but Dapr Configuration {} was not found in namespace {}; deploying the orchestrator without tracing",
             ObservabilitySettings.TRACING_CONFIGURATION,
             namespace);
+        return Optional.empty();
       }
-      return present;
+      Optional<Map<String, Object>> block = tracingOf(tracing);
+      if (block.isEmpty()) {
+        log.warn(
+            "Dapr Configuration {} in namespace {} has no spec.tracing; deploying the orchestrator without tracing",
+            ObservabilitySettings.TRACING_CONFIGURATION,
+            namespace);
+      }
+      return block;
     } catch (RuntimeException e) {
       log.warn(
           "observability.enabled is true but Dapr Configuration {} could not be read in namespace {} ({}); deploying the orchestrator without tracing",
           ObservabilitySettings.TRACING_CONFIGURATION,
           namespace,
           oneLine(e));
-      return false;
+      return Optional.empty();
     }
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Optional<Map<String, Object>> tracingOf(GenericKubernetesResource resource) {
+    return Optional.ofNullable(resource.getAdditionalProperties().get("spec"))
+        .filter(Map.class::isInstance)
+        .map(spec -> ((Map<String, Object>) spec).get("tracing"))
+        .filter(Map.class::isInstance)
+        .map(tracing -> (Map<String, Object>) tracing)
+        .filter(tracing -> !tracing.isEmpty());
   }
 }

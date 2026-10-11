@@ -42,6 +42,36 @@ public class Names {
     return workflow + "-" + versionId;
   }
 
+  /** Kubernetes name length the generated Dapr Configuration name is held to. */
+  static final int MAX_CONFIGURATION_NAME = 63;
+
+  private static final String CONFIGURATION_SUFFIX = "-cfg";
+  private static final int HASH_LENGTH = 8;
+
+  /**
+   * Name of the one merged Dapr Configuration a workload's version owns: {@code
+   * <workload>-<versionId>-cfg}. Deterministic in its inputs, so re-applying a version updates the
+   * same object and the label-scoped GC of a drained version finds it. When the readable form would
+   * exceed {@link #MAX_CONFIGURATION_NAME}, the workload part is truncated and an 8-hex hash of the
+   * full readable form is appended, so two long names that share a prefix still differ.
+   */
+  public static String daprConfiguration(String workload, String versionId) {
+    String readable = workload + "-" + versionId + CONFIGURATION_SUFFIX;
+    if (readable.length() <= MAX_CONFIGURATION_NAME) {
+      return readable;
+    }
+    String hash =
+        SpecDigest.sha256Hex(readable.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+            .substring(0, HASH_LENGTH);
+    String tail = "-" + hash + CONFIGURATION_SUFFIX;
+    String head = readable.substring(0, MAX_CONFIGURATION_NAME - tail.length());
+    int end = head.length();
+    while (end > 0 && head.charAt(end - 1) == '-') {
+      end--;
+    }
+    return head.substring(0, end) + tail;
+  }
+
   public static String nodeDefinitionResource(String workflow, String versionId, String appId) {
     return definitionResource(workflow, versionId) + "-" + appId;
   }

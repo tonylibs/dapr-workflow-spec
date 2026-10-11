@@ -46,8 +46,18 @@ class ObservabilityFlagsTest {
         .thenReturn(Mono.just(items));
   }
 
+  /** The block the chart's dws-tracing carries; the controller must copy it as read. */
+  private static final Map<String, Object> TRACING =
+      Map.of(
+          "samplingRate",
+          "1",
+          "otel",
+          Map.of("endpointAddress", "collector:4318", "isSecure", false, "protocol", "http"));
+
   private void tracingConfigurationExists(boolean exists) {
-    when(tracingLookup().get()).thenReturn(exists ? new GenericKubernetesResource() : null);
+    GenericKubernetesResource tracing = new GenericKubernetesResource();
+    tracing.setAdditionalProperty("spec", Map.of("tracing", TRACING));
+    when(tracingLookup().get()).thenReturn(exists ? tracing : null);
   }
 
   /**
@@ -76,7 +86,8 @@ class ObservabilityFlagsTest {
     stubStore(Map.of(ENABLED_KEY, "true"));
     tracingConfigurationExists(true);
 
-    assertThat(flags.resolve(NAMESPACE)).isEqualTo(new ObservabilitySettings(true, "true"));
+    assertThat(flags.resolve(NAMESPACE))
+        .isEqualTo(new ObservabilitySettings(true, "true", TRACING));
   }
 
   @Test
@@ -135,7 +146,7 @@ class ObservabilityFlagsTest {
     tracingConfigurationExists(true);
 
     assertThat(flags.resolve(NAMESPACE))
-        .isEqualTo(new ObservabilitySettings(true, "dws-system/dws-instrumentation"));
+        .isEqualTo(new ObservabilitySettings(true, "dws-system/dws-instrumentation", TRACING));
   }
 
   @ParameterizedTest
@@ -145,7 +156,8 @@ class ObservabilityFlagsTest {
     stubStore(Map.of(ENABLED_KEY, "true", INSTRUMENTATION_KEY, blank));
     tracingConfigurationExists(true);
 
-    assertThat(flags.resolve(NAMESPACE)).isEqualTo(new ObservabilitySettings(true, "true"));
+    assertThat(flags.resolve(NAMESPACE))
+        .isEqualTo(new ObservabilitySettings(true, "true", TRACING));
   }
 
   @Test
@@ -223,6 +235,26 @@ class ObservabilityFlagsTest {
       flags.resolve(NAMESPACE);
 
       assertSingleLineWarning(logs, "dws-tracing", "not found");
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"no-spec", "no-tracing", "empty-tracing"})
+  @DisplayName("a dws-tracing without a spec.tracing block is off and logs exactly one WARN")
+  void tracingConfigurationWithoutBlockIsOff(String shape) {
+    stubStore(Map.of(ENABLED_KEY, "true"));
+    GenericKubernetesResource resource = new GenericKubernetesResource();
+    switch (shape) {
+      case "no-tracing" -> resource.setAdditionalProperty("spec", Map.of("metric", Map.of()));
+      case "empty-tracing" -> resource.setAdditionalProperty("spec", Map.of("tracing", Map.of()));
+      default -> {}
+    }
+    when(tracingLookup().get()).thenReturn(resource);
+
+    try (LogCapture logs = new LogCapture(ObservabilityFlags.class)) {
+      assertThat(flags.resolve(NAMESPACE)).isEqualTo(ObservabilitySettings.OFF);
+
+      assertSingleLineWarning(logs, "dws-tracing", "spec.tracing");
     }
   }
 
