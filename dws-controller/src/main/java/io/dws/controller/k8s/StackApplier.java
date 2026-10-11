@@ -82,8 +82,14 @@ public class StackApplier {
           synthesizer.oauthMiddlewareComponents(plan, namespace)) {
         applyDynamic(ResourceContexts.DAPR_COMPONENT, middleware);
       }
+      // Resolved per deploy (never throws; OFF on any doubt) so a flag change reaches a workflow
+      // only on its next deploy. The same settings feed the Configurations and the orchestrator
+      // that references them.
+      ObservabilitySettings settings = observability.resolve(namespace);
+      // Applied before any workload that names one: a sidecar whose Configuration is missing
+      // crash-loops.
       for (GenericKubernetesResource configuration :
-          synthesizer.oauthConfigurations(plan, namespace)) {
+          synthesizer.daprConfigurations(plan, namespace, settings)) {
         applyDynamic(ResourceContexts.DAPR_CONFIGURATION, configuration);
       }
       for (GenericKubernetesResource binding : synthesizer.bindingComponents(plan, namespace)) {
@@ -95,15 +101,10 @@ public class StackApplier {
       for (GenericKubernetesResource policy : synthesizer.workflowAccessPolicies(plan, namespace)) {
         applyDynamic(ResourceContexts.WORKFLOW_ACCESS_POLICY, policy);
       }
-      // Resolved per deploy (never throws; OFF on any doubt) so a flag change reaches a workflow
-      // only on its next deploy.
       client
           .resource(
               synthesizer.orchestratorDeployment(
-                  plan,
-                  namespace,
-                  config.orchestrator().serviceAccount(),
-                  observability.resolve(namespace)))
+                  plan, namespace, config.orchestrator().serviceAccount(), settings))
           .inNamespace(namespace)
           .createOr(NonDeletingOperation::update);
 

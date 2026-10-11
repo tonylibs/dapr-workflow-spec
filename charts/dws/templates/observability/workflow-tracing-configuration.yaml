@@ -1,8 +1,11 @@
 {{- /*
   `dws-tracing`: the tracing-only Dapr Configuration for COMPILED WORKFLOW sidecars (openspec
-  observability-orchestrator-tracing, D1). dws-controller stamps `dapr.io/config: dws-tracing` onto
-  the orchestrator Deployment it generates for each workflow, when its own out-of-band store flag
-  `observability.enabled` is on (see controller/config-component.yaml) AND this resource exists.
+  observability-orchestrator-tracing, D1). It is the single definition of those tracing settings.
+  No pod references it directly: dws-controller reads its `spec.tracing` and copies it into the one
+  merged Dapr Configuration it renders per workload version (the orchestrator's `<workflow>-<version>-cfg`),
+  when its own out-of-band store flag `observability.enabled` is on (see
+  controller/config-component.yaml) AND this resource exists. Merging is what lets tracing coexist
+  with a workload's other sidecar settings, since `dapr.io/config` takes exactly one name.
 
   Rendered only when observability.enabled AND observability.workflows.enabled. The name is fixed
   on purpose: the controller looks it up by this exact name, like the fixed dws-controller-config

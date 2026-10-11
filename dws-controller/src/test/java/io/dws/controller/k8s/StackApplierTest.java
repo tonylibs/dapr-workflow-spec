@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import io.dapr.client.DaprClient;
 import io.dapr.client.domain.ConfigurationItem;
+import io.dws.controller.compile.Names;
 import io.dws.controller.compile.WorkflowCompiler;
 import io.dws.controller.model.ApplyResult;
 import io.dws.controller.model.DeploymentPlan;
@@ -106,7 +107,7 @@ class StackApplierTest {
   }
 
   @Test
-  @DisplayName("apply creates the scoped OAuth endpoint, middleware, and sidecar configuration")
+  @DisplayName("apply creates the scoped OAuth endpoint, middleware, and the step's configuration")
   void createsOAuthResources() {
     DeploymentPlan plan = compiler.compile(fixture("oauth.yaml"));
     String resourceName = plan.oauthEndpoints().getFirst().name();
@@ -126,15 +127,17 @@ class StackApplierTest {
             .withName(resourceName)
             .get();
     GenericKubernetesResource configuration =
-        client
-            .genericKubernetesResources(ResourceContexts.DAPR_CONFIGURATION)
-            .inNamespace(NAMESPACE)
-            .withName(resourceName)
-            .get();
+        daprConfigurationOf(Names.daprConfiguration("get-account", plan.versionId()));
 
     assertThat(endpoint).isNotNull();
     assertThat(component).isNotNull();
     assertThat(configuration).isNotNull();
+    assertThat(configuration.getMetadata().getLabels())
+        .containsEntry(Labels.WORKFLOW, "oauth-apply")
+        .containsEntry(Labels.VERSION, plan.versionId());
+    assertThat(daprConfigurationOf(resourceName))
+        .as("the per-endpoint Configuration no longer exists")
+        .isNull();
     assertThat(endpoint.getMetadata().getLabels())
         .containsEntry(Labels.WORKFLOW, "oauth-apply")
         .containsEntry(Labels.VERSION, plan.versionId());
@@ -356,6 +359,22 @@ class StackApplierTest {
         .thenReturn(Mono.just(items));
   }
 
+  /** The block the chart's dws-tracing carries; it must reach the merged Configuration intact. */
+  private static final Map<String, Object> TRACING =
+      Map.of(
+          "samplingRate",
+          "1",
+          "otel",
+          Map.of("endpointAddress", "collector:4318", "isSecure", false, "protocol", "http"));
+
+  private GenericKubernetesResource daprConfigurationOf(String name) {
+    return client
+        .genericKubernetesResources(ResourceContexts.DAPR_CONFIGURATION)
+        .inNamespace(NAMESPACE)
+        .withName(name)
+        .get();
+  }
+
   private void tracingConfigurationInCluster() {
     client
         .genericKubernetesResources(ResourceContexts.DAPR_CONFIGURATION)
@@ -368,6 +387,7 @@ class StackApplierTest {
                 .withName(ObservabilitySettings.TRACING_CONFIGURATION)
                 .withNamespace(NAMESPACE)
                 .endMetadata()
+                .addToAdditionalProperties("spec", Map.of("tracing", TRACING))
                 .build())
         .createOr(NonDeletingOperation::update);
   }
@@ -409,7 +429,7 @@ class StackApplierTest {
 
     Deployment deployment = orchestratorOf(plan);
     assertThat(deployment.getSpec().getTemplate().getMetadata().getAnnotations())
-        .containsEntry("dapr.io/config", "dws-tracing")
+        .containsEntry("dapr.io/config", Names.daprConfiguration(plan.workflow(), plan.versionId()))
         .containsEntry("instrumentation.opentelemetry.io/container-names", "orchestrator")
         .containsEntry("instrumentation.opentelemetry.io/inject-java", "true")
         .containsEntry("dapr.io/app-id", "order");
@@ -477,7 +497,8 @@ class StackApplierTest {
     applier.apply(next);
 
     assertThat(orchestratorOf(next).getSpec().getTemplate().getMetadata().getAnnotations())
-        .containsEntry("dapr.io/config", "dws-tracing");
+        .containsEntry(
+            "dapr.io/config", Names.daprConfiguration(next.workflow(), next.versionId()));
     // Re-read from the server after the second apply: the first version's Deployment (now
     // draining) was not re-rendered and is still un-instrumented.
     Deployment previous = orchestratorOf(first);
@@ -532,7 +553,8 @@ class StackApplierTest {
   }
 
   @Test
-  @DisplayName("the flag changes only the orchestrator: every other stored resource is identical")
+  @DisplayName(
+      "the flag changes only the orchestrator and its Configuration: everything else is identical")
   void otherStoredResourcesAreIdenticalWithFlagOnAndOff() {
     for (String[] fixtureAndWorkflow :
         new String[][] {{"order.yaml", "order"}, {"oauth.yaml", "oauth-apply"}}) {
@@ -552,16 +574,93 @@ class StackApplierTest {
         applier.apply(plan);
         Map<String, Object> flagOn = storedNonOrchestratorResources(workflow);
 
-        // The flag really took effect, so the comparison below is not vacuous.
+        // The flag really took effect, so the comparison below is not vacuous: the orchestrator
+        // names its own merged Configuration, which carries the tracing block and is the only
+        // resource the flag adds.
+        String orchestratorConfiguration =
+            Names.daprConfiguration(plan.workflow(), plan.versionId());
         assertThat(orchestratorOf(plan).getSpec().getTemplate().getMetadata().getAnnotations())
             .as(fixture)
-            .containsEntry("dapr.io/config", "dws-tracing");
+            .containsEntry("dapr.io/config", orchestratorConfiguration);
+        assertThat(flagOn)
+            .as(fixture)
+            .containsKey("DaprConfiguration/" + orchestratorConfiguration);
+        flagOn.remove("DaprConfiguration/" + orchestratorConfiguration);
         assertThat(flagOff).as(fixture).hasSizeGreaterThan(2);
         assertThat(flagOn).as(fixture).isEqualTo(flagOff);
       } finally {
         applier.deleteWorkflow(workflow);
       }
     }
+  }
+
+  @Test
+  @DisplayName("OAuth steps and a traced orchestrator each own one Configuration, none dropped")
+  void tracedWorkflowWithOAuthKeepsEveryConfiguration() {
+    storeSays(Map.of(ObservabilitySettings.ENABLED_KEY, "true"));
+    tracingConfigurationInCluster();
+    DeploymentPlan plan = compiler.compile(fixture("oauth.yaml"));
+
+    applier.apply(plan);
+
+    GenericKubernetesResource step =
+        daprConfigurationOf(Names.daprConfiguration("get-account", plan.versionId()));
+    GenericKubernetesResource orchestrator =
+        daprConfigurationOf(Names.daprConfiguration(plan.workflow(), plan.versionId()));
+    assertThat(spec(step)).containsOnlyKeys("httpPipeline");
+    assertThat(spec(orchestrator)).containsOnlyKeys("tracing").containsEntry("tracing", TRACING);
+    assertThat(orchestratorOf(plan).getSpec().getTemplate().getMetadata().getAnnotations())
+        .containsEntry("dapr.io/config", orchestrator.getMetadata().getName());
+  }
+
+  @Test
+  @DisplayName("merged Configurations follow the version: GC'd with a drained version")
+  void mergedConfigurationsAreCollectedWithTheirVersion() {
+    storeSays(Map.of(ObservabilitySettings.ENABLED_KEY, "true"));
+    tracingConfigurationInCluster();
+    DeploymentPlan first = compiler.compile(fixture("oauth.yaml"));
+    applier.apply(first);
+    String stepConfiguration = Names.daprConfiguration("get-account", first.versionId());
+    String orchestratorConfiguration = Names.daprConfiguration(first.workflow(), first.versionId());
+    assertThat(daprConfigurationOf(stepConfiguration)).isNotNull();
+    assertThat(daprConfigurationOf(orchestratorConfiguration)).isNotNull();
+
+    applier.deleteWorkflow(first.workflow());
+
+    assertThat(daprConfigurationOf(stepConfiguration)).isNull();
+    assertThat(daprConfigurationOf(orchestratorConfiguration)).isNull();
+    assertThat(daprConfigurationOf(ObservabilitySettings.TRACING_CONFIGURATION))
+        .as("the chart-owned source Configuration is not a managed resource")
+        .isNotNull();
+  }
+
+  @Test
+  @DisplayName("workloads that need nothing get no Configuration and no dapr.io/config")
+  void workloadsNeedingNothingStoreNoConfiguration() {
+    DeploymentPlan plan = compiler.compile(fixture("order.yaml"));
+
+    applier.apply(plan);
+
+    assertThat(
+            client
+                .genericKubernetesResources(ResourceContexts.DAPR_CONFIGURATION)
+                .inNamespace(NAMESPACE)
+                .withLabels(Labels.workflow("order"))
+                .list()
+                .getItems())
+        .isEmpty();
+    assertThat(
+            client
+                .genericKubernetesResources(ResourceContexts.KNATIVE_SERVICE)
+                .inNamespace(NAMESPACE)
+                .withLabels(Labels.workflow("order"))
+                .list()
+                .getItems())
+        .isNotEmpty()
+        .allSatisfy(
+            service ->
+                assertThat(service.getAdditionalProperties().toString())
+                    .doesNotContain("dapr.io/config"));
   }
 
   @SuppressWarnings("unchecked")

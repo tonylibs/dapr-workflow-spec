@@ -38,11 +38,15 @@ not through controller environment variables:
 When on, and the Dapr `Configuration` **`dws-tracing`** (tracing only; rendered by the Helm chart
 when `observability.enabled` and `observability.workflows.enabled` are set) exists in the workflow
 namespace, the orchestrator pod template gets `instrumentation.opentelemetry.io/inject-java`,
-`instrumentation.opentelemetry.io/container-names: orchestrator` and `dapr.io/config: dws-tracing`.
+`instrumentation.opentelemetry.io/container-names: orchestrator` and `dapr.io/config:
+<workflow>-<version>-cfg`. That is the orchestrator's own Configuration, owned by the version, whose
+`spec.tracing` is copied from `dws-tracing` (the chart stays the one definition of the settings).
+Every workload that needs any Dapr Configuration feature gets exactly one such resource (OAuth2 steps
+get `<step>-<version>-cfg` holding their `httpPipeline`); workloads that need none get none.
 The agent is injected into the container named **`orchestrator`** only, never the Dapr sidecar. The
 container also gets `OTEL_SERVICE_NAME` (the Dapr app ID) and `dws.workflow.name` /
 `dws.workflow.version` in `OTEL_RESOURCE_ATTRIBUTES` (values percent-encoded; existing values are
-kept). If `dws-tracing` is missing or cannot be read, the controller logs one warning and renders
+kept). If `dws-tracing` is missing, cannot be read or has no `spec.tracing`, the controller logs one warning and renders
 the orchestrator exactly as before. A store failure never fails a deploy (the read is bounded to
 one second).
 

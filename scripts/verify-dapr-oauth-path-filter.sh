@@ -4,6 +4,11 @@
 # Prerequisites: a writable Kubernetes cluster, kubectl, Helm 3, and network access to the
 # Dapr Helm repository. CI creates a disposable kind cluster before running this script. The
 # script owns only the two namespaces named below and removes them on exit.
+#
+# To run against a cluster that already has Dapr (the current kubectl context), set
+# OAUTH_E2E_SKIP_DAPR_INSTALL=true: the script then neither installs nor uninstalls Dapr and
+# touches only the test namespace. Dapr must already be running with the OAuth2 middleware
+# component available (>= 1.18).
 set -euo pipefail
 
 DAPR_VERSION="${DAPR_VERSION:-1.18.1}"
@@ -12,6 +17,10 @@ DAPR_NAMESPACE="${OAUTH_E2E_DAPR_NAMESPACE:-dws-oauth-e2e-dapr-system}"
 DAPR_RELEASE="${OAUTH_E2E_DAPR_RELEASE:-dws-oauth-e2e-dapr}"
 ENDPOINT_NAME="oauth-e2e-endpoint-v1"
 CLIENT_APP_ID="oauth-e2e-client"
+SKIP_DAPR_INSTALL="${OAUTH_E2E_SKIP_DAPR_INSTALL:-false}"
+# The merged per-workload Dapr Configuration StackSynthesizer names <workload>-<versionId>-cfg
+# (compile/Names.daprConfiguration); the fixed v1 stands in for the definition version hash.
+CONFIGURATION_NAME="${CLIENT_APP_ID}-v1-cfg"
 
 delete_namespace_and_wait() {
   local namespace="$1"
@@ -20,31 +29,43 @@ delete_namespace_and_wait() {
 }
 
 cleanup() {
-  helm uninstall "$DAPR_RELEASE" --namespace "$DAPR_NAMESPACE" --wait --timeout 2m >/dev/null 2>&1 || true
+  if [ "$SKIP_DAPR_INSTALL" != "true" ]; then
+    helm uninstall "$DAPR_RELEASE" --namespace "$DAPR_NAMESPACE" --wait --timeout 2m >/dev/null 2>&1 || true
+  fi
   delete_namespace_and_wait "$TEST_NAMESPACE"
-  delete_namespace_and_wait "$DAPR_NAMESPACE"
+  if [ "$SKIP_DAPR_INSTALL" != "true" ]; then
+    delete_namespace_and_wait "$DAPR_NAMESPACE"
+  fi
 }
 
-command -v helm >/dev/null
 command -v kubectl >/dev/null
+if [ "$SKIP_DAPR_INSTALL" != "true" ]; then
+  command -v helm >/dev/null
+fi
 
 # Make a retry safe even if a preceding process was interrupted while its namespaces were
 # terminating. This is intentionally limited to the fixed disposable-cluster names above.
 cleanup
 trap cleanup EXIT
 
-echo "Installing Dapr Helm chart version ${DAPR_VERSION}"
-helm repo add dapr https://dapr.github.io/helm-charts/ --force-update
-helm repo update dapr
-helm upgrade --install "$DAPR_RELEASE" dapr/dapr \
-  --namespace "$DAPR_NAMESPACE" --create-namespace \
-  --version "$DAPR_VERSION" --wait --timeout 5m
+if [ "$SKIP_DAPR_INSTALL" = "true" ]; then
+  echo "Using the Dapr already installed in the current kubectl context ($(kubectl config current-context))"
+else
+  echo "Installing Dapr Helm chart version ${DAPR_VERSION}"
+  helm repo add dapr https://dapr.github.io/helm-charts/ --force-update
+  helm repo update dapr
+  helm upgrade --install "$DAPR_RELEASE" dapr/dapr \
+    --namespace "$DAPR_NAMESPACE" --create-namespace \
+    --version "$DAPR_VERSION" --wait --timeout 5m
+fi
 
 kubectl create namespace "$TEST_NAMESPACE"
 
 # This is the version-scoped resource shape emitted by StackSynthesizer for one OAuth policy:
-# same HTTPEndpoint/Component/Configuration name, Component scopes, secretKeyRefs, and a narrow
-# appHttpPipeline pathFilter. The fixed v1 suffix stands in for the definition version hash.
+# the same HTTPEndpoint/Component name, Component scopes, secretKeyRefs, and a narrow pathFilter,
+# plus the ONE merged Configuration the step workload owns (${CONFIGURATION_NAME}), which holds
+# the endpoint's httpPipeline handler and is the only name the pod's dapr.io/config carries.
+# The fixed v1 suffix stands in for the definition version hash.
 kubectl apply --namespace "$TEST_NAMESPACE" -f - <<EOF
 apiVersion: v1
 kind: Secret
@@ -188,7 +209,7 @@ scopes:
 apiVersion: dapr.io/v1alpha1
 kind: Configuration
 metadata:
-  name: ${ENDPOINT_NAME}
+  name: ${CONFIGURATION_NAME}
   labels:
     dws.io/workflow: oauth-e2e
     dws.io/version: v1
@@ -215,7 +236,7 @@ spec:
       annotations:
         dapr.io/enabled: "true"
         dapr.io/app-id: ${CLIENT_APP_ID}
-        dapr.io/config: ${ENDPOINT_NAME}
+        dapr.io/config: ${CONFIGURATION_NAME}
     spec:
       containers:
         - name: client
