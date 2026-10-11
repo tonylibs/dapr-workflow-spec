@@ -278,7 +278,7 @@ results: ADR 0010 Decision 4a, `spikes/wasm-auth-middleware/FINDINGS.md`.
 
 | Sub | Scope | Components | Depends on | Status |
 |---|---|---|---|---|
-| **4.1a** | Fixes found by the spike: Dapr metrics port collides with Knative queue-proxy (9090) on **every** Dapr-enabled Knative step; verify the controller Role covers `httpendpoints` and Dapr `configurations` (the OAuth2 path creates both) | controller, `charts/dws` | — | ❌ not started |
+| **4.1a** | Fixes found by the spike: Dapr metrics port collides with Knative queue-proxy (9090) on **every** Dapr-enabled Knative step; verify the controller Role covers `httpendpoints` and Dapr `configurations` (the OAuth2 path creates both) | controller, `charts/dws` | — | ✅ step services set `dapr.io/metrics-port: "9095"` (orchestrators keep 9090); the Role already grants both kinds (since `ff3326f`), pinned by `orchestrator-wiring-render-test.sh` |
 | **4.1b** | **One merged Configuration per workload**: pipeline handlers (OAuth2 today, Wasm next) + tracing in the single `dapr.io/config` slot; naming and lifecycle per version | controller | — | ❌ not started |
 | **4.1c** | Wasm guest image as a new component: TinyGo **0.34.0** pinned, `http-wasm-guest-tinygo` v0.4.0, `busybox` base, public GHCR, CI, release-please (released by hand) | new image | — | ❌ not started |
 | **4.1d** | Controller emits, per (base URL, policy): composed `guestConfig` Secret, `HTTPEndpoint`, `middleware.http.wasm` Component; adds the init container, `emptyDir` and `dapr.io/volume-mounts` to the step service; Role gains Secret `get`/`create`/`delete` | controller, `charts/dws` | 4.1a, 4.1b, 4.1c, 4.1g | ❌ not started |
