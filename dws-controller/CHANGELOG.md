@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-controller-v1.1.1...dws-controller-v1.2.0) (2026-10-11)
+
+
+### Features
+
+* **controller:** render one merged Dapr Configuration per workload ([85e553c](https://github.com/tonylibs/dapr-workflow-spec/commit/85e553c75d774a4957f8ba95fe5f55e4fbb73e51))
+
 ## [1.1.1](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-controller-v1.1.0...dws-controller-v1.1.1) (2026-10-10)
 
 
