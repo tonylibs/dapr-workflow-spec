@@ -9,7 +9,7 @@ namespace Dws.Flow;
 /// its own app ID with the deterministic instance ID the caller computed. A child failure's message is
 /// unwrapped from Dapr's <see cref="WorkflowTaskFailedException"/> and rethrown unchanged (no prefix).
 ///
-/// <para>Note on the plan's sketched API: <c>WorkflowTaskOptions</c> in Dapr.Workflow 1.18.5 names its
+/// <para>Note on the plan's sketched API: <c>WorkflowTaskOptions</c> in Dapr.Workflow 1.18.10 names its
 /// app-id property <c>TargetAppId</c>, not <c>AppId</c> as the plan assumed; this type adapts to the real
 /// SDK surface.</para>
 /// </summary>

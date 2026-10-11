@@ -26,7 +26,7 @@ DWS ships as a Helm chart (`charts/dws`) published to GitHub Container Registry 
 artifact. One `helm install` brings up the control plane — `dws-controller`, `dws-admin` and its
 Postgres read model — and, by default, the Dapr control plane and Redis they depend on.
 
-Requires Helm 3.8+ (OCI registry support) and a Kubernetes cluster you can create namespaces in.
+Requires Helm 4 (pinned at 4.3.0 in CI) and a Kubernetes cluster you can create namespaces in.
 
 ```sh
 helm install dws oci://ghcr.io/tonylibs/charts/dws \

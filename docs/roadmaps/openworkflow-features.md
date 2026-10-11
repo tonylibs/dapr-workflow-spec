@@ -320,7 +320,7 @@ must treat it as potentially leaking data.
 
 ### Phase 4 rollout and rollback
 
-`charts/dws` pins the Dapr control-plane chart at **1.18.1**. The OAuth path-isolation probe in
+`charts/dws` pins the Dapr control-plane chart at **1.18.7**. The OAuth path-isolation probe in
 the Helm workflow defaults `DAPR_VERSION` to that version; its manual-dispatch input permits a
 newer compatible Dapr chart to be tested before any chart-pin upgrade.
 
@@ -347,4 +347,4 @@ other versions or later redeployments; they are not owned by the workflow stack.
   Basic or Bearer `Authorization` headers before Dapr invokes an external endpoint. This is not
   Phase 4 scope, which retains runner-local Basic/Bearer construction. A spike must assess Wasm
   artifact ownership and supply chain, secret-derived configuration, request-path isolation, and
-  compatibility with the Dapr 1.18.1 runtime pinned by `charts/dws`.
+  compatibility with the Dapr 1.18.7 runtime pinned by `charts/dws`.

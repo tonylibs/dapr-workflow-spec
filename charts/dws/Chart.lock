@@ -4,7 +4,7 @@ dependencies:
   version: 16.7.27
 - name: dapr
   repository: https://dapr.github.io/helm-charts/
-  version: 1.18.1
+  version: 1.18.7
 - name: dex
   repository: https://charts.dexidp.io
   version: 0.24.1
@@ -14,5 +14,5 @@ dependencies:
 - name: apisix
   repository: https://apache.github.io/apisix-helm-chart
   version: 2.16.0
-digest: sha256:d87e612e2dffe8b940772a8b785f12dd7d6dba1a2e8329b10955276a7d7394b3
-generated: "2026-09-02T11:13:36.1048862+07:00"
+digest: sha256:6dc274e2fde4d534902e2e82bc435edb4f6b6292cef270074b919edf9432b632
+generated: "2026-10-11T10:14:38.920760742Z"

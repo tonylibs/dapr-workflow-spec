@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verifies the Dapr-native OAuth path used by CALL_HTTP and CALL_OPENAPI steps.
 #
-# Prerequisites: a writable Kubernetes cluster, kubectl, Helm 3, and network access to the
+# Prerequisites: a writable Kubernetes cluster, kubectl, Helm 4, and network access to the
 # Dapr Helm repository. CI creates a disposable kind cluster before running this script. The
 # script owns only the two namespaces named below and removes them on exit.
 #
@@ -11,7 +11,7 @@
 # component available (>= 1.18).
 set -euo pipefail
 
-DAPR_VERSION="${DAPR_VERSION:-1.18.1}"
+DAPR_VERSION="${DAPR_VERSION:-1.18.7}"
 TEST_NAMESPACE="${OAUTH_E2E_NAMESPACE:-dws-oauth-e2e}"
 DAPR_NAMESPACE="${OAUTH_E2E_DAPR_NAMESPACE:-dws-oauth-e2e-dapr-system}"
 DAPR_RELEASE="${OAUTH_E2E_DAPR_RELEASE:-dws-oauth-e2e-dapr}"

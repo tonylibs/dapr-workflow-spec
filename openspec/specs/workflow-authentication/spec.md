@@ -61,7 +61,7 @@ OAuth tokens itself.
 
 #### Scenario: OAuth path filtering is verified at the pinned version
 - **WHEN** the mock-IdP integration suite runs with its default Dapr version
-- **THEN** it runs against 1.18.1 and proves that the token is attached only to the intended
+- **THEN** it runs against 1.18.7 and proves that the token is attached only to the intended
   external invocation path
 
 ### Requirement: Existing runner interfaces remain compatible

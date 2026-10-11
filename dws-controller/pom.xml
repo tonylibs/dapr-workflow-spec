@@ -16,7 +16,7 @@
         <quarkus.platform.version>3.37.4</quarkus.platform.version>
         <serverlessworkflow.version>7.26.0.Final</serverlessworkflow.version>
         <!-- Dapr Java SDK, pinned to match dws-orchestrator. -->
-        <dapr.sdk.version>1.18.0</dapr.sdk.version>
+        <dapr.sdk.version>1.18.1</dapr.sdk.version>
         <lombok.version>1.18.42</lombok.version>
         <streamex.version>0.8.3</streamex.version>
         <skipITs>true</skipITs>

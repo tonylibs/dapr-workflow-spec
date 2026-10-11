@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Claude Code CLI. The devcontainer feature installs it first; this enforces the same version used
 # by agent-sandbox/Dockerfile before installing plugins into the vscode user's configuration.
-CLAUDE_CODE_NPM_VERSION="2.1.220"
+CLAUDE_CODE_NPM_VERSION="2.1.296"
 if [ "$(claude --version 2>/dev/null || true)" != "${CLAUDE_CODE_NPM_VERSION} (Claude Code)" ]; then
   # The claude-code devcontainer feature preinstalls this package as root, so a plain
   # (vscode-user) npm install can't overwrite its root-owned global dir.
@@ -13,7 +13,7 @@ test "$(claude --version)" = "${CLAUDE_CODE_NPM_VERSION} (Claude Code)"
 
 # Codex CLI. Keep this pin aligned with agent-sandbox/Dockerfile so both development
 # environments provide the same reproducible version.
-CODEX_NPM_VERSION="0.146.0"
+CODEX_NPM_VERSION="0.162.1"
 if [ "$(codex --version 2>/dev/null || true)" != "codex-cli ${CODEX_NPM_VERSION}" ]; then
   npm install --global --no-audit --no-fund "@openai/codex@${CODEX_NPM_VERSION}"
 fi
@@ -28,7 +28,7 @@ test "$(openspec --version)" = "${OPENSPEC_NPM_VERSION}"
 
 # Dapr CLI. kubectl/helm come from the kubectl-helm-minikube devcontainer feature; the Dapr CLI
 # has no equivalent feature, so install it here (same script the helm.yml CI workflow uses).
-DAPR_CLI_VERSION="1.15.1"
+DAPR_CLI_VERSION="1.18.2"
 if [ "$(dapr --version 2>/dev/null | awk '/^CLI version/ {print $3}')" != "${DAPR_CLI_VERSION}" ]; then
   wget -q https://raw.githubusercontent.com/dapr/cli/master/install/install.sh -O - | /bin/bash -s "${DAPR_CLI_VERSION}"
 fi

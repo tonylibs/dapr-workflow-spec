@@ -28,7 +28,7 @@
 #
 # Prerequisites: a writable Kubernetes cluster with Dapr CRDs already present (this script uses
 # dapr.enabled=false throughout so it never installs a second Dapr control plane — see
-# charts/dws/templates/_preflight.tpl's dws.preflight.dapr), kubectl, Helm 3+, git, and jq. All
+# charts/dws/templates/_preflight.tpl's dws.preflight.dapr), kubectl, Helm 4, git, and jq. All
 # Helm chart dependencies used here (postgresql, dex, redis, apisix) are vendored as committed
 # .tgz archives under charts/dws/charts/, so no network access to any chart repository is
 # required. Step 3 additionally installs a standalone copy of the vendored apisix chart to stand

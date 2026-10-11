@@ -8,8 +8,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Dapr.Client" Version="1.18.5" />
-    <PackageReference Include="Dapr.Workflow" Version="1.18.5" />
+    <PackageReference Include="Dapr.Client" Version="1.18.10" />
+    <PackageReference Include="Dapr.Workflow" Version="1.18.10" />
   </ItemGroup>
 
   <ItemGroup>
