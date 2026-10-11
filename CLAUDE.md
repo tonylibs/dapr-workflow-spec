@@ -109,7 +109,7 @@ Windows: Java packages use `mvnw.cmd` instead of `./mvnw`.
 `charts/dws` has no build, but it has its own gate — run it from the repository root before
 calling a chart change done:
 
-The observability render test byte-compares a fixture and therefore requires Helm 3.19.0, matching
+The observability render test byte-compares a fixture and therefore requires Helm 4.3.0, matching
 the pinned version in `.github/workflows/helm.yml`.
 
 ```sh

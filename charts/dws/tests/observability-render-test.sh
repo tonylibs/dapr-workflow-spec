@@ -13,10 +13,12 @@
 #      immediately before this feature existed.
 #
 # Run: bash charts/dws/tests/observability-render-test.sh [chart_dir] [--update-baseline]
-# This test requires the Helm 3.19.0 renderer pinned in .github/workflows/helm.yml.
+# This test requires the Helm renderer pinned as HELM_VERSION in .github/workflows/helm.yml.
 set -euo pipefail
 
-required_helm_version="v3.19.0"
+# Single source of truth: the workflow's HELM_VERSION (resolved relative to this script).
+helm_workflow="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/.github/workflows/helm.yml"
+required_helm_version="$(sed -nE 's/^[[:space:]]+HELM_VERSION:[[:space:]]*"?(v[0-9][^"[:space:]]*)"?.*/\1/p' "$helm_workflow" 2>/dev/null | head -n1)"
 chart_dir="charts/dws"
 update_baseline=0
 for arg in "$@"; do
@@ -30,6 +32,8 @@ baseline="$chart_dir/tests/fixtures/default-render-baseline.yaml"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
+[ -n "$required_helm_version" ] \
+  || fail "could not read HELM_VERSION from $helm_workflow"
 helm_version="$(helm version --template '{{ .Version }}' 2>/dev/null)" \
   || fail "unable to determine the installed Helm version"
 case "$helm_version" in

@@ -10,7 +10,7 @@ default — leaves the rendered manifest byte-identical to the pre-change chart.
 It is regenerated with:
 
 ```sh
-# Helm 3.19.0 is required: this is the renderer pinned in .github/workflows/helm.yml.
+# The Helm version pinned as HELM_VERSION in .github/workflows/helm.yml is required (currently 4.3.0).
 bash charts/dws/tests/observability-render-test.sh charts/dws --update-baseline
 ```
 

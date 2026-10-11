@@ -25,6 +25,7 @@ spec:
     # Allow inbound connections
     - ports:
         - port: 6379
+
 ---
 # Source: dws/charts/dapr/charts/dapr_scheduler/templates/dapr_scheduler_poddisruptionbudget.yaml
 apiVersion: policy/v1
@@ -49,6 +50,7 @@ spec:
       app.kubernetes.io/name: dws
       app.kubernetes.io/part-of: dapr
       app.kubernetes.io/version: 1.18.1
+
 ---
 # Source: dws/charts/postgresql/templates/primary/pdb.yaml
 apiVersion: policy/v1
@@ -70,6 +72,7 @@ spec:
       app.kubernetes.io/instance: dws
       app.kubernetes.io/name: postgresql
       app.kubernetes.io/component: primary
+
 ---
 # Source: dws/charts/redis/templates/master/pdb.yaml
 apiVersion: policy/v1
@@ -91,6 +94,7 @@ spec:
       app.kubernetes.io/instance: dws
       app.kubernetes.io/name: redis
       app.kubernetes.io/component: master
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/injector.yaml
 apiVersion: v1
@@ -104,6 +108,7 @@ metadata:
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
     app.kubernetes.io/version: 1.18.1
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/operator.yaml
 apiVersion: v1
@@ -117,6 +122,7 @@ metadata:
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
     app.kubernetes.io/version: 1.18.1
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/placement.yaml
 apiVersion: v1
@@ -130,6 +136,7 @@ metadata:
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
     app.kubernetes.io/version: 1.18.1
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/scheduler.yaml
 apiVersion: v1
@@ -143,6 +150,7 @@ metadata:
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
     app.kubernetes.io/version: 1.18.1
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/sentry.yaml
 apiVersion: v1
@@ -156,6 +164,7 @@ metadata:
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
     app.kubernetes.io/version: 1.18.1
+
 ---
 # Source: dws/charts/postgresql/templates/serviceaccount.yaml
 apiVersion: v1
@@ -170,6 +179,7 @@ metadata:
     app.kubernetes.io/version: 17.6.0
     helm.sh/chart: postgresql-16.7.27
 automountServiceAccountToken: false
+
 ---
 # Source: dws/charts/redis/templates/master/serviceaccount.yaml
 apiVersion: v1
@@ -184,6 +194,7 @@ metadata:
     app.kubernetes.io/name: redis
     app.kubernetes.io/version: 8.10.1
     helm.sh/chart: redis-28.0.6
+
 ---
 # Source: dws/templates/controller/orchestrator-rbac.yaml
 apiVersion: v1
@@ -198,6 +209,7 @@ metadata:
     app.kubernetes.io/version: "1.18.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: orchestrator
+
 ---
 # Source: dws/templates/controller/serviceaccount.yaml
 apiVersion: v1
@@ -212,6 +224,7 @@ metadata:
     app.kubernetes.io/version: "1.18.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: controller
+
 ---
 # Source: dws/charts/dapr/charts/dapr_sentry/templates/dapr_sentry_deployment.yaml
 apiVersion: v1
@@ -226,6 +239,8 @@ metadata:
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
     app.kubernetes.io/version: 1.18.1
+
+
 ---
 # Source: dws/charts/postgresql/templates/secrets.yaml
 apiVersion: v1
@@ -244,6 +259,7 @@ data:
   postgres-password: "ZHdzLWJhc2VsaW5lLXN1cGVy"
   password: "ZHdzLWJhc2VsaW5l"
   # We don't auto-generate LDAP password when it's not provided as we do for other passwords
+
 ---
 # Source: dws/charts/redis/templates/secret.yaml
 apiVersion: v1
@@ -277,6 +293,7 @@ metadata:
 type: Opaque
 stringData:
   database-url: "postgres://dws:dws-baseline@dws-postgresql.default.svc.cluster.local:5432/dws_admin"
+
 ---
 # Source: dws/charts/dapr/charts/dapr_sentry/templates/dapr_sentry_deployment.yaml
 apiVersion: v1
@@ -291,6 +308,8 @@ metadata:
     app.kubernetes.io/name: dws
     app.kubernetes.io/part-of: dapr
     app.kubernetes.io/version: 1.18.1
+
+
 ---
 # Source: dws/charts/redis/templates/configmap.yaml
 apiVersion: v1
@@ -327,6 +346,7 @@ data:
     rename-command FLUSHDB ""
     rename-command FLUSHALL ""
     # End of replica configuration
+
 ---
 # Source: dws/charts/redis/templates/health-configmap.yaml
 apiVersion: v1
@@ -436,6 +456,7 @@ data:
     "$script_dir/ping_liveness_local.sh" $1 || exit_status=$?
     "$script_dir/ping_liveness_master.sh" $1 || exit_status=$?
     exit $exit_status
+
 ---
 # Source: dws/charts/redis/templates/scripts-configmap.yaml
 apiVersion: v1
@@ -469,6 +490,7 @@ data:
     ARGS+=("--include" "/opt/bitnami/redis/etc/redis.conf")
     ARGS+=("--include" "/opt/bitnami/redis/etc/master.conf")
     exec redis-server "${ARGS[@]}"
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/injector.yaml
 kind: ClusterRole
@@ -492,6 +514,7 @@ rules:
   - apiGroups: ["dapr.io"]
     resources: ["components"]
     verbs: [ "get", "list"]
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/operator.yaml
 kind: ClusterRole
@@ -535,6 +558,7 @@ rules:
   - apiGroups: ["dapr.io"]
     resources: ["components", "configurations", "subscriptions", "resiliencies", "httpendpoints", "mcpservers", "workflowaccesspolicies"]
     verbs: [ "get", "list", "watch"]
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/placement.yaml
 kind: ClusterRole
@@ -548,6 +572,7 @@ metadata:
     app.kubernetes.io/part-of: dapr
     app.kubernetes.io/version: 1.18.1
 rules: []
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/scheduler.yaml
 kind: ClusterRole
@@ -564,6 +589,7 @@ rules:
   - apiGroups: [""]
     resources: ["namespaces"]
     verbs: ["get", "list", "watch"]
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/sentry.yaml
 kind: ClusterRole
@@ -586,6 +612,7 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["list", "get", "watch"]
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/injector.yaml
 kind: ClusterRoleBinding
@@ -606,6 +633,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: dapr-injector
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/operator.yaml
 kind: ClusterRoleBinding
@@ -626,6 +654,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: dapr-operator-admin
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/placement.yaml
 kind: ClusterRoleBinding
@@ -646,6 +675,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: dapr-placement
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/scheduler.yaml
 kind: ClusterRoleBinding
@@ -666,6 +696,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: dapr-scheduler
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/sentry.yaml
 kind: ClusterRoleBinding
@@ -686,6 +717,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: dapr-sentry
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/injector.yaml
 kind: Role
@@ -710,6 +742,7 @@ rules:
   - apiGroups: ["apps"]
     resources: ["statefulsets"]
     verbs: [ "get" ]
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/operator.yaml
 kind: Role
@@ -740,6 +773,7 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps", "events"]
     verbs: ["create"]
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/secret-reader.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -757,6 +791,7 @@ rules:
 - apiGroups: [""]
   resources: ["secrets"]
   verbs: ["get"]
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/sentry.yaml
 kind: Role
@@ -782,6 +817,7 @@ rules:
   - apiGroups: ["dapr.io"]
     resources: ["configurations"]
     verbs: ["list", "get", "watch"]
+
 ---
 # Source: dws/templates/controller/orchestrator-rbac.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -801,6 +837,7 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "list", "watch"]
+
 ---
 # Source: dws/templates/controller/rbac.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -847,6 +884,7 @@ rules:
   - apiGroups: ["dapr.io"]
     resources: ["workflowaccesspolicies"]
     verbs: ["get", "list", "create", "delete", "deletecollection", "update", "patch"]
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/injector.yaml
 kind: RoleBinding
@@ -868,6 +906,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: dapr-injector
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/operator.yaml
 kind: RoleBinding
@@ -889,6 +928,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: dapr-operator
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/secret-reader.yaml
 kind: RoleBinding
@@ -909,6 +949,7 @@ roleRef:
   kind: Role
   name: secret-reader
   apiGroup: rbac.authorization.k8s.io
+
 ---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/sentry.yaml
 kind: RoleBinding
@@ -930,6 +971,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: dapr-sentry
+
 ---
 # Source: dws/templates/controller/orchestrator-rbac.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -952,6 +994,7 @@ roleRef:
   kind: Role
   name: dws-orchestrator
   apiGroup: rbac.authorization.k8s.io
+
 ---
 # Source: dws/templates/controller/rbac.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -974,6 +1017,7 @@ roleRef:
   kind: Role
   name: dws-controller
   apiGroup: rbac.authorization.k8s.io
+
 ---
 # Source: dws/charts/dapr/charts/dapr_operator/templates/dapr_operator_service.yaml
 kind: Service
@@ -1013,6 +1057,7 @@ spec:
     port: 9090
     targetPort: 9090
     protocol: TCP
+
 ---
 # Source: dws/charts/dapr/charts/dapr_operator/templates/dapr_operator_service.yaml
 apiVersion: v1
@@ -1034,6 +1079,7 @@ spec:
     protocol: TCP
   selector:
     app: dapr-operator
+
 ---
 # Source: dws/charts/dapr/charts/dapr_placement/templates/dapr_placement_service.yaml
 kind: Service
@@ -1068,6 +1114,7 @@ spec:
     targetPort: 9090
     protocol: TCP
   clusterIP: None
+
 ---
 # Source: dws/charts/dapr/charts/dapr_scheduler/templates/dapr_scheduler_service.yaml
 kind: Service
@@ -1105,6 +1152,7 @@ spec:
     targetPort: 9090
     protocol: TCP
   type: ClusterIP
+
 ---
 # Source: dws/charts/dapr/charts/dapr_scheduler/templates/dapr_scheduler_service.yaml
 kind: Service
@@ -1141,6 +1189,7 @@ spec:
     targetPort: 9090
     protocol: TCP
   clusterIP: None # make the service headless
+
 ---
 # Source: dws/charts/dapr/charts/dapr_sentry/templates/dapr_sentry_service.yaml
 kind: Service
@@ -1171,6 +1220,7 @@ spec:
     port: 9090
     targetPort: 9090
     protocol: TCP
+
 ---
 # Source: dws/charts/dapr/charts/dapr_sidecar_injector/templates/dapr_sidecar_injector_service.yaml
 apiVersion: v1
@@ -1201,6 +1251,7 @@ spec:
     port: 9090
     targetPort: 9090
     protocol: TCP
+
 ---
 # Source: dws/charts/postgresql/templates/primary/svc-headless.yaml
 apiVersion: v1
@@ -1231,6 +1282,7 @@ spec:
     app.kubernetes.io/instance: dws
     app.kubernetes.io/name: postgresql
     app.kubernetes.io/component: primary
+
 ---
 # Source: dws/charts/postgresql/templates/primary/svc.yaml
 apiVersion: v1
@@ -1257,6 +1309,7 @@ spec:
     app.kubernetes.io/instance: dws
     app.kubernetes.io/name: postgresql
     app.kubernetes.io/component: primary
+
 ---
 # Source: dws/charts/redis/templates/headless-svc.yaml
 apiVersion: v1
@@ -1280,6 +1333,7 @@ spec:
   selector:
     app.kubernetes.io/instance: dws
     app.kubernetes.io/name: redis
+
 ---
 # Source: dws/charts/redis/templates/master/service.yaml
 apiVersion: v1
@@ -1306,6 +1360,7 @@ spec:
     app.kubernetes.io/instance: dws
     app.kubernetes.io/name: redis
     app.kubernetes.io/component: master
+
 ---
 # Source: dws/templates/admin/service.yaml
 apiVersion: v1
@@ -1329,6 +1384,7 @@ spec:
     - name: http
       port: 3000
       targetPort: http
+
 ---
 # Source: dws/templates/controller/service.yaml
 apiVersion: v1
@@ -1352,6 +1408,7 @@ spec:
     - name: http
       port: 80
       targetPort: http
+
 ---
 # Source: dws/charts/dapr/charts/dapr_operator/templates/dapr_operator_deployment.yaml
 apiVersion: apps/v1
@@ -1471,6 +1528,7 @@ spec:
                     operator: In
                     values:
                     - linux
+
 ---
 # Source: dws/charts/dapr/charts/dapr_sentry/templates/dapr_sentry_deployment.yaml
 apiVersion: apps/v1
@@ -1572,6 +1630,7 @@ spec:
                     operator: In
                     values:
                     - linux
+
 ---
 # Source: dws/charts/dapr/charts/dapr_sidecar_injector/templates/dapr_sidecar_injector_deployment.yaml
 apiVersion: apps/v1
@@ -1717,6 +1776,7 @@ spec:
                     operator: In
                     values:
                       - linux
+
 ---
 # Source: dws/templates/admin/deployment.yaml
 apiVersion: apps/v1
@@ -1823,6 +1883,7 @@ spec:
             requests:
               cpu: 100m
               memory: 256Mi
+
 ---
 # Source: dws/templates/controller/deployment.yaml
 apiVersion: apps/v1
@@ -1928,6 +1989,7 @@ spec:
             requests:
               cpu: 100m
               memory: 256Mi
+
 ---
 # Source: dws/charts/dapr/charts/dapr_placement/templates/dapr_placement_statefulset.yaml
 apiVersion: apps/v1
@@ -2056,6 +2118,7 @@ spec:
                     operator: In
                     values:
                     - linux
+
 ---
 # Source: dws/charts/dapr/charts/dapr_scheduler/templates/dapr_scheduler_statefulset.yaml
 apiVersion: apps/v1
@@ -2232,6 +2295,7 @@ spec:
                   values:
                   - dapr-scheduler-server
               topologyKey: topology.kubernetes.io/zone
+
 ---
 # Source: dws/charts/postgresql/templates/primary/statefulset.yaml
 apiVersion: apps/v1
@@ -2418,6 +2482,8 @@ spec:
         resources:
           requests:
             storage: "1Gi"
+        
+
 ---
 # Source: dws/charts/redis/templates/master/application.yaml
 apiVersion: apps/v1
@@ -2607,6 +2673,42 @@ spec:
         resources:
           requests:
             storage: "1Gi"
+        
+
+---
+# Source: dws/charts/dapr/charts/dapr_sidecar_injector/templates/dapr_sidecar_injector_webhook_config.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: dapr-sidecar-injector
+  labels:
+    app: dapr-sidecar-injector
+    app.kubernetes.io/component: sidecar-injector
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/part-of: dapr
+    app.kubernetes.io/version: 1.18.1
+webhooks:
+- name: sidecar-injector.dapr.io
+  reinvocationPolicy: IfNeeded
+  clientConfig:
+    service:
+      namespace: default
+      name: dapr-sidecar-injector
+      path: "/mutate"
+  rules:
+  - apiGroups:
+    - ""
+    apiVersions:
+    - v1
+    resources:
+    - pods
+    operations:
+    - CREATE
+  failurePolicy: Ignore
+  sideEffects: None
+  admissionReviewVersions: ["v1", "v1beta1"]
+
 ---
 # Source: dws/templates/actor-statestore-component.yaml
 apiVersion: dapr.io/v1alpha1
@@ -2642,6 +2744,7 @@ spec:
       value: "false"
 auth:
   secretStore: kubernetes
+
 ---
 # Source: dws/templates/controller/config-component.yaml
 apiVersion: dapr.io/v1alpha1
@@ -2682,6 +2785,7 @@ auth:
 # orchestrator only.
 scopes:
   - dws-controller
+
 ---
 # Source: dws/templates/definitions-component.yaml
 apiVersion: dapr.io/v1alpha1
@@ -2721,6 +2825,7 @@ auth:
 # timeout and fatally crash the sidecar.
 scopes:
   - dws-orchestrator
+
 ---
 # Source: dws/templates/pubsub-component.yaml
 apiVersion: dapr.io/v1alpha1
@@ -2755,6 +2860,7 @@ spec:
       value: "false"
 auth:
   secretStore: kubernetes
+
 ---
 # Source: dws/charts/dapr/charts/dapr_config/templates/dapr_default_config.yaml
 apiVersion: dapr.io/v1alpha1
@@ -2776,39 +2882,6 @@ spec:
     controlPlaneTrustDomain: cluster.local
     sentryAddress: dapr-sentry.default.svc.cluster.local:443
 ---
-# Source: dws/charts/dapr/charts/dapr_sidecar_injector/templates/dapr_sidecar_injector_webhook_config.yaml
-apiVersion: admissionregistration.k8s.io/v1
-kind: MutatingWebhookConfiguration
-metadata:
-  name: dapr-sidecar-injector
-  labels:
-    app: dapr-sidecar-injector
-    app.kubernetes.io/component: sidecar-injector
-    app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/name: dws
-    app.kubernetes.io/part-of: dapr
-    app.kubernetes.io/version: 1.18.1
-webhooks:
-- name: sidecar-injector.dapr.io
-  reinvocationPolicy: IfNeeded
-  clientConfig:
-    service:
-      namespace: default
-      name: dapr-sidecar-injector
-      path: "/mutate"
-  rules:
-  - apiGroups:
-    - ""
-    apiVersions:
-    - v1
-    resources:
-    - pods
-    operations:
-    - CREATE
-  failurePolicy: Ignore
-  sideEffects: None
-  admissionReviewVersions: ["v1", "v1beta1"]
----
 # Source: dws/templates/dapr-ready-hook.yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -2826,6 +2899,7 @@ metadata:
     "helm.sh/hook": post-install,post-upgrade
     "helm.sh/hook-weight": "0"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+
 ---
 # Source: dws/templates/dapr-ready-hook.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -2853,6 +2927,8 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch", "delete"]
+  
+
 ---
 # Source: dws/templates/dapr-ready-hook.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -2879,6 +2955,7 @@ roleRef:
   kind: Role
   name: dws-dapr-ready
   apiGroup: rbac.authorization.k8s.io
+
 ---
 # Source: dws/templates/tests/admin-db-connection.yaml
 apiVersion: v1
@@ -2915,6 +2992,7 @@ spec:
             exit 1
           }
   restartPolicy: Never
+
 ---
 # Source: dws/templates/dapr-ready-hook.yaml
 apiVersion: batch/v1
