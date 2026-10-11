@@ -295,10 +295,10 @@ the controller, to fetch function definitions; it is never read at runtime.
 1. **One Configuration per pod.** A pod names exactly one Dapr `Configuration` via `dapr.io/config`,
    already contended by OAuth2 and tracing (`StackSynthesizer.orchestratorAnnotations`); Decision 4a
    adds a third claimant, and a host's secret allowlist (`secrets.scopes`) would be a fourth.
-   **Direction:** the controller composes **one merged Configuration per workload** (pipeline
-   handlers + tracing + secret scopes); the spike proved two Wasm handlers + tracing in one
-   Configuration work. Open: naming and lifecycle of per-workload Configurations, and how the
-   chart-level `dws-tracing` Configuration's settings are copied in. Required before Decision 4a
+   **Resolved by OWS 4.1b (`dws-controller` 1.2.0):** each workload owns one Configuration,
+   `<workload>-<versionId>-cfg`, labelled and garbage-collected with its version; pipeline handlers
+   sorted by name; tracing copied from the chart's `dws-tracing` `spec.tracing` at deploy time.
+   Wasm handlers and a `secrets.scopes` allowlist slot into the same object. Was required before Decision 4a
    ships for traced steps.
 2. **`$secrets` in jq** (`set`/`switch`): fetch per evaluation, or once per activity.
 

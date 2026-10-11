@@ -58,7 +58,7 @@ flowchart TD
   P1 --> P3[Phase 3: Fault Tolerance<br/>Problem Details, timeouts ✅]
   P2d --> P3
   P3 --> P4[Phase 4: Authentication + Secrets ✅]
-  P4 --> P41[Phase 4.1: Credentials via sidecar<br/>ADR 0010 — not started]
+  P4 --> P41[Phase 4.1: Credentials via sidecar<br/>ADR 0010 — in progress, 4.1a/4.1b ✅]
   P4 --> P5[Phase 5: Protocol Expansion<br/>gRPC ✅, AsyncAPI ✅]
   P5 --> P55[Phase 5.5: A2A protocol<br/>next — design settled, ADR 0004]
   P1 --> P6[Phase 6: Scheduling<br/>cron/every/after/on<br/>next — unblocked]
@@ -81,7 +81,7 @@ Data flow is the foundation: retry/catch, extensions, and error handling all rea
 | **2** ✅ | `try`/`catch`/`retry`, `raise`, `for`, `fork` (parallel), nested `do` | orchestrator, controller | done — `try-catch-retry`, `raise-task`, `for-task`, `fork-task` |
 | **3** ✅ | RFC 7807 error model, standard error types, task/workflow timeouts | orchestrator | complete |
 | **4** ✅ | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi | done — archived as `2026-10-05-workflow-auth` (21/21 tasks; live OAuth probe passed, see §4c) |
-| **4.1** | `basic`/`bearer` injected by a Wasm sidecar middleware; one merged Dapr Configuration per workload ([ADR 0010](../adr/0010-use-components-as-a-shared-store.md)) | controller, `charts/dws`, call-http, call-openapi, call-a2a, new Wasm image | not started — split into 4.1a–4.1h, see §4h |
+| **4.1** | `basic`/`bearer` injected by a Wasm sidecar middleware; one merged Dapr Configuration per workload ([ADR 0010](../adr/0010-use-components-as-a-shared-store.md)) | controller, `charts/dws`, call-http, call-openapi, call-a2a, new Wasm image | in progress — 4.1a, 4.1b done (`dws-controller` 1.2.0/1.2.1); 4.1c, 4.1f, 4.1g next; see §4h |
 | **5** ✅ | gRPC, AsyncAPI call protocols | new `dws-call-grpc`, `dws-call-asyncapi` images | done — both slices archived (`2026-08-25-dws-call-grpc`, `2026-08-26-dws-call-asyncapi`); live-cluster integration test deferred, see §4e |
 | **5.5** (next) | A2A (Agent2Agent) call protocol | new `dws-call-a2a` image | design settled — [ADR 0004](../adr/0004-call-a2a-runner-design.md), §4f; not yet implemented |
 | **6** (next, parallel) | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) | not started — independent of Phases 4/5, can run alongside 5.5 |
@@ -279,7 +279,7 @@ results: ADR 0010 Decision 4a, `spikes/wasm-auth-middleware/FINDINGS.md`.
 | Sub | Scope | Components | Depends on | Status |
 |---|---|---|---|---|
 | **4.1a** | Fixes found by the spike: Dapr metrics port collides with Knative queue-proxy (9090) on **every** Dapr-enabled Knative step; verify the controller Role covers `httpendpoints` and Dapr `configurations` (the OAuth2 path creates both) | controller, `charts/dws` | — | ✅ step services set `dapr.io/metrics-port: "9095"` (orchestrators keep 9090); the Role already grants both kinds (since `ff3326f`), pinned by `orchestrator-wiring-render-test.sh` |
-| **4.1b** | **One merged Configuration per workload**: pipeline handlers (OAuth2 today, Wasm next) + tracing in the single `dapr.io/config` slot; naming and lifecycle per version | controller | — | ❌ not started |
+| **4.1b** | **One merged Configuration per workload**: pipeline handlers (OAuth2 today, Wasm next) + tracing in the single `dapr.io/config` slot; naming and lifecycle per version | controller | — | ✅ `dws-controller` 1.2.0 (`85e553c`): each workload needing a Configuration feature owns exactly one, `<workload>-<versionId>-cfg` (63-char cap, hash tail), labelled and GC'd with the version; handlers sorted by name; tracing copied from the chart's `dws-tracing` `spec.tracing` at deploy (chart stays the single source); tracing no longer dropped. OAuth probe mirrors the new shape (`6a18dd60`) |
 | **4.1c** | Wasm guest image as a new component: TinyGo **0.34.0** pinned, `http-wasm-guest-tinygo` v0.4.0, `busybox` base, public GHCR, CI, release-please (released by hand) | new image | — | ❌ not started |
 | **4.1d** | Controller emits, per (base URL, policy): composed `guestConfig` Secret, `HTTPEndpoint`, `middleware.http.wasm` Component; adds the init container, `emptyDir` and `dapr.io/volume-mounts` to the step service; Role gains Secret `get`/`create`/`delete` | controller, `charts/dws` | 4.1a, 4.1b, 4.1c, 4.1g | ❌ not started |
 | **4.1e** | Step images `dws-call-http`, `dws-call-openapi`, `dws-call-a2a`: drop credential env vars, one sidecar-invocation path for every scheme, wait for sidecar readiness before the first call. Ships with 4.1d | step images | 4.1d | ❌ not started |
