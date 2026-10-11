@@ -48,6 +48,7 @@ The repository has several independently built components; run builds and tests 
 - For the generic pinned-node activity boundary, start with `dws-step/src/main/java/io/dws/step/`; preserve its Flow and orchestrator compatibility contract described in the [DWS Step activity host](integrations/step-activity-host.md).
 - For pinned structural-node sequencing, start with `dws-flow/src/`; preserve its `Flow` and envelope contract with the [DWS Step activity host](integrations/step-activity-host.md), and keep unsupported structural scopes documented in the [DWS Flow workflow host](architecture/flow-host.md).
 - For cross-component telemetry, treat `docs/events.md` as the source contract; changes also affect the [administrative read model](integrations/admin-read-model.md) that consumes this stream.
+- Repository-local agent tooling is under `.agents/`: `settings.json` permits selected `pnpm` commands, and `skills/` supplies reusable guidance. Treat it as contributor assistance only; component-specific commands and checks above remain the authoritative verification guidance.
 
 The GitHub Actions workflow at `.github/workflows/openwiki-update.yml` refreshes this generated documentation on every merge to `main` (or on manual dispatch).
 
