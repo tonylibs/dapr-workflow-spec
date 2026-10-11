@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Claude Code CLI. The devcontainer feature installs it first; this enforces the same version used
 # by agent-sandbox/Dockerfile before installing plugins into the vscode user's configuration.
-CLAUDE_CODE_NPM_VERSION="2.1.220"
+CLAUDE_CODE_NPM_VERSION="2.1.296"
 if [ "$(claude --version 2>/dev/null || true)" != "${CLAUDE_CODE_NPM_VERSION} (Claude Code)" ]; then
   # The claude-code devcontainer feature preinstalls this package as root, so a plain
   # (vscode-user) npm install can't overwrite its root-owned global dir.
@@ -13,7 +13,7 @@ test "$(claude --version)" = "${CLAUDE_CODE_NPM_VERSION} (Claude Code)"
 
 # Codex CLI. Keep this pin aligned with agent-sandbox/Dockerfile so both development
 # environments provide the same reproducible version.
-CODEX_NPM_VERSION="0.146.0"
+CODEX_NPM_VERSION="0.162.1"
 if [ "$(codex --version 2>/dev/null || true)" != "codex-cli ${CODEX_NPM_VERSION}" ]; then
   npm install --global --no-audit --no-fund "@openai/codex@${CODEX_NPM_VERSION}"
 fi

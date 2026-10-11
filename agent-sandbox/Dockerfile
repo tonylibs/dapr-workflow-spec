@@ -1,5 +1,5 @@
 # Shared dev/agent-sandbox image for the dws monorepo: JDK 25, Go 1.26, Node 24 + pnpm,
-# git/gh/jq, uv, Omnigent, Claude Code, Codex, GitHub Copilot CLI, Antigravity CLI (agy),
+# git/gh/jq, uv, Omnigent, Claude Code, Codex, GitHub Copilot CLI, Antigravity CLI (agy, pinned by tarball SHA512),
 # OpenSpec, OpenWiki, Superpowers, and ClawTeam. Every toolchain below is
 # copied from the exact base image the corresponding component already builds with, so
 # `docker build agent-sandbox/` matches what CI ships:
@@ -16,13 +16,13 @@ FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 FROM ubuntu:24.04
 
 ARG UV_VERSION
-ARG CODEX_NPM_VERSION=0.146.0
-ARG CODEX_ACP_NPM_VERSION=1.4.0
-ARG CLAUDE_CODE_NPM_VERSION=2.1.220
-ARG COPILOT_NPM_VERSION=1.0.88
+ARG CODEX_NPM_VERSION=0.162.1
+ARG CODEX_ACP_NPM_VERSION=2.2.2
+ARG CLAUDE_CODE_NPM_VERSION=2.1.296
+ARG COPILOT_NPM_VERSION=1.0.95
 ARG OPENSPEC_NPM_VERSION=1.6.0
 ARG OPENWIKI_NPM_VERSION=0.2.3
-ARG OMNIGENT_VERSION=0.16.0
+ARG OMNIGENT_VERSION=0.17.0
 ARG KUBECTL_VERSION=v1.36.1
 
 # gcc/libc6-dev: `go test -race` (dws-call-http, dws-run CI gate) needs cgo, which needs a C
@@ -111,14 +111,33 @@ RUN npm install --global --no-audit --no-fund \
     "openwiki@${OPENWIKI_NPM_VERSION}"
 
 # --- Antigravity CLI (agy) ---
-# agy is a native binary, not an npm package. Google's installer resolves the current release
-# from its manifest and verifies the tarball's SHA512 before installing. It has no version-pin
-# option (agy self-updates at runtime), so this layer tracks whatever release is current at
-# build time. Install into /root/.local/bin (on PATH) and link into /usr/local/bin like omnigent.
-RUN curl -fsSL https://antigravity.google/cli/install.sh -o /tmp/agy-install.sh \
-    && bash /tmp/agy-install.sh --dir /root/.local/bin \
-    && rm -f /tmp/agy-install.sh \
-    && ln -sf /root/.local/bin/agy /usr/local/bin/agy
+# agy is a native binary, not an npm package. Google's install.sh has no version option (it
+# always resolves the current release from its manifest), so pin the exact release instead:
+# download the versioned tarball that the manifest for AGY_VERSION points at, verify its SHA512,
+# and extract the `antigravity` binary as agy -- the same steps install.sh performs. The
+# `agy install` handoff is skipped: it only edits shell-profile PATH/aliases, and agy is already
+# on PATH via /usr/local/bin. Per-arch URLs/hashes come from
+# https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_{amd64,arm64}.json
+# -- refresh all four values together when bumping AGY_VERSION. Note agy can still self-update at
+# runtime; the pin only fixes what the image ships.
+ARG AGY_VERSION=1.3.3
+ARG AGY_BUILD=5524738307653632
+ARG AGY_SHA512_AMD64=abe3ddf5cf30d3adaa586acf505221aa19702f5ca71af3c8b1f9b1a5976bd8e5c151c41ea33b39c41675d25843462a3e8c382c054f580e9d7e1688919d3b5110
+ARG AGY_SHA512_ARM64=1bfd3503576219a102176c13579665a2f39e84ac86a904b117d3b33f3dd751f194a862496bad6ffe914ad46d2c877ba12b6c07e6db07128b706d238262fe430c
+ARG TARGETARCH=amd64
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+      amd64) agy_path=linux-x64/cli_linux_x64.tar.gz; agy_sha512="${AGY_SHA512_AMD64}" ;; \
+      arm64) agy_path=linux-arm/cli_linux_arm64.tar.gz; agy_sha512="${AGY_SHA512_ARM64}" ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://storage.googleapis.com/antigravity-public/antigravity-cli/${AGY_VERSION}-${AGY_BUILD}/${agy_path}" -o /tmp/agy.tar.gz; \
+    echo "${agy_sha512}  /tmp/agy.tar.gz" | sha512sum -c -; \
+    mkdir -p /root/.local/bin /tmp/agy; \
+    tar -xzf /tmp/agy.tar.gz -C /tmp/agy antigravity; \
+    install -m 0755 /tmp/agy/antigravity /root/.local/bin/agy; \
+    rm -rf /tmp/agy /tmp/agy.tar.gz; \
+    ln -sf /root/.local/bin/agy /usr/local/bin/agy
 
 # --- uv + Omnigent ---
 # Omnigent requires Python 3.12+, uv, git, Node 22+, npm, tmux, and bwrap on Linux. Ubuntu
@@ -201,7 +220,7 @@ RUN set -eux; \
     claude --version | grep -q "^${CLAUDE_CODE_NPM_VERSION} (Claude Code)$"; \
     codex --version | grep -q "^codex-cli ${CODEX_NPM_VERSION}$"; \
     copilot --version | grep -q "${COPILOT_NPM_VERSION}"; \
-    agy --version; \
+    agy --version | grep -q "^${AGY_VERSION}$"; \
     codex-acp --version | grep -q "^@agentclientprotocol/codex-acp ${CODEX_ACP_NPM_VERSION}$"; \
     openspec --version | grep -q "^${OPENSPEC_NPM_VERSION}$"; \
     npm list --global --depth=0 openwiki | grep -q "openwiki@${OPENWIKI_NPM_VERSION}"; \
