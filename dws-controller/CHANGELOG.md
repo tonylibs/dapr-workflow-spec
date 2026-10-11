@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-controller-v1.2.0...dws-controller-v1.2.1) (2026-10-11)
+
+
+### Bug Fixes
+
+* **controller:** set daprd metrics port to 9095 on Knative steps ([18b4dae](https://github.com/tonylibs/dapr-workflow-spec/commit/18b4dae9346833ecc02d67e4226a9d376ab63847))
+
 ## [1.2.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-controller-v1.1.1...dws-controller-v1.2.0) (2026-10-11)
 
 
