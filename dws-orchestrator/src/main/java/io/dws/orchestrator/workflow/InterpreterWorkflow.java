@@ -542,7 +542,7 @@ public class InterpreterWorkflow implements Workflow {
    * <p>{@code call: a2a} is carved out of the shared default retry policy: unlike its siblings, it
    * gets exactly one attempt ({@link WorkflowSupport#noRetryTaskOptions()}) unless the workflow
    * author wraps it in an explicit {@code try}/{@code catch.retry} block. A fresh {@code messageId}
-   * on every retry attempt (ADR 0004 Decision 8) most likely makes a cooperative agent start a
+   * on every retry attempt (ADR 0011 Decision 8) most likely makes a cooperative agent start a
    * duplicate task, so silently re-dispatching on a timeout is unsafe — the failure must surface to
    * the author instead. Author-declared retry is unaffected: {@code dispatchTry} is a separate,
    * higher-layer mechanism that reruns the whole try list itself rather than relying on this
@@ -550,7 +550,7 @@ public class InterpreterWorkflow implements Workflow {
    *
    * <p>{@code dispatchContext}'s root instance id and encoded iteration path ride along in the
    * {@link CallRequest} so {@link CallServiceActivity} can carry them as outbound headers — the
-   * other half of ADR 0004 Decision 8's {@code messageId} derivation, which otherwise has nothing
+   * other half of ADR 0011 Decision 8's {@code messageId} derivation, which otherwise has nothing
    * to key off on the runner side. See {@link DispatchContext}.
    */
   private Body invokeStepService(

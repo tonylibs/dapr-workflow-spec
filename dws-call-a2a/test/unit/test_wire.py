@@ -168,7 +168,7 @@ def test_shape_task_result_keeps_history_when_include_history() -> None:
 def test_shape_task_result_state_is_lowercase_wire_form(
     core_state: TaskState, wire_state: str
 ) -> None:
-    """ADR 0004 Decision 3: the wire form the workflow's `switch` sees is
+    """ADR 0011 Decision 3: the wire form the workflow's `switch` sees is
     lowercase, including the "unknown" state the A2A prose never mentions."""
     task = _make_task(core_state)
     result = shape_task_result(task, include_history=False)
@@ -176,7 +176,7 @@ def test_shape_task_result_state_is_lowercase_wire_form(
 
 
 def test_input_required_and_auth_required_are_returned_not_raised() -> None:
-    """ADR 0004 Decision 6: these are successful results, not step failures --
+    """ADR 0011 Decision 6: these are successful results, not step failures --
     `shape_task_result` itself never raises for any task state."""
     for state in (TaskState.TASK_STATE_INPUT_REQUIRED, TaskState.TASK_STATE_AUTH_REQUIRED):
         result = shape_task_result(_make_task(state), include_history=False)

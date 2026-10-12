@@ -5,7 +5,7 @@ a2a-sdk type to build responses -- it speaks raw JSON-RPC 2.0 dicts in the
 legacy (v0.3-compatible) wire vocabulary by hand. This is intentional: tier
 (c)'s conformance job exists specifically because a hand-written mock can
 share the runner author's own misreading of the protocol and go green for
-the wrong reasons (ADR 0004 Consequences). This fake server's job is multi-
+the wrong reasons (ADR 0011 Consequences). This fake server's job is multi-
 turn *state-machine* coverage (task lifecycle, resumption, auth-required,
 an "unknown" state) that's tedious to script against a real SDK-backed agent
 executor; tier (c) is the independent oracle that the wire shapes used here
@@ -125,7 +125,7 @@ def _handle_send_message(
             status_message = _agent_text_message(task_id, "please authenticate out of band")
         elif text == "trigger-unknown-state":
             # "unknown" is a real, defined member of the v0.3 wire vocabulary
-            # (ADR 0004 Decision 3) -- distinct from a genuinely bogus string.
+            # (ADR 0011 Decision 3) -- distinct from a genuinely bogus string.
             state = "unknown"
             status_message = None
         elif text == "trigger-non-conformant-state":

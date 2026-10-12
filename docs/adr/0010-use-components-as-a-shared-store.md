@@ -4,6 +4,10 @@
 - **Date:** 2026-10-09
 - **Amended:** 2026-10-11 — Decision 4a now ships **two Wasm components**, one per scheme
   (`basic`, `bearer`), instead of one binary serving both. Everything else is unchanged.
+- **Amended:** 2026-10-13 — v1's `dws-orchestrator` **migrates last** (roadmap row 5.0) instead of
+  never. The Implementation plan said "not migrated" while Consequences said "migrates last";
+  Consequences was the intent. The workflow-level `timeout` is a `use.timeouts` reference like any
+  other and is enforced by the `main` node (roadmap 3j); the .NET `UseResolver` is roadmap 3i.
 - **Context:** [`docs/roadmaps/openworkflow-features.md`](../roadmaps/openworkflow-features.md)
   §4g (Phase 7 split). This is the `UseResolver` refactor that comes before Phases 7a–7c.
 - **Related:** [ADR 0001](0001-workflow-runtime-v2-decisions.md) Decision 2 (function images serve
@@ -288,6 +292,9 @@ the controller, to fetch function definitions; it is never read at runtime.
   lookup collapse into `UseResolver` per runtime.
 - **v2 nodes resolve names without the full document**, which unblocks named `retry` / `timeout` /
   `raise.error` on `dws-flow` and `dws-step`.
+- **The workflow-level `timeout` uses the same path.** A document `timeout` may be inline or a
+  `use.timeouts` name. The `main` node carries it as written and resolves it through `UseResolver`
+  at boot; nothing reads the whole document at run time.
 - **New per-version resources:** 1 ConfigMap + 2 Components (`-use`, `-secrets`).
 - **Per auth policy:** +1 composed Secret, +1 `HTTPEndpoint`, +1 Wasm `Component`, +1
   `Configuration`; per step pod using it: +1 init container per distinct scheme used (1 or 2), +1
@@ -321,7 +328,7 @@ the controller, to fetch function definitions; it is never read at runtime.
 | Track | Where | Content |
 |---|---|---|
 | **Credentials** (Decision 4a + merged Configuration) | OWS roadmap **Phase 4.1** (4.1a–4.1h), `docs/roadmaps/openworkflow-features.md` §4h | Applies to v1 now |
-| **Data + `$secrets`** (Decisions 2, 3, 4) | v2 runtime phases 2b, 2c, 3a, 3c, 4, `docs/roadmaps/workflow-runtime-architecture-roadmap.md` "ADR 0010 integration" | No consumer before v2; v1's orchestrator is not migrated |
+| **Data + `$secrets`** (Decisions 2, 3, 4) | v2 runtime phases 2b, 2c, 3c, 3i, 3j, 4, 5.0, `docs/roadmaps/workflow-runtime-architecture-roadmap.md` "ADR 0010 integration" | v2 hosts first; v1's `dws-orchestrator` migrates last (row 5.0), before it retires |
 | **Code kinds** (Decision 6) | OWS Phases 7a/7b/7c | Unchanged |
 
 ## Open questions

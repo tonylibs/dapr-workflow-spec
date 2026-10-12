@@ -576,7 +576,7 @@ class InterpreterWorkflowIntegrationTest {
   }
 
   /**
-   * {@code call: a2a} gets no automatic activity-level retry by default (ADR 0004 Decision 8's
+   * {@code call: a2a} gets no automatic activity-level retry by default (ADR 0011 Decision 8's
    * now-resolved "default retry posture" sub-question): a fresh {@code messageId} on every retry
    * attempt most likely makes a cooperative agent start a duplicate task, so a failure gets exactly
    * one attempt and surfaces to the author's own {@code try}/{@code catch} instead of being

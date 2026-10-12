@@ -40,7 +40,7 @@ public class WorkflowSupport {
       SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12);
 
   /**
-   * Fixed no-retry activity options for {@code call: a2a} (ADR 0004 Decision 8's "default retry
+   * Fixed no-retry activity options for {@code call: a2a} (ADR 0011 Decision 8's "default retry
    * posture" sub-question). Unlike {@link #defaultTaskOptions()}, this is not sourced from {@code
    * dws.retry.*} configuration and needs no {@link #init} parameter: the deterministic {@code
    * messageId} derivation (Decision 8) means a retry of the same logical call now carries the

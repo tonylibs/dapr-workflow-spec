@@ -4,7 +4,7 @@ call -- the RPC endpoint and (by default) the card-fetch endpoint too.
 Ported from `dws-call-openapi/src/auth.ts` + `src/request.ts`'s `daprInvocationUrl`.
 Built by hand (not the SDK's `AuthInterceptor`/`CredentialService`) because the
 SDK's built-in interceptor never emits HTTP Basic -- see
-`docs/adr/0004-call-a2a-runner-design.md` Decision 4.
+`docs/adr/0011-call-a2a-runner-design.md` Decision 4.
 """
 
 from __future__ import annotations

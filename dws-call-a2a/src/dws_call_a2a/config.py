@@ -40,7 +40,7 @@ class AgentCardTarget:
 @dataclass(frozen=True, slots=True)
 class ServerTarget:
     """`with.server` was declared instead: talk to this URL directly, no card
-    fetch, no boot-time auth-requirement check (ADR 0004 Decision 4 case 5)."""
+    fetch, no boot-time auth-requirement check (ADR 0011 Decision 4 case 5)."""
 
     server_url: str
 
@@ -79,7 +79,7 @@ class OAuth2Auth:
 
 AuthConfig = NoAuth | BasicAuth | BearerAuth | OAuth2Auth
 
-# Card-fetch auth never supports oauth2 (ADR 0004 Decision 4: "no oauth2 for
+# Card-fetch auth never supports oauth2 (ADR 0011 Decision 4: "no oauth2 for
 # the card path" -- there is no card-fetch-equivalent of the RPC's Dapr
 # middleware rerouting since the card fetch is plain HTTPS, not a Dapr
 # service invocation).
@@ -136,7 +136,7 @@ class Config:
     rpc_auth: AuthConfig
     card_auth: CardAuthConfig | None
     """`None` means "reuse `rpc_auth` for the card fetch" (the documented
-    two-endpoints-one-credential default, ADR 0004 Decision 4)."""
+    two-endpoints-one-credential default, ADR 0011 Decision 4)."""
     include_history: bool
     timeout_ms: int
 

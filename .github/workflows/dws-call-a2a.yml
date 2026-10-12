@@ -58,7 +58,7 @@ jobs:
 
   conformance:
     # Kept as its own job: the official a2a-sdk server is the only oracle that
-    # can't share a misreading with the hand-written fake (ADR 0004).
+    # can't share a misreading with the hand-written fake (ADR 0011).
     name: a2a-sdk conformance
     runs-on: ubuntu-latest
     defaults:

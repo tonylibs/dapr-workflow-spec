@@ -507,7 +507,7 @@ public class StackSynthesizer {
   /**
    * True for steps the orchestrator invokes as a multi-app Dapr Workflow activity — every kind but
    * the plain-HTTP runners ({@code CALL_OPENAPI}, {@code CALL_ASYNCAPI}, and {@code CALL_A2A} — ADR
-   * 0004 Decision 1: {@code dws-call-a2a} has "no Dapr Workflow SDK and no Run activity
+   * 0011 Decision 1: {@code dws-call-a2a} has "no Dapr Workflow SDK and no Run activity
    * registration", dispatched the same way as the Node runners), which stay on HTTP service
    * invocation. The single source of truth for the activity-vs-HTTP split, shared by {@link
    * #minScale} and the access-policy synth.

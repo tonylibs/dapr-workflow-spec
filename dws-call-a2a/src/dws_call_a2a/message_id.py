@@ -1,4 +1,4 @@
-"""Deterministic `messageId` derivation (ADR 0004 Decision 8).
+"""Deterministic `messageId` derivation (ADR 0011 Decision 8).
 
     messageId = uuid5(DWS_NAMESPACE, f"{workflowInstanceId}/{taskName}/{iterationIndex}")
 

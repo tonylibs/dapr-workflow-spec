@@ -15,7 +15,7 @@ Two different readiness axes get conflated below — worth separating:
 | `call` (openapi) | ✅ | StepService via `dws-call-openapi` (built) |
 | `call` (grpc) | ✅ | StepService via `dws-call-grpc` (built); shipped in `dws-call-grpc` (Phase 5 slice 1) |
 | `call` (asyncapi) | ✅ | StepService via `dws-call-asyncapi` (Dapr output binding, `action: send` only); controller `call: asyncapi` branch + version-scoped `bindings.*` Component synthesis; shipped in `dws-call-asyncapi` (Phase 5 slice 2), archived as `openspec/changes/archive/2026-08-26-dws-call-asyncapi` — one deferred task, the live Dapr+Kafka integration test (see §4e) |
-| `call` (a2a) | ❌ | not started — its own **Phase 5.5**; AsyncAPI has shipped, so this is unblocked. Design settled in [ADR 0004](../adr/0004-call-a2a-runner-design.md), summarized in §4f |
+| `call` (a2a) | ❌ | not started — its own **Phase 5.5**; AsyncAPI has shipped, so this is unblocked. Design settled in [ADR 0011](../adr/0011-call-a2a-runner-design.md), summarized in §4f |
 | `run` (shell/script) | ✅ | StepService via `dws-run` (`dws-run-shell`/`dws-run-script-js`/`dws-run-script-python`); shipped in `2026-07-26-dws-run` |
 | `run` (container/workflow) | ❌ | rejected at compile time — no deployable image for either |
 | `switch` | ✅ | jq eval in a local in-process activity, no image needed |
@@ -60,7 +60,7 @@ flowchart TD
   P3 --> P4[Phase 4: Authentication + Secrets ✅]
   P4 --> P41[Phase 4.1: Credentials via sidecar<br/>ADR 0010 — in progress, 4.1a/4.1b ✅]
   P4 --> P5[Phase 5: Protocol Expansion<br/>gRPC ✅, AsyncAPI ✅]
-  P5 --> P55[Phase 5.5: A2A protocol<br/>next — design settled, ADR 0004]
+  P5 --> P55[Phase 5.5: A2A protocol<br/>next — design settled, ADR 0011]
   P1 --> P6[Phase 6: Scheduling<br/>cron/every/after/on<br/>next — unblocked]
   P2d --> P7a[Phase 7a: Custom functions<br/>use.functions]
   P7a --> P7b[Phase 7b: Catalogs +<br/>external resources]
@@ -83,7 +83,7 @@ Data flow is the foundation: retry/catch, extensions, and error handling all rea
 | **4** ✅ | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi | done — archived as `2026-10-05-workflow-auth` (21/21 tasks; live OAuth probe passed, see §4c) |
 | **4.1** | `basic`/`bearer` injected by a Wasm sidecar middleware; one merged Dapr Configuration per workload ([ADR 0010](../adr/0010-use-components-as-a-shared-store.md)) | controller, `charts/dws`, call-http, call-openapi, call-a2a, two new Wasm images (`dws-wasm-bearer`, `dws-wasm-basic`) | in progress — 4.1a, 4.1b done (`dws-controller` 1.2.0/1.2.1); 4.1c-bearer, 4.1c-basic, 4.1f, 4.1g next; see §4h |
 | **5** ✅ | gRPC, AsyncAPI call protocols | new `dws-call-grpc`, `dws-call-asyncapi` images | done — both slices archived (`2026-08-25-dws-call-grpc`, `2026-08-26-dws-call-asyncapi`); live-cluster integration test deferred, see §4e |
-| **5.5** (next) | A2A (Agent2Agent) call protocol | new `dws-call-a2a` image | design settled — [ADR 0004](../adr/0004-call-a2a-runner-design.md), §4f; not yet implemented |
+| **5.5** (next) | A2A (Agent2Agent) call protocol | new `dws-call-a2a` image | design settled — [ADR 0011](../adr/0011-call-a2a-runner-design.md), §4f; not yet implemented |
 | **6** (next, parallel) | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) | not started — independent of Phases 4/5, can run alongside 5.5 |
 | **7a** | Custom functions: `use.functions` and `call: <name>` with `with` arguments | controller (+ orchestrator if resolved at runtime) | not started — opsx, new capability; see §4g |
 | **7b** | Catalogs: `use.catalogs` and `call: <name>:<version>@<catalog>`; generalized external-resource fetching | controller | not started — opsx, new capability; needs 7a + Phase 4 auth; see §4g |
@@ -199,12 +199,12 @@ for it. Phase 5.5 and Phase 6 don't depend on it.
 
 ## 4f. Phase 5.5 design (A2A) — settled
 
-Full rationale in [ADR 0004](../adr/0004-call-a2a-runner-design.md). Reading the actual
+Full rationale in [ADR 0011](../adr/0011-call-a2a-runner-design.md). Reading the actual
 specifications inverted §4d's assumption that A2A was the hardest slice: the OWS `a2a` call is a
 **thin JSON-RPC passthrough** (`method` + free-form `parameters`), with no document parsing, no
 payload schema validation, and — for the `with.agentCard` RPC target — **no Kubernetes resource to
 synthesize** (the `with.server` RPC target synthesizes the same oauth2 middleware triple as `call:
-http`/`call: openapi` when the policy is oauth2; see ADR 0004 Decision 5's amendment). There is no
+http`/`call: openapi` when the policy is oauth2; see ADR 0011 Decision 5's amendment). There is no
 runtime-managed task lifecycle either: OWS binds one RPC per invocation,
 so polling, resumption after `input-required`, and escalation on `auth-required` are composed by the
 author from `switch`/`wait`/`then: <taskName>` that Phases 2–3 already shipped.
@@ -225,7 +225,7 @@ This is the first image built under the "new function images are born plain-HTTP
 [workflow-runtime-architecture-roadmap.md](workflow-runtime-architecture-roadmap.md).
 
 **Resolved:** retry idempotency. OWS `try`/`retry` re-invokes the step, and a fresh `messageId` per
-attempt most likely makes the agent start a duplicate task. ADR 0004 Decision 8 settles this with a
+attempt most likely makes the agent start a duplicate task. ADR 0011 Decision 8 settles this with a
 deterministic `messageId` (`uuid5` over instance/task/iteration) so a cooperative agent can
 recognise a retry, plus a no-default-retry activity policy in `dws-orchestrator`: `call: a2a` gets
 exactly one attempt unless the workflow author wraps it in an explicit `try`/`catch.retry`, which
@@ -238,7 +238,7 @@ falls back safely without were previously never actually sent by the orchestrato
 **Open, not blocking:** agent-call concurrency. A `for` over a large collection fans out to one
 agent invocation per item and Knative scales to meet it; agent calls are metered and rate-limited in
 a way the other protocols' targets are not. Whether the controller caps a2a step services or leaves
-pacing to the author is undecided — see ADR 0004's consequences.
+pacing to the author is undecided — see ADR 0011's consequences.
 
 Unlike Phases 4 and 5, Phase 5.5 needs **no live cluster** — a mock transport, an in-repo fake A2A
 server, and a CI conformance job against the official `a2a-sdk` server cover it end to end.

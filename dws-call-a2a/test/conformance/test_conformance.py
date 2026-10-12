@@ -1,7 +1,7 @@
 """Tier (c): drives this runner as a client against a real agent built from
 official `a2a-sdk` server components (`sdk_agent.py`). This is the oracle that
 catches a misreading `test/fake_server`'s hand-rolled mock could otherwise
-share with this runner's own client code (ADR 0004 Consequences).
+share with this runner's own client code (ADR 0011 Consequences).
 
 Runs entirely in-process via `httpx.ASGITransport` -- no separate server
 process, no network -- but every request/response byte is produced by the
@@ -120,7 +120,7 @@ async def test_modern_v1_0_dialect_against_real_sdk_server() -> None:
     """`enable_v0_3_compat=False`: the server speaks the modern protobuf-JSON
     dialect (`method: "SendMessage"`, states as `TASK_STATE_*`). This runner
     must still hand the workflow the same lowercase wire-form JSON regardless
-    -- proving the ADR 0004 Decision 3 normalization holds for *both*
+    -- proving the ADR 0011 Decision 3 normalization holds for *both*
     dialects, not just the legacy one every other test here exercises."""
     sdk_app = build_sdk_agent_app(enable_v0_3_compat=False)
     config = _config_for()

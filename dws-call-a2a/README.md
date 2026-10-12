@@ -3,7 +3,7 @@
 Prebuilt step image for `call: a2a` tasks in the DWS platform. One image serves every `call: a2a`
 step; all behavior is defined by environment configuration (see `CLAUDE.md` "Env var contract" for
 the full table). Design authority:
-[`docs/adr/0004-call-a2a-runner-design.md`](../docs/adr/0004-call-a2a-runner-design.md).
+[`docs/adr/0011-call-a2a-runner-design.md`](../docs/adr/0011-call-a2a-runner-design.md).
 
 ## Contract
 
@@ -58,7 +58,7 @@ client-credentials middleware injects the real token — this runner never sees 
 
 Card auth (`CARD_AUTH_SCHEME=none|basic|bearer`, no `oauth2` — the card fetch is plain HTTPS, not a
 Dapr service invocation) is validated against the resolved card's declared security requirements at
-boot, per a 5-case decision table (see `docs/adr/0004-call-a2a-runner-design.md` Decision 4 and
+boot, per a 5-case decision table (see `docs/adr/0011-call-a2a-runner-design.md` Decision 4 and
 `CLAUDE.md`'s notes on the one case the ADR's table doesn't explicitly cover). A card that requires
 authentication the runner isn't configured to provide fails the process at boot, not on the first
 request.
@@ -78,7 +78,7 @@ failure is a step failure.
 **No concurrency cap.** A `for` over a large collection with a `call: a2a` body fans out to one
 agent invocation per item, and Knative scales this step's pods out to meet demand with no
 `maxScale`/`containerConcurrency` limit imposed by this image or its deployment. Pacing is left
-entirely to the workflow author's `for`/`fork` shape (ADR 0004 Consequences: "not decided by this
+entirely to the workflow author's `for`/`fork` shape (ADR 0011 Consequences: "not decided by this
 ADR" whether the controller should cap this — as of writing, it doesn't). Agent calls are typically
 slower, more expensive, and more likely to be externally rate-limited than the HTTP APIs the
 sibling call kinds target, so an unbounded fan-out here is a more direct cost/throttling risk than
@@ -95,7 +95,7 @@ on the step's Knative Service (a chart/controller-level setting, not something t
 Retries (the author's `try`/`retry`, or the step-service contract's own `502`-triggers-orchestrator-
 retry) can invoke the same logical `message/send` more than once. A deterministic `messageId` gives
 a *cooperative* agent the ability to recognize a retry as the same request rather than a second,
-independent one — see `docs/adr/0004-call-a2a-runner-design.md` Decision 8 for the full rationale,
+independent one — see `docs/adr/0011-call-a2a-runner-design.md` Decision 8 for the full rationale,
 and `CLAUDE.md`'s "Known gap" section for why this doesn't fully work yet: the identifiers the
 derivation needs (workflow-instance-id, `for`-loop iteration index) aren't currently threaded onto
 a step service's `/run` request by `dws-orchestrator`, for any runner, not just this one. This

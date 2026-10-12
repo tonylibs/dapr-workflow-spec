@@ -1,16 +1,16 @@
 """Agent-card resolution and boot-time validation.
 
-ADR 0004 Decision 1: the card is always resolved by the runner itself, via
+ADR 0011 Decision 1: the card is always resolved by the runner itself, via
 `A2ACardResolver` over a runner-owned `httpx.AsyncClient`, never by passing a
 bare URL to `create_client`/`ClientFactory` (which would resolve the card with
 an httpx client the caller does not control -- the only place card-fetch
 credentials can be applied is here).
 
-ADR 0004 Decision 3: normalizes the protocol dialect -- selects the
+ADR 0011 Decision 3: normalizes the protocol dialect -- selects the
 `supported_interfaces` entry whose `protocol_binding` is `JSONRPC`, and fails
 as a configuration error naming which bindings *were* found when none exists.
 
-ADR 0004 Decision 4: the 5-case boot-time auth-validation decision table.
+ADR 0011 Decision 4: the 5-case boot-time auth-validation decision table.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ class ResolvedCard:
 
 
 def _card_auth(card_auth: CardAuthConfig | None, rpc_auth: AuthConfig) -> AuthConfig:
-    """Two endpoints, one credential by default (ADR 0004 Decision 4)."""
+    """Two endpoints, one credential by default (ADR 0011 Decision 4)."""
     return rpc_auth if card_auth is None else card_auth
 
 
@@ -97,7 +97,7 @@ async def _verify_card_sha256(client: httpx.AsyncClient, url: str, expected_sha2
 
 
 def select_jsonrpc_interface(card: AgentCard) -> AgentInterface:
-    """ADR 0004 Decision 3: pick the `supportedInterfaces` entry whose
+    """ADR 0011 Decision 3: pick the `supportedInterfaces` entry whose
     `protocolBinding` is `JSONRPC`; fail loudly, naming what *was* found, when
     none exists."""
     bindings_found: list[str] = []
@@ -108,12 +108,12 @@ def select_jsonrpc_interface(card: AgentCard) -> AgentInterface:
 
     raise ConfigError(
         "agent card declares no JSONRPC-bound interface in supportedInterfaces "
-        f"(only supported protocol_binding for call: a2a per ADR 0004 Decision 2/3); "
+        f"(only supported protocol_binding for call: a2a per ADR 0011 Decision 2/3); "
         f"bindings found: {bindings_found or '(none)'}"
     )
 
 
-# ADR 0004 Decision 4's boot-time decision table, cases 1/2/3/4. Case 5 (no
+# ADR 0011 Decision 4's boot-time decision table, cases 1/2/3/4. Case 5 (no
 # card at all, `SERVER_URL` used) is handled by the caller never invoking
 # this function for a `ServerTarget`.
 def validate_card_auth(card: AgentCard, rpc_auth: AuthConfig) -> None:
@@ -125,14 +125,14 @@ def validate_card_auth(card: AgentCard, rpc_auth: AuthConfig) -> None:
             raise ConfigError(
                 "agent card requires authentication "
                 f"({sorted(required_kinds)}) but no authentication is configured "
-                "(AUTH_SCHEME=none) -- failing at boot per ADR 0004 Decision 4 case 4"
+                "(AUTH_SCHEME=none) -- failing at boot per ADR 0011 Decision 4 case 4"
             )
         return  # case 3: absent + empty -> proceed unauthenticated
 
     if required_kinds and my_kind not in required_kinds:
         logger.warning(
             "configured auth scheme %r does not match any scheme the agent card "
-            "requires (%s) -- applying it anyway per ADR 0004 Decision 4 case 2 "
+            "requires (%s) -- applying it anyway per ADR 0011 Decision 4 case 2 "
             "('security' has OR semantics across multiple schemes)",
             my_kind,
             sorted(required_kinds),

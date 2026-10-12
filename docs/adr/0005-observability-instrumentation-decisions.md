@@ -11,12 +11,9 @@
   [ADR 0002](0002-workflow-compiler-strategy-split.md) (the `CompiledNode` shape Decision 1 reads
   identity from); [ADR 0003](0003-fork-as-a-flow-node.md) (`CompiledNode.nodeId()`, the source of
   `dws.node.id`).
-- **Note on the reference above:** two ADRs in this repo are numbered 0004 —
-  `0004-scope-nodes-carry-their-own-configuration.md` (2026-09-08) and
-  `0004-call-a2a-runner-design.md` (2026-09-15). This ADR references the former, by title, because
-  the number alone is ambiguous. The collision predates this ADR and is not resolved by it;
-  renumbering would break inbound links from the roadmap docs, their Notion mirrors and the
-  tracker. Flagged as a tracked follow-up.
+- **Note on the reference above:** the call-a2a ADR was originally also numbered 0004 and was
+  renumbered to [ADR 0011](0011-call-a2a-runner-design.md) on 2026-10-13, so "ADR 0004" now means
+  `0004-scope-nodes-carry-their-own-configuration.md` only.
 
 ## Context
 

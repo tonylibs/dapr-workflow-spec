@@ -49,7 +49,7 @@ async def build_app_state(
             transport=transport,
         )
     elif isinstance(config.target, ServerTarget):
-        # ADR 0004 Decision 4 case 5: no card, no auth-requirement check
+        # ADR 0011 Decision 4 case 5: no card, no auth-requirement check
         # possible. No `protocolVersion` signal exists either (there is no
         # card to declare one). `is_legacy_version(None)` resolves to the
         # *modern* dialect (matching the SDK's own default when an interface

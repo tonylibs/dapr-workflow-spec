@@ -1,7 +1,7 @@
 """Tier (c): a tiny real agent built with the *official* a2a-sdk server
 components (`AgentExecutor`, `TaskUpdater`, `DefaultRequestHandlerV2`,
 `create_jsonrpc_routes`, `create_agent_card_routes`). This is the oracle tier
-(ADR 0004 Consequences): unlike `test/fake_server/server.py` (hand-rolled JSON
+(ADR 0011 Consequences): unlike `test/fake_server/server.py` (hand-rolled JSON
 dicts, which encodes this project's own understanding of the wire format),
 every response here is serialized by the SDK's own server-side code, so a
 misreading in this runner's client-side code cannot also be baked into the

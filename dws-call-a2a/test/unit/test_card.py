@@ -51,7 +51,7 @@ def test_select_jsonrpc_interface_missing_names_found_bindings() -> None:
         select_jsonrpc_interface(card)
 
 
-# --- ADR 0004 Decision 4's boot-time decision table -------------------------
+# --- ADR 0011 Decision 4's boot-time decision table -------------------------
 
 
 def _card_requiring(scheme_type: str, scheme_name: str = "http") -> AgentCard:

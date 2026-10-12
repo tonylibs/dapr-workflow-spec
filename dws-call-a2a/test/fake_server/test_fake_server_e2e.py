@@ -99,7 +99,7 @@ async def test_auth_required_state_is_200() -> None:
 @pytest.mark.fake_server
 @pytest.mark.asyncio
 async def test_unknown_state_survives_round_trip() -> None:
-    """ADR 0004 Decision 3: `"unknown"` is a real, defined member of the wire
+    """ADR 0011 Decision 3: `"unknown"` is a real, defined member of the wire
     vocabulary (the A2A prose never mentions it, but the SDK's own v0.3
     compat `TaskState` enum does) -- an agent emitting it must not crash the
     runner. This is *not* the same as an agent emitting a truly arbitrary,
@@ -243,7 +243,7 @@ async def test_basic_auth_required_and_supplied() -> None:
 @pytest.mark.fake_server
 @pytest.mark.asyncio
 async def test_basic_auth_required_but_missing_fails_boot() -> None:
-    """ADR 0004 Decision 4 case 4: fails at boot (before `/run` is ever
+    """ADR 0011 Decision 4 case 4: fails at boot (before `/run` is ever
     served), not as a per-request upstream failure."""
     from dws_call_a2a.errors import ConfigError
 
@@ -268,7 +268,7 @@ async def test_bearer_auth_required_and_supplied() -> None:
 @pytest.mark.fake_server
 @pytest.mark.asyncio
 async def test_boot_fails_when_card_requires_auth_but_none_configured() -> None:
-    """ADR 0004 Decision 4 case 4: fails at boot, not at first request."""
+    """ADR 0011 Decision 4 case 4: fails at boot, not at first request."""
     from dws_call_a2a.errors import ConfigError
 
     fake_app = build_fake_agent_app(auth_requirement="bearer", expected_bearer="tok-123")
@@ -283,7 +283,7 @@ async def test_boot_fails_when_card_requires_auth_but_none_configured() -> None:
 @pytest.mark.fake_server
 @pytest.mark.asyncio
 async def test_server_url_target_skips_card_resolution_entirely() -> None:
-    """ADR 0004 Decision 4 case 5: `SERVER_URL` talks to the RPC endpoint
+    """ADR 0011 Decision 4 case 5: `SERVER_URL` talks to the RPC endpoint
     directly, no card fetch, no auth-requirement check possible."""
     fake_app = build_fake_agent_app()
     config = make_config(

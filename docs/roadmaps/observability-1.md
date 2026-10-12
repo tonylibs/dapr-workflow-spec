@@ -445,7 +445,7 @@ visibility actually arrives — it is deferred, not dropped, and Phase 7 cannot 
   the Knative-owned Deployment, downstream of that. If those are genuinely separate admission
   paths, the feature flag may not gate operator injection at all. Verify empirically with the
   flag off before assuming either way.
-- **`dws-call-a2a` (Python) post-dates the first draft of this roadmap.** Added by ADR 0004
+- **`dws-call-a2a` (Python) post-dates the first draft of this roadmap.** Added by ADR 0011
   (2026-09-15). Any per-stack count written before that date is stale.
 - **Knative + scale-to-zero cost.** Auto-injection adds an init container to every affected step
   pod. The dominant cost is pulling the autoinstrumentation image, which is cached per node, so
@@ -479,7 +479,7 @@ Verified against the repo at the time of writing. Each item changed something in
 | # | Finding | Evidence | Consequence |
 |---|---|---|---|
 | 1 | **Only step images are Knative Services.** `dws-orchestrator`, `dws-flow` and `dws-step` are ordinary Deployments | `StackSynthesizer.knativeServices()` iterates `plan.steps()` over the eight `TaskKind` values; `StackSynthesizer.orchestratorDeployment()` builds a Deployment | Phase 0-B(a) went from "blocks everything" to "blocks three images". Made the Track A / Track B split possible |
-| 2 | **`dws-call-a2a` is a Python 3 / FastAPI image** and was missing from this roadmap entirely | `dws-call-a2a/pyproject.toml`; ADR 0004, accepted 2026-09-15 — three days after this roadmap was drafted | Added to Scope; new Phase 0-B(d) on `inject-python`; every pre-2026-09-15 per-stack count in this doc was stale |
+| 2 | **`dws-call-a2a` is a Python 3 / FastAPI image** and was missing from this roadmap entirely | `dws-call-a2a/pyproject.toml`; ADR 0011, accepted 2026-09-15 — three days after this roadmap was drafted | Added to Scope; new Phase 0-B(d) on `inject-python`; every pre-2026-09-15 per-stack count in this doc was stale |
 | 3 | **Knative Serving emits OTLP natively** — queue-proxy metrics with no injection | `config-observability` keys `request-metrics-*`, `metrics-protocol`, `tracing-*`; `kn.serving.queue.depth`, `kn.serving.invocation.duration` | Added as a third layer. Scale-to-zero and queue depth have no other source. Adds a third sampling claimant and a chart-boundary question |
 | 4 | **Egress through Dapr happens only under `auth: oauth2`** | `runner.go` `if r.cfg.Auth.Scheme == config.AuthOAuth2`; `request.ts` `if (auth.oauth === undefined) return` direct; `auth.py` `if not isinstance(auth, OAuth2Auth): return url`. `HTTPEndpoint` synthesized by `StackSynthesizer.oauthHttpEndpoints()` with `middleware.http.oauth2clientcredentials` | Egress visibility currently depends on an unrelated auth choice. Raised as ADR candidate 6 |
 | 5 | **Dapr is not a transparent mesh** — the sidecar sees only what the app addresses to `localhost:3500` | Dapr service-invocation docs; non-Dapr endpoints reachable by `HTTPEndpoint` name *or* inline FQDN, no CRD required | Rules out "register as a Dapr app and get egress telemetry for free" |

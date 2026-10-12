@@ -6,7 +6,7 @@ import one.util.streamex.StreamEx;
 
 /**
  * The two identifying signals threaded through every task dispatch so {@code call: a2a}'s
- * deterministic {@code messageId} derivation (ADR 0004 Decision 8) has something stable to key off
+ * deterministic {@code messageId} derivation (ADR 0011 Decision 8) has something stable to key off
  * — independent of the durable-task child-instance machinery and of whatever jq variable names a
  * workflow author happens to choose.
  *

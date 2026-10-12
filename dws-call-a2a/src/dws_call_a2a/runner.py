@@ -2,7 +2,7 @@
 call the agent, and shape the result.
 
 `input-required`/`auth-required` task states are returned as **successful**
-results (ADR 0004 Decision 6) -- only a genuine transport/protocol failure
+results (ADR 0011 Decision 6) -- only a genuine transport/protocol failure
 (a JSON-RPC error response, a connection failure, a timeout) is an
 `UpstreamError`. There is no `OUTPUT=replace|merge` knob here: `A2AArguments`
 carries no data-flow output concept in the OWS schema (unlike the HTTP-shaped

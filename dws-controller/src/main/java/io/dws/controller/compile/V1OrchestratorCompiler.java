@@ -562,7 +562,7 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
       String daprType, String hostKey, String destinationKey, String userKey, String passwordKey) {}
 
   /**
-   * Supported {@code with.method} values for {@code call: a2a} (ADR 0004 Decision 2). Everything
+   * Supported {@code with.method} values for {@code call: a2a} (ADR 0011 Decision 2). Everything
    * else in the 11-value OWS enum -- the streaming pair, task administration, and the
    * authenticated-extended-card method -- is rejected at compile time rather than at runner boot.
    */
@@ -570,7 +570,7 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
       Set.of(A2AArguments.WithA2AMethod.MESSAGE_SEND, A2AArguments.WithA2AMethod.TASKS_GET);
 
   /**
-   * Compiles a {@code call: a2a} task. Per ADR 0004 Decision 5, this call kind synthesizes no
+   * Compiles a {@code call: a2a} task. Per ADR 0011 Decision 5, this call kind synthesizes no
    * binding {@code Component} (unlike {@link #asyncApiStep}) and, for the {@code with.agentCard}
    * RPC target, no OAuth2 {@code HTTPEndpoint} / middleware {@code Component} / scoped {@code
    * Configuration} either. For the {@code with.server} RPC target, though, those three OAuth2
@@ -598,7 +598,7 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
           taskName,
           "a2a method '"
               + method.value()
-              + "' is not supported; only 'message/send' and 'tasks/get' are (ADR 0004 Decision"
+              + "' is not supported; only 'message/send' and 'tasks/get' are (ADR 0011 Decision"
               + " 2)");
     }
 
@@ -626,7 +626,7 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
     Map<String, EnvValue> env = new LinkedHashMap<>();
     // dws-call-a2a requires TASK at boot (config.py's _required, no operationId-style fallback
     // like openApiStep's OPERATION_ID) -- it's used for /healthz/logging and as the taskName
-    // component of the ADR 0004 Decision 8 messageId derivation. Raw taskName, not
+    // component of the ADR 0011 Decision 8 messageId derivation. Raw taskName, not
     // Names.kebab(taskName): the runner treats it as an opaque string, not the app-id.
     env.put("TASK", new EnvValue.Literal(taskName));
     // Per the OWS schema, 'server' wins silently when both are declared -- 'agentCard' is then

@@ -1,6 +1,6 @@
 """Builds the a2a-sdk `Client` used for the actual JSON-RPC RPC call.
 
-Restricted to the JSONRPC transport only (ADR 0004 Decision 2/3 -- `call: a2a`
+Restricted to the JSONRPC transport only (ADR 0011 Decision 2/3 -- `call: a2a`
 never speaks gRPC or REST). Constructed directly from `BaseClient` + a
 JSON-RPC transport rather than via `create_client()`/`ClientFactory`, for two
 reasons:

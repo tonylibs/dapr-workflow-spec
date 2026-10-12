@@ -9,7 +9,7 @@ in the repo root [`CLAUDE.md`](../CLAUDE.md). This file is dws-call-a2a-specific
 convention to inherit here. Everything in "Toolchain" below is this package's own decision, not
 an established repo-wide standard (yet).
 
-Design authority: [`docs/adr/0004-call-a2a-runner-design.md`](../docs/adr/0004-call-a2a-runner-design.md).
+Design authority: [`docs/adr/0011-call-a2a-runner-design.md`](../docs/adr/0011-call-a2a-runner-design.md).
 Read it before changing behavior here — this file only covers idioms and things the ADR doesn't
 say (or says slightly differently than the shipped `a2a-sdk` actually behaves — see "ADR
 verification notes" below).
@@ -24,7 +24,7 @@ verification notes" below).
 | Test framework | [`pytest`](https://docs.pytest.org/) + `pytest-asyncio` (`asyncio_mode = "auto"`) + `pytest-cov` | Standard choice; `asyncio_mode = "auto"` means `async def test_...()` functions don't need `@pytest.mark.asyncio` explicitly (kept on tests anyway here as a readability marker, not a requirement). |
 | Mock-transport tier | [`respx`](https://lundberg.github.io/respx/) is a declared dev dependency, but tier (a) tests mostly use plain `httpx.MockTransport` directly | `httpx.MockTransport` gives full control via a single handler function and needs no extra API surface for this package's small number of mocked endpoints (card fetch, RPC call); `respx` is kept available for anyone adding pattern-based multi-route mocking later, but wasn't needed for what's here. |
 | jq binding | [`jq` (PyPI) 1.12.0](https://pypi.org/project/jq/), i.e. `mwilliamson/jq.py` | Bundles `libjq` statically with prebuilt wheels for manylinux/macOS/Windows — no C toolchain needed in the runtime image, unlike binding options that compile against a system `libjq`. Chosen over shelling out to a system `jq` CLI binary (`subprocess`) to avoid a second runtime dependency in the Docker image and avoid string-escaping a jq program through a shell. |
-| Web framework | FastAPI 0.141.1 + `uvicorn[standard]` | Matches ADR 0004 Decision 1 exactly: the a2a-sdk client is async end to end, so a WSGI framework would force `asyncio.run()` per request. `a2a-sdk[fastapi]` extra is pinned as a dependency (used only by the *test* tier's conformance agent, `test/conformance/sdk_agent.py`, to build a real SDK-backed server — the runner itself never imports `a2a.server.*`). |
+| Web framework | FastAPI 0.141.1 + `uvicorn[standard]` | Matches ADR 0011 Decision 1 exactly: the a2a-sdk client is async end to end, so a WSGI framework would force `asyncio.run()` per request. `a2a-sdk[fastapi]` extra is pinned as a dependency (used only by the *test* tier's conformance agent, `test/conformance/sdk_agent.py`, to build a real SDK-backed server — the runner itself never imports `a2a.server.*`). |
 
 Python version: `>=3.13`. Matches this repo's general "run the current stable major" convention
 (Go 1.26, Node 24, Java 25, .NET 10) without pinning to the very newest (3.14) given the a2a-sdk
@@ -56,7 +56,7 @@ unit + fake-server (`pytest -m "not conformance"`).
 
 ## ADR verification notes
 
-Several claims in `docs/adr/0004-call-a2a-runner-design.md` were re-checked against the actual
+Several claims in `docs/adr/0011-call-a2a-runner-design.md` were re-checked against the actual
 pinned `a2a-sdk==1.1.2` package (introspected directly, not from memory or docs) before writing any
 code against them, per the task brief's instruction to verify rather than trust ADR prose. Two
 held exactly; three needed adjustment to how the code is structured (not to what the ADR decided —
@@ -153,7 +153,7 @@ runner's. See `test/fake_server/test_fake_server_e2e.py::test_non_conformant_sta
 ### Two real bugs found only by tier (c) (the conformance job), not by unit tests or the hand-written fake server
 
 Both are documented in the code (`test/conformance/sdk_agent.py`, `src/dws_call_a2a/client.py`) and
-repeated here because they're exactly the kind of thing ADR 0004's Consequences section predicts
+repeated here because they're exactly the kind of thing ADR 0011's Consequences section predicts
 tier (c) exists to catch:
 
 1. The official `AgentExecutor`/`TaskUpdater` framework rejects the *first* `TaskStatusUpdateEvent`
@@ -170,7 +170,7 @@ tier (c) exists to catch:
    call failed server-side with `Version mismatch: actual='0.3', expected='1.0'` until `client.py`
    was fixed to set the same default header `ClientFactory` sets.
 
-## `messageId` dedupe (ADR 0004 Decision 8): the cross-component gap is closed, with one residual limitation
+## `messageId` dedupe (ADR 0011 Decision 8): the cross-component gap is closed, with one residual limitation
 
 Decision 8's formula is `uuid5(DWS_NAMESPACE, f"{workflowInstanceId}/{taskName}/{iterationIndex}")`.
 This package does **not** invent a workaround that pretends to be correct. `message_id.py` defines
@@ -209,7 +209,7 @@ dispatches (verified against the code, not assumed):
 from `ctx.getInstanceId()` and `iterationIndexOf(variables)` respectively
 (`.../workflow/InterpreterWorkflow.java`). Sent for every call kind on that activity's path
 (openapi/grpc/asyncapi/a2a), not only a2a — harmless for the others. See
-`docs/adr/0004-call-a2a-runner-design.md`'s Consequences section for the authoritative description
+`docs/adr/0011-call-a2a-runner-design.md`'s Consequences section for the authoritative description
 of this orchestrator-side change.
 
 What that means for the two headers in practice, precisely — don't overstate either direction:

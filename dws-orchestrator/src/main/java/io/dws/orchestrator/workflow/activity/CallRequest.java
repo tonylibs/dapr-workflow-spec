@@ -10,7 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
  * <p>{@code workflowInstanceId} and {@code iterationIndex} exist solely so the activity can carry
  * them as outbound HTTP headers ({@code X-Dws-Workflow-Instance-Id} / {@code X-Dws-Iteration-Index}
  * — see {@link CallServiceActivity}) for {@code call: a2a}'s deterministic {@code messageId}
- * derivation (ADR 0004 Decision 8): {@code workflowInstanceId} is always populated — it is the
+ * derivation (ADR 0011 Decision 8): {@code workflowInstanceId} is always populated — it is the
  * <em>root</em> workflow instance id threaded through {@link
  * io.dws.orchestrator.workflow.DispatchContext}, not necessarily whatever {@code
  * ctx.getInstanceId()} the dispatching child instance would report for itself — while {@code

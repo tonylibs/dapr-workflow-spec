@@ -21,7 +21,7 @@ the string; every other leaf -- including a plain literal string that merely
 *contains* `${` somewhere without wrapping the whole value -- passes through
 unchanged. There is deliberately no partial/template interpolation.
 
-`call: a2a` has no schema validation at all (ADR 0004 Decision 1), so the
+`call: a2a` has no schema validation at all (ADR 0011 Decision 1), so the
 guard here -- reject a non-object result before it reaches the agent -- is
 the *only* thing standing between a malformed jq expression and a nonsense
 JSON-RPC `params` value reaching the agent.
@@ -34,7 +34,7 @@ see `validate_no_env_access`). Without this guard, a DSL author's
 credentials (`AUTH_TOKEN`, `AUTH_PASSWORD`, ...) and place them directly in
 the outbound JSON-RPC request, or echo them back into the workflow's data
 document -- bypassing the `use.secrets`/`$secrets` scoping this repository
-otherwise enforces for `call` tasks (ADR 0004 Decision 6). Because object-form
+otherwise enforces for `call` tasks (ADR 0011 Decision 6). Because object-form
 expressions can now be nested at any depth, this guard walks the same
 recursive structure `evaluate_parameters` does, checking every
 `${...}`-wrapped string's inner text at every depth, not just the top level.

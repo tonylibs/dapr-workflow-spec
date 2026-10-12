@@ -1,7 +1,10 @@
-# ADR 0004: `call: a2a` Runner Design
+# ADR 0011: `call: a2a` Runner Design
 
 - **Status:** Accepted
 - **Date:** 2026-09-15
+- **Renumbered:** was ADR 0004 until 2026-10-13, when it moved to 0011 to end a number clash with
+  [ADR 0004](0004-scope-nodes-carry-their-own-configuration.md). Code comments, tests and docs that
+  cite this decision as "ADR 0004 Decision N" were updated to "ADR 0011".
 - **Context:** [`docs/roadmaps/openworkflow-features.md`](../roadmaps/openworkflow-features.md)
   Phase 5.5 (A2A protocol), split out of Phase 5 by §4d
 - **Related:** [ADR 0001](0001-workflow-runtime-v2-decisions.md) Decision 2 (uniform Step layer —

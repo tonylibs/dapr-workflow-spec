@@ -28,5 +28,5 @@ class UpstreamError(Exception):
 
     Maps to HTTP 502 per the shared step-service contract, so the orchestrator's
     retry policy re-invokes the step. `input-required`/`auth-required` task
-    states are NOT this -- they are successful results (ADR 0004 Decision 6).
+    states are NOT this -- they are successful results (ADR 0011 Decision 6).
     """

@@ -27,7 +27,7 @@ public class CallServiceActivity implements WorkflowActivity {
 
   /**
    * Carries {@link CallRequest#workflowInstanceId()} on every outbound call, matching {@code
-   * dws-call-a2a}'s {@code message_id.WORKFLOW_INSTANCE_ID_HEADER} (ADR 0004 Decision 8's
+   * dws-call-a2a}'s {@code message_id.WORKFLOW_INSTANCE_ID_HEADER} (ADR 0011 Decision 8's
    * deterministic {@code messageId} derivation). Sent for every call kind on this activity's path
    * (openapi/grpc/asyncapi/a2a), not only a2a — harmless for the others, and needs no further
    * orchestrator change if a future runner wants it too.

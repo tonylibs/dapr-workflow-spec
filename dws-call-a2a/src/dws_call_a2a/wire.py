@@ -6,7 +6,7 @@ Why two type systems: `a2a-sdk` 1.1.2's top-level `a2a.types` is entirely
 protobuf-generated (`SendMessageRequest.message`, `Role.ROLE_USER`,
 `TaskState.TASK_STATE_WORKING`, ...) -- see `CLAUDE.md` "ADR verification
 notes" for how this was confirmed and why it differs from what
-`docs/adr/0004-call-a2a-runner-design.md` reads as. The pydantic models that
+`docs/adr/0011-call-a2a-runner-design.md` reads as. The pydantic models that
 match the OWS/JSON-RPC wire vocabulary the ADR describes (`Message.messageId`,
 `MessageSendParams`, `TaskQueryParams`, `TaskState.working` == `"working"`,
 ...) live at `a2a.compat.v0_3.types`, an SDK-internal module explicitly
@@ -40,7 +40,7 @@ def build_send_message_request(
     iteration_index: str | None,
 ) -> SendMessageRequest:
     """Validates `evaluated_params` as a `MessageSendParams`-shaped object
-    (the guard: ADR 0004 Decision 1's "no schema validation at all" note),
+    (the guard: ADR 0011 Decision 1's "no schema validation at all" note),
     injecting the OWS-normative `message.messageId`/`message.role` defaults
     when the author didn't supply them, then converts to the core pb2 request
     the `Client` speaks.
@@ -84,7 +84,7 @@ def build_get_task_request(
     evaluated_params: dict[str, Any], *, include_history: bool
 ) -> GetTaskRequest:
     """Validates `evaluated_params` as a `TaskQueryParams`-shaped object, then
-    forces `historyLength: 0` unless `INCLUDE_HISTORY=true` (ADR 0004
+    forces `historyLength: 0` unless `INCLUDE_HISTORY=true` (ADR 0011
     Decision 6's primary history-suppression mechanism)."""
     params = dict(evaluated_params)
     if not include_history:

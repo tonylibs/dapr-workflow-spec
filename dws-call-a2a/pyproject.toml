@@ -5,7 +5,7 @@ description = "Prebuilt step image for `call: a2a` tasks in the DWS platform. On
 requires-python = ">=3.13"
 license = { text = "Apache-2.0" }
 dependencies = [
-  # Pinned exact per docs/adr/0004-call-a2a-runner-design.md Decision 1. Verified
+  # Pinned exact per docs/adr/0011-call-a2a-runner-design.md Decision 1. Verified
   # against the real PyPI package on 2026-09-16 (see dws-call-a2a/CLAUDE.md).
   "a2a-sdk[fastapi]==1.1.2",
   "fastapi==0.141.1",
