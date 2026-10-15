@@ -1,0 +1,27 @@
+name: context/for-threads
+area: context
+summary: Inside for, the context exported by one iteration is the next iteration's context, and the last one leaves the loop.
+source: ADR 0012 Decision 5 (for). OWS 1.0.0 is silent on context across for iterations.
+uses: [for, set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: for-threads, version: '1.0.0' }
+  do:
+    - loop:
+        for:
+          each: item
+          in: '${ .items }'
+        do:
+          - tally:
+              set:
+                items: '${ .items }'
+              export:
+                as: '${ { count: (($context.count // 0) + 1), seenBefore: ($context.count // 0) } }'
+    - after:
+        set:
+          items: '${ .items }'
+        output:
+          as: '${ { count: $context.count } }'
+input: { items: [a, b, c] }
+expect:
+  output: { count: 3 }
+  context: { count: 3, seenBefore: 2 }

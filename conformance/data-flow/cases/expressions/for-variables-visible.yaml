@@ -1,0 +1,25 @@
+name: expressions/for-variables-visible
+area: expressions
+summary: The for.each and for.at variables are visible to the data-flow expressions of a task inside the loop.
+source: OWS 1.0.0 dsl-reference.md For (for.each, for.at); workflow-data-flow spec (from/as are runtime expressions).
+uses: [for, set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: for-variables-visible, version: '1.0.0' }
+  do:
+    - loop:
+        for:
+          each: fruit
+          at: i
+          in: '${ .fruits }'
+        do:
+          - visit:
+              set:
+                fruits: '${ .fruits }'
+              output:
+                as: '${ { fruits: .fruits, last: { fruit: $fruit, at: $i } } }'
+              export:
+                as: '${ $context + { ($fruit): $i } }'
+input: { fruits: [apple, pear] }
+expect:
+  output: { fruits: [apple, pear], last: { fruit: pear, at: 1 } }
+  context: { apple: 0, pear: 1 }

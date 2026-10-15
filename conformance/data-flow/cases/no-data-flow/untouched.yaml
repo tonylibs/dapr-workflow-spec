@@ -1,0 +1,28 @@
+name: no-data-flow/untouched
+area: no-data-flow
+summary: A task with no input, output or export receives the previous output unchanged, passes its own output on unchanged and leaves the context alone.
+source: workflow-data-flow spec, scenario "Task without data flow is unchanged"; ADR 0012 Decision 1 (a handler is installed only when the task declares its section).
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: untouched, version: '1.0.0' }
+  do:
+    - first:
+        set:
+          order: '${ .order }'
+        output:
+          as: '${ { order: .order, step: 1 } }'
+        export:
+          as: '${ { seen: true } }'
+    - plain:
+        set:
+          order: '${ .order }'
+          step: '${ .step }'
+          received: '${ . }'
+input:
+  order: { id: o-1 }
+expect:
+  output:
+    order: { id: o-1 }
+    step: 1
+    received: { order: { id: o-1 }, step: 1 }
+  context: { seen: true }

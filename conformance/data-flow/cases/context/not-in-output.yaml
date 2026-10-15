@@ -1,0 +1,20 @@
+name: context/not-in-output
+area: context
+summary: The completion output is the last task's output only; the context never appears in it.
+source: workflow-data-flow spec, scenario "Context is not part of completion output"; ADR 0012 Decision 5 (start / end).
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: not-in-output, version: '1.0.0' }
+  do:
+    - stash:
+        set:
+          value: '${ .value }'
+        export:
+          as: '${ { token: "abc", value: .value } }'
+    - finish:
+        set:
+          value: '${ .value + 1 }'
+input: { value: 1 }
+expect:
+  output: { value: 2 }
+  context: { token: abc, value: 1 }

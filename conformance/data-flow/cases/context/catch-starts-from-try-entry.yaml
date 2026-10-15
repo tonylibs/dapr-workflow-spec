@@ -1,0 +1,39 @@
+name: context/catch-starts-from-try-entry
+area: context
+summary: catch.do starts from the context that entered the try; an export made in the try body before the failure is discarded.
+source: >-
+  ADR 0012 Decision 5 reading: the try body returns its context only when it completes; a failed body
+  returns nothing, so catch.do starts from the try's incoming context. Neither OWS 1.0.0 nor the ADR
+  states this case explicitly.
+uses: [raise, set, try]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: catch-starts-from-try-entry, version: '1.0.0' }
+  do:
+    - before:
+        set:
+          n: '${ .n }'
+        export:
+          as: '${ { stage: "before" } }'
+    - guarded:
+        try:
+          - inside:
+              set:
+                n: '${ .n }'
+              export:
+                as: '${ { stage: "inside" } }'
+          - fail:
+              raise:
+                error:
+                  type: https://example.com/errors/conflict
+                  status: 409
+        catch:
+          do:
+            - recover:
+                set:
+                  n: '${ .n }'
+                output:
+                  as: '${ { ctxSeen: $context } }'
+input: { n: 1 }
+expect:
+  output: { ctxSeen: { stage: before } }
+  context: { stage: before }

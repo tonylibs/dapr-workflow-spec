@@ -1,0 +1,30 @@
+name: structural/for-pipeline
+area: structural
+summary: A for task's own input.from, output.as and export.as wrap the whole loop; for.in sees the transformed input.
+source: workflow-data-flow spec, requirement "Per-task data-flow pipeline" (uniformly for every task type); ADR 0012 Decision 3 (structural tasks).
+uses: [for, set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: for-pipeline, version: '1.0.0' }
+  do:
+    - sum:
+        input:
+          from: '${ { lines: .order.lines, total: 0 } }'
+        for:
+          each: line
+          in: '${ .lines }'
+        do:
+          - add:
+              set:
+                lines: '${ .lines }'
+                total: '${ .total + $line.qty }'
+        output:
+          as: '${ { total: .total } }'
+        export:
+          as: '${ { summed: .total } }'
+input:
+  order:
+    id: o-1
+    lines: [{ qty: 2 }, { qty: 3 }]
+expect:
+  output: { total: 5 }
+  context: { summed: 5 }

@@ -1,0 +1,13 @@
+# Known divergences of v1 (dws-orchestrator) from the shared data-flow corpus.
+#
+# A case listed here still runs on every build. The v1 runner reports it as a known divergence while
+# v1 disagrees with the expected result, and fails the build once v1 agrees, so the entry is removed
+# by the change that fixes it. Never edit a case's expectation to make v1 pass.
+#
+# followUp: 5.1 (v1 conformance, schema dialect) or 5.2 (jq builtin policy in v1), see
+# docs/roadmaps/workflow-runtime-architecture-roadmap.md, "ADR 0012 integration".
+runtime: v1 (dws-orchestrator)
+divergences:
+  - case: builtins/clock-local-time
+    reason: jackson-jq 1.2.0 does not implement jq 1.6's todate/fromdate/gmtime/mktime/strftime/localtime, which Decision 9 allows
+    followUp: '5.2'

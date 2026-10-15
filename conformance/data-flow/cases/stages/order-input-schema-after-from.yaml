@@ -1,0 +1,29 @@
+name: stages/order-input-schema-after-from
+area: stages
+summary: input.schema validates the input produced by input.from, not the raw input (v1's order).
+source: >-
+  ADR 0012 Context diagram and workflow-data-flow spec ("transform input (input.from), validate input
+  (input.schema)"), both v1's order, which the corpus adopts. OWS 1.0.0 dsl.md Data Flow step 3 says
+  the opposite: input.schema validates the raw input before input.from. Under OWS order this case
+  would fault in the input phase.
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: order-input-schema-after-from, version: '1.0.0' }
+  do:
+    - charge:
+        input:
+          from: '${ { amount: .price } }'
+          schema:
+            format: json
+            document:
+              type: object
+              properties:
+                amount: { type: number }
+              required: [amount]
+              additionalProperties: false
+        set:
+          amount: '${ .amount }'
+input: { price: 7, note: raw input has no amount }
+expect:
+  output: { amount: 7 }
+  context: {}

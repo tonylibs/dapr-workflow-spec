@@ -1,0 +1,19 @@
+name: builtins/clock-now
+area: builtins
+summary: now and the ISO-8601 date functions stay allowed in data-flow expressions.
+source: >-
+  ADR 0012 Decision 9 ("now and the local-time functions: allow"). Expected values computed with jq 1.7.
+engine: jackson-jq 1.2.0 implements now, todateiso8601 and fromdateiso8601.
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: clock-now, version: '1.0.0' }
+  do:
+    - stamp:
+        set:
+          value: '${ .value }'
+        output:
+          as: '${ { nowType: (now | type), positive: (now > 0), epoch: (0 | todateiso8601), parsed: ("1970-01-02T00:00:00Z" | fromdateiso8601) } }'
+input: { value: 1 }
+expect:
+  output: { nowType: number, positive: true, epoch: '1970-01-01T00:00:00Z', parsed: 86400 }
+  context: {}

@@ -1,0 +1,27 @@
+name: faults/output-schema
+area: faults
+summary: A non-conforming output faults the task in the output phase, naming a nested offending location.
+source: workflow-data-flow spec, scenario "Validation failure names the offending field"; OWS 1.0.0 dsl.md Data Flow step 6.
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: output-schema-fault, version: '1.0.0' }
+  do:
+    - pack:
+        set:
+          items: '${ .items }'
+        output:
+          schema:
+            format: json
+            document:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      qty: { type: integer, minimum: 1 }
+input:
+  items: [{ qty: 1 }, { qty: 0 }]
+expect:
+  fault: { task: pack, phase: output, location: /items/1/qty }

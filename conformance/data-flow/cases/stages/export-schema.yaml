@@ -1,0 +1,28 @@
+name: stages/export-schema
+area: stages
+summary: export.schema without export.as validates the existing context, which is kept as it is.
+source: OWS 1.0.0 dsl-reference.md Export ("as ... defaults to the expression that returns the existing context") and dsl.md Data Flow step 8.
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: export-schema, version: '1.0.0' }
+  do:
+    - seed:
+        set:
+          count: '${ .count }'
+        export:
+          as: '${ { count: .count } }'
+    - check:
+        set:
+          count: '${ .count + 1 }'
+        export:
+          schema:
+            format: json
+            document:
+              type: object
+              properties:
+                count: { type: integer }
+              required: [count]
+input: { count: 1 }
+expect:
+  output: { count: 2 }
+  context: { count: 1 }

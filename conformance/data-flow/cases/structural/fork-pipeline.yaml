@@ -1,0 +1,28 @@
+name: structural/fork-pipeline
+area: structural
+summary: A fork task's own input.from, output.as and export.as wrap the join; output.as sees the branch outputs in declared order.
+source: workflow-data-flow spec, requirement "Per-task data-flow pipeline"; ADR 0012 Decisions 3 and 5 (fork); OWS 1.0.0 dsl-reference.md Fork (compete false).
+uses: [fork, set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: fork-pipeline, version: '1.0.0' }
+  do:
+    - split:
+        input:
+          from: '${ { n: .value } }'
+        fork:
+          compete: false
+          branches:
+            - double:
+                set:
+                  n: '${ .n * 2 }'
+            - triple:
+                set:
+                  n: '${ .n * 3 }'
+        output:
+          as: '${ { results: map(.n) } }'
+        export:
+          as: '${ { forked: (.results | length) } }'
+input: { value: 2 }
+expect:
+  output: { results: [4, 6] }
+  context: { forked: 2 }
