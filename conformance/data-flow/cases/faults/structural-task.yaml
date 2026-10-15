@@ -1,0 +1,21 @@
+name: faults/structural-task
+area: faults
+summary: A failing output.as on a for task faults the for task itself, naming it and the output phase.
+source: workflow-data-flow spec, requirement "Minimal data-flow fault signal" (every task type); ADR 0012 Decisions 3 and 7.
+uses: [for, set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: structural-task-fault, version: '1.0.0' }
+  do:
+    - loop:
+        for:
+          each: item
+          in: '${ .items }'
+        do:
+          - touch:
+              set:
+                items: '${ .items }'
+        output:
+          as: '${ { count: (.items | length | ascii_downcase) } }'
+input: { items: [a, b] }
+expect:
+  fault: { task: loop, phase: output }

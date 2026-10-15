@@ -1,0 +1,28 @@
+name: builtins/clock-local-time
+area: builtins
+summary: The jq 1.6 date and local-time functions (todate, fromdate, gmtime, mktime, strftime, localtime) stay allowed.
+source: >-
+  ADR 0012 Decision 9 ("now and the local-time functions: allow"). Expected values computed with jq 1.7; localtime is checked by type only because its value depends on the time zone.
+engine: >-
+  jackson-jq 1.2.0 does not implement todate, fromdate, gmtime, mktime, strftime, strptime,
+  localtime, strflocaltime or dateadd ("Function todate/0 does not exist"). Allowing them in the
+  policy does not make them available: a runtime on this engine fails this case until it adds them.
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: clock-local-time, version: '1.0.0' }
+  do:
+    - stamp:
+        set:
+          value: '${ .value }'
+        output:
+          as: '${ { todate: (0 | todate), fromdate: ("1970-01-02T00:00:00Z" | fromdate), gmtime: (0 | gmtime), mktime: (0 | gmtime | mktime), strftime: (0 | strftime("%Y-%m-%dT%H:%M:%SZ")), localtimeType: (0 | localtime | type) } }'
+input: { value: 1 }
+expect:
+  output:
+    todate: '1970-01-01T00:00:00Z'
+    fromdate: 86400
+    gmtime: [1970, 0, 1, 0, 0, 0, 4, 0]
+    mktime: 0
+    strftime: '1970-01-01T00:00:00Z'
+    localtimeType: array
+  context: {}

@@ -1,0 +1,18 @@
+name: stages/input-from
+area: stages
+summary: input.from alone narrows the data the task body receives.
+source: workflow-data-flow spec, scenario "Input transform feeds the task body"; OWS 1.0.0 dsl.md Data Flow step 4.
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: input-from, version: '1.0.0' }
+  do:
+    - double:
+        input:
+          from: '${ { amount: .order.price } }'
+        set:
+          amount: '${ .amount * 2 }'
+input:
+  order: { id: o-1, price: 5 }
+expect:
+  output: { amount: 10 }
+  context: {}

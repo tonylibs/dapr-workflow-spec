@@ -1,0 +1,26 @@
+name: expressions/catch-default-variable
+area: expressions
+summary: Without catch.as, the caught error is visible to data-flow expressions as $error.
+source: OWS 1.0.0 dsl-reference.md Try (catch.as "Defaults to 'error'").
+uses: [raise, set, try]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: catch-default-variable, version: '1.0.0' }
+  do:
+    - guarded:
+        try:
+          - fail:
+              raise:
+                error:
+                  type: https://example.com/errors/conflict
+                  status: 409
+        catch:
+          do:
+            - recover:
+                set:
+                  value: '${ .value }'
+                output:
+                  as: '${ { status: $error.status } }'
+input: { value: 1 }
+expect:
+  output: { status: 409 }
+  context: {}

@@ -1,0 +1,44 @@
+name: context/fork-snapshot
+area: context
+summary: Each fork branch reads the incoming context as a snapshot; branch exports are discarded and the fork returns the incoming context.
+source: ADR 0012 Decision 5 (fork). OWS 1.0.0 dsl-reference.md Fork (non-compete output is the branch outputs in declared order); OWS is silent on context across branches.
+uses: [fork, set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: fork-snapshot, version: '1.0.0' }
+  do:
+    - before:
+        set:
+          n: '${ .n }'
+        export:
+          as: '${ { origin: "before" } }'
+    - split:
+        fork:
+          compete: false
+          branches:
+            - left:
+                set:
+                  n: '${ .n }'
+                output:
+                  as: '${ { branch: "left", saw: $context.origin } }'
+                export:
+                  as: '${ { origin: "left" } }'
+            - right:
+                set:
+                  n: '${ .n }'
+                output:
+                  as: '${ { branch: "right", saw: $context.origin } }'
+                export:
+                  as: '${ { origin: "right" } }'
+    - after:
+        set:
+          branches: '${ . }'
+        output:
+          as: '${ { branches: .branches, origin: $context.origin } }'
+input: { n: 1 }
+expect:
+  output:
+    branches:
+      - { branch: left, saw: before }
+      - { branch: right, saw: before }
+    origin: before
+  context: { origin: before }

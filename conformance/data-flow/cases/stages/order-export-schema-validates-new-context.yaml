@@ -1,0 +1,24 @@
+name: stages/order-export-schema-validates-new-context
+area: stages
+summary: export.schema validates the context produced by export.as, not the context that existed before it.
+source: OWS 1.0.0 dsl.md Data Flow step 8 ("After the context is updated, the exported context is validated").
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: order-export-schema-validates-new-context, version: '1.0.0' }
+  do:
+    - charge:
+        set:
+          reference: '${ .reference }'
+        export:
+          as: '${ { charged: .reference } }'
+          schema:
+            format: json
+            document:
+              type: object
+              properties:
+                charged: { type: string }
+              required: [charged]
+input: { reference: r-1 }
+expect:
+  output: { reference: r-1 }
+  context: { charged: r-1 }

@@ -1,0 +1,24 @@
+name: stages/output-schema
+area: stages
+summary: output.schema alone validates a conforming output, which flows on unchanged.
+source: workflow-data-flow spec, requirement "JSON Schema validation of input and output"; OWS 1.0.0 dsl.md Data Flow step 6.
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: output-schema, version: '1.0.0' }
+  do:
+    - total:
+        set:
+          price: '${ .price }'
+          total: '${ .price * 2 }'
+        output:
+          schema:
+            format: json
+            document:
+              type: object
+              properties:
+                total: { type: number }
+              required: [total]
+input: { price: 5 }
+expect:
+  output: { price: 5, total: 10 }
+  context: {}

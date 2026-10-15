@@ -1,0 +1,19 @@
+name: unsupported/output-schema-external
+area: unsupported
+summary: An external output.schema resource fails the task, naming the external form. The resource is never fetched.
+source: workflow-data-flow spec, scenario "Unsupported schema form is rejected"; ADR 0012 Decision 8.
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: output-schema-external, version: '1.0.0' }
+  do:
+    - emitOrder:
+        set:
+          id: '${ .id }'
+        output:
+          schema:
+            format: json
+            resource:
+              endpoint: https://schemas.example.com/order.json
+input: { id: o-1 }
+expect:
+  fault: { task: emitOrder, phase: output, detailContains: [external] }

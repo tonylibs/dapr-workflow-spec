@@ -1,0 +1,17 @@
+name: stages/export-as
+area: stages
+summary: export.as alone writes the context and leaves the task's output unchanged.
+source: workflow-data-flow spec, requirement "Workflow context document persists across tasks"; OWS 1.0.0 dsl.md Data Flow step 7.
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: export-as, version: '1.0.0' }
+  do:
+    - remember:
+        set:
+          orderId: '${ .orderId }'
+        export:
+          as: '${ { lastOrder: .orderId } }'
+input: { orderId: o-1 }
+expect:
+  output: { orderId: o-1 }
+  context: { lastOrder: o-1 }

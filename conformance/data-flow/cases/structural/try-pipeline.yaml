@@ -1,0 +1,29 @@
+name: structural/try-pipeline
+area: structural
+summary: A try task's own input.from, output.as and export.as wrap its body; its export.as sees the context the body returned.
+source: workflow-data-flow spec, requirement "Per-task data-flow pipeline"; ADR 0012 Decisions 3 and 5 (try body).
+uses: [set, try]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: try-pipeline, version: '1.0.0' }
+  do:
+    - guarded:
+        input:
+          from: '${ { v: .value } }'
+        try:
+          - inner:
+              set:
+                v: '${ .v + 1 }'
+              export:
+                as: '${ { inner: .v } }'
+        catch:
+          errors:
+            with:
+              type: https://example.com/errors/never-raised
+        output:
+          as: '${ { result: .v } }'
+        export:
+          as: '${ $context + { outer: .result } }'
+input: { value: 1 }
+expect:
+  output: { result: 2 }
+  context: { inner: 2, outer: 2 }

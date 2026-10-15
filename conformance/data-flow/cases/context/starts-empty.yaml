@@ -1,0 +1,19 @@
+name: context/starts-empty
+area: context
+summary: The context is an empty object, not null, before any export has run.
+source: workflow-data-flow spec, scenario "Context starts as an empty object"; ADR 0012 Decision 5 (start / end).
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: starts-empty, version: '1.0.0' }
+  do:
+    - peek:
+        input:
+          from: '${ { before: $context } }'
+        set:
+          before: '${ .before }'
+        output:
+          as: '${ { before: .before, after: $context, isObject: ($context | type == "object") } }'
+input: { anything: 1 }
+expect:
+  output: { before: {}, after: {}, isObject: true }
+  context: {}

@@ -1,0 +1,21 @@
+name: stages/input-from-object-form
+area: stages
+summary: The object form of input.from evaluates ${ }-wrapped values and keeps plain strings as literals.
+source: workflow-data-flow spec, scenario "Object form evaluates wrapped strings and keeps literals".
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: input-from-object-form, version: '1.0.0' }
+  do:
+    - price:
+        input:
+          from:
+            amount: '${ .order.price }'
+            currency: EUR
+        set:
+          amount: '${ .amount * 2 }'
+          currency: '${ .currency }'
+input:
+  order: { id: o-1, price: 5 }
+expect:
+  output: { amount: 10, currency: EUR }
+  context: {}

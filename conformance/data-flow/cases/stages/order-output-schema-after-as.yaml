@@ -1,0 +1,25 @@
+name: stages/order-output-schema-after-as
+area: stages
+summary: output.schema validates the output produced by output.as, not the body's raw output.
+source: OWS 1.0.0 dsl.md Data Flow step 6 ("After output.as is evaluated, the transformed task output is validated"); workflow-data-flow spec pipeline order.
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: order-output-schema-after-as, version: '1.0.0' }
+  do:
+    - shape:
+        set:
+          orderId: '${ .orderId }'
+        output:
+          as: '${ { id: .orderId } }'
+          schema:
+            format: json
+            document:
+              type: object
+              properties:
+                id: { type: string }
+              required: [id]
+              additionalProperties: false
+input: { orderId: o-1 }
+expect:
+  output: { id: o-1 }
+  context: {}

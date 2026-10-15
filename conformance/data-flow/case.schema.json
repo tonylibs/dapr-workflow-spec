@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tonylibs/dapr-workflow-spec/conformance/data-flow/case.schema.json",
+  "title": "Data-flow conformance case",
+  "description": "One case of the shared data-flow conformance corpus (ADR 0012 Decision 10). See README.md.",
+  "type": "object",
+  "required": ["name", "area", "summary", "source", "uses", "workflow", "input", "expect"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "description": "<area>/<file name without .yaml>. Unique across the corpus.",
+      "type": "string",
+      "pattern": "^[a-z0-9-]+/[a-z0-9-]+$"
+    },
+    "area": {
+      "description": "The coverage area, equal to the case's directory.",
+      "enum": [
+        "stages",
+        "no-data-flow",
+        "context",
+        "structural",
+        "expressions",
+        "faults",
+        "unsupported",
+        "builtins"
+      ]
+    },
+    "summary": { "description": "What the case proves, in one sentence.", "type": "string", "minLength": 1 },
+    "source": {
+      "description": "Where the expected result comes from: the OWS 1.0.0 spec, openspec workflow-data-flow, or an ADR 0012 decision.",
+      "type": "string",
+      "minLength": 1
+    },
+    "engine": {
+      "description": "What the jq engine in use today does with the expression, when that matters (for example a builtin it does not implement).",
+      "type": "string",
+      "minLength": 1
+    },
+    "uses": {
+      "description": "Every task kind the workflow contains, sorted. Lets a runtime select the cases it can run.",
+      "type": "array",
+      "items": { "enum": ["for", "fork", "raise", "set", "try"] },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "workflow": {
+      "description": "An OWS DSL 1.0.0 workflow document.",
+      "type": "object",
+      "required": ["document", "do"]
+    },
+    "input": { "description": "The workflow instance's input document." },
+    "expect": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["output", "context"],
+          "additionalProperties": false,
+          "properties": {
+            "output": { "description": "The instance's completion output." },
+            "context": {
+              "description": "The workflow context when the top-level do list ends.",
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["fault"],
+          "additionalProperties": false,
+          "properties": {
+            "fault": {
+              "description": "The instance fails with a data-flow fault.",
+              "type": "object",
+              "required": ["task", "phase"],
+              "additionalProperties": false,
+              "properties": {
+                "task": { "description": "The task the fault names.", "type": "string", "minLength": 1 },
+                "phase": { "enum": ["input", "output", "export"] },
+                "location": {
+                  "description": "JSON Pointer of the offending instance location, for a schema failure.",
+                  "type": "string",
+                  "pattern": "^(/.*)?$"
+                },
+                "detailContains": {
+                  "description": "Strings the fault detail must contain, such as the unsupported form or the blocked builtin.",
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 },
+                  "minItems": 1
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
