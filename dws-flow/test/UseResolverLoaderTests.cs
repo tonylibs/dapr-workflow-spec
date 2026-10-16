@@ -97,6 +97,7 @@ public sealed class UseResolverLoaderTests
     [InlineData("\"PT5S\"")]
     [InlineData("not json")]
     [InlineData("""{"days":1e12}""")]
+    [InlineData("""{"after":{"seconds":1},"after":{"seconds":2}}""")]
     public async Task FailsNamingKindAndNameWhenTheEntryIsUnparseable(string entry)
     {
         FakeUseStore store = new() { ["timeouts.fastCall"] = entry };
@@ -104,6 +105,17 @@ public sealed class UseResolverLoaderTests
         Func<Task> act = () => UseResolverLoader.Load(Node(NamedTimeout), "s", store);
 
         (await act.Should().ThrowAsync<DefinitionLoadException>()).Which.Message.Should().Contain("timeouts").And.Contain("fastCall");
+    }
+
+    [Fact]
+    public async Task FailsNamingKindAndNameWhenAnErrorEntryHasDuplicateKeys()
+    {
+        FakeUseStore store = new() { ["errors.outOfStock"] = """{"status":409,"status":410}""" };
+        SingleNodeDefinition node = Node("""[ { "b": { "raise": { "error": "outOfStock" } } } ]""");
+
+        Func<Task> act = () => UseResolverLoader.Load(node, "s", store);
+
+        (await act.Should().ThrowAsync<DefinitionLoadException>()).Which.Message.Should().Contain("errors").And.Contain("outOfStock");
     }
 
     [Fact]

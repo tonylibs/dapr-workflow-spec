@@ -58,6 +58,9 @@ public static partial class UseResolverLoader
                 throw new DefinitionLoadException($"use.{UseResolver.KindName(kind)} '{name}' is not a valid entry: expected a JSON object");
             }
 
+            // JsonNode.Parse materializes an object lazily; touching Count surfaces duplicate keys here, for every kind.
+            _ = entry.Count;
+
             if (kind == UseKind.Timeouts)
             {
                 TaskTimeout.Parse(entry);
@@ -67,7 +70,7 @@ public static partial class UseResolverLoader
         {
             throw; // don't double-wrap
         }
-        catch (Exception exception) when (exception is System.Text.Json.JsonException or InvalidOperationException or OverflowException)
+        catch (Exception exception) when (exception is System.Text.Json.JsonException or InvalidOperationException or OverflowException or ArgumentException)
         {
             throw new DefinitionLoadException($"use.{UseResolver.KindName(kind)} '{name}' is not a valid entry: {exception.Message}", exception);
         }
