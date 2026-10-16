@@ -1,7 +1,7 @@
 ## 1. Resolver core (dws-flow)
 
-- [ ] 1.1 `UseResolver` and `UseKind`: the single inline-or-name rule, `Timeout` via `TaskTimeout`, `Empty`
-- [ ] 1.2 `UseReferences.Collect`: names a node references (`timeout`, `raise.error`, `catch.retry`)
+- [x] 1.1 `UseResolver` and `UseKind`: the single inline-or-name rule, `Timeout` via `TaskTimeout`, `Empty`
+- [x] 1.2 `UseReferences.Collect`: names a node references (`timeout`, `raise.error`, `catch.retry`)
 - [ ] 1.3 `IUseStore` and `UseResolverLoader.Load`: boot-time fetch, charset/missing/unparseable/no-store failures, no store call without references
 
 ## 2. Wiring (dws-flow)
