@@ -8,8 +8,9 @@ public static class SequencerRunner
 {
     private const int MaxSteps = 10_000;
 
-    public static async Task<JsonNode?> Run(FlowInput input, SingleNodeDefinition definition, IChildCaller caller)
+    public static async Task<JsonNode?> Run(FlowInput input, SingleNodeDefinition definition, IChildCaller caller, UseResolver? resolver = null)
     {
+        UseResolver effectiveResolver = resolver ?? UseResolver.Empty;
         List<(string Name, JsonObject Body)> items = TaskItems(definition.Tasks);
         if (items.Count == 0)
         {
@@ -32,7 +33,7 @@ public static class SequencerRunner
             }
 
             (string name, JsonObject body) = items[pc];
-            data = await DispatchTask(input, definition, caller, name, body, data);
+            data = await DispatchTask(input, definition, caller, effectiveResolver, name, body, data);
 
             ThenOutcome outcome = ThenResolver.Next(body["then"], pc, indexByName);
             if (outcome.Kind is ThenKind.End or ThenKind.Exit)
@@ -50,6 +51,7 @@ public static class SequencerRunner
         FlowInput input,
         SingleNodeDefinition definition,
         IChildCaller caller,
+        UseResolver resolver,
         string name,
         JsonObject body,
         JsonNode? data)
@@ -61,7 +63,7 @@ public static class SequencerRunner
             ? caller.CallStep(appId, childInput)
             : caller.CallFlow(appId, InstanceIds.For(input.RootInstanceId!, appId, input.IterationIndex ?? InstanceIds.DefaultIteration), childInput);
 
-        TimeSpan? timeout = TaskTimeout.Parse(body["timeout"]);
+        TimeSpan? timeout = resolver.Timeout(body["timeout"]);
         return timeout is null ? call : AwaitWithTimeout(caller, timeout.Value, call, name);
     }
 

@@ -148,6 +148,60 @@ public sealed class SequencerRunnerTests
             .Should().Be("workflow exceeded 10000 steps; check for a definition loop");
     }
 
+    private static async Task<(string Message, TimeSpan? Requested)> RunNamedTimeout(string entryJson)
+    {
+        JsonArray tasks = JsonNode.Parse("""[ { "slow": { "call": "http", "timeout": "fastCall" } } ]""")!.AsArray();
+        JsonObject children = JsonNode.Parse("""{ "slow": "child-slow" }""")!.AsObject();
+        UseResolver resolver = new(new Dictionary<(UseKind, string), string> { [(UseKind.Timeouts, "fastCall")] = entryJson });
+        RecordingChildCaller caller = new() { TimerWins = true };
+
+        Func<Task> act = () => SequencerRunner.Run(new FlowInput(null, null, "root", null), Definition(tasks, children), caller, resolver);
+
+        InvalidOperationException failure = (await act.Should().ThrowAsync<InvalidOperationException>()).Which;
+        return (failure.Message, caller.RequestedTimeout);
+    }
+
+    [Fact]
+    public async Task FailsANamedTimeoutWithTheSameWordingAsAnInlineOne()
+    {
+        (string message, TimeSpan? requested) = await RunNamedTimeout("""{"after":{"seconds":10}}""");
+
+        message.Should().Be("task 'slow' timed out after PT10S");
+        requested.Should().Be(TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public async Task RendersANamedOneDayTimeoutAsTwentyFourHours()
+    {
+        (string message, _) = await RunNamedTimeout("""{"after":{"days":1}}""");
+
+        message.Should().Be("task 'slow' timed out after PT24H");
+    }
+
+    [Fact]
+    public async Task FailsAnUnloadedTimeoutNameWhenNoResolverIsGiven()
+    {
+        JsonArray tasks = JsonNode.Parse("""[ { "slow": { "call": "http", "timeout": "fastCall" } } ]""")!.AsArray();
+        JsonObject children = JsonNode.Parse("""{ "slow": "child-slow" }""")!.AsObject();
+
+        Func<Task> act = () => SequencerRunner.Run(new FlowInput(null, null, "root", null), Definition(tasks, children), new RecordingChildCaller());
+
+        (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Message
+            .Should().Contain("timeouts").And.Contain("fastCall");
+    }
+
+    [Fact]
+    public async Task KeepsAnInlineTimeoutWorkingWithoutAResolver()
+    {
+        JsonArray tasks = JsonNode.Parse("""[ { "slow": { "call": "http", "timeout": "PT5S" } } ]""")!.AsArray();
+        JsonObject children = JsonNode.Parse("""{ "slow": "child-slow" }""")!.AsObject();
+        RecordingChildCaller caller = new() { TimerWins = true };
+
+        Func<Task> act = () => SequencerRunner.Run(new FlowInput(null, null, "root", null), Definition(tasks, children), caller);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Be("task 'slow' timed out after PT5S");
+    }
+
     private static SingleNodeDefinition Definition(JsonArray tasks, JsonObject children) =>
         new("order", "order@v1", "order-main", "main", tasks, children, null);
 
@@ -178,6 +232,14 @@ public sealed class SequencerRunnerTests
             return Task.FromResult(input.Data);
         }
 
-        public async Task<(bool TimedOut, JsonNode? Result)> WithTimeout(TimeSpan timeout, Task<JsonNode?> call) => (false, await call);
+        public bool TimerWins { get; set; }
+
+        public TimeSpan? RequestedTimeout { get; private set; }
+
+        public async Task<(bool TimedOut, JsonNode? Result)> WithTimeout(TimeSpan timeout, Task<JsonNode?> call)
+        {
+            RequestedTimeout = timeout;
+            return TimerWins ? (true, null) : (false, await call);
+        }
     }
 }
