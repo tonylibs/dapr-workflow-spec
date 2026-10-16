@@ -178,7 +178,7 @@ entry), then `TaskTimeout.Parse`/`.Format` (backed by `System.Xml.XmlConvert`'s 
 support, chosen because it's textually identical to v1's `java.time.Duration.toString()` for every case
 tested). It races the dispatched call via `IChildCaller.WithTimeout`; a timed-out task fails with v1's
 exact wording, `"task '<name>' timed out after <duration>"`. A string starting with a duration
-designator (`P` then a digit or `T`) is always inline, so a malformed one such as `P2` or `PT5X` fails
+designator (an optional leading `+`/`-` sign, then `P` and a digit or `T`) is always inline, so a malformed one such as `P2` or `PT5X` fails
 as an invalid duration, not as a missing name.
 
 **Known gap (not yet implemented):** v1's `switch` task returns a `FlowOutcome{keyword, target}` from
@@ -198,7 +198,11 @@ production `DaprUseStore` creates its `DaprClient` lazily, so a node with no ref
 connects), validates each entry and returns an immutable resolver. This runs in `Program.cs` before
 `AddDaprWorkflow`, and `FlowDefinitionHolder.Initialize(definition, useResolver)` hands it to workflow
 code, the same static-holder workaround as the definition. `Environment.` is read only in `Program.cs`
-(`ReplayTests` scans the rest of `src/`), and every boot failure is a `DefinitionLoadException`.
+(`ReplayTests` scans the rest of `src/`). Validation failures (unknown name, charset, invalid entry,
+missing store name) are `DefinitionLoadException`s naming kind and name; sidecar or store transport
+failures from `DaprUseStore` (sidecar not ready within 30 s → `OperationCanceledException`;
+configuration API errors → Dapr/gRPC exceptions) surface as those exceptions. Both still stop the host
+before the workflow is registered.
 Tests use a recording `IUseStore` stand-in; `DaprUseStore` needs a sidecar and has no unit test.
 
 ### Tests: xUnit `[Fact]` + FluentAssertions, present-tense verb test names, `IDisposable` for teardown, raw string literal fixtures

@@ -15,13 +15,14 @@ configuration store; nothing is read at run time.
 
 | Setting | Meaning |
 |---|---|
-| `DWS_FLOW_USE_STORE` | Configuration store name. Required only when the node references a name; a node with only inline values starts without it and never contacts the sidecar. |
+| `DWS_FLOW_USE_STORE` | Configuration store name. Required only when the node references a name; a node with only inline values starts without it and never reads the use store (the workflow runtime itself still uses the sidecar). |
 
 - Store keys are `<kind>.<name>` with kind `errors`, `retries` or `timeouts`; names match
   `[-._a-zA-Z0-9]+`. Each value is a JSON object, for example `timeouts.fastCall` =
   `{"after":{"seconds":10}}`.
-- A `timeout` string beginning with an ISO-8601 designator (`P` followed by a digit or `T`, for
-  example `PT5S`) is an inline duration, never a name; any other string is a name.
+- A `timeout` string beginning with an ISO-8601 designator (an optional leading `+` or `-` sign, then
+  `P` followed by a digit or `T`, for example `PT5S`) is an inline duration, never a name; any other
+  string is a name.
 - Boot fails (process exits) when a referenced name is missing or empty in the store, is not a JSON
   object, is an invalid duration for `timeouts`, has characters outside the charset above, or when
   `DWS_FLOW_USE_STORE` is unset while the node references a name.
