@@ -79,11 +79,24 @@ public sealed class UseResolverLoaderTests
         store.Calls.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task FailsWithoutCallingTheStoreWhenANameHasATrailingNewline()
+    {
+        FakeUseStore store = new();
+        SingleNodeDefinition node = Node("""[ { "a": { "timeout": "fastCall\n" } } ]""");
+
+        Func<Task> act = () => UseResolverLoader.Load(node, "s", store);
+
+        (await act.Should().ThrowAsync<DefinitionLoadException>()).Which.Message.Should().Contain("timeouts");
+        store.Calls.Should().BeEmpty();
+    }
+
     [Theory]
     [InlineData("""{"after":"soon"}""")]
     [InlineData("""[]""")]
     [InlineData("\"PT5S\"")]
     [InlineData("not json")]
+    [InlineData("""{"days":1e12}""")]
     public async Task FailsNamingKindAndNameWhenTheEntryIsUnparseable(string entry)
     {
         FakeUseStore store = new() { ["timeouts.fastCall"] = entry };

@@ -67,12 +67,12 @@ public static partial class UseResolverLoader
         {
             throw; // don't double-wrap
         }
-        catch (Exception exception) when (exception is System.Text.Json.JsonException or InvalidOperationException)
+        catch (Exception exception) when (exception is System.Text.Json.JsonException or InvalidOperationException or OverflowException)
         {
             throw new DefinitionLoadException($"use.{UseResolver.KindName(kind)} '{name}' is not a valid entry: {exception.Message}", exception);
         }
     }
 
-    [GeneratedRegex("^[-._a-zA-Z0-9]+$")]
+    [GeneratedRegex(@"^[-._a-zA-Z0-9]+\z")]
     private static partial Regex KeyName();
 }
