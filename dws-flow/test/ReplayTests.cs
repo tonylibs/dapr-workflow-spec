@@ -57,6 +57,43 @@ public sealed class ReplayTests
         replayResult!.ToJsonString().Should().Be(liveResult!.ToJsonString());
         live.Commands.Should().Contain(command => command.StartsWith("timer:", StringComparison.Ordinal),
             "the timed-out task must exercise the timer path, not just the activity path");
+
+        FlowDefinitionHolder.Initialize(definition);
+    }
+
+    [Fact]
+    public async Task ReplayingRecordedHistoryReissuesTheSameCommandsAndResultForANamedTimeout()
+    {
+        JsonArray tasks = JsonNode.Parse("""
+            [ { "a": { "call": "http", "timeout": "fastCall" } }, { "b": { "call": "http" } } ]
+            """)!.AsArray();
+        JsonObject children = JsonNode.Parse("""{ "a": "child-a", "b": "child-b" }""")!.AsObject();
+        SingleNodeDefinition definition = new("order", "order@v1", "order-main", "main", tasks, children, null);
+        FlowDefinitionHolder.Initialize(definition, new UseResolver(new Dictionary<(UseKind, string), string>
+        {
+            [(UseKind.Timeouts, "fastCall")] = """{"after":{"seconds":5}}""",
+        }));
+
+        Dictionary<string, JsonNode?> cannedResults = new()
+        {
+            ["child-a"] = JsonValue.Create("after-a"),
+            ["child-b"] = JsonValue.Create("after-b"),
+        };
+        FlowInput input = new(JsonValue.Create("start"), null, null, null);
+        FlowWorkflow workflow = new();
+
+        FakeWorkflowContext live = new("instance-1", isReplaying: false, cannedResults, history: null);
+        JsonNode? liveResult = await workflow.RunAsync(live, input);
+
+        FakeWorkflowContext replay = new("instance-1", isReplaying: true, cannedResults, history: live.History);
+        JsonNode? replayResult = await workflow.RunAsync(replay, input);
+
+        replay.Commands.Should().Equal(live.Commands);
+        replayResult!.ToJsonString().Should().Be(liveResult!.ToJsonString());
+        live.Commands.Should().Contain(command => command.StartsWith("timer:", StringComparison.Ordinal),
+            "a named timeout must still exercise the timer path");
+
+        FlowDefinitionHolder.Initialize(definition);
     }
 
     [Fact]

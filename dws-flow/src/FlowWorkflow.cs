@@ -19,6 +19,6 @@ public sealed class FlowWorkflow : Workflow<FlowInput, JsonNode?>
             throw new InvalidOperationException(ScopeDispatch.NotImplementedMessage(definition.Scope));
         }
 
-        return SequencerRunner.Run(resolvedInput, definition, new DaprChildCaller(context));
+        return SequencerRunner.Run(resolvedInput, definition, new DaprChildCaller(context), FlowDefinitionHolder.UseResolver);
     }
 }
