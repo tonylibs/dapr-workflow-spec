@@ -92,10 +92,10 @@ public sealed class TaskTimeoutTests
         JsonArray tasks = JsonNode.Parse("""[ { "a": { "call": "http", "timeout": "PT5S" } } ]""")!.AsArray();
         JsonObject children = JsonNode.Parse("""{ "a": "child-a" }""")!.AsObject();
         SingleNodeDefinition definition = Definition(tasks, children);
-        StubChildCaller caller = new(timedOut: true);
+        StubChildCaller caller = new(pending: true);
         FlowInput input = new(JsonValue.Create("data"), null, "root", null);
 
-        Func<Task> action = () => SequencerRunner.Run(input, definition, caller);
+        Func<Task> action = () => SequencerRunner.Run(input, definition, caller, (_, _) => Task.CompletedTask);
 
         (await action.Should().ThrowAsync<InvalidOperationException>()).Which.Message
             .Should().Be("task 'a' timed out after PT5S");
@@ -107,10 +107,10 @@ public sealed class TaskTimeoutTests
         JsonArray tasks = JsonNode.Parse("""[ { "a": { "call": "http", "timeout": "PT5S" } } ]""")!.AsArray();
         JsonObject children = JsonNode.Parse("""{ "a": "child-a" }""")!.AsObject();
         SingleNodeDefinition definition = Definition(tasks, children);
-        StubChildCaller caller = new(timedOut: false);
+        StubChildCaller caller = new(pending: false);
         FlowInput input = new(JsonValue.Create("data"), null, "root", null);
 
-        JsonNode? result = await SequencerRunner.Run(input, definition, caller);
+        JsonNode? result = await SequencerRunner.Run(input, definition, caller, (_, _) => new TaskCompletionSource().Task);
 
         result!.GetValue<string>().Should().Be("data");
     }
@@ -121,10 +121,11 @@ public sealed class TaskTimeoutTests
         JsonArray tasks = JsonNode.Parse("""[ { "a": { "call": "http" } } ]""")!.AsArray();
         JsonObject children = JsonNode.Parse("""{ "a": "child-a" }""")!.AsObject();
         SingleNodeDefinition definition = Definition(tasks, children);
-        StubChildCaller caller = new(timedOut: false, failure: new InvalidOperationException("task 'nested' timed out after PT1S"));
+        StubChildCaller caller = new(pending: false, failure: new InvalidOperationException("task 'nested' timed out after PT1S"));
         FlowInput input = new(JsonValue.Create("data"), null, "root", null);
 
-        Func<Task> action = () => SequencerRunner.Run(input, definition, caller);
+        Func<Task> action = () => SequencerRunner.Run(input, definition, caller,
+            (_, _) => throw new InvalidOperationException("no timer expected"));
 
         (await action.Should().ThrowAsync<InvalidOperationException>()).Which.Message
             .Should().Be("task 'nested' timed out after PT1S");
@@ -133,34 +134,23 @@ public sealed class TaskTimeoutTests
     private static SingleNodeDefinition Definition(JsonArray tasks, JsonObject children) =>
         new("order", "order@v1", "order-main", "main", tasks, children, null);
 
-    /// <summary>A deterministic stand-in for the timeout race: never actually waits, just reports the
-    /// configured outcome, so the test exercises <see cref="SequencerRunner"/>'s timeout wiring without a
-    /// real timer.</summary>
+    /// <summary>Supplies pending, completed, or faulted child calls for the real timeout decorator.</summary>
     private sealed class StubChildCaller : IChildCaller
     {
-        private readonly bool timedOut;
+        private readonly bool pending;
         private readonly Exception? failure;
 
-        public StubChildCaller(bool timedOut, Exception? failure = null)
+        public StubChildCaller(bool pending, Exception? failure = null)
         {
-            this.timedOut = timedOut;
+            this.pending = pending;
             this.failure = failure;
         }
 
         public Task<JsonNode?> CallStep(string appId, FlowInput input) =>
-            failure is null ? Task.FromResult(input.Data) : Task.FromException<JsonNode?>(failure);
+            failure is not null ? Task.FromException<JsonNode?>(failure)
+                : pending ? new TaskCompletionSource<JsonNode?>().Task : Task.FromResult(input.Data);
 
         public Task<JsonNode?> CallFlow(string appId, string instanceId, FlowInput input) =>
-            failure is null ? Task.FromResult(input.Data) : Task.FromException<JsonNode?>(failure);
-
-        public async Task<(bool TimedOut, JsonNode? Result)> WithTimeout(TimeSpan timeout, Task<JsonNode?> call)
-        {
-            if (timedOut)
-            {
-                return (true, null);
-            }
-
-            return (false, await call);
-        }
+            CallStep(appId, input);
     }
 }

@@ -8,7 +8,12 @@ public static class SequencerRunner
 {
     private const int MaxSteps = 10_000;
 
-    public static async Task<JsonNode?> Run(FlowInput input, SingleNodeDefinition definition, IChildCaller caller, UseResolver? resolver = null)
+    public static async Task<JsonNode?> Run(
+        FlowInput input,
+        SingleNodeDefinition definition,
+        IChildCaller caller,
+        Func<TimeSpan, CancellationToken, Task> createTimer,
+        UseResolver? resolver = null)
     {
         UseResolver effectiveResolver = resolver ?? UseResolver.Empty;
         List<(string Name, JsonObject Body)> items = TaskItems(definition.Tasks);
@@ -33,7 +38,7 @@ public static class SequencerRunner
             }
 
             (string name, JsonObject body) = items[pc];
-            data = await DispatchTask(input, definition, caller, effectiveResolver, name, body, data);
+            data = await DispatchTask(input, definition, caller, createTimer, effectiveResolver, name, body, data);
 
             ThenOutcome outcome = ThenResolver.Next(body["then"], pc, indexByName);
             if (outcome.Kind is ThenKind.End or ThenKind.Exit)
@@ -51,6 +56,7 @@ public static class SequencerRunner
         FlowInput input,
         SingleNodeDefinition definition,
         IChildCaller caller,
+        Func<TimeSpan, CancellationToken, Task> createTimer,
         UseResolver resolver,
         string name,
         JsonObject body,
@@ -58,24 +64,12 @@ public static class SequencerRunner
     {
         string appId = ChildAppId(definition, name);
         FlowInput childInput = input with { Data = data };
-
-        Task<JsonNode?> call = ChildClassifier.Classify(body) == ChildKind.Step
-            ? caller.CallStep(appId, childInput)
-            : caller.CallFlow(appId, InstanceIds.For(input.RootInstanceId!, appId, input.IterationIndex ?? InstanceIds.DefaultIteration), childInput);
-
         TimeSpan? timeout = resolver.Timeout(body["timeout"]);
-        return timeout is null ? call : AwaitWithTimeout(caller, timeout.Value, call, name);
-    }
+        IChildCaller taskCaller = timeout is null ? caller : new TimeoutCaller(caller, name, timeout.Value, createTimer);
 
-    private static async Task<JsonNode?> AwaitWithTimeout(IChildCaller caller, TimeSpan timeout, Task<JsonNode?> call, string name)
-    {
-        (bool timedOut, JsonNode? result) = await caller.WithTimeout(timeout, call);
-        if (timedOut)
-        {
-            throw new InvalidOperationException($"task '{name}' timed out after {TaskTimeout.Format(timeout)}");
-        }
-
-        return result;
+        return ChildClassifier.Classify(body) == ChildKind.Step
+            ? taskCaller.CallStep(appId, childInput)
+            : taskCaller.CallFlow(appId, InstanceIds.For(input.RootInstanceId!, appId, input.IterationIndex ?? InstanceIds.DefaultIteration), childInput);
     }
 
     private static string ChildAppId(SingleNodeDefinition definition, string name)

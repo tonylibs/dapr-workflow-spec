@@ -23,15 +23,36 @@ public sealed class ReplayTests
 
     private static readonly string[] ExcludedFiles = ["Program.cs"];
 
-    [Fact]
-    public async Task ReplayingRecordedHistoryReissuesTheSameCommandsAndResultIncludingATimedOutTimerPath()
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, true, true)]
+    public async Task ReplayingRecordedHistoryPreservesChildAndTimerOrderingAndOutcome(bool timerWins, bool flow, bool namedTimeout)
     {
-        JsonArray tasks = JsonNode.Parse("""
-            [ { "a": { "call": "http", "timeout": "PT5S" } }, { "b": { "call": "http" } } ]
-            """)!.AsArray();
+        JsonArray tasks = new(
+            new JsonObject
+            {
+                ["a"] = new JsonObject
+                {
+                    [flow ? "for" : "call"] = flow ? JsonValue.Create(true) : JsonValue.Create("http"),
+                    ["timeout"] = namedTimeout ? "fastCall" : "PT5S",
+                },
+            },
+            new JsonObject { ["b"] = new JsonObject { ["call"] = "http" } });
         JsonObject children = JsonNode.Parse("""{ "a": "child-a", "b": "child-b" }""")!.AsObject();
         SingleNodeDefinition definition = new("order", "order@v1", "order-main", "main", tasks, children, null);
-        FlowDefinitionHolder.Initialize(definition);
+        UseResolver resolver = namedTimeout
+            ? new(new Dictionary<(UseKind, string), string>
+            {
+                [(UseKind.Timeouts, "fastCall")] = """{"after":{"seconds":5}}""",
+            })
+            : UseResolver.Empty;
+        FlowDefinitionHolder.Initialize(definition, resolver);
 
         Dictionary<string, JsonNode?> cannedResults = new()
         {
@@ -41,59 +62,49 @@ public sealed class ReplayTests
         FlowInput input = new(JsonValue.Create("start"), null, null, null);
         FlowWorkflow workflow = new();
 
-        // Live pass: the workflow actually decides what to call and records every command it issues
-        // (activity calls, child workflow calls, and timers) as its own, ordinary execution history.
-        FakeWorkflowContext live = new("instance-1", isReplaying: false, cannedResults, history: null);
-        JsonNode? liveResult = await workflow.RunAsync(live, input);
-
-        // Replay pass: constructed with exactly the history the live pass recorded, with
-        // IsReplaying == true. Each call is served from that recorded history in order rather than
-        // recomputed from the canned-results lookup; a divergence (different call, different order, or
-        // an extra/missing call) fails the dequeue assertion below instead of silently passing.
-        FakeWorkflowContext replay = new("instance-1", isReplaying: true, cannedResults, history: live.History);
-        JsonNode? replayResult = await workflow.RunAsync(replay, input);
-
-        replay.Commands.Should().Equal(live.Commands);
-        replayResult!.ToJsonString().Should().Be(liveResult!.ToJsonString());
-        live.Commands.Should().Contain(command => command.StartsWith("timer:", StringComparison.Ordinal),
-            "the timed-out task must exercise the timer path, not just the activity path");
-
-        FlowDefinitionHolder.Initialize(definition);
-    }
-
-    [Fact]
-    public async Task ReplayingRecordedHistoryReissuesTheSameCommandsAndResultForANamedTimeout()
-    {
-        JsonArray tasks = JsonNode.Parse("""
-            [ { "a": { "call": "http", "timeout": "fastCall" } }, { "b": { "call": "http" } } ]
-            """)!.AsArray();
-        JsonObject children = JsonNode.Parse("""{ "a": "child-a", "b": "child-b" }""")!.AsObject();
-        SingleNodeDefinition definition = new("order", "order@v1", "order-main", "main", tasks, children, null);
-        FlowDefinitionHolder.Initialize(definition, new UseResolver(new Dictionary<(UseKind, string), string>
+        try
         {
-            [(UseKind.Timeouts, "fastCall")] = """{"after":{"seconds":5}}""",
-        }));
+            FakeWorkflowContext live = new("instance-1", isReplaying: false, cannedResults, history: null, timerWins);
+            Task<JsonNode?> liveCall = workflow.RunAsync(live, input);
+            JsonNode? liveResult = null;
+            if (timerWins)
+            {
+                Func<Task> action = () => liveCall;
+                await action.Should().ThrowAsync<InvalidOperationException>().WithMessage("task 'a' timed out after PT5S");
+            }
+            else
+            {
+                liveResult = await liveCall;
+                liveResult!.GetValue<string>().Should().Be("after-b");
+            }
 
-        Dictionary<string, JsonNode?> cannedResults = new()
+            // Replay obtains completion state from history, not the live timerWins setting.
+            FakeWorkflowContext replay = new("instance-1", isReplaying: true, cannedResults, history: live.History);
+            Task<JsonNode?> replayCall = workflow.RunAsync(replay, input);
+            if (timerWins)
+            {
+                Func<Task> action = () => replayCall;
+                await action.Should().ThrowAsync<InvalidOperationException>().WithMessage("task 'a' timed out after PT5S");
+            }
+            else
+            {
+                (await replayCall)!.ToJsonString().Should().Be(liveResult!.ToJsonString());
+            }
+
+            replay.Commands.Should().Equal(live.Commands);
+            replay.RemainingCommands.Should().Be(0);
+            live.Commands.Should().HaveCount(timerWins ? 2 : 3);
+            live.Commands[0].Should().Be(flow ? "childWorkflow:Flow:child-a:instance-1:child-a:0" : "activity:Step:child-a");
+            live.Commands[1].Should().Be($"timer:{DateTime.UnixEpoch.AddSeconds(5):O}");
+            if (!timerWins)
+            {
+                live.Commands[2].Should().Be("activity:Step:child-b");
+            }
+        }
+        finally
         {
-            ["child-a"] = JsonValue.Create("after-a"),
-            ["child-b"] = JsonValue.Create("after-b"),
-        };
-        FlowInput input = new(JsonValue.Create("start"), null, null, null);
-        FlowWorkflow workflow = new();
-
-        FakeWorkflowContext live = new("instance-1", isReplaying: false, cannedResults, history: null);
-        JsonNode? liveResult = await workflow.RunAsync(live, input);
-
-        FakeWorkflowContext replay = new("instance-1", isReplaying: true, cannedResults, history: live.History);
-        JsonNode? replayResult = await workflow.RunAsync(replay, input);
-
-        replay.Commands.Should().Equal(live.Commands);
-        replayResult!.ToJsonString().Should().Be(liveResult!.ToJsonString());
-        live.Commands.Should().Contain(command => command.StartsWith("timer:", StringComparison.Ordinal),
-            "a named timeout must still exercise the timer path");
-
-        FlowDefinitionHolder.Initialize(definition);
+            FlowDefinitionHolder.Initialize(definition);
+        }
     }
 
     [Fact]
@@ -113,7 +124,7 @@ public sealed class ReplayTests
     /// <summary>One command the fake context issued or satisfied, with enough identity (kind + the
     /// relevant ids) to assert replay reissues precisely the same sequence, and the result it produced so
     /// replay can serve that exact result back out of history instead of recomputing it.</summary>
-    private sealed record RecordedCommand(string Signature, JsonNode? Result);
+    private sealed record RecordedCommand(string Signature, JsonNode? Result, bool Pending);
 
     /// <summary>
     /// A scripted <see cref="WorkflowContext"/> stand-in driven two ways: a "live" pass (<paramref
@@ -128,6 +139,7 @@ public sealed class ReplayTests
     private sealed class FakeWorkflowContext : WorkflowContext
     {
         private readonly bool isReplaying;
+        private readonly bool timerWins;
         private readonly IReadOnlyDictionary<string, JsonNode?> cannedResults;
         private readonly Queue<RecordedCommand>? replayQueue;
         private readonly List<RecordedCommand> recorded = new();
@@ -136,10 +148,12 @@ public sealed class ReplayTests
             string instanceId,
             bool isReplaying,
             IReadOnlyDictionary<string, JsonNode?> cannedResults,
-            IReadOnlyList<RecordedCommand>? history)
+            IReadOnlyList<RecordedCommand>? history,
+            bool timerWins = false)
         {
             InstanceId = instanceId;
             this.isReplaying = isReplaying;
+            this.timerWins = timerWins;
             this.cannedResults = cannedResults;
             replayQueue = history is null ? null : new Queue<RecordedCommand>(history);
         }
@@ -147,6 +161,8 @@ public sealed class ReplayTests
         public List<string> Commands { get; } = new();
 
         public IReadOnlyList<RecordedCommand> History => recorded;
+
+        public int RemainingCommands => replayQueue?.Count ?? 0;
 
         public override string Name => FlowWorkflow.Name;
 
@@ -162,21 +178,18 @@ public sealed class ReplayTests
         {
             string appId = options?.TargetAppId ?? throw new InvalidOperationException("test expects a TargetAppId");
             string signature = $"activity:{name}:{appId}";
-            JsonNode? result = Resolve(signature, appId);
+            RecordedCommand command = Resolve(signature, appId);
             Commands.Add(signature);
-            return Task.FromResult((T)(object)result!);
+            return command.Pending ? new TaskCompletionSource<T>().Task : Task.FromResult((T)(object)command.Result!);
         }
 
         public override Task CreateTimer(DateTime fireAt, CancellationToken cancellationToken)
         {
             string signature = $"timer:{fireAt:O}";
-            Resolve(signature, resultKey: null);
+            RecordedCommand command = Resolve(signature, resultKey: null);
             Commands.Add(signature);
 
-            // A durable timer never actually fires before the race's winning call cancels it; modelling
-            // it as a task that only completes on cancellation keeps the call deterministically winning
-            // `Task.WhenAny` in both the live and replay passes.
-            return Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return command.Pending ? Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken) : Task.CompletedTask;
         }
 
         public override Task<T> WaitForExternalEventAsync<T>(string eventName, CancellationToken cancellationToken) =>
@@ -195,9 +208,9 @@ public sealed class ReplayTests
             string appId = options?.TargetAppId ?? throw new InvalidOperationException("test expects a TargetAppId");
             string instanceId = options?.InstanceId ?? throw new InvalidOperationException("test expects an InstanceId");
             string signature = $"childWorkflow:{workflowName}:{appId}:{instanceId}";
-            JsonNode? result = Resolve(signature, appId);
+            RecordedCommand command = Resolve(signature, appId);
             Commands.Add(signature);
-            return Task.FromResult((TResult)(object)result!);
+            return command.Pending ? new TaskCompletionSource<TResult>().Task : Task.FromResult((TResult)(object)command.Result!);
         }
 
         public override ILogger CreateReplaySafeLogger(string name) => NullLogger.Instance;
@@ -218,13 +231,14 @@ public sealed class ReplayTests
         /// <c>null</c> for a timer with no result) and records the command. Replay pass: dequeues the
         /// next recorded command and asserts its signature matches what's being requested now, failing
         /// loudly on any divergence instead of recomputing from <see cref="cannedResults"/> again.</summary>
-        private JsonNode? Resolve(string signature, string? resultKey)
+        private RecordedCommand Resolve(string signature, string? resultKey)
         {
             if (replayQueue is null)
             {
                 JsonNode? result = resultKey is null ? null : cannedResults[resultKey];
-                recorded.Add(new RecordedCommand(signature, result));
-                return result;
+                RecordedCommand command = new(signature, result, resultKey is null ? !timerWins : timerWins);
+                recorded.Add(command);
+                return command;
             }
 
             if (replayQueue.Count == 0)
@@ -239,7 +253,7 @@ public sealed class ReplayTests
                     $"replay issued '{signature}' but recorded history expected '{next.Signature}' next");
             }
 
-            return next.Result;
+            return next;
         }
     }
 }

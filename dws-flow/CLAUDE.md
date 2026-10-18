@@ -100,8 +100,10 @@ builder.Services.AddDaprWorkflow(options => options.RegisterWorkflow<FlowWorkflo
 requires a parameterless-constructible type, so it reads its definition through the static
 `FlowDefinitionHolder.Definition` instead. This is a workaround forced by the Dapr SDK, not a general
 license to reach for static state — every other class in this package still takes its dependencies
-normally. `IChildCaller` is the package's one interface: `SequencerRunner`'s only seam onto Dapr's
-`WorkflowContext`, so tests can substitute a recording stand-in instead of a real Dapr runtime. Don't
+normally. `IChildCaller` is the sequencer's seam for Step and Flow calls, so tests can substitute a
+recording stand-in instead of a real Dapr runtime. `ChildCallerDecorator` forwards to a protected
+`Delegate`; `TimeoutCaller` derives from it to race either call against a durable timer. The timer
+factory is passed separately to `SequencerRunner.Run` from `FlowWorkflow`'s `context.CreateTimer`. Don't
 introduce a second interface for a type that already has exactly one implementation without a second
 one already in view.
 
@@ -148,16 +150,16 @@ types this operation can actually throw. Everything else (missing field, wrong s
 public override Task<JsonNode?> RunAsync(WorkflowContext context, FlowInput? input)
 {
     // ...
-    return SequencerRunner.Run(resolvedInput, definition, new DaprChildCaller(context));
+    return SequencerRunner.Run(resolvedInput, definition, new DaprChildCaller(context), context.CreateTimer, FlowDefinitionHolder.UseResolver);
 }
 ```
 
 `FlowWorkflow.RunAsync` itself still has no work to `await` directly, so it returns the inner `Task`
 rather than wrapping it in `async`/`await` for nothing. `SequencerRunner.Run`, by contrast, genuinely
-awaits each dispatched task (`IChildCaller.CallStep`/`CallFlow`/`WithTimeout`), so it's a real `async`
+awaits each dispatched task (`IChildCaller.CallStep`/`CallFlow`), so it's a real `async`
 method — don't read the outer "don't add async for nothing" convention as applying to the inner
-sequencer loop too. No `CancellationToken` is threaded anywhere in the package — add one only when a
-method does something genuinely cancellable, not preemptively.
+sequencer loop too. `TimeoutCaller` owns a `CancellationTokenSource` for cancelling its durable timer
+when the call wins; cancellation is not propagated to the child call.
 
 ### Sequencer: `main`/`do` tasks run in order, `then` picks the next task, children dispatch by shape
 
@@ -174,9 +176,10 @@ controller scopes; everything else — `call`/`run`/`set`/`switch` — is a Step
 to `"0"` when the node's own `FlowInput.IterationIndex` is absent (the Sequencer itself never
 increments iteration — that's a `for`-scope concern for a later phase). A task's `timeout` is read
 through `UseResolver.Timeout` (an inline duration string/object, or the name of a `use.timeouts`
-entry), then `TaskTimeout.Parse`/`.Format` (backed by `System.Xml.XmlConvert`'s ISO-8601 duration
-support, chosen because it's textually identical to v1's `java.time.Duration.toString()` for every case
-tested). It races the dispatched call via `IChildCaller.WithTimeout`; a timed-out task fails with v1's
+entry), then `TaskTimeout.Parse`/`.Format` (parsing uses `System.Xml.XmlConvert`; formatting matches
+v1's `java.time.Duration.toString()`). Before dispatch, a task with a timeout wraps the child caller
+in `TimeoutCaller`; tasks without a timeout use the caller directly and create no timer. The decorator
+starts the child before creating the timer and cancels the timer when the child wins. A timed-out task fails with v1's
 exact wording, `"task '<name>' timed out after <duration>"`. A string starting with a duration
 designator (an optional leading `+`/`-` sign, then `P` and a digit or `T`) is always inline, so a malformed one such as `P2` or `PT5X` fails
 as an invalid duration, not as a missing name.
