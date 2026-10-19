@@ -99,6 +99,82 @@ controller ready to publish the moment a Dapr control plane appears (chart-insta
 external). The controller intentionally has no `dapr.io/app-port` — it only publishes outbound
 via its Dapr sidecar and never receives Dapr-routed inbound traffic.
 
+## Design direction: feature layers and bring-your-own infra (proposed 2026-10-05)
+
+Two ideas for how operators configure the chart. Nothing here is built yet — see Phases 12
+and 13 below. Items marked **open** are not decided.
+
+### Feature layers — enable from the core outward
+
+Goal: whoever configures the chart turns DWS features on layer by layer, starting from the core
+engine. Each outer layer needs the layers inside it.
+
+```
+┌──────────────────────────────────────────────────┐
+│ L4  Console members & roles (multi-user)         │
+│ ┌──────────────────────────────────────────────┐ │
+│ │ L3  Console  (dws-console + API gateway)     │ │
+│ │ ┌──────────────────────────────────────────┐ │ │
+│ │ │ L2  Security / auth                      │ │ │
+│ │ │ ┌──────────────────────────────────────┐ │ │ │
+│ │ │ │ L1  Core: engine + step runtimes     │ │ │ │
+│ │ │ │          + triggers                  │ │ │ │
+│ │ │ └──────────────────────────────────────┘ │ │ │
+│ │ └──────────────────────────────────────────┘ │ │
+│ └──────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────┘
+```
+
+| Layer | Contains | Today's toggles (closest match) |
+|---|---|---|
+| L1 Core | Everything an OWS workflow needs to run: the engine, the step runtimes and triggers. Not optional | `controller.*`, `controller.images.*`, `dapr.enabled` (+ its Redis), `knative.*` (Phase 11, not built) |
+| L2 Security | Auth for the engine and the console | `auth.*`, `dex.*` |
+| L3 Console | `dws-console` plus the API gateway that fronts it | `console.enabled`, `apiGateway.*`, `apisix.*` |
+| L4 Members & roles | Multi-user console with roles | none — not built |
+
+Decided:
+
+| # | Decision |
+|---|---|
+| 1 | Core = everything an OWS workflow needs to work. Step runtimes and triggers are part of core, not optional layers |
+| 2 | The API gateway (APISIX) fronts the console only, so it belongs to the Console layer |
+| 3 | The Console layer sits outside the Security layer |
+| 4 | The console starts solo: one admin account. Multi-user "members with roles" is its own layer wrapping Console, not a mode inside it |
+| 5 | The solo admin account also logs in through OIDC |
+
+Open:
+
+- **Auth split** — separate auth for the core engine from auth for the console (proposed, not
+  decided). Decides whether L2 is one layer or two.
+- Where `dws-admin` (read model + query API) sits — L1 or L3.
+- Where observability (`observability.*`) sits — its own layer or a cross-cutting add-on.
+- How layers show up in `values.yaml` — one switch per layer, presets, or today's per-component
+  toggles plus a check that an outer layer is never on without its inner one.
+
+### Bring-your-own infra — swap bundled pieces for the operator's own
+
+Goal: an operator can replace each bundled infra piece with their own.
+
+| Piece | Bundled today | Override today | Gap |
+|---|---|---|---|
+| Postgres (`dws-admin`) | Bitnami subchart, `postgresql.enabled` | `admin.database.url` / `existingSecret` | none — full swap already works |
+| Redis (state + configuration stores) | Bitnami subchart, follows `dapr.enabled` | `redis.external.host` | one host for all Components; bundled Redis still installs (see Open items) |
+| Broker (pub/sub `dws.events`) | `pubsub.redis` on the same Redis | only by moving all Redis via `redis.external.host` | no separate host, no other broker type |
+| OTLP endpoint | none (collector reserved, `observability.collector`) | `observability.otlp.endpoint` | none — already points at the operator's collector |
+
+Decided:
+
+| # | Decision |
+|---|---|
+| 1 | Pub/sub and state-store overrides accept only an **allowlist of tested Dapr component types**, not any type |
+| 2 | First slice supports **separate hosts** for the pub/sub broker and the state store |
+
+Open:
+
+- Which component types go on the allowlist.
+- Whether the configuration-store Components (`dws-definitions`, `dws-controller-config`) are in
+  scope or stay on Redis.
+
 ## Phased roadmap
 
 Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Updated 2026-09-19 — Phase 10
@@ -124,6 +200,8 @@ previous update.
 | 9. Publish | ✅ | OCI chart repo | `release` job in `helm.yml` packages and pushes to `oci://ghcr.io/tonylibs/charts` on merge to `main` |
 | 10. Docs | ⚠️ | Update README + CLAUDE.md | **Partial.** Landed: `charts/dws/README.md` — chart-scoped operator docs covering the pre-Gateway `Ingress` → Gateway API migration (bundled vs. external APISIX, the bundled-etcd `pre-upgrade`-hook deadlock on `helm upgrade`, required values, upgrade/rollback steps, cross-linked to `scripts/verify-console-ingress-migration.sh`) plus a "Validating changes to this chart" section; `CLAUDE.md` §Releasing points at `docs/release-process.md` for chart cutting and the `charts/dws/values.yaml` pins. Still owed: root `README.md` has **zero** helm mentions — needs a `helm install oci://ghcr.io/tonylibs/charts/dws` quickstart (install/upgrade/uninstall + `helm test`) and a values reference table for the top-level toggles (`dapr.enabled`, `postgresql.enabled`, `console.enabled`, `dex.enabled`, `apisix.enabled`, `apiGateway.*`, `auth.*`, `redis.external.*`, `defaults.*`) |
 | 11. Knative prerequisite | ❌ | Knative Serving via hook Job | Not started — split out of the original combined "Phase 4: Prerequisites" so Dapr (needed by Phase 5) isn't blocked on Knative design work. `knative-install-job.yaml` (post-install/post-upgrade hook Job), `knative.enabled`/`knative.version` values, preflight CRD check for Knative. Independent of every other phase — can land whenever, in parallel with anything above |
+| 12. Feature layers | ❌ | Operators enable features layer by layer, core outward (see Design direction) | Design only so far (2026-10-05). Settle the open questions (auth split, `dws-admin` and observability placement, values shape), map today's toggles to layers, stop an outer layer rendering without its inner one, document the layers |
+| 13. Bring-your-own infra | ❌ | Operators swap bundled Postgres / Redis / broker / OTLP for their own (see Design direction) | First slice: separate pub/sub and state-store hosts, with an allowlist of tested Dapr component types. Pick the allowlist. Related: the bundled-Redis-still-installs trade-off under Open items |
 
 ## Open items
 
@@ -137,7 +215,7 @@ previous update.
 - ~~**Console ingress does not front `dws-admin`**~~ **(resolved by the API Gateway change)**: the chart now owns a same-origin convention. `apiGateway.enabled=true` renders one shared Gateway API `Gateway` whose admin HTTPRoute matches `/dws-admin` and rewrites to the admin sidecar's Dapr invoke path, with a console root HTTPRoute on the same listener — so the baked default `VITE_DWS_ADMIN_URL=/dws-admin` works out of the box. Both the Phase 6 console-only Ingress and the nginx admin gateway were removed; `console.ingress.enabled` is retained only as a validation trap that fails the upgrade with explicit host/TLS/OIDC/APISIX migration steps. See [`dws-auth.md` §2c](dws-auth.md).
 - Built-in Postgres is dev/eval-grade (single replica, no backup) — production users should set `postgresql.enabled: false` and point `admin.database` at a managed instance. Same caveat will apply to the built-in Redis once it exists (`redis.enabled: false` for production, point at a managed instance).
 - `dws-orchestrator/k8s/configuration-component.yaml` — the hand-applied Redis-backed `dws-definitions` Component from before this chart existed — is intentionally kept in that repo for non-chart / local deployments. The chart's `templates/definitions-component.yaml` is the equivalent for chart-managed installs; the two describe the same Component shape against potentially different Redis hosts, with no shared templating.
-- **External Redis when Dapr is enabled**: setting `redis.external.host` retargets the three Dapr Component templates but does not disable the in-chart Bitnami Redis subchart (Helm dependency `condition:` fields can't AND two values). An operator running production against a managed Redis therefore still gets an unused in-chart Redis instance unless they separately trim its footprint; documented, accepted trade-off.
+- **External Redis when Dapr is enabled** (in scope for Phase 13): setting `redis.external.host` retargets the three Dapr Component templates but does not disable the in-chart Bitnami Redis subchart (Helm dependency `condition:` fields can't AND two values). An operator running production against a managed Redis therefore still gets an unused in-chart Redis instance unless they separately trim its footprint; documented, accepted trade-off.
 - Knative install-via-Job (Phase 11) needs a pinned release version (`knative.version`) kept in sync with the `serving-crds.yaml` bundle already checked into `dws-controller/k8s/`. Not started; deliberately deprioritized behind Dapr since nothing else in the roadmap currently depends on it.
 - **Next up (as of 2026-09-19):** only two phases remain open, and they are independent of each other.
   1. **Finish Phase 10** — the smallest remaining slice of this roadmap. `charts/dws/README.md` already covers migration and chart-dev validation; what is missing is a *first-install* story in the repository root `README.md`: `helm install` from `oci://ghcr.io/tonylibs/charts`, the `helm upgrade`/`uninstall`/`helm test` commands, and a values reference table for the top-level toggles. Recommended first, because it is self-contained, unblocks nothing else, and closes the gap between what the chart can do and what an operator can discover.
