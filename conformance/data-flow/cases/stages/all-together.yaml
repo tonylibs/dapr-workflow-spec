@@ -1,0 +1,55 @@
+name: stages/all-together
+test: givenAllSixStages_whenTaskRuns_thenStagesApplyInOrderAndNextTaskReadsContext
+area: stages
+summary: All six stages on one task, in v1's order, followed by a task that reads the exported context.
+source: workflow-data-flow spec, scenario "Pipeline order is input then body then output then export"; mirrors v1's dataflow fixture without its call tasks.
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: all-together, version: '1.0.0' }
+  do:
+    - chargePayment:
+        input:
+          from: '${ { orderId: .orderId, amount: .price } }'
+          schema:
+            format: json
+            document:
+              type: object
+              properties:
+                orderId: { type: string }
+                amount: { type: number }
+              required: [orderId, amount]
+        set:
+          orderId: '${ .orderId }'
+          amount: '${ .amount }'
+          receipt: '${ "r-" + .orderId }'
+        output:
+          as:
+            reference: '${ .receipt }'
+            settled: true
+          schema:
+            format: json
+            document:
+              type: object
+              properties:
+                reference: { type: string }
+                settled: { type: boolean }
+              required: [reference, settled]
+        export:
+          as: '${ { charged: .reference } }'
+          schema:
+            format: json
+            document:
+              type: object
+              properties:
+                charged: { type: string }
+              required: [charged]
+    - recordAudit:
+        set:
+          reference: '${ .reference }'
+          settled: '${ .settled }'
+        output:
+          as: '${ { audited: $context.charged, settled: .settled } }'
+input: { orderId: o-1, price: 42, coupon: ignored }
+expect:
+  output: { audited: r-o-1, settled: true }
+  context: { charged: r-o-1 }

@@ -1,0 +1,33 @@
+name: expressions/catch-as-visible
+test: givenCatchAs_whenCatchDoTaskRuns_thenErrorVariableIsVisibleInDataFlow
+area: expressions
+summary: The error bound by catch.as is visible to input.from, output.as and export.as of a task in catch.do.
+source: ADR 0012 Decision 10 ("catch scope variable"); OWS 1.0.0 dsl-reference.md Try (catch.as, "the name of the runtime expression variable to save the error as").
+uses: [raise, set, try]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: catch-as-visible, version: '1.0.0' }
+  do:
+    - guarded:
+        try:
+          - fail:
+              raise:
+                error:
+                  type: https://example.com/errors/conflict
+                  status: 409
+                  title: Conflict
+        catch:
+          as: failure
+          do:
+            - recover:
+                input:
+                  from: '${ { status: $failure.status } }'
+                set:
+                  status: '${ .status }'
+                output:
+                  as: '${ { status: .status, type: $failure.type } }'
+                export:
+                  as: '${ { lastError: $failure.title } }'
+input: { value: 1 }
+expect:
+  output: { status: 409, type: https://example.com/errors/conflict }
+  context: { lastError: Conflict }

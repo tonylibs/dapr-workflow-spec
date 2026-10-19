@@ -1,0 +1,23 @@
+name: context/export-replaces
+test: givenTwoExports_whenSecondExportRuns_thenContextIsReplacedNotMerged
+area: context
+summary: export.as replaces the context; keys from an earlier export are gone unless the expression keeps them.
+source: OWS 1.0.0 dsl.md Data Flow step 7 ("The result of this runtime expression replaces the workflow's current context"); workflow-data-flow spec.
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: export-replaces, version: '1.0.0' }
+  do:
+    - first:
+        set:
+          v: '${ .v }'
+        export:
+          as: '${ { a: .v } }'
+    - second:
+        set:
+          v: '${ .v }'
+        export:
+          as: '${ { b: .v } }'
+input: { v: 1 }
+expect:
+  output: { v: 1 }
+  context: { b: 1 }

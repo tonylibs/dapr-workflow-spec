@@ -1,0 +1,30 @@
+name: context/sequential
+test: givenSequentialExports_whenNextTaskRuns_thenItReadsPreviousContext
+area: context
+summary: The context one task exports is the context the next task reads, in input.from, output.as and export.as.
+source: workflow-data-flow spec, scenario "Export writes context read by a later task"; ADR 0012 Decision 5 (sequential tasks).
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: sequential, version: '1.0.0' }
+  do:
+    - first:
+        set:
+          n: '${ .n }'
+        export:
+          as: '${ { a: .n } }'
+    - second:
+        input:
+          from: '${ { n: (.n + $context.a) } }'
+        set:
+          n: '${ .n }'
+        export:
+          as: '${ $context + { b: .n } }'
+    - third:
+        set:
+          n: '${ .n }'
+        output:
+          as: '${ { n: .n, seen: $context } }'
+input: { n: 1 }
+expect:
+  output: { n: 2, seen: { a: 1, b: 2 } }
+  context: { a: 1, b: 2 }

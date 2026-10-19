@@ -1,0 +1,34 @@
+name: context/catch-returns
+test: givenExportInsideCatchDo_whenTryRecovers_thenContextReturnsToParent
+area: context
+summary: A context exported inside catch.do is returned to the try's parent scope, as for the try body.
+source: ADR 0012 Decision 5 ("catch is expected to behave like try; the conformance vectors confirm it").
+uses: [raise, set, try]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: catch-returns, version: '1.0.0' }
+  do:
+    - guarded:
+        try:
+          - fail:
+              raise:
+                error:
+                  type: https://example.com/errors/conflict
+                  status: 409
+                  title: Conflict
+        catch:
+          as: failure
+          do:
+            - recover:
+                set:
+                  value: '${ .value }'
+                export:
+                  as: '${ { recovered: true } }'
+    - after:
+        set:
+          value: '${ .value }'
+        output:
+          as: '${ { value: .value, seen: $context } }'
+input: { value: 1 }
+expect:
+  output: { value: 1, seen: { recovered: true } }
+  context: { recovered: true }

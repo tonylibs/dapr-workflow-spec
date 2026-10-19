@@ -12,6 +12,9 @@ on:
     paths:
       - 'dws-orchestrator/**'
       - '.github/workflows/dws-orchestrator.yml'
+      # The shared data-flow corpus runs on v1 in `test` (DataFlowConformanceIntegrationTest). PRs
+      # only: a corpus change pushed to main must not rebuild an unchanged image.
+      - 'conformance/data-flow/**'
   workflow_dispatch:
 
 concurrency:

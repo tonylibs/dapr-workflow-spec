@@ -1,0 +1,24 @@
+name: faults/schema-dialect-2020-12
+test: givenSchemaWithoutDialect_whenOutputViolatesPrefixItems_thenFaultNamesLocation
+area: faults
+summary: A schema without $schema is read as JSON Schema 2020-12, so prefixItems (2020-12 only) is enforced.
+source: ADR 0012 Decision 8 ("JSON Schema 2020-12, inline schemas only"); workflow-data-flow spec ("draft 2020-12 by default"). Under draft-07 prefixItems is an unknown keyword and this output would pass.
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: schema-dialect-2020-12, version: '1.0.0' }
+  do:
+    - pair:
+        set:
+          pair: '${ .pair }'
+        output:
+          as: '${ .pair }'
+          schema:
+            format: json
+            document:
+              type: array
+              prefixItems:
+                - { type: string }
+                - { type: number }
+input: { pair: [a, b] }
+expect:
+  fault: { task: pair, phase: output, location: /1 }

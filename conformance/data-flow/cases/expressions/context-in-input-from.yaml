@@ -1,0 +1,23 @@
+name: expressions/context-in-input-from
+test: givenContextReference_whenInputFromEvaluates_thenContextIsReadable
+area: expressions
+summary: $context is readable in input.from, not only in output.as and export.as.
+source: workflow-data-flow spec, requirement "Runtime expression forms" ($context available to every from/as expression); OWS 1.0.0 dsl.md runtime expression arguments table.
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: context-in-input-from, version: '1.0.0' }
+  do:
+    - configure:
+        set:
+          amount: '${ .amount }'
+        export:
+          as: '${ { rate: 3 } }'
+    - convert:
+        input:
+          from: '${ { amount: (.amount * $context.rate) } }'
+        set:
+          amount: '${ .amount }'
+input: { amount: 2 }
+expect:
+  output: { amount: 6 }
+  context: { rate: 3 }

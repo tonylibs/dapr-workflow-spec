@@ -1,0 +1,24 @@
+name: stages/input-schema
+test: givenConformingInputAndInputSchema_whenTaskRuns_thenInputReachesBodyUnchanged
+area: stages
+summary: input.schema alone validates a conforming input, which then reaches the body unchanged.
+source: workflow-data-flow spec, scenario "Conforming document passes".
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: input-schema, version: '1.0.0' }
+  do:
+    - increment:
+        input:
+          schema:
+            format: json
+            document:
+              type: object
+              properties:
+                price: { type: number }
+              required: [price]
+        set:
+          price: '${ .price + 1 }'
+input: { price: 5 }
+expect:
+  output: { price: 6 }
+  context: {}

@@ -1,0 +1,20 @@
+name: stages/order-export-sees-transformed-output
+test: givenOutputAsAndExportAs_whenTaskCompletes_thenExportSeesTransformedOutput
+area: stages
+summary: export.as evaluates over the output produced by output.as, not the body's raw output.
+source: OWS 1.0.0 dsl.md Data Flow step 7 ("It evaluates the transformed task output"); DataFlow requirement in workflow-data-flow spec.
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: order-export-sees-transformed-output, version: '1.0.0' }
+  do:
+    - shape:
+        set:
+          orderId: '${ .orderId }'
+        output:
+          as: '${ { id: .orderId } }'
+        export:
+          as: '${ { exportedId: .id, rawStillVisible: (.orderId != null) } }'
+input: { orderId: o-1 }
+expect:
+  output: { id: o-1 }
+  context: { exportedId: o-1, rawStillVisible: false }

@@ -1,0 +1,22 @@
+name: unsupported/input-schema-format
+test: givenNonJsonInputSchemaFormat_whenTaskRuns_thenFaultNamesFormat
+area: unsupported
+summary: A non-json input.schema format fails the task, naming the unsupported format.
+source: workflow-data-flow spec, scenario "Unsupported schema form is rejected"; ADR 0012 Decision 8.
+uses: [set]
+workflow:
+  document: { dsl: '1.0.0', namespace: conformance, name: input-schema-format, version: '1.0.0' }
+  do:
+    - ingest:
+        input:
+          schema:
+            format: avro
+            document:
+              type: record
+              name: Order
+              fields: [{ name: id, type: string }]
+        set:
+          id: '${ .id }'
+input: { id: o-1 }
+expect:
+  fault: { task: ingest, phase: input, detailContains: [avro] }
