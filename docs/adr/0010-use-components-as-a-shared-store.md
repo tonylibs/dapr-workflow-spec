@@ -8,6 +8,10 @@
   never. The Implementation plan said "not migrated" while Consequences said "migrates last";
   Consequences was the intent. The workflow-level `timeout` is a `use.timeouts` reference like any
   other and is enforced by the `main` node (roadmap 3j); the .NET `UseResolver` is roadmap 3i.
+- **Amended:** 2026-10-19 — Decision 3 now says how a host learns its version's store name: one
+  environment variable per host, stamped by the controller on every host Deployment
+  (`DWS_FLOW_USE_STORE`, `DWS_STEP_USE_STORE`, `DWS_ORCHESTRATOR_USE_STORE`). 3i shipped the first
+  reader. Everything else is unchanged.
 - **Context:** [`docs/roadmaps/openworkflow-features.md`](../roadmaps/openworkflow-features.md)
   §4g (Phase 7 split). This is the `UseResolver` refactor that comes before Phases 7a–7c.
 - **Related:** [ADR 0001](0001-workflow-runtime-v2-decisions.md) Decision 2 (function images serve
@@ -121,6 +125,19 @@ controller writes no Redis keys, and it is the pattern the per-version definitio
   it references and fetches exactly those at boot into an immutable in-memory map. Dapr workflow
   code is replayed, so a store read inside it is non-deterministic I/O; an immutable per-version
   store loaded once at boot is always replay-safe.
+- **The store name comes from the host's environment** *(amended 2026-10-19)*. The name is per
+  version (`<definitionResource>-use`), so it cannot be a constant, and the node definition does
+  not carry it. The controller stamps it on every host Deployment of the version:
+
+  | Host | Variable | Stamped by | Reader |
+  |---|---|---|---|
+  | `dws-flow` | `DWS_FLOW_USE_STORE` | Phase 4 | .NET `UseResolver` (3i, shipped) |
+  | `dws-step` | `DWS_STEP_USE_STORE` | Phase 4 | Java `UseResolver` (2c) |
+  | `dws-orchestrator` | `DWS_ORCHESTRATOR_USE_STORE` | 5.0 (v1 path) | Java `UseResolver` (2c) |
+
+  The variable is required only when the node references at least one name; a node with no
+  references never contacts the store. Unset with references, the boot fails and names the
+  variable. A wrong name fails the boot too, never silently.
 - **Missing entry fails the boot**, not a running instance — earlier than today's mid-run
   `IllegalStateException`.
 - **One resolver contract, `UseResolver`:** `(kind, reference) → entry`, with the "inline value,
