@@ -17,6 +17,12 @@ The Flow core currently executes `main` and `do` scopes. It intentionally reject
 
 `Program.cs` initializes the process-wide validated definition, registers `FlowWorkflow` under `Flow`, and exposes `GET /healthz`. Dapr's workflow registration requires a parameterless workflow type, so `FlowWorkflow` obtains the already-validated definition from `FlowDefinitionHolder`; other runtime collaborators use normal arguments.
 
+### Named `use` entries
+
+Before initializing the holder, startup collects this node's named `use.timeouts`, `use.errors`, and `use.retries` references. If any are present, `DWS_FLOW_USE_STORE` must name the version's Dapr configuration store. `DaprUseStore` waits for the sidecar and fetches only those `<kind>.<name>` keys; names must match `[-._a-zA-Z0-9]+`, and every fetched value must be a non-empty JSON object. Missing, malformed, or invalid entries fail startup rather than a workflow replay. A node with no named references needs no store setting and makes no configuration-store call.
+
+The resolver retains the validated JSON values in memory, so Flow performs no configuration reads while executing a workflow. At present the sequencer consumes named `use.timeouts` entries for task-level `timeout`; a timeout string that begins with an ISO-8601 duration designator remains an inline duration. The resolver also recognizes named errors and retries at boot so their configuration is validated and ready for their future consumers.
+
 ## Sequencing and child dispatch
 
 ```mermaid
@@ -44,7 +50,7 @@ For a `main` or `do` node, `SequencerRunner` runs task objects in source order, 
 
 `ChildClassifier` selects a Step child for `call`, `run`, `set`, and `switch` shapes. `for`, `try`, `fork`, `wait`, and `listen` shapes are classified as Flow children, using the deterministic child instance ID `<root instance>:<child app ID>:<iteration>`; absent iteration defaults to `0`. This classification describes dispatch capability, not completed support for every Flow scope: the child itself will fail fast if it is one of the currently unimplemented scopes.
 
-A task-level ISO-8601 `timeout` races the child call against a durable Dapr timer. If the timer wins, the host reports `task '<name>' timed out after <duration>`. Dapr child-task failures are unwrapped and propagated using their original error message, preserving the failure boundary for the caller.
+A task-level ISO-8601 `timeout`, inline duration object, or resolved named `use.timeouts` entry races the child call against a durable Dapr timer. If the timer wins, the host reports `task '<name>' timed out after <duration>`. Dapr child-task failures are unwrapped and propagated using their original error message, preserving the failure boundary for the caller.
 
 ## Build and change guide
 
@@ -60,9 +66,10 @@ CI in `.github/workflows/dws-flow.yml` runs that test command, then builds the i
 When changing the component, start with:
 
 - `SingleNodeDefinitionLoader.cs` for the immutable-node schema and startup failures;
+- `UseReferences.cs`, `UseResolverLoader.cs`, and `DaprUseStore.cs` for eager named-`use` loading and its configuration-store boundary;
 - `FlowWorkflow.cs` and `ScopeDispatch.cs` for Flow-scope ownership;
 - `SequencerRunner.cs`, `ThenResolver.cs`, and `ChildClassifier.cs` for order, branches, and Step-versus-Flow dispatch;
 - `DaprChildCaller.cs`, `InstanceIds.cs`, and `TaskTimeout.cs` for the durable Dapr boundary;
-- `test/` for replay, sequencing, loader, `then`, and timeout coverage.
+- `test/` for replay, sequencing, loader, named-use, `then`, and timeout coverage.
 
 Keep the `Flow` workflow name, the input-envelope field names, deterministic child IDs, and failure wording aligned with their [Step-host counterpart](../integrations/step-activity-host.md). Do not add nondeterministic I/O, time, or randomness to workflow code outside Dapr workflow calls: replay safety is a runtime requirement.
