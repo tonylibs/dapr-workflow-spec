@@ -36,6 +36,25 @@ Two readiness axes matter here. Control-flow tasks run in-process in the orchest
 
 Source: `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/InterpreterWorkflow.java`, `dws-controller/src/main/java/io/dws/controller/compile/WorkflowCompiler.java`, `dws-controller/src/main/java/io/dws/controller/model/TaskKind.java`.
 
+## Shared data-flow conformance
+
+The completed data-flow claim is acceptance-tested by the language-neutral corpus in [`conformance/data-flow/`](../../conformance/data-flow/README.md), not merely by component-specific fixtures. Its YAML cases cover stage ordering, no-data-flow behavior, context through sequential and structural scopes, expressions, schema and expression faults, unsupported forms, and jq builtins. Each expected output, context, or normalized fault is sourced from OWS 1.0.0, the workflow-data-flow capability specification, or ADR 0012; do not revise an expectation to fit a runtime.
+
+`dws-orchestrator` executes every vector through the real interpreter in `DataFlowConformanceIntegrationTest`, including in-process activities and fork branches. From `dws-orchestrator`, run `./mvnw test -Dtest=DataFlowConformanceIntegrationTest` (it is also included in `./mvnw verify`); `-Ddws.conformance.dataflow=<dir>` selects another corpus checkout. The runner validates case shape and path metadata before execution, compares completion output and top-level context or a normalized `task / phase / detail` data-flow fault, and reports every case as pass, fail, known divergence, or stale divergence.
+
+Known v1 gaps belong only in [`conformance/data-flow/divergences/v1.yaml`](../../conformance/data-flow/divergences/v1.yaml). A listed case still runs: a continuing mismatch is recorded as a known divergence, while a now-passing listed case fails the test so its exemption is removed. The current list records the missing jackson-jq local-time functions; it does not lower the corpus expectation. The orchestrator GitHub workflow includes corpus changes in pull-request test selection, so a vector change validates v1 before merge. ADR 0012 also assigns this corpus to the planned v2 Step and Flow paths; those runners are not yet delivered.
+
+```mermaid
+flowchart TD
+  Vectors["YAML vectors and expected results"] --> Runner["v1 conformance runner"]
+  Divergences["v1 divergence list"] --> Runner
+  Runner --> Interpreter["real dws-orchestrator interpreter"]
+  Interpreter --> Verdict["pass fail divergence or stale divergence"]
+  Verdict --> CI["orchestrator PR test"]
+```
+
+This flow shows that the shared corpus defines expectations, while the divergence list documents temporary v1 exceptions without changing those expectations.
+
 ## Cross-cutting spec features
 
 | Feature | Status |
