@@ -1,4 +1,5 @@
 name: context/catch-starts-from-try-entry
+test: givenExportBeforeFailureInTryBody_whenCatchRuns_thenCatchStartsFromTryEntryContext
 area: context
 summary: catch.do starts from the context that entered the try; an export made in the try body before the failure is discarded.
 source: >-

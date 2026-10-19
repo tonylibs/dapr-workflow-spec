@@ -1,4 +1,5 @@
 name: faults/export-as-expression
+test: givenFailingExportAs_whenTaskCompletes_thenFaultNamesTaskAndExportPhase
 area: faults
 summary: An export.as expression that fails at evaluation faults the task, naming the task and the export phase.
 source: workflow-data-flow spec, requirement "Minimal data-flow fault signal"; ADR 0012 Decision 7.

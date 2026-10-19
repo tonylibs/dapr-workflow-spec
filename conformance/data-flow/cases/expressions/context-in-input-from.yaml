@@ -1,4 +1,5 @@
 name: expressions/context-in-input-from
+test: givenContextReference_whenInputFromEvaluates_thenContextIsReadable
 area: expressions
 summary: $context is readable in input.from, not only in output.as and export.as.
 source: workflow-data-flow spec, requirement "Runtime expression forms" ($context available to every from/as expression); OWS 1.0.0 dsl.md runtime expression arguments table.

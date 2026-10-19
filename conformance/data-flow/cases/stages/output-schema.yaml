@@ -1,4 +1,5 @@
 name: stages/output-schema
+test: givenConformingOutputAndOutputSchema_whenTaskCompletes_thenOutputFlowsOnUnchanged
 area: stages
 summary: output.schema alone validates a conforming output, which flows on unchanged.
 source: workflow-data-flow spec, requirement "JSON Schema validation of input and output"; OWS 1.0.0 dsl.md Data Flow step 6.

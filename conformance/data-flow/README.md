@@ -20,7 +20,8 @@ A case is plain YAML data, validated by [`case.schema.json`](case.schema.json).
 
 | Field | Required | Meaning |
 |---|---|---|
-| `name` | yes | `<area>/<file name>`, unique |
+| `name` | yes | `<area>/<file name>`, unique; divergence lists refer to it |
+| `test` | yes | the test name a runner reports, `givenX_whenY_thenZ`, unique |
 | `area` | yes | the directory: `stages`, `no-data-flow`, `context`, `structural`, `expressions`, `faults`, `unsupported`, `builtins` |
 | `summary` | yes | what the case proves, one sentence |
 | `source` | yes | where the expected result comes from: OWS 1.0.0, `openspec/specs/workflow-data-flow/spec.md`, or an ADR 0012 decision |
@@ -45,6 +46,7 @@ so `10` and `10.0` are equal.
 
 ```yaml
 name: faults/output-schema
+test: givenNonConformingOutput_whenTaskCompletes_thenFaultNamesOutputPhaseAndNestedLocation
 area: faults
 summary: A non-conforming output faults the task in the output phase, naming a nested offending location.
 source: workflow-data-flow spec, scenario "Validation failure names the offending field".
@@ -96,7 +98,8 @@ expect:
 A runner, in any language:
 
 1. Loads every `cases/**/*.yaml`, validates it against `case.schema.json`, and checks that `name`
-   and `area` match the path and that `uses` lists the task kinds the workflow contains.
+   and `area` match the path, that `test` is unique, and that `uses` lists the task kinds the
+   workflow contains. It reports each case under its `test` name.
 2. Starts the workflow with `input` and observes either the completion output plus the context the
    top-level `do` list ends with, or a failure.
 3. Maps a failure to the neutral fault `(task, phase, detail)`, plus the schema locations if the

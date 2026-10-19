@@ -1,4 +1,5 @@
 name: stages/order-export-schema-validates-new-context
+test: givenExportAsAndExportSchema_whenTaskCompletes_thenSchemaValidatesNewContext
 area: stages
 summary: export.schema validates the context produced by export.as, not the context that existed before it.
 source: OWS 1.0.0 dsl.md Data Flow step 8 ("After the context is updated, the exported context is validated").

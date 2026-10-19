@@ -1,4 +1,5 @@
 name: faults/structural-task
+test: givenFailingOutputAsOnForTask_whenLoopCompletes_thenFaultNamesForTask
 area: faults
 summary: A failing output.as on a for task faults the for task itself, naming it and the output phase.
 source: workflow-data-flow spec, requirement "Minimal data-flow fault signal" (every task type); ADR 0012 Decisions 3 and 7.

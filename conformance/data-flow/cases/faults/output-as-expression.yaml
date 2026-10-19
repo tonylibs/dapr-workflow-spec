@@ -1,4 +1,5 @@
 name: faults/output-as-expression
+test: givenFailingOutputAs_whenTaskCompletes_thenFaultNamesTaskAndOutputPhase
 area: faults
 summary: An output.as expression that fails at evaluation faults the task, naming the task and the output phase.
 source: workflow-data-flow spec, requirement "Minimal data-flow fault signal"; ADR 0012 Decision 7.

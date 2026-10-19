@@ -1,4 +1,5 @@
 name: context/for-threads
+test: givenExportInsideFor_whenLoopRuns_thenContextThreadsThroughIterationsAndOut
 area: context
 summary: Inside for, the context exported by one iteration is the next iteration's context, and the last one leaves the loop.
 source: ADR 0012 Decision 5 (for). OWS 1.0.0 is silent on context across for iterations.

@@ -1,4 +1,5 @@
 name: unsupported/export-schema-external
+test: givenExternalExportSchema_whenTaskExports_thenFaultNamesExternalForm
 area: unsupported
 summary: An external export.schema resource fails the task in the export phase, naming the external form.
 source: workflow-data-flow spec, scenario "Unsupported schema form is rejected"; ADR 0012 Decision 8.

@@ -1,4 +1,5 @@
 name: context/sequential
+test: givenSequentialExports_whenNextTaskRuns_thenItReadsPreviousContext
 area: context
 summary: The context one task exports is the context the next task reads, in input.from, output.as and export.as.
 source: workflow-data-flow spec, scenario "Export writes context read by a later task"; ADR 0012 Decision 5 (sequential tasks).

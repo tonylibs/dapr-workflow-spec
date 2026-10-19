@@ -1,4 +1,5 @@
 name: stages/export-as
+test: givenExportAs_whenTaskCompletes_thenContextIsWrittenAndOutputUnchanged
 area: stages
 summary: export.as alone writes the context and leaves the task's output unchanged.
 source: workflow-data-flow spec, requirement "Workflow context document persists across tasks"; OWS 1.0.0 dsl.md Data Flow step 7.

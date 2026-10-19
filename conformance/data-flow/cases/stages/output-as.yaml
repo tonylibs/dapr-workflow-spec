@@ -1,4 +1,5 @@
 name: stages/output-as
+test: givenOutputAsString_whenTaskCompletes_thenOutputIsReshaped
 area: stages
 summary: output.as alone (string form) reshapes the body's output into the task's output.
 source: workflow-data-flow spec, scenarios "String form transforms the whole document" and "Output transform flows to the next task".

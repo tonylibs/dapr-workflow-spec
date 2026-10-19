@@ -1,4 +1,5 @@
 name: expressions/catch-as-visible
+test: givenCatchAs_whenCatchDoTaskRuns_thenErrorVariableIsVisibleInDataFlow
 area: expressions
 summary: The error bound by catch.as is visible to input.from, output.as and export.as of a task in catch.do.
 source: ADR 0012 Decision 10 ("catch scope variable"); OWS 1.0.0 dsl-reference.md Try (catch.as, "the name of the runtime expression variable to save the error as").

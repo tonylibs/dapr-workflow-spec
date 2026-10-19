@@ -1,4 +1,5 @@
 name: builtins/env-variable
+test: givenEnvVariable_whenInputFromEvaluates_thenFaultNamesBuiltin
 area: builtins
 summary: 'The `$ENV` builtin is blocked; using it in input faults the task, naming the builtin.'
 source: 'ADR 0012 Decision 9 (blocked: exposes the pod''s environment).'

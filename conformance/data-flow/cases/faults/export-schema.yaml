@@ -1,4 +1,5 @@
 name: faults/export-schema
+test: givenNonConformingContext_whenTaskExports_thenFaultNamesExportPhaseAndLocation
 area: faults
 summary: A non-conforming exported context faults the task in the export phase, naming the offending location.
 source: OWS 1.0.0 dsl.md Data Flow step 8; workflow-data-flow spec, requirement "Minimal data-flow fault signal".

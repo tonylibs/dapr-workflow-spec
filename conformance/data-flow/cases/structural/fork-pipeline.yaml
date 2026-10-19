@@ -1,4 +1,5 @@
 name: structural/fork-pipeline
+test: givenDataFlowOnForkTask_whenForkJoins_thenPipelineWrapsJoinInBranchOrder
 area: structural
 summary: A fork task's own input.from, output.as and export.as wrap the join; output.as sees the branch outputs in declared order.
 source: workflow-data-flow spec, requirement "Per-task data-flow pipeline"; ADR 0012 Decisions 3 and 5 (fork); OWS 1.0.0 dsl-reference.md Fork (compete false).

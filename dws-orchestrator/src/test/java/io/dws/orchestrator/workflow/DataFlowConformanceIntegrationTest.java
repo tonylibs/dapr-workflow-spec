@@ -1,5 +1,6 @@
 package io.dws.orchestrator.workflow;
 
+import static java.util.function.Predicate.not;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -126,15 +127,27 @@ class DataFlowConformanceIntegrationTest {
   private final ObjectMapper mapper = new ObjectMapper();
   private final ObjectMapper yaml = new ObjectMapper(new YAMLFactory());
 
+  /**
+   * One dynamic test per case, reported under the case's {@code test} name. A case without one
+   * falls back to its path so it still runs, and then fails as malformed.
+   */
   @TestFactory
-  Stream<DynamicTest> corpus() throws IOException {
+  Stream<DynamicTest> givenCorpusCase_whenRunOnV1_thenConformsOrIsKnownDivergence()
+      throws IOException {
     Schema caseSchema = caseSchema();
     Map<String, Divergence> divergences = divergences();
     return StreamEx.of(caseFiles())
         .map(
             file ->
                 DynamicTest.dynamicTest(
-                    caseName(file), file.toUri(), () -> runCase(file, caseSchema, divergences)));
+                    testName(file), file.toUri(), () -> runCase(file, caseSchema, divergences)));
+  }
+
+  /** Test names are what a report shows, so two cases must never share one. */
+  @Test
+  void givenCorpus_whenTestNamesCollected_thenEachIsUnique() throws IOException {
+    List<String> testNames = StreamEx.of(caseFiles()).map(this::testName).toList();
+    assertThat(testNames).doesNotHaveDuplicates();
   }
 
   /**
@@ -142,7 +155,8 @@ class DataFlowConformanceIntegrationTest {
    * one-line reason, and points at a follow-up task that owns the fix.
    */
   @Test
-  void everyKnownDivergenceNamesAnExistingCaseAndItsFollowUp() throws IOException {
+  void givenDivergenceList_whenLoaded_thenEveryEntryNamesExistingCaseAndFollowUp()
+      throws IOException {
     List<String> names =
         StreamEx.of(caseFiles()).map(DataFlowConformanceIntegrationTest::caseName).toList();
     assertThat(divergences().values())
@@ -505,6 +519,18 @@ class DataFlowConformanceIntegrationTest {
     Path relative = CORPUS.resolve("cases").relativize(file);
     String name = relative.toString().replace('\\', '/');
     return name.substring(0, name.length() - ".yaml".length());
+  }
+
+  /** The case's givenX_whenY_thenZ {@code test} name, or its path when the file lacks one. */
+  private String testName(Path file) {
+    try {
+      return Optional.ofNullable(yaml.readTree(file.toFile()).get("test"))
+          .map(JsonNode::asText)
+          .filter(not(String::isBlank))
+          .orElseGet(() -> caseName(file));
+    } catch (IOException e) {
+      return caseName(file);
+    }
   }
 
   private Schema caseSchema() throws IOException {

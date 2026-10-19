@@ -1,4 +1,5 @@
 name: expressions/catch-default-variable
+test: givenCatchWithoutAs_whenCatchDoTaskRuns_thenErrorIsVisibleAsDollarError
 area: expressions
 summary: Without catch.as, the caught error is visible to data-flow expressions as $error.
 source: OWS 1.0.0 dsl-reference.md Try (catch.as "Defaults to 'error'").

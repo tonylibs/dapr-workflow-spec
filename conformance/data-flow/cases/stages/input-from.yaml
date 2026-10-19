@@ -1,4 +1,5 @@
 name: stages/input-from
+test: givenInputFrom_whenTaskRuns_thenBodyReceivesTransformedInput
 area: stages
 summary: input.from alone narrows the data the task body receives.
 source: workflow-data-flow spec, scenario "Input transform feeds the task body"; OWS 1.0.0 dsl.md Data Flow step 4.

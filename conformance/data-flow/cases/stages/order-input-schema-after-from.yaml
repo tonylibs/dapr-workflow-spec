@@ -1,4 +1,5 @@
 name: stages/order-input-schema-after-from
+test: givenInputFromAndInputSchema_whenTaskRuns_thenSchemaValidatesTransformedInput
 area: stages
 summary: input.schema validates the input produced by input.from, not the raw input (v1's order).
 source: >-

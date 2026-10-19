@@ -4,13 +4,18 @@
   "title": "Data-flow conformance case",
   "description": "One case of the shared data-flow conformance corpus (ADR 0012 Decision 10). See README.md.",
   "type": "object",
-  "required": ["name", "area", "summary", "source", "uses", "workflow", "input", "expect"],
+  "required": ["name", "test", "area", "summary", "source", "uses", "workflow", "input", "expect"],
   "additionalProperties": false,
   "properties": {
     "name": {
-      "description": "<area>/<file name without .yaml>. Unique across the corpus.",
+      "description": "<area>/<file name without .yaml>. Unique across the corpus; divergence lists refer to it.",
       "type": "string",
       "pattern": "^[a-z0-9-]+/[a-z0-9-]+$"
+    },
+    "test": {
+      "description": "The test name a runner reports the case under, givenX_whenY_thenZ. Unique across the corpus.",
+      "type": "string",
+      "pattern": "^given[A-Z][A-Za-z0-9]*_when[A-Z][A-Za-z0-9]*_then[A-Z][A-Za-z0-9]*$"
     },
     "area": {
       "description": "The coverage area, equal to the case's directory.",

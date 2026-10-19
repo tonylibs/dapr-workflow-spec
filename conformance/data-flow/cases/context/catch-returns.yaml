@@ -1,4 +1,5 @@
 name: context/catch-returns
+test: givenExportInsideCatchDo_whenTryRecovers_thenContextReturnsToParent
 area: context
 summary: A context exported inside catch.do is returned to the try's parent scope, as for the try body.
 source: ADR 0012 Decision 5 ("catch is expected to behave like try; the conformance vectors confirm it").

@@ -1,4 +1,5 @@
 name: structural/for-pipeline
+test: givenDataFlowOnForTask_whenLoopRuns_thenPipelineWrapsWholeLoop
 area: structural
 summary: A for task's own input.from, output.as and export.as wrap the whole loop; for.in sees the transformed input.
 source: workflow-data-flow spec, requirement "Per-task data-flow pipeline" (uniformly for every task type); ADR 0012 Decision 3 (structural tasks).

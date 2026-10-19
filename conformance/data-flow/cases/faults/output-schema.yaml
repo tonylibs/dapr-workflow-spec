@@ -1,4 +1,5 @@
 name: faults/output-schema
+test: givenNonConformingOutput_whenTaskCompletes_thenFaultNamesOutputPhaseAndNestedLocation
 area: faults
 summary: A non-conforming output faults the task in the output phase, naming a nested offending location.
 source: workflow-data-flow spec, scenario "Validation failure names the offending field"; OWS 1.0.0 dsl.md Data Flow step 6.

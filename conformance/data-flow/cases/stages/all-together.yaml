@@ -1,4 +1,5 @@
 name: stages/all-together
+test: givenAllSixStages_whenTaskRuns_thenStagesApplyInOrderAndNextTaskReadsContext
 area: stages
 summary: All six stages on one task, in v1's order, followed by a task that reads the exported context.
 source: workflow-data-flow spec, scenario "Pipeline order is input then body then output then export"; mirrors v1's dataflow fixture without its call tasks.

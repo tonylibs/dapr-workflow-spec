@@ -1,4 +1,5 @@
 name: faults/input-schema
+test: givenNonConformingInput_whenTaskRuns_thenFaultNamesInputPhaseAndLocation
 area: faults
 summary: A non-conforming input faults the task in the input phase, naming the offending location.
 source: workflow-data-flow spec, scenarios "Non-conforming document fails the task" and "Validation failure names the offending field"; ADR 0012 Decision 7.

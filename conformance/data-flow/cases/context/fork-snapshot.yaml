@@ -1,4 +1,5 @@
 name: context/fork-snapshot
+test: givenExportsInForkBranches_whenForkJoins_thenBranchesSawSnapshotAndExportsAreDiscarded
 area: context
 summary: Each fork branch reads the incoming context as a snapshot; branch exports are discarded and the fork returns the incoming context.
 source: ADR 0012 Decision 5 (fork). OWS 1.0.0 dsl-reference.md Fork (non-compete output is the branch outputs in declared order); OWS is silent on context across branches.

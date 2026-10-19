@@ -1,4 +1,5 @@
 name: builtins/clock-local-time
+test: givenLocalTimeFunctions_whenOutputAsEvaluates_thenTheyWork
 area: builtins
 summary: The jq 1.6 date and local-time functions (todate, fromdate, gmtime, mktime, strftime, localtime) stay allowed.
 source: >-

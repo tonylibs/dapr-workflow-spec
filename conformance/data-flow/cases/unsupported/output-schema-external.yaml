@@ -1,4 +1,5 @@
 name: unsupported/output-schema-external
+test: givenExternalOutputSchema_whenTaskCompletes_thenFaultNamesExternalForm
 area: unsupported
 summary: An external output.schema resource fails the task, naming the external form. The resource is never fetched.
 source: workflow-data-flow spec, scenario "Unsupported schema form is rejected"; ADR 0012 Decision 8.

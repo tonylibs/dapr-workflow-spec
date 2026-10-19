@@ -1,4 +1,5 @@
 name: context/not-in-output
+test: givenExportedContext_whenInstanceCompletes_thenContextIsNotInOutput
 area: context
 summary: The completion output is the last task's output only; the context never appears in it.
 source: workflow-data-flow spec, scenario "Context is not part of completion output"; ADR 0012 Decision 5 (start / end).

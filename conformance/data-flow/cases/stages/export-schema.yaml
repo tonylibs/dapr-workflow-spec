@@ -1,4 +1,5 @@
 name: stages/export-schema
+test: givenExportSchemaWithoutAs_whenTaskCompletes_thenExistingContextIsValidatedAndKept
 area: stages
 summary: export.schema without export.as validates the existing context, which is kept as it is.
 source: OWS 1.0.0 dsl-reference.md Export ("as ... defaults to the expression that returns the existing context") and dsl.md Data Flow step 8.

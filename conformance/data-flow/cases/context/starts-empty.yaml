@@ -1,4 +1,5 @@
 name: context/starts-empty
+test: givenNoExportYet_whenFirstTaskReadsContext_thenContextIsEmptyObject
 area: context
 summary: The context is an empty object, not null, before any export has run.
 source: workflow-data-flow spec, scenario "Context starts as an empty object"; ADR 0012 Decision 5 (start / end).

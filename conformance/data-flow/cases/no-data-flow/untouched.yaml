@@ -1,4 +1,5 @@
 name: no-data-flow/untouched
+test: givenTaskWithoutDataFlow_whenTaskRuns_thenDataAndContextPassThroughUntouched
 area: no-data-flow
 summary: A task with no input, output or export receives the previous output unchanged, passes its own output on unchanged and leaves the context alone.
 source: workflow-data-flow spec, scenario "Task without data flow is unchanged"; ADR 0012 Decision 1 (a handler is installed only when the task declares its section).

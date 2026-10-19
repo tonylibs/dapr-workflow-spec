@@ -1,4 +1,5 @@
 name: structural/try-pipeline
+test: givenDataFlowOnTryTask_whenTryCompletes_thenPipelineWrapsBodyAndExportSeesBodyContext
 area: structural
 summary: A try task's own input.from, output.as and export.as wrap its body; its export.as sees the context the body returned.
 source: workflow-data-flow spec, requirement "Per-task data-flow pipeline"; ADR 0012 Decisions 3 and 5 (try body).

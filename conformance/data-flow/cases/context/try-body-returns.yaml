@@ -1,4 +1,5 @@
 name: context/try-body-returns
+test: givenExportInsideTryBody_whenTryCompletes_thenContextReturnsToParent
 area: context
 summary: A context exported inside a try body is returned to the try's parent scope.
 source: ADR 0012 Decision 5 (try body). OWS 1.0.0 is silent on context across try scopes.

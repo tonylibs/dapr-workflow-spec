@@ -1,4 +1,5 @@
 name: stages/output-as-object-form
+test: givenOutputAsObjectForm_whenTaskCompletes_thenWrappedValuesEvaluateAndLiteralsStay
 area: stages
 summary: The object form of output.as evaluates ${ }-wrapped values and keeps plain strings as literals.
 source: workflow-data-flow spec, scenario "Object form evaluates wrapped strings and keeps literals".

@@ -1,4 +1,5 @@
 name: builtins/clock-now
+test: givenNowAndIsoDateFunctions_whenOutputAsEvaluates_thenTheyWork
 area: builtins
 summary: now and the ISO-8601 date functions stay allowed in data-flow expressions.
 source: >-
