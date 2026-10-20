@@ -111,26 +111,26 @@ engine. Each outer layer needs the layers inside it.
 
 ```
 ┌──────────────────────────────────────────────────┐
-│ L4  Console members & roles (multi-user)         │
+│ L3  Console members & roles (multi-user)         │
 │ ┌──────────────────────────────────────────────┐ │
-│ │ L3  Console  (dws-console + API gateway)     │ │
+│ │ L2  Console  (dws-console + login (OIDC)     │ │
+│ │              + API gateway)                  │ │
 │ │ ┌──────────────────────────────────────────┐ │ │
-│ │ │ L2  Security / auth                      │ │ │
-│ │ │ ┌──────────────────────────────────────┐ │ │ │
-│ │ │ │ L1  Core: engine + step runtimes     │ │ │ │
-│ │ │ │          + triggers                  │ │ │ │
-│ │ │ └──────────────────────────────────────┘ │ │ │
+│ │ │ L1  Core: engine + step runtimes         │ │ │
+│ │ │          + triggers                      │ │ │
 │ │ └──────────────────────────────────────────┘ │ │
 │ └──────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────┘
+
+Engine auth (machine callers of the engine): a separate option on L1, not a layer.
 ```
 
 | Layer | Contains | Today's toggles (closest match) |
 |---|---|---|
 | L1 Core | Everything an OWS workflow needs to run: the engine, the step runtimes and triggers. Not optional | `controller.*`, `controller.images.*`, `dapr.enabled` (+ its Redis), `knative.*` (Phase 11, not built) |
-| L2 Security | Auth for the engine and the console | `auth.*`, `dex.*` |
-| L3 Console | `dws-console` plus the API gateway that fronts it | `console.enabled`, `apiGateway.*`, `apisix.*` |
-| L4 Members & roles | Multi-user console with roles | none — not built |
+| L2 Console | `dws-console`, its login (console auth), the API gateway that fronts it, and the Admin API (`dws-admin` + its Postgres) | `console.enabled`, `apiGateway.*`, `apisix.*`, `auth.*`, `dex.*`, `admin.*`, `postgresql.*` |
+| L3 Members & roles | Multi-user console with roles | none — not built |
+| *(not a layer)* Engine auth | Auth for machine callers of the engine (deploy, start, events) | none — not designed yet |
 
 Decided:
 
@@ -138,15 +138,18 @@ Decided:
 |---|---|
 | 1 | Core = everything an OWS workflow needs to work. Step runtimes and triggers are part of core, not optional layers |
 | 2 | The API gateway (APISIX) fronts the console only, so it belongs to the Console layer |
-| 3 | The Console layer sits outside the Security layer |
+| 3 | Console auth (authorizing console users) is part of the Console layer: the console always requires login, there is no console without auth. Replaces the earlier "Console sits outside a Security layer" idea (2026-10-20) |
 | 4 | The console starts solo: one admin account. Multi-user "members with roles" is its own layer wrapping Console, not a mode inside it |
 | 5 | The solo admin account also logs in through OIDC |
+| 6 | Engine auth is a different thing from console auth: an option on Core, not a layer (2026-10-20) |
+| 7 | `dws-admin` belongs to the Console layer, not Core, and is called the **Admin API** (2026-10-20) |
 
 Open:
 
-- **Auth split** — separate auth for the core engine from auth for the console (proposed, not
-  decided). Decides whether L2 is one layer or two.
-- Where `dws-admin` (read model + query API) sits — L1 or L3.
+- Engine auth design — gate on starting instances, machine tokens, per-action scopes; and how the
+  controller's one bearer check accepts both console user tokens (relayed by `dws-admin`) and
+  machine tokens (one IdP with two audiences, or two IdPs).
+- Whether the `dws.events` pub/sub Component moves to Console with the Admin API (its only reader today).
 - Where observability (`observability.*`) sits — its own layer or a cross-cutting add-on.
 - How layers show up in `values.yaml` — one switch per layer, presets, or today's per-component
   toggles plus a check that an outer layer is never on without its inner one.
@@ -200,7 +203,7 @@ previous update.
 | 9. Publish | ✅ | OCI chart repo | `release` job in `helm.yml` packages and pushes to `oci://ghcr.io/tonylibs/charts` on merge to `main` |
 | 10. Docs | ⚠️ | Update README + CLAUDE.md | **Partial.** Landed: `charts/dws/README.md` — chart-scoped operator docs covering the pre-Gateway `Ingress` → Gateway API migration (bundled vs. external APISIX, the bundled-etcd `pre-upgrade`-hook deadlock on `helm upgrade`, required values, upgrade/rollback steps, cross-linked to `scripts/verify-console-ingress-migration.sh`) plus a "Validating changes to this chart" section; `CLAUDE.md` §Releasing points at `docs/release-process.md` for chart cutting and the `charts/dws/values.yaml` pins. Still owed: root `README.md` has **zero** helm mentions — needs a `helm install oci://ghcr.io/tonylibs/charts/dws` quickstart (install/upgrade/uninstall + `helm test`) and a values reference table for the top-level toggles (`dapr.enabled`, `postgresql.enabled`, `console.enabled`, `dex.enabled`, `apisix.enabled`, `apiGateway.*`, `auth.*`, `redis.external.*`, `defaults.*`) |
 | 11. Knative prerequisite | ❌ | Knative Serving via hook Job | Not started — split out of the original combined "Phase 4: Prerequisites" so Dapr (needed by Phase 5) isn't blocked on Knative design work. `knative-install-job.yaml` (post-install/post-upgrade hook Job), `knative.enabled`/`knative.version` values, preflight CRD check for Knative. Independent of every other phase — can land whenever, in parallel with anything above |
-| 12. Feature layers | ❌ | Operators enable features layer by layer, core outward (see Design direction) | Design only so far (2026-10-05). Settle the open questions (auth split, `dws-admin` and observability placement, values shape), map today's toggles to layers, stop an outer layer rendering without its inner one, document the layers |
+| 12. Feature layers | ❌ | Operators enable features layer by layer, core outward (see Design direction) | Design only so far (2026-10-05). Settle the open questions (engine auth design, `dws.events` and observability placement, values shape), map today's toggles to layers, stop an outer layer rendering without its inner one, document the layers |
 | 13. Bring-your-own infra | ❌ | Operators swap bundled Postgres / Redis / broker / OTLP for their own (see Design direction) | First slice: separate pub/sub and state-store hosts, with an allowlist of tested Dapr component types. Pick the allowlist. Related: the bundled-Redis-still-installs trade-off under Open items |
 
 ## Open items

@@ -26,6 +26,14 @@ DWS ships as a Helm chart (`charts/dws`) published to GitHub Container Registry 
 artifact. One `helm install` brings up the control plane — `dws-controller`, `dws-admin` and its
 Postgres read model — and, by default, the Dapr control plane and Redis they depend on.
 
+![Helm chart feature layers: Core inside Console inside Members & roles, add-ons alongside, all on Dapr and Knative over Kubernetes](docs/roadmaps/helm-feature-layers.png)
+
+> **Planned.** The picture shows where the chart is heading: features you enable layer by layer
+> from the core outward, plus add-ons. Today each component still has its own toggle (see
+> [Values reference](#values-reference)). Design notes:
+> [`helm-packaging.md` → Design direction](docs/roadmaps/helm-packaging.md#design-direction-feature-layers-and-bring-your-own-infra-proposed-2026-10-05);
+> source page: [`helm-feature-layers.html`](docs/roadmaps/helm-feature-layers.html).
+
 Requires Helm 4 (pinned at 4.3.0 in CI) and a Kubernetes cluster you can create namespaces in.
 
 ```sh
