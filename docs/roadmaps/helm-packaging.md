@@ -110,26 +110,30 @@ Goal: whoever configures the chart turns DWS features on layer by layer, startin
 engine. Each outer layer needs the layers inside it.
 
 ```
-┌──────────────────────────────────────────────────┐
-│ L3  Console members & roles (multi-user)         │
-│ ┌──────────────────────────────────────────────┐ │
-│ │ L2  Console  (dws-console + login (OIDC)     │ │
-│ │              + API gateway)                  │ │
-│ │ ┌──────────────────────────────────────────┐ │ │
-│ │ │ L1  Core: engine + step runtimes         │ │ │
-│ │ │          + triggers                      │ │ │
-│ │ └──────────────────────────────────────────┘ │ │
-│ └──────────────────────────────────────────────┘ │
-└──────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│ L4  Console members & roles (multi-user)               │
+│ ┌────────────────────────────────────────────────────┐ │
+│ │ L3  Console  (dws-console + login (OIDC)           │ │
+│ │              + API gateway + Admin API)            │ │
+│ │ ┌────────────────────────────────────────────────┐ │ │
+│ │ │ L2  Events  (Knative Broker + lifecycle events)│ │ │
+│ │ │ ┌────────────────────────────────────────────┐ │ │ │
+│ │ │ │ L1  Core: engine + step runtimes           │ │ │ │
+│ │ │ │     + triggers + Knative Serving           │ │ │ │
+│ │ │ └────────────────────────────────────────────┘ │ │ │
+│ │ └────────────────────────────────────────────────┘ │ │
+│ └────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────┘
 
 Engine auth (machine callers of the engine): a separate option on L1, not a layer.
 ```
 
 | Layer | Contains | Today's toggles (closest match) |
 |---|---|---|
-| L1 Core | Everything an OWS workflow needs to run: the engine, the step runtimes and triggers. Not optional | `controller.*`, `controller.images.*`, `dapr.enabled` (+ its Redis), `knative.*` (Phase 11, not built) |
-| L2 Console | `dws-console`, its login (console auth), the API gateway that fronts it, and the Admin API (`dws-admin` + its Postgres) | `console.enabled`, `apiGateway.*`, `apisix.*`, `auth.*`, `dex.*`, `admin.*`, `postgresql.*` |
-| L3 Members & roles | Multi-user console with roles | none — not built |
+| L1 Core | Everything an OWS workflow needs to run: the engine, the step runtimes and triggers. Not optional | `controller.*`, `controller.images.*`, `dapr.enabled` (+ its Redis), Knative Serving (Phase 11, pulled into Phase 12 — not built) |
+| L2 Events | A Knative Eventing Broker; DWS publishes its lifecycle events (definition, deployment, instance, task) to it as CloudEvents; consumers attach Triggers. The Dapr `pubsub` Component + Redis stay in Core (OWS `emit`/`listen` use them) | none — lifecycle events go over Dapr pub/sub `dws.events`, always on today |
+| L3 Console | `dws-console`, its login (console auth), the API gateway that fronts it, and the Admin API (`dws-admin` + its Postgres) | `console.enabled`, `apiGateway.*`, `apisix.*`, `auth.*`, `dex.*`, `admin.*`, `postgresql.*` |
+| L4 Members & roles | Multi-user console with roles | none — not built |
 | *(not a layer)* Engine auth | Auth for machine callers of the engine (deploy, start, events) | none — not designed yet |
 
 Decided:
@@ -143,16 +147,54 @@ Decided:
 | 5 | The solo admin account also logs in through OIDC |
 | 6 | Engine auth is a different thing from console auth: an option on Core, not a layer (2026-10-20) |
 | 7 | `dws-admin` belongs to the Console layer, not Core, and is called the **Admin API** (2026-10-20) |
+| 8 | Phase 12 assumes every component in a layer is **bundled** and on by default. Swapping in the operator's own infra is Phase 13, not part of layering (2026-10-20) |
+| 9 | **`console.enabled` is the Console layer switch.** On → console, Admin API, Postgres, APISIX gateway, Dex and console login all come up. The only other required input is the hostname. Per-component `enabled` flags (`admin`, `postgresql`, `apisix`, `apiGateway`, `dex`, `auth`) stop being operator settings; their blocks keep tuning only (image, resources, bootstrap admin). Ships as chart **2.0**: the default install becomes Core only (no Admin API, no Postgres) (2026-10-20) |
+| 10 | **Turning the Console layer on later must work.** `helm upgrade --set console.enabled=true` on a Core-only release is a supported path, so Phase 12 fixes today's bundled-APISIX upgrade hang (etcd `pre-upgrade` hook waits on a Secret the upgrade never creates; Helm skips `crds/` on upgrade) rather than restricting the Console layer to fresh installs (2026-10-20) |
+| 11 | **With the Console layer on, the controller accepts only console (Dex) tokens.** Turning on the console's login also gates the controller API; scripts and CI calling the controller directly need a Dex token until engine auth is designed. With it off the controller stays open, as today (2026-10-20) |
+| 12 | Observability (`observability.*`) is an add-on beside the layers, not a layer (2026-10-20) |
+| 13 | **Events is its own layer (L2), between Core and Console.** Core alone publishes **nothing**. The layer switches DWS's lifecycle publishing only; the `pubsub` Component and Redis stay in Core because OWS `emit`/`listen` use them. The Console layer needs Events (the Admin API reads `dws.events`), so turning the console on turns Events on. Layers renumbered: Events L2, Console L3, Members & roles L4 (2026-10-20) |
+| 14 | **Events layer v1 = (1) lifecycle event stream** — every definition/deployment/instance/task event published as a CloudEvent, so operators plug their own consumers in without polling the controller; **(2) stable, versioned event contract** — documented `io.dws.*` types with a version on each, so consumers survive DWS upgrades (2026-10-20) |
+| 15 | Workflow chaining on DWS events is **not** an Events-layer feature: the mechanism is Core (OWS `listen` / `schedule.on` triggers). Events only makes lifecycle events available to listen to (2026-10-20) |
+| 16 | **The Events layer is a Knative Eventing Broker, in-memory for v1** (channel-based Broker on InMemoryChannel — live only, events lost on restart, no replay). Controller and orchestrator POST lifecycle CloudEvents to the Broker address that a Knative **SinkBinding** injects as `K_SINK`: Events on → `K_SINK` present → publish; off → absent → nothing published (this is the on/off contract, no extra controller → orchestrator env var). The Admin API consumes through its own Trigger; operators wire their systems with their own Triggers (any URL, Camel K Kamelets, Knative sinks). Lifecycle events leave Dapr pub/sub, which stays Core-only for OWS `emit`/`listen`. Chosen over a home-made HTTP relay for the standard CloudEvents/Trigger model. Durable broker (Kafka, or a Redis stream in front of the Broker — Knative has no Redis Broker, only beta RedisStreamSource/Sink) is parked with retention (2026-10-20) |
+| 17 | **Knative Serving is part of Core**, bundled (the controller already deploys steps as Knative Services, so Core silently assumed it). Phase 11 is pulled into Phase 12. Knative Eventing installs only with the Events layer (2026-10-20) |
+
+Console layer switch, from the operator's side:
+
+| | Console off (`console.enabled=false`, default) | Console on (`console.enabled=true`) |
+|---|---|---|
+| Installed | controller, Dapr, Redis | + console, Admin API, Postgres, APISIX, Dex |
+| Entry point | Controller `/workflows` API, in-cluster only (port-forward / Dapr invoke) | `https://<hostname>`, OIDC login via bundled Dex |
+| Run history / queries | none | Admin API + Postgres |
+| Controller API | open | Dex bearer token required |
+| Install notes | how to reach the controller API | console URL + how to read the bootstrap admin password |
+
+```yaml
+console:
+  enabled: true              # Console layer switch
+  hostname: dws.example.com  # required when enabled
+```
 
 Open:
 
 - Engine auth design — gate on starting instances, machine tokens, per-action scopes; and how the
   controller's one bearer check accepts both console user tokens (relayed by `dws-admin`) and
   machine tokens (one IdP with two audiences, or two IdPs).
-- Whether the `dws.events` pub/sub Component moves to Console with the Admin API (its only reader today).
-- Where observability (`observability.*`) sits — its own layer or a cross-cutting add-on.
-- How layers show up in `values.yaml` — one switch per layer, presets, or today's per-component
-  toggles plus a check that an outer layer is never on without its inner one.
+- Events layer values shape (`events.enabled` sketched).
+- Knative install path. Proposed: the official **Knative Operator Helm chart** as a dependency,
+  a `KnativeServing` resource always (Core), a `KnativeEventing` resource only with Events.
+  To verify: Helm creating the Operator's resources in the same release as its CRDs (same class of
+  problem as the APISIX upgrade hang); Serving networking layer (Kourier vs Gateway API); per-pod
+  SinkBinding on controller-created orchestrator Deployments.
+- Console layer details — revisit after the Events layer (2026-10-20).
+
+Parked Events-layer features (later discussion, 2026-10-20):
+
+| Feature | Benefit |
+|---|---|
+| Bounded retention + replay (last N events / T hours) | A consumer that was down catches up; Redis memory stays capped |
+| Webhook sinks with retries + dead-letter | Alerts on `instance.failed` (Slack, PagerDuty, CI) with zero code |
+| Per-sink filters (event type, workflow, namespace) | Each consumer gets only what it needs |
+| Durable / your own broker (Kafka, NATS, RabbitMQ, or a Redis stream in front of the Broker) | Events survive restarts; fits the org's existing event backbone — overlaps Phase 13 |
 
 ### Bring-your-own infra — swap bundled pieces for the operator's own
 
@@ -202,8 +244,8 @@ previous update.
 | 8. Testing | ✅ | `helm lint`, `helm template`, install test on kind | `.github/workflows/helm.yml`: lint + template (default/disabled/overridden) + kind server-dry-run in `verify`; a real kind install of admin+postgres+Dapr with `helm test` in `integration` (a hand-rolled kind pipeline instead of the `ct` tool, but covers the same ground) |
 | 9. Publish | ✅ | OCI chart repo | `release` job in `helm.yml` packages and pushes to `oci://ghcr.io/tonylibs/charts` on merge to `main` |
 | 10. Docs | ⚠️ | Update README + CLAUDE.md | **Partial.** Landed: `charts/dws/README.md` — chart-scoped operator docs covering the pre-Gateway `Ingress` → Gateway API migration (bundled vs. external APISIX, the bundled-etcd `pre-upgrade`-hook deadlock on `helm upgrade`, required values, upgrade/rollback steps, cross-linked to `scripts/verify-console-ingress-migration.sh`) plus a "Validating changes to this chart" section; `CLAUDE.md` §Releasing points at `docs/release-process.md` for chart cutting and the `charts/dws/values.yaml` pins. Still owed: root `README.md` has **zero** helm mentions — needs a `helm install oci://ghcr.io/tonylibs/charts/dws` quickstart (install/upgrade/uninstall + `helm test`) and a values reference table for the top-level toggles (`dapr.enabled`, `postgresql.enabled`, `console.enabled`, `dex.enabled`, `apisix.enabled`, `apiGateway.*`, `auth.*`, `redis.external.*`, `defaults.*`) |
-| 11. Knative prerequisite | ❌ | Knative Serving via hook Job | Not started — split out of the original combined "Phase 4: Prerequisites" so Dapr (needed by Phase 5) isn't blocked on Knative design work. `knative-install-job.yaml` (post-install/post-upgrade hook Job), `knative.enabled`/`knative.version` values, preflight CRD check for Knative. Independent of every other phase — can land whenever, in parallel with anything above |
-| 12. Feature layers | ❌ | Operators enable features layer by layer, core outward (see Design direction) | Design only so far (2026-10-05). Settle the open questions (engine auth design, `dws.events` and observability placement, values shape), map today's toggles to layers, stop an outer layer rendering without its inner one, document the layers |
+| 11. Knative prerequisite | ❌ | Knative Serving via hook Job | **Pulled into Phase 12 (2026-10-20): Knative Serving is part of Core; proposed install via the Knative Operator Helm chart rather than a hook Job — see Design direction decision 17 and Open.** Not started — split out of the original combined "Phase 4: Prerequisites" so Dapr (needed by Phase 5) isn't blocked on Knative design work. `knative-install-job.yaml` (post-install/post-upgrade hook Job), `knative.enabled`/`knative.version` values, preflight CRD check for Knative. Independent of every other phase — can land whenever, in parallel with anything above |
+| 12. Feature layers | ❌ | Operators enable features layer by layer, core outward (see Design direction) | Design only so far (decisions 8–17, 2026-10-20). Layers: Core (incl. Knative Serving — Phase 11 pulled in) → Events → Console → Members & roles, everything bundled. Core alone publishes nothing; Events v1 = in-memory Knative Broker fed via SinkBinding `K_SINK`, consumers attach Triggers, versioned `io.dws.*` CloudEvents (durability, retention, webhooks, filters, own broker parked). `console.enabled` switches the Console layer (and Events with it); chart 2.0 defaults to Core only; upgrading into Console must work; controller accepts only Dex tokens when Console is on. Next: Events layer design detail, then Console, then sub-phases |
 | 13. Bring-your-own infra | ❌ | Operators swap bundled Postgres / Redis / broker / OTLP for their own (see Design direction) | First slice: separate pub/sub and state-store hosts, with an allowlist of tested Dapr component types. Pick the allowlist. Related: the bundled-Redis-still-installs trade-off under Open items |
 
 ## Open items
