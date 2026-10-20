@@ -8,29 +8,43 @@ needs on your cluster, and runs it as a Dapr Workflow: retries, timers, external
 crash-safe replay included. Nothing is code-generated per workflow — every workflow runs on the
 same prebuilt images.
 
-```mermaid
-flowchart LR
-  you(["You / CI / Console"]) -->|"POST order.yaml"| controller["dws-controller"]
-  controller -->|deploys| stack
-  subgraph stack["One stack per workflow version"]
-    orch["Workflow runtime<br/>(interprets the definition)"]
-    s1["step: checkInventory<br/>(call: http)"]
-    s2["step: chargePayment<br/>(call: http)"]
-  end
-  orch -->|Dapr| s1 & s2
-  s1 & s2 --> apis[("Your services / APIs")]
-  orch -.->|lifecycle events| admin["dws-admin<br/>(history & queries)"]
-  admin -.-> console["dws-console<br/>(web UI)"]
-```
-
 ## Contents
 
+- [Features, layer by layer](#features-layer-by-layer) — what you can switch on
 - [Quickstart](#quickstart) — install, deploy a workflow, run it
 - [What you can write](#what-you-can-write) — supported DSL features
 - [How it works](#how-it-works)
 - [Installation and configuration](#installation-and-configuration)
 - [Components](#components)
 - [Documentation](#documentation) · [Roadmap](#roadmap) · [Contributing](#contributing)
+
+## Features, layer by layer
+
+Switch DWS features on from the core outward — each layer needs the ones inside it. Add-ons work
+next to any layer.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/roadmaps/helm-feature-layers-dark.png">
+  <img alt="DWS feature layers: L1 Core inside L2 Events inside L3 Console inside L4 Members & roles, add-ons alongside, all on Dapr and Knative over Kubernetes" src="docs/roadmaps/helm-feature-layers.png">
+</picture>
+
+| Layer | What you get | Today | Guide |
+|---|---|---|---|
+| **L1 Core** | `POST` a workflow, DWS deploys it; start, query, signal, pause or terminate instances. Every `call`/`run` step runtime included | ✅ Always on | [Core engine](openwiki/user-guide/core-engine.md) |
+| **L2 Events** | A lifecycle event stream (deployed, started, task failed…) your own systems subscribe to, with a documented contract | ⚠️ Events always published on Dapr pub/sub; the switchable Knative Broker layer is designed | [Events](openwiki/user-guide/events.md) |
+| **L3 Console** | Web UI behind OIDC login: browse workflows, watch instances live, author and submit definitions; Admin API for run history | ✅ Built, turned on with several values; one `console.enabled` switch planned | [Console](openwiki/user-guide/console.md) |
+| **L4 Members & roles** | Many console users with roles | ❌ Not built | [Console](openwiki/user-guide/console.md#members--roles-planned) |
+
+| Add-on | What you get | Today |
+|---|---|---|
+| Observability | OpenTelemetry traces from controller, Admin API and workflow runtimes | ✅ |
+| Bring your own infra | Your Postgres, Redis, OTLP collector (broker planned) | ✅ partly |
+| Engine auth | Tokens for CI and services calling the engine | ❌ planned |
+| Service mesh | Istio | ❌ exploratory |
+
+> **Today vs planned.** The chart still has one toggle per component. Chart 2.0 turns this into
+> layer switches (default install = Core only, Knative bundled). Value-by-value mapping:
+> [Feature layers guide](openwiki/user-guide/feature-layers.md).
 
 ## Quickstart
 
@@ -131,6 +145,9 @@ curl -s localhost:8081/workflows/instances/<id>              # status + output
 curl -s -XPOST localhost:8081/workflows/instances/<id>/events/<event> -d '{}'   # feed a `listen`
 ```
 
+Need pause, terminate, or your own instance IDs? Use the Dapr Workflow API on the same pod —
+see [Core engine](openwiki/user-guide/core-engine.md#3-run-an-instance).
+
 Want a UI instead? Enable the console (below) to browse workflows, watch instances live, and
 submit definitions from an editor with validation and a diagram preview.
 
@@ -153,6 +170,21 @@ DWS targets the full DSL 1.0. Status today:
 Feature-by-feature detail: [`docs/roadmaps/openworkflow-features.md`](docs/roadmaps/openworkflow-features.md).
 
 ## How it works
+
+```mermaid
+flowchart LR
+  you(["You / CI / Console"]) -->|"POST order.yaml"| controller["dws-controller"]
+  controller -->|deploys| stack
+  subgraph stack["One stack per workflow version"]
+    orch["Workflow runtime<br/>(interprets the definition)"]
+    s1["step: checkInventory<br/>(call: http)"]
+    s2["step: chargePayment<br/>(call: http)"]
+  end
+  orch -->|Dapr| s1 & s2
+  s1 & s2 --> apis[("Your services / APIs")]
+  orch -.->|lifecycle events| admin["dws-admin<br/>(history & queries)"]
+  admin -.-> console["dws-console<br/>(web UI)"]
+```
 
 1. **Deploy.** `dws-controller` validates and compiles your definition, then creates:
    - an immutable, versioned copy of the definition,
@@ -256,6 +288,7 @@ Each component's README covers its own configuration and API.
 
 | Read this | For |
 |---|---|
+| [User guide](openwiki/user-guide/feature-layers.md) | What each feature layer does and how to use it: install, run, events, console, add-ons |
 | [DWS wiki](https://github.com/tonylibs/dapr-workflow-spec/wiki) | Setup, architecture, API, and operations guides |
 | [`openwiki/quickstart.md`](openwiki/quickstart.md) | Generated, always-current guide to the codebase |
 | [`docs/adr/`](docs/adr) | Architecture decisions and why |
@@ -265,15 +298,11 @@ Each component's README covers its own configuration and API.
 ## Roadmap
 
 Next up for workflow authors: `schedule` triggers, `use.functions` / `use.catalogs` /
-`use.extensions`, and sidecar-injected credentials. For operators, the chart is moving toward
-features you switch on in layers, from the core engine outward, plus the option to bring your own
-Postgres, Redis, broker, and OTLP endpoint:
-
-![Helm chart feature layers: Core inside Console inside Members & roles, add-ons alongside, all on Dapr and Knative over Kubernetes](docs/roadmaps/helm-feature-layers.png)
-
-> **Planned** — today each component still has its own toggle. Design:
-> [`helm-packaging.md`](docs/roadmaps/helm-packaging.md#design-direction-feature-layers-and-bring-your-own-infra-proposed-2026-10-05),
-> [ADR 0007](docs/adr/0007-chart-feature-layers.md), [ADR 0008](docs/adr/0008-chart-bring-your-own-infra.md).
+`use.extensions`, and sidecar-injected credentials. For operators: the
+[feature layers](#features-layer-by-layer) as single chart switches (chart 2.0), then bringing your
+own Postgres, Redis, broker, and OTLP endpoint. Design:
+[`helm-packaging.md`](docs/roadmaps/helm-packaging.md#design-direction-feature-layers-and-bring-your-own-infra-proposed-2026-10-05),
+[ADR 0008](docs/adr/0008-chart-bring-your-own-infra.md).
 
 ## Contributing
 

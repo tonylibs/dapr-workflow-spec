@@ -1,58 +1,87 @@
 ---
 type: Repository Guide
 title: DWS OpenWiki quickstart
-description: Entry point for the DWS config-driven Kubernetes workflow platform, its deployed runtime, and lifecycle-event integration.
-tags: [dws, dapr, kubernetes, workflows]
+description: Entry point for DWS users: run Open Workflow Spec workflows on Kubernetes and Dapr, organized by feature layer from the core engine outward.
+tags: [dws, dapr, kubernetes, workflows, user-guide]
 ---
 
 # DWS OpenWiki quickstart
 
-DWS (`dapr-workflow-spec`) is a config-driven workflow platform for Kubernetes. Clients submit Open Workflow Specification DSL 1.0 YAML or JSON to a controller; the controller deploys Dapr-backed resources and a generic orchestrator interprets the definition at runtime. No per-workflow application code is generated.
+**DWS runs [Open Workflow Specification](https://open-workflow-specification.org/) (DSL 1.0)
+workflows on Kubernetes as durable Dapr Workflows — without writing workflow code.** You `POST` a
+YAML/JSON definition; DWS validates it, deploys what it needs, and runs it on prebuilt images.
 
-## Start here
+## Pick your layer
 
-- [Deployed workflow architecture](architecture/deployed-workflow.md) explains how a definition becomes an immutable, versioned deployment and how the orchestrator executes its tasks.
-- [Lifecycle events](integrations/lifecycle-events.md) explains the shared Dapr pub/sub stream that observes controller deployment and orchestrator execution lifecycles.
-- [Administrative read model](integrations/admin-read-model.md) explains how `dws-admin` turns that stream into a durable Postgres query view and read-only APIs.
-- [HTTP step runner](integrations/http-step-runner.md) explains the generic `call: http` activity worker's request, authentication, and retryability contract.
-- [OpenAPI step runner](integrations/openapi-step-runner.md) explains the generic `call: openapi` service's pinned-document startup, request transformation, and generated authentication contract.
-- [gRPC and AsyncAPI step runners](integrations/protocol-step-runners.md) explains the generic `call: grpc` dynamic-descriptor worker and `call: asyncapi` output-binding dispatcher.
-- [A2A step runner](integrations/a2a-step-runner.md) explains the generic `call: a2a` service's supported JSON-RPC operations, agent discovery, and retry-safety contract.
-- [DWS Step activity host](integrations/step-activity-host.md) explains the new pinned-definition `Step` activity, its routing and input envelope, and its compatibility boundary with Flow and the orchestrator.
-- [DWS Flow workflow host](architecture/flow-host.md) explains the new pinned-definition `Flow` workflow, its sequencer, and its current structural-scope boundary.
-- [OWS DSL feature roadmap](architecture/roadmap.md) tracks DSL 1.0 task-type and cross-cutting feature coverage against the current implementation, phased into build order.
-- [Agent sandbox](architecture/agent-sandbox.md) explains the CI-validated development image, cluster-hosted session templates, and local Docker-backed alternative for persistent agent work.
-- [Console OIDC login](architecture/console-auth.md) explains the additive browser PKCE login, its Helm Dex configuration agreement, and the deferred bundled-provider acceptance gap.
-- [Helm chart packaging](architecture/helm-chart-roadmap.md) explains how `charts/dws` installs the controller and administrative read model, including its database and CI/release checks.
+DWS features switch on in layers, from the core outward. Start at Core; add only what you need.
 
-The repository has several independently built components; run builds and tests from each component directory rather than from the repository root:
+```mermaid
+flowchart LR
+  core["L1 Core<br/>deploy + run workflows"] --> events["L2 Events<br/>lifecycle event stream"]
+  events --> console["L3 Console<br/>web UI + login + Admin API"]
+  console --> members["L4 Members & roles<br/>(planned)"]
+  addons["Add-ons: observability · your own infra · engine auth"] -.-> core
+```
 
-| Component | Responsibility | Primary verification |
+| I want to… | Read |
+|---|---|
+| Understand the layers and today's vs planned Helm values | [Feature layers](user-guide/feature-layers.md) |
+| Install DWS, deploy a workflow, start/query/terminate an instance | [Core engine](user-guide/core-engine.md) |
+| React to deploys and runs from my own systems; the event contract | [Events](user-guide/events.md) |
+| Use the web console, sign in, query run history | [Console](user-guide/console.md) |
+| Add tracing, use my own Postgres/Redis/OTLP, secure machine callers | [Add-ons](user-guide/add-ons.md) |
+
+> **Status.** The layer model is decided but **not built yet** (Helm roadmap Phase 12). Each guide
+> page separates **Today** (chart 1.x values) from **Planned** (chart 2.0).
+
+## Five-minute path
+
+```sh
+# 1. Install (Knative Serving must already be in the cluster)
+helm install dws oci://ghcr.io/tonylibs/charts/dws -n dws-system --create-namespace
+
+# 2. Deploy a workflow
+kubectl -n dws-system port-forward svc/dws-controller 8080:80 &
+curl -s -H 'Content-Type: application/yaml' --data-binary @order.yaml localhost:8080/workflows
+
+# 3. Run it
+kubectl -n dws-system port-forward deploy/order-<versionId> 8081:8080 &
+curl -s -XPOST localhost:8081/workflows/order/instances -d '{"orderId": 42}'
+```
+
+Full walkthrough with responses and the Dapr Workflow API: [Core engine](user-guide/core-engine.md).
+
+## Under the hood (contributors)
+
+How the pieces work, for people changing DWS:
+
+- [Deployed workflow lifecycle](architecture/deployed-workflow.md) — definition → versioned resources → generic interpreter.
+- [Lifecycle events](integrations/lifecycle-events.md) — publishers, replay determinism, known replay defect.
+- [Administrative read model](integrations/admin-read-model.md) — `dws-admin` projection, queries, SSE, submission relay.
+- Step runtimes: [HTTP](integrations/http-step-runner.md), [OpenAPI](integrations/openapi-step-runner.md), [gRPC & AsyncAPI](integrations/protocol-step-runners.md), [A2A](integrations/a2a-step-runner.md).
+- Runtime v2 (early): [DWS Flow workflow host](architecture/flow-host.md), [DWS Step activity host](integrations/step-activity-host.md).
+- [Console OIDC login](architecture/console-auth.md) — browser PKCE login and the Dex agreement.
+- [Helm chart packaging](architecture/helm-chart-roadmap.md) — chart internals, auth pipeline placement, CI and release.
+- [OWS DSL feature roadmap](architecture/roadmap.md) — DSL coverage vs implementation.
+- [Agent sandbox](architecture/agent-sandbox.md) — development image and session templates.
+
+| Component | Responsibility | Check (run inside the component dir) |
 |---|---|---|
-| `dws-controller` | Quarkus API that validates/compiles definitions and applies Kubernetes resources | `./mvnw test`; `./mvnw verify` |
-| `dws-orchestrator` | Spring Boot Dapr Workflow interpreter for one pinned definition per pod | `./mvnw verify` |
-| `dws-step` | Java Dapr Workflow activity host for one immutable step-node definition | `./mvnw verify` |
-| `dws-flow` | .NET Dapr Workflow host for one immutable flow-node definition | `dotnet test test/dws-flow.Tests.csproj` |
-| `dws-call-http` | Go step image for `call: http` tasks | `make test` |
-| `dws-call-openapi` | TypeScript/Fastify step image for `call: openapi` tasks | `pnpm lint && pnpm test && pnpm build` |
-| `dws-call-grpc` | Go step image for unary `call: grpc` tasks | `make test` |
-| `dws-call-asyncapi` | TypeScript/Fastify step image for `call: asyncapi` send tasks | `pnpm lint && pnpm test && pnpm build` |
-| `dws-call-a2a` | Python/FastAPI step image for supported `call: a2a` tasks | `uv run ruff check . && uv run pyright && uv run pytest` |
-| `dws-run` | Go step images for `run: shell` and inline JavaScript/Python `run: script` tasks | `make lint && make test` |
-| `dws-admin` | NestJS/Postgres projection and query API for lifecycle events | `pnpm db:migrate && pnpm lint && pnpm test && pnpm build` |
+| `dws-controller` | Validates/compiles definitions, applies Kubernetes resources | `./mvnw verify` |
+| `dws-orchestrator` | Default runtime: interprets one pinned definition per pod | `./mvnw verify` |
+| `dws-step` / `dws-flow` | Runtime v2 per-node hosts (early) | `./mvnw verify` / `dotnet test test/dws-flow.Tests.csproj` |
+| `dws-call-http`, `dws-call-grpc`, `dws-run` | Go step images | `make lint && make test` |
+| `dws-call-openapi`, `dws-call-asyncapi` | TypeScript step images | `pnpm lint && pnpm test && pnpm build` |
+| `dws-call-a2a` | Python step image | `uv run ruff check . && uv run pyright && uv run pytest` |
+| `dws-admin` | Admin API: lifecycle-event projection + queries | `pnpm lint && pnpm test && pnpm build` |
+| `dws-console` | Web UI | `pnpm check && pnpm typecheck && pnpm test && pnpm build` |
+| `charts/dws` | Helm chart | `helm lint charts/dws` + `charts/dws/tests/*.sh` (from repo root) |
 
-## Change guide
-
-- For definition-to-resource behavior, begin with `dws-controller/src/main/java/io/dws/controller/compile/` and `k8s/`; preserve content-addressed versioning and stable task-derived app IDs described in the [deployed workflow](architecture/deployed-workflow.md).
-- For interpreter semantics, begin with `dws-orchestrator/src/main/java/io/dws/orchestrator/workflow/InterpreterWorkflow.java`; task execution also produces the [orchestrator lifecycle events](integrations/lifecycle-events.md#orchestrator-events).
-- For the generic pinned-node activity boundary, start with `dws-step/src/main/java/io/dws/step/`; preserve its Flow and orchestrator compatibility contract described in the [DWS Step activity host](integrations/step-activity-host.md).
-- For pinned structural-node sequencing, start with `dws-flow/src/`; preserve its `Flow` and envelope contract with the [DWS Step activity host](integrations/step-activity-host.md), and keep unsupported structural scopes documented in the [DWS Flow workflow host](architecture/flow-host.md).
-- For cross-component telemetry, treat `docs/events.md` as the source contract; changes also affect the [administrative read model](integrations/admin-read-model.md) that consumes this stream.
-- Repository-local agent tooling is under `.agents/`: `settings.json` permits selected `pnpm` commands, and `skills/` supplies reusable guidance. Treat it as contributor assistance only; component-specific commands and checks above remain the authoritative verification guidance.
-
-The GitHub Actions workflow at `.github/workflows/openwiki-update.yml` refreshes this generated documentation on every merge to `main` (or on manual dispatch).
+Scope and audience for this wiki are set in [`INSTRUCTIONS.md`](INSTRUCTIONS.md). The workflow
+`.github/workflows/openwiki-update.yml` refreshes it after merges to `main`.
 
 ## Backlog
 
-- **Run step-runner internals** — `dws-run/`: the platform-level task-to-step-service contract is documented, while its individual request/response and configuration details remain deferred. The comparable HTTP, OpenAPI, and A2A runners are documented in [HTTP step runner](integrations/http-step-runner.md), [OpenAPI step runner](integrations/openapi-step-runner.md), and [A2A step runner](integrations/a2a-step-runner.md).
-- **Administrative console detail** — `dws-console/`: its browser OIDC sign-in behavior and the Helm/Dex agreement are documented in [console OIDC login](architecture/console-auth.md), and it reads `dws-admin` with live instance SSE updates. Browser-side route, cache, and deployment details remain deferred; the server-side contract and its single-replica constraint are documented in the [administrative read model](integrations/admin-read-model.md).
+- **Members & roles (L4)** — `docs/roadmaps/helm-packaging.md`: not broken down yet; only a placeholder in [Console](user-guide/console.md#members--roles-planned).
+- **Run step-runner internals** — `dws-run/`: request/response and configuration details not documented; comparable runners are under `integrations/`.
+- **Console browser internals** — `dws-console/`: routes, caching and deployment details deferred; user-facing behavior is in [Console](user-guide/console.md).

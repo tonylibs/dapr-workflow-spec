@@ -181,44 +181,62 @@
 
     <div id="stack" class="relative flex flex-col gap-4">
 
-      <!-- L3 -->
+      <!-- L4 Members & roles -->
       <section class="rounded-xl border border-dashed border-chart-1/60 bg-card p-5 shadow-sm">
         <div class="flex items-center gap-2">
+          <span class="rounded bg-secondary px-1.5 py-0.5 font-mono text-[11px] text-secondary-foreground">L4</span>
           <h2 class="font-semibold">Members &amp; roles</h2>
           <span class="ml-auto rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">Not built</span>
         </div>
-        <p class="mt-1 text-sm text-muted-foreground">Multi-user console</p>
+        <p class="mt-1 text-sm text-muted-foreground">Many console users with roles</p>
         <div class="mt-3 flex flex-wrap gap-2">
           <span class="rounded-md border border-dashed border-chart-1/60 bg-chart-1/10 px-3 py-1.5 text-sm">User management</span>
-          <span class="rounded-md border border-dashed border-chart-1/60 bg-chart-1/10 px-3 py-1.5 text-sm">Roles</span>
-          <span class="rounded-md border border-dashed border-chart-1/60 bg-chart-1/10 px-3 py-1.5 text-sm">Dex gRPC API</span>
+          <span class="rounded-md border border-dashed border-chart-1/60 bg-chart-1/10 px-3 py-1.5 text-sm">Roles (RBAC)</span>
         </div>
 
-        <!-- L2 -->
+        <!-- L3 Console -->
         <section class="mt-5 rounded-lg border border-chart-1/40 bg-accent/70 p-5">
           <div class="flex items-center gap-2">
+            <span class="rounded bg-card px-1.5 py-0.5 font-mono text-[11px] text-accent-foreground">L3</span>
             <h2 class="font-semibold text-accent-foreground">Console</h2>
+            <span class="ml-auto rounded-full bg-card px-2 py-0.5 text-xs text-accent-foreground">Built · one switch planned</span>
           </div>
-          <p class="mt-1 text-sm text-muted-foreground">UI · OIDC login · API gateway</p>
+          <p class="mt-1 text-sm text-muted-foreground">Web UI · OIDC login · run history · submit workflows</p>
           <div class="mt-3 flex flex-wrap gap-2">
-            <span class="rounded-md border border-chart-1/50 bg-card px-3 py-1.5 text-sm font-medium text-accent-foreground shadow-xs">Console</span>
-            <span class="rounded-md border border-chart-1/50 bg-card px-3 py-1.5 text-sm font-medium text-accent-foreground shadow-xs">Dex</span>
-            <span class="rounded-md border border-chart-1/50 bg-card px-3 py-1.5 text-sm font-medium text-accent-foreground shadow-xs">APISIX</span>
-            <span class="rounded-md border border-chart-1/50 bg-card px-3 py-1.5 text-sm font-medium text-accent-foreground shadow-xs">Admin API</span>
+            <span class="rounded-md border border-chart-1/50 bg-card px-3 py-1.5 text-sm font-medium text-accent-foreground shadow-xs">Console UI</span>
+            <span class="rounded-md border border-chart-1/50 bg-card px-3 py-1.5 text-sm font-medium text-accent-foreground shadow-xs">Admin API + Postgres</span>
+            <span class="rounded-md border border-chart-1/50 bg-card px-3 py-1.5 text-sm font-medium text-accent-foreground shadow-xs">Dex login</span>
+            <span class="rounded-md border border-chart-1/50 bg-card px-3 py-1.5 text-sm font-medium text-accent-foreground shadow-xs">APISIX gateway</span>
           </div>
 
-          <!-- L1 -->
-          <section class="mt-5 rounded-lg border border-primary/40 bg-card p-5 shadow-md">
+          <!-- L2 Events -->
+          <section class="mt-5 rounded-lg border border-dashed border-chart-3/60 bg-card/80 p-5">
             <div class="flex items-center gap-2">
-              <h2 class="font-semibold">Core</h2>
-              <span class="ml-auto rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Always on</span>
+              <span class="rounded bg-secondary px-1.5 py-0.5 font-mono text-[11px] text-secondary-foreground">L2</span>
+              <h2 class="font-semibold">Events</h2>
+              <span class="ml-auto rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">Designed</span>
             </div>
-            <p class="mt-1 text-sm text-muted-foreground">Runs an OWS workflow</p>
-            <div class="mt-3 grid grid-cols-3 gap-2">
-              <div id="engine" class="rounded-md bg-primary/10 px-2 py-3 text-center text-sm font-medium text-primary">Engine</div>
-              <div id="steps" class="rounded-md bg-primary/10 px-2 py-3 text-center text-sm font-medium text-primary">Step runtimes</div>
-              <div class="rounded-md bg-primary/10 px-2 py-3 text-center text-sm font-medium text-primary">Triggers</div>
+            <p class="mt-1 text-sm text-muted-foreground">Lifecycle event stream for your own systems</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <span id="broker" class="rounded-md border border-dashed border-chart-3/60 bg-chart-3/10 px-3 py-1.5 text-sm">Knative Broker</span>
+              <span class="rounded-md border border-dashed border-chart-3/60 bg-chart-3/10 px-3 py-1.5 text-sm">Versioned <span class="font-mono text-xs">io.dws.*</span> CloudEvents</span>
+              <span class="rounded-md border border-dashed border-chart-3/60 bg-chart-3/10 px-3 py-1.5 text-sm">Your Triggers</span>
             </div>
+
+            <!-- L1 Core -->
+            <section class="mt-5 rounded-lg border border-primary/40 bg-card p-5 shadow-md">
+              <div class="flex items-center gap-2">
+                <span class="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] text-primary">L1</span>
+                <h2 class="font-semibold">Core</h2>
+                <span class="ml-auto rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Always on</span>
+              </div>
+              <p class="mt-1 text-sm text-muted-foreground">Deploy and run OWS workflows</p>
+              <div class="mt-3 grid grid-cols-3 gap-2">
+                <div id="engine" class="rounded-md bg-primary/10 px-2 py-3 text-center text-sm font-medium text-primary">Engine</div>
+                <div id="steps" class="rounded-md bg-primary/10 px-2 py-3 text-center text-sm font-medium text-primary">Step runtimes</div>
+                <div class="rounded-md bg-primary/10 px-2 py-3 text-center text-sm font-medium text-primary">Triggers</div>
+              </div>
+            </section>
           </section>
         </section>
       </section>
@@ -230,8 +248,8 @@
           <div class="text-sm text-muted-foreground">Workflows · sidecars</div>
         </div>
         <div id="knative" class="rounded-xl border border-chart-3/40 border-t-4 border-t-chart-3 bg-card px-4 py-3 text-center shadow-sm">
-          <div class="font-semibold text-accent-foreground">Knative Serving</div>
-          <div class="text-sm text-muted-foreground">Step functions · scale to zero</div>
+          <div class="font-semibold text-accent-foreground">Knative</div>
+          <div class="text-sm text-muted-foreground">Serving: steps · Eventing: broker</div>
         </div>
       </div>
 
@@ -249,7 +267,7 @@
         </li>
         <li class="flex items-start gap-3 rounded-lg border border-dashed border-chart-2/70 bg-chart-2/5 px-3 py-2.5">
           <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full border border-primary"></span>
-          <div><div class="text-sm font-medium">Engine auth</div><div class="text-xs text-muted-foreground">Machine callers</div></div>
+          <div><div class="text-sm font-medium">Engine auth</div><div class="text-xs text-muted-foreground">Tokens for CI &amp; services</div></div>
         </li>
         <li class="flex items-start gap-3 rounded-lg border border-dashed border-chart-2/70 bg-chart-2/5 px-3 py-2.5">
           <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full border border-primary"></span>
@@ -257,7 +275,7 @@
         </li>
         <li class="flex items-start gap-3 rounded-lg border border-chart-2/60 bg-chart-2/20 px-3 py-2.5">
           <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary"></span>
-          <div><div class="text-sm font-medium">BYO infra</div><div class="text-xs text-muted-foreground">Own DB, Redis, OTLP</div></div>
+          <div><div class="text-sm font-medium">BYO infra</div><div class="text-xs text-muted-foreground">Own DB, Redis, broker, OTLP</div></div>
         </li>
       </ul>
       <div class="mt-5 space-y-1.5 border-t pt-4 text-xs text-muted-foreground">
@@ -273,7 +291,7 @@
   </div>
 
   <footer class="mt-8 font-mono text-xs text-muted-foreground">
-    Source: docs/roadmaps/helm-packaging.md, “Design direction” (Phase 12). Updated 2026-10-20.
+    Source: docs/roadmaps/helm-packaging.md, “Design direction” (Phase 12). Updated 2026-10-21.
   </footer>
 </main>
 
