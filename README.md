@@ -1,58 +1,183 @@
 # dapr-workflow-spec (DWS)
 
-A config-driven workflow platform for Kubernetes built on [Dapr](https://dapr.io/) and
-the [Open Workflow Specification](https://open-workflow-specification.org/) DSL 1.0. Workflow definitions are
-plain YAML/JSON documents — no per-workflow code is written or generated. A definition is
-posted to the controller, which compiles it and deploys the corresponding Dapr-backed
-resources on the cluster; a generic orchestrator then interprets the definition at runtime.
+**Run [Open Workflow Specification](https://open-workflow-specification.org/) (DSL 1.0) workflows on
+Kubernetes, durably, on [Dapr](https://dapr.io/) — without writing workflow code.**
 
-For concise setup, architecture, API, and operations guides, start with the
-[DWS wiki](https://github.com/tonylibs/dapr-workflow-spec/wiki). Component READMEs below retain
-detailed configuration and development references.
+You write a workflow as plain YAML or JSON and `POST` it to DWS. DWS validates it, deploys what it
+needs on your cluster, and runs it as a Dapr Workflow: retries, timers, external events, and
+crash-safe replay included. Nothing is code-generated per workflow — every workflow runs on the
+same prebuilt images.
 
-## Components
+```mermaid
+flowchart LR
+  you(["You / CI / Console"]) -->|"POST order.yaml"| controller["dws-controller"]
+  controller -->|deploys| stack
+  subgraph stack["One stack per workflow version"]
+    orch["Workflow runtime<br/>(interprets the definition)"]
+    s1["step: checkInventory<br/>(call: http)"]
+    s2["step: chargePayment<br/>(call: http)"]
+  end
+  orch -->|Dapr| s1 & s2
+  s1 & s2 --> apis[("Your services / APIs")]
+  orch -.->|lifecycle events| admin["dws-admin<br/>(history & queries)"]
+  admin -.-> console["dws-console<br/>(web UI)"]
+```
 
-| Component | Description |
+## Contents
+
+- [Quickstart](#quickstart) — install, deploy a workflow, run it
+- [What you can write](#what-you-can-write) — supported DSL features
+- [How it works](#how-it-works)
+- [Installation and configuration](#installation-and-configuration)
+- [Components](#components)
+- [Documentation](#documentation) · [Roadmap](#roadmap) · [Contributing](#contributing)
+
+## Quickstart
+
+### 1. Prerequisites
+
+| Need | Why |
 |---|---|
-| [`dws-controller`](dws-controller) | Accepts Open Workflow Specification DSL 1.0 definitions, compiles them, and deploys one stack per definition (definition ConfigMap, Dapr Configuration component, Knative Services for each I/O task, and an orchestrator Deployment). Quarkus. |
-| [`dws-orchestrator`](dws-orchestrator) | Generic, config-driven Dapr workflow orchestrator built on the interpreter pattern. Loads one workflow definition at startup and walks its task list — no per-workflow code is ever generated. Spring Boot. |
-| [`dws-call-http`](dws-call-http) | Generic, prebuilt step image for `call: http` tasks. One image serves every HTTP call step; behavior is defined entirely by environment configuration. Go. |
-| [`dws-call-openapi`](dws-call-openapi) | Generic, prebuilt step image for `call: openapi` tasks. Loads an OpenAPI document, resolves an operation, and executes it against upstream services. Node.js/TypeScript. |
-| [`dws-run`](dws-run) | Prebuilt step images for `run: shell` and `run: script` tasks. One codebase produces three images (`dws-run-shell`, `dws-run-script-js`, `dws-run-script-python`) differing only in base layer and interpreter. Go. |
+| A Kubernetes cluster you can create namespaces in | — |
+| [Helm 4](https://helm.sh/) (CI pins 4.3.0) | Installs DWS |
+| [Knative Serving](https://knative.dev/docs/install/) | Every `call`/`run` step runs as a scale-to-zero Knative Service. **The chart does not install Knative** — pinned CRD bundles are in [`dws-controller/k8s/`](dws-controller/k8s/README.md) |
+| Dapr | Bundled by the chart by default; bring your own with `--set dapr.enabled=false` |
 
-## Install
-
-DWS ships as a Helm chart (`charts/dws`) published to GitHub Container Registry as an OCI
-artifact. One `helm install` brings up the control plane — `dws-controller`, `dws-admin` and its
-Postgres read model — and, by default, the Dapr control plane and Redis they depend on.
-
-![Helm chart feature layers: Core inside Console inside Members & roles, add-ons alongside, all on Dapr and Knative over Kubernetes](docs/roadmaps/helm-feature-layers.png)
-
-> **Planned.** The picture shows where the chart is heading: features you enable layer by layer
-> from the core outward, plus add-ons. Today each component still has its own toggle (see
-> [Values reference](#values-reference)). Design notes:
-> [`helm-packaging.md` → Design direction](docs/roadmaps/helm-packaging.md#design-direction-feature-layers-and-bring-your-own-infra-proposed-2026-10-05);
-> source page: [`helm-feature-layers.html`](docs/roadmaps/helm-feature-layers.html).
-
-Requires Helm 4 (pinned at 4.3.0 in CI) and a Kubernetes cluster you can create namespaces in.
+### 2. Install DWS
 
 ```sh
 helm install dws oci://ghcr.io/tonylibs/charts/dws \
   --namespace dws-system --create-namespace \
   --timeout 5m
+
+helm test dws --namespace dws-system --logs   # optional smoke test
 ```
 
-A default install gives you `dws-controller`, `dws-admin`, the Dapr control plane, an in-chart
-Postgres and Redis, and the three Dapr Redis Components (`pubsub` on topic `dws.events`,
-`dws-definitions`, and the actor state store). The console, Dex, APISIX, the Gateway API front
-door, and JWT auth are all off by default — see the values table below.
+This gives you the controller, the admin API with its Postgres, Dapr, and Redis. The web console,
+login, and the API gateway are off by default — see [configuration](#common-settings).
 
-Pin a chart version with `--version` (chart versions are listed on the
-[releases page](https://github.com/tonylibs/dapr-workflow-spec/releases); the chart is cut
-manually, see [`docs/release-process.md`](docs/release-process.md)).
+### 3. Deploy a workflow
 
-If Dapr is already installed cluster-wide, install against it instead of bundling a second
-control plane:
+Save this as `order.yaml` — check stock, then charge or notify:
+
+```yaml
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: order
+  version: '1.0.0'
+do:
+  - checkInventory:
+      call: http
+      with:
+        method: get
+        endpoint: http://inventory.local/api/check
+  - decide:
+      switch:
+        - inStock:
+            when: ${ .inStock }
+            then: chargePayment
+        - outOfStock:
+            then: notifyOutOfStock
+  - chargePayment:
+      call: http
+      with:
+        method: post
+        endpoint: http://payment.local/api/charge
+  - notifyOutOfStock:
+      call: http
+      with:
+        method: post
+        endpoint: http://notify.local/api/oos
+```
+
+Then send it to the controller:
+
+```sh
+kubectl -n dws-system port-forward svc/dws-controller 8080:80 &
+
+# Validate only — shows what would be deployed, changes nothing
+curl -s -H 'Content-Type: application/yaml' --data-binary @order.yaml \
+     'localhost:8080/workflows?dryRun=true'
+
+# Deploy
+curl -s -H 'Content-Type: application/yaml' --data-binary @order.yaml localhost:8080/workflows
+# => {"workflow":"order","versionId":"v1a2b3c4d","version":"order@v1a2b3c4d","created":true}
+```
+
+| Response | Meaning |
+|---|---|
+| `201` | New version deployed |
+| `200` | This exact content is already deployed — re-posting is a no-op |
+| `400` | Invalid definition; the body lists every error |
+
+Versions are content-addressed: edit the file and re-post, and a new version deploys alongside the
+old one, which drains and is cleaned up automatically. Other calls: `GET /workflows`,
+`GET /workflows/{name}`, `GET /workflows/{name}/plan`, `DELETE /workflows/{name}`. Full reference:
+[`dws-controller/k8s/README.md`](dws-controller/k8s/README.md).
+
+### 4. Run it
+
+Each workflow version gets its own runtime Deployment, labelled `dws.io/workflow=<name>`:
+
+```sh
+kubectl -n dws-system get deploy -l dws.io/workflow=order
+kubectl -n dws-system port-forward deploy/order-<versionId> 8081:8080 &
+
+curl -s -XPOST localhost:8081/workflows/order/instances -d '{"orderId": 42}'
+# => {"instanceId":"<id>","workflowName":"order"}
+
+curl -s localhost:8081/workflows/instances/<id>              # status + output
+curl -s -XPOST localhost:8081/workflows/instances/<id>/events/<event> -d '{}'   # feed a `listen`
+```
+
+Want a UI instead? Enable the console (below) to browse workflows, watch instances live, and
+submit definitions from an editor with validation and a diagram preview.
+
+## What you can write
+
+DWS targets the full DSL 1.0. Status today:
+
+| Area | Supported | Not yet |
+|---|---|---|
+| **Calls** | `call: http`, `openapi`, `grpc` (unary), `asyncapi` (`send`), `a2a` (`message/send`, `tasks/get`) | gRPC streaming; A2A streaming |
+| **Run** | `run: shell`, `run: script` (JavaScript, Python, inline source) | `run: container`, `run: workflow` (rejected at deploy time) |
+| **Control flow** | `switch`, `set`, `for` (+ `while`), `fork` (join or race), `try`/`catch`/`retry`, `raise`, nested `do` | — |
+| **Events & time** | `wait`, `listen` (single event), `emit` | `listen` correlation (`one`/`any`/`all`) |
+| **Data** | `input.from/schema`, `output.as/schema`, `export.as/schema` | — |
+| **Errors & timeouts** | RFC 7807 errors with standard error types; task and workflow timeouts | — |
+| **Auth & secrets** | `basic`, `bearer`, `oauth2`; `use.secrets` (Kubernetes Secrets) | — |
+| **Reuse** | — | `use.functions`, `use.catalogs`, `use.extensions` |
+| **Triggers** | Deploy on `POST`, start via API | `schedule` (`every`/`cron`/`after`/`on`) |
+
+Feature-by-feature detail: [`docs/roadmaps/openworkflow-features.md`](docs/roadmaps/openworkflow-features.md).
+
+## How it works
+
+1. **Deploy.** `dws-controller` validates and compiles your definition, then creates:
+   - an immutable, versioned copy of the definition,
+   - one Knative Service per `call`/`run` task, using the matching prebuilt step image,
+   - a workflow runtime for that version.
+2. **Run.** The runtime loads the definition once and walks it: `call`/`run` tasks go to their step
+   service through Dapr; `switch`/`set`/`for` are evaluated with `jq`; `wait`/`listen`/`emit` map
+   to Dapr timers, external events, and pub/sub. Dapr Workflow makes every step durable.
+3. **Observe.** The controller and runtime publish lifecycle events (CloudEvents on Dapr pub/sub
+   topic `dws.events`) — contract in [`docs/events.md`](docs/events.md). `dws-admin` stores them
+   in Postgres and serves history and live updates to `dws-console`.
+
+**Two runtimes.** The default runtime is one generic interpreter (`dws-orchestrator`) per workflow
+version. A second, per-node runtime (`dws-flow` for structure, `dws-step` for activities) is being
+built and can be selected with the controller's `compiler.version=v2` flag; it is early and does
+not cover the full DSL yet. See
+[`docs/roadmaps/workflow-runtime-architecture.md`](docs/roadmaps/workflow-runtime-architecture.md).
+
+## Installation and configuration
+
+DWS installs as one Helm chart, published to GitHub Container Registry as an OCI artifact. Pin a
+chart version with `--version` (chart releases are cut manually — see
+[`docs/release-process.md`](docs/release-process.md)).
+
+### Use an existing Dapr
 
 ```sh
 helm install dws oci://ghcr.io/tonylibs/charts/dws \
@@ -60,66 +185,104 @@ helm install dws oci://ghcr.io/tonylibs/charts/dws \
   --set dapr.enabled=false
 ```
 
-A preflight check fails the install fast if `dapr.enabled=false` but Dapr's CRDs aren't actually
-present, rather than deploying workloads against a control plane that isn't there.
+A preflight check fails the install fast if Dapr's CRDs aren't actually present.
 
-### Verify, upgrade, uninstall
+### Upgrade and uninstall
 
 ```sh
-helm test dws --namespace dws-system --logs      # admin DB connectivity (+ auth checks when enabled)
 helm upgrade dws oci://ghcr.io/tonylibs/charts/dws --namespace dws-system --reuse-values
 helm uninstall dws --namespace dws-system
 ```
 
-`helm uninstall` leaves the namespace, any PersistentVolumeClaims from the in-chart Postgres and
-Redis, and CRDs installed by subcharts behind — delete those separately if you want a clean slate.
+`helm uninstall` leaves the namespace, Postgres/Redis PersistentVolumeClaims, and subchart CRDs
+behind — delete them yourself for a clean slate.
 
-### Values reference
+### Common settings
 
-Top-level knobs. Everything else — per-component `image.{repository,tag,pullPolicy}`,
-`replicaCount`, `service.port`, `resources` — follows the same shape per component, and the
-subchart passthroughs (`postgresql.*`, `redis.*`, `dex.*`, `apisix.*`) accept their upstream
-chart's full schema. See [`charts/dws/values.yaml`](charts/dws/values.yaml) for the annotated
-source of truth.
+Every component also takes `image.{repository,tag,pullPolicy}`, `replicaCount`, `service.port`, and
+`resources`; subchart blocks (`postgresql.*`, `redis.*`, `dex.*`, `apisix.*`) accept their upstream
+chart's full schema. Annotated source of truth: [`charts/dws/values.yaml`](charts/dws/values.yaml).
 
 | Value | Default | Effect |
 |---|---|---|
-| `controller.enabled` | `true` | `dws-controller` Deployment, Service, and RBAC. Outbound-only — it deliberately gets no route. |
-| `admin.enabled` | `true` | `dws-admin` read-model Deployment and Service. |
-| `console.enabled` | `false` | `dws-console` Deployment and Service. Carries no route of its own — pair with `apiGateway.enabled`. |
-| `dapr.enabled` | `true` | Installs the Dapr control plane as a subchart. Set `false` when Dapr is managed outside the release. |
-| `postgresql.enabled` | `true` | In-chart Bitnami Postgres backing `dws-admin`. Dev/eval-grade: single replica, no backups. |
-| `admin.database.url` / `.existingSecret` / `.existingSecretKey` | `""` | External database DSN. Set one of these when `postgresql.enabled=false`. |
-| *(Redis — no toggle)* | follows `dapr.enabled` | Backs the three Dapr Redis Components, so its lifecycle is tied to Dapr's. |
-| `redis.external.host` | `""` | Retargets the Dapr Components at a managed Redis. Note: the in-chart Redis still installs alongside — a documented trade-off, Helm conditions can't AND two values. |
-| `auth.enabled` | `false` | Dapr-native JWT bearer auth on the controller. Requires either `auth.issuer` + `auth.audience` (external OIDC) or `auth.dex.enabled=true`; enabling it without either fails render. |
-| `dex.enabled` | `false` | In-chart Dex IdP for console login. Set `dex.issuer` and `dex.consoleRedirectURI` for anything past local testing. |
-| `apiGateway.enabled` | `false` | Renders the shared Gateway API front door (GatewayClass, Gateway, console + `/dws-admin` HTTPRoutes). Requires `auth.enabled`, `admin.enabled`, and `console.enabled`. |
-| `apiGateway.hostname` / `apiGateway.tls.*` | `""` / off | Public hostname and TLS Secret for the Gateway listener. |
-| `apisix.enabled` | `false` | Bundles APISIX as the Gateway API data plane. **Fresh installs only** — see the caveat below. Leave `false` and set `apiGateway.external.gatewayProxyName` to use an APISIX you manage. |
-| `defaults.{resources,nodeSelector,tolerations,affinity}` | 100m/256Mi req, 512Mi limit | Shared scheduling and resource defaults for every chart-owned Deployment. Per-component maps deep-merge; a non-empty component `tolerations` list replaces the default outright. |
+| `controller.enabled` | `true` | `dws-controller` and its RBAC. Outbound-only — it deliberately gets no public route. |
+| `admin.enabled` | `true` | `dws-admin` history/query API. |
+| `console.enabled` | `false` | `dws-console` web UI. Has no route of its own — pair with `apiGateway.enabled`. |
+| `dapr.enabled` | `true` | Bundles the Dapr control plane. `false` when Dapr is managed elsewhere. |
+| `postgresql.enabled` | `true` | In-chart Postgres for `dws-admin`. Dev/eval grade: single replica, no backups. |
+| `admin.database.url` / `.existingSecret` / `.existingSecretKey` | `""` | Your own database. Set one when `postgresql.enabled=false`. |
+| *(Redis — no toggle)* | follows `dapr.enabled` | Backs DWS's Dapr pub/sub, definition store, and actor state store. |
+| `redis.external.host` | `""` | Points those at your Redis. The in-chart Redis still installs alongside (known trade-off). |
+| `auth.enabled` | `false` | JWT bearer auth on the controller. Needs `auth.issuer` + `auth.audience` (your OIDC) or `auth.dex.enabled=true`; render fails otherwise. |
+| `dex.enabled` | `false` | In-chart Dex for console login. Set `dex.issuer` and `dex.consoleRedirectURI` beyond local testing. |
+| `apiGateway.enabled` | `false` | Gateway API front door for the console and `/dws-admin`. Requires `auth.enabled`, `admin.enabled`, `console.enabled`. |
+| `apiGateway.hostname` / `apiGateway.tls.*` | `""` / off | Public hostname and TLS Secret. |
+| `apisix.enabled` | `false` | Bundles APISIX as the gateway data plane — **fresh installs only** (see below). Otherwise set `apiGateway.external.gatewayProxyName` to your own APISIX. |
+| `observability.enabled` | `false` | OpenTelemetry traces, metrics, and logs to `observability.otlp.endpoint`. Needs the OpenTelemetry Operator installed first — see [chart README](charts/dws/README.md#opentelemetry-observability-phase-1). |
+| `defaults.{resources,nodeSelector,tolerations,affinity}` | 100m/256Mi req, 512Mi limit | Shared pod defaults; per-component maps deep-merge, a non-empty component `tolerations` replaces the default. |
 | `namespaceOverride` | `""` | Deploy into a namespace other than the release namespace. |
 | `imagePullSecrets` | `[]` | Pull secrets for private registries. |
 
-Two things worth knowing before you flip a toggle on an existing release:
+> [!WARNING]
+> - **`apisix.enabled=true` works only on a brand-new `helm install`.** Turning it on with
+>   `helm upgrade` deadlocks (a subchart hook waits on a Secret that is never created). Install
+>   APISIX as its own release and use external mode instead.
+> - **`console.ingress.enabled` no longer renders anything.** The console moved behind the Gateway
+>   API front door; the old value now fails the upgrade with migration steps.
+>
+> Migration recipe and rollback: [`charts/dws/README.md`](charts/dws/README.md).
 
-- **`apisix.enabled=true` only works on a brand-new `helm install`.** Turning it on via
-  `helm upgrade` deadlocks: the bundled etcd subchart's `pre-upgrade` hook waits on a Secret that
-  only the main manifest sync would create, and Helm never re-applies a subchart's `crds/` on
-  upgrade. Neither shows up in `helm lint`/`helm template`. Install APISIX as its own release and
-  use external mode instead.
-- **`console.ingress.enabled` no longer renders anything.** The console's plain Ingress was
-  replaced by the Gateway API front door; the value survives only as a trap that fails the upgrade
-  with migration steps rather than silently dropping your route.
+## Components
 
-Both are covered end to end, along with the migration recipe and rollback behavior, in
-[`charts/dws/README.md`](charts/dws/README.md).
+| Component | What it does | Stack |
+|---|---|---|
+| [`dws-controller`](dws-controller) | Accepts definitions, compiles them, deploys and garbage-collects each workflow version | Java, Quarkus |
+| [`dws-orchestrator`](dws-orchestrator) | Default runtime — interprets one pinned definition per Deployment | Java, Spring Boot |
+| [`dws-flow`](dws-flow) | Per-node runtime: structural nodes (early) | .NET |
+| [`dws-step`](dws-step) | Per-node runtime: activity host (early) | Java, Spring Boot |
+| [`dws-call-http`](dws-call-http) | `call: http` step image | Go |
+| [`dws-call-openapi`](dws-call-openapi) | `call: openapi` step image | TypeScript, Fastify |
+| [`dws-call-grpc`](dws-call-grpc) | `call: grpc` step image (unary) | Go |
+| [`dws-call-asyncapi`](dws-call-asyncapi) | `call: asyncapi` step image (Dapr output bindings) | TypeScript, Fastify |
+| [`dws-call-a2a`](dws-call-a2a) | `call: a2a` step image | Python, FastAPI |
+| [`dws-run`](dws-run) | `run: shell` / `run: script` images (`dws-run-shell`, `-script-js`, `-script-python`) | Go |
+| [`dws-admin`](dws-admin) | Turns lifecycle events into a queryable history; API behind the console | TypeScript, NestJS, Postgres |
+| [`dws-console`](dws-console) | Web UI: browse, monitor, author and submit workflows | TypeScript, React, TanStack |
+| [`charts/dws`](charts/dws) | Helm chart for the whole control plane | Helm |
 
-## Dev container on Windows
+Each component's README covers its own configuration and API.
 
-When this repository is stored on a Windows drive and mounted into the Linux dev container,
-the `9p` filesystem can report every file as executable or with changed metadata. Configure Git
-once per clone to ignore those mount artifacts and keep the working tree in LF format:
+## Documentation
+
+| Read this | For |
+|---|---|
+| [DWS wiki](https://github.com/tonylibs/dapr-workflow-spec/wiki) | Setup, architecture, API, and operations guides |
+| [`openwiki/quickstart.md`](openwiki/quickstart.md) | Generated, always-current guide to the codebase |
+| [`docs/adr/`](docs/adr) | Architecture decisions and why |
+| [`docs/roadmaps/`](docs/roadmaps/README.md) | Status of each roadmap: DSL coverage, console, auth, chart, observability, runtime |
+| [`docs/events.md`](docs/events.md) | Lifecycle event contract, for building on `dws.events` |
+
+## Roadmap
+
+Next up for workflow authors: `schedule` triggers, `use.functions` / `use.catalogs` /
+`use.extensions`, and sidecar-injected credentials. For operators, the chart is moving toward
+features you switch on in layers, from the core engine outward, plus the option to bring your own
+Postgres, Redis, broker, and OTLP endpoint:
+
+![Helm chart feature layers: Core inside Console inside Members & roles, add-ons alongside, all on Dapr and Knative over Kubernetes](docs/roadmaps/helm-feature-layers.png)
+
+> **Planned** — today each component still has its own toggle. Design:
+> [`helm-packaging.md`](docs/roadmaps/helm-packaging.md#design-direction-feature-layers-and-bring-your-own-infra-proposed-2026-10-05),
+> [ADR 0007](docs/adr/0007-chart-feature-layers.md), [ADR 0008](docs/adr/0008-chart-bring-your-own-infra.md).
+
+## Contributing
+
+There is no root build: each component builds and tests on its own. Conventions, commit format,
+and the exact check to run per component are in [`CLAUDE.md`](CLAUDE.md) and
+[`AGENTS.md`](AGENTS.md).
+
+**Windows dev container:** a repo on a Windows drive mounted into the Linux dev container can show
+every file as changed. Run once per clone:
 
 ```sh
 git config --local core.filemode false
@@ -127,54 +290,3 @@ git config --local core.autocrlf false
 git config --local core.trustctime false
 git config --local core.checkStat minimal
 ```
-
-## How it fits together
-
-1. A client `POST`s an Open Workflow Specification DSL 1.0 definition to `dws-controller`.
-2. The controller validates and compiles the definition, then deploys:
-   - an immutable, versioned definition stored in a Dapr Configuration component,
-   - one scale-to-zero Knative Service per I/O (`call` or `run`) task, using the prebuilt
-     `dws-call-http` / `dws-call-openapi` / `dws-run-*` images,
-   - a dedicated `dws-orchestrator` Deployment for the definition.
-3. `dws-orchestrator` loads the definition once at startup and interprets it: `call` and `run`
-   tasks invoke the corresponding step service via Dapr service invocation, `switch`/`set` are
-   evaluated with `jq`, `wait`/`listen`/`emit` map to Dapr timers, external events, and pub/sub.
-
-Both components also publish **lifecycle events** (definition/deployment from the controller,
-instance/task from the orchestrator) to the Dapr pub/sub topic `dws.events` on component `pubsub`.
-The shared event contract — envelope, types, payloads, and the in-cluster `pubsub` component
-prerequisite — is documented in [`docs/events.md`](docs/events.md).
-
-## Deployed component state
-
-Each deployed workflow gets its own **orchestrator** plus one **step service per `call`/`run`
-task**. The controller deploys the stack from the definition; at runtime the orchestrator
-loads the definition and invokes each step via Dapr.
-
-```mermaid
-flowchart LR
-  controller["dws-controller"]
-  definition[("Workflow definition")]
-
-  subgraph workflow["Deployed workflow"]
-    orchestrator["dws-orchestrator"]
-    step1["check-inventory"]
-    step2["charge-payment"]
-    step3["notify-out-of-stock"]
-  end
-
-  upstream[("Upstream services / APIs")]
-
-  controller -->|deploys| workflow
-  controller --> definition
-  definition -->|loaded at startup| orchestrator
-  orchestrator -->|call| step1
-  orchestrator -->|call| step2
-  orchestrator -->|call| step3
-  step1 --> upstream
-  step2 --> upstream
-  step3 --> upstream
-```
-
-See each component's README for API details, configuration, local development, and
-deployment instructions.
