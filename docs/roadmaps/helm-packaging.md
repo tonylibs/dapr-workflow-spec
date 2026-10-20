@@ -157,6 +157,7 @@ Decided:
 | 15 | Workflow chaining on DWS events is **not** an Events-layer feature: the mechanism is Core (OWS `listen` / `schedule.on` triggers). Events only makes lifecycle events available to listen to (2026-10-20) |
 | 16 | **The Events layer is a Knative Eventing Broker, in-memory for v1** (channel-based Broker on InMemoryChannel — live only, events lost on restart, no replay). Controller and orchestrator POST lifecycle CloudEvents to the Broker address that a Knative **SinkBinding** injects as `K_SINK`: Events on → `K_SINK` present → publish; off → absent → nothing published (this is the on/off contract, no extra controller → orchestrator env var). The Admin API consumes through its own Trigger; operators wire their systems with their own Triggers (any URL, Camel K Kamelets, Knative sinks). Lifecycle events leave Dapr pub/sub, which stays Core-only for OWS `emit`/`listen`. Chosen over a home-made HTTP relay for the standard CloudEvents/Trigger model. Durable broker (Kafka, or a Redis stream in front of the Broker — Knative has no Redis Broker, only beta RedisStreamSource/Sink) is parked with retention (2026-10-20) |
 | 17 | **Knative Serving is part of Core**, bundled (the controller already deploys steps as Knative Services, so Core silently assumed it). Phase 11 is pulled into Phase 12. Knative Eventing installs only with the Events layer (2026-10-20) |
+| 18 | **Known v1 gap, accepted and documented: the console's history can go stale.** The Admin API builds its read model only from lifecycle events, and the v1 Broker is in-memory, so an event lost in a Broker restart (e.g. `instance.completed`) leaves that row wrong for good (instance shown running forever). No reconciliation in v1. The fix is a durable broker from bring-your-own infra (Phase 13), which the setup guide recommends for production (2026-10-20) |
 
 Console layer switch, from the operator's side:
 
@@ -173,6 +174,28 @@ console:
   enabled: true              # Console layer switch
   hostname: dws.example.com  # required when enabled
 ```
+
+Console layer (L3) — features, components and what it needs underneath (2026-10-20, confirmed):
+
+| Feature (v1 = what the console does today) | Needs Events (L2) | Needs Core (L1) |
+|---|---|---|
+| Sign-in: OIDC via bundled Dex, one admin account | — | — |
+| Workflow browser: workflows, version history, deployment status | yes — `definition.*`, `deployment.*` | — |
+| Instance monitor: list + status filter, detail, task timeline | yes — `instance.*`, `task.*` | — |
+| Live updates on running instances (SSE) | yes — same events, pushed on arrival | — |
+| Definition submission: editor, preview (spec check + dry-run plan), file import, draft, diagram | — | yes — Admin API relays to the controller over Dapr |
+
+Not in v1: start / cancel / retry an instance from the console (no controller endpoints yet).
+
+| Component deployed with L3 | Role |
+|---|---|
+| `dws-console` | UI |
+| Admin API (`dws-admin`) + its Dapr sidecar | Read model, query API, SSE push, validation, submission relay; sidecar carries the bearer check and the gateway's `/dws-admin` route |
+| Postgres | Run-history store |
+| APISIX + Gateway API objects | One front door at `https://<hostname>` |
+| Dex | OIDC login, bootstrap admin Secret |
+| Bearer middleware on the Admin API and controller sidecars | Token check (decision 11) |
+| Admin API's Trigger on the DWS Broker | Its event feed (12.2d) |
 
 Open:
 
@@ -245,8 +268,31 @@ previous update.
 | 9. Publish | ✅ | OCI chart repo | `release` job in `helm.yml` packages and pushes to `oci://ghcr.io/tonylibs/charts` on merge to `main` |
 | 10. Docs | ⚠️ | Update README + CLAUDE.md | **Partial.** Landed: `charts/dws/README.md` — chart-scoped operator docs covering the pre-Gateway `Ingress` → Gateway API migration (bundled vs. external APISIX, the bundled-etcd `pre-upgrade`-hook deadlock on `helm upgrade`, required values, upgrade/rollback steps, cross-linked to `scripts/verify-console-ingress-migration.sh`) plus a "Validating changes to this chart" section; `CLAUDE.md` §Releasing points at `docs/release-process.md` for chart cutting and the `charts/dws/values.yaml` pins. Still owed: root `README.md` has **zero** helm mentions — needs a `helm install oci://ghcr.io/tonylibs/charts/dws` quickstart (install/upgrade/uninstall + `helm test`) and a values reference table for the top-level toggles (`dapr.enabled`, `postgresql.enabled`, `console.enabled`, `dex.enabled`, `apisix.enabled`, `apiGateway.*`, `auth.*`, `redis.external.*`, `defaults.*`) |
 | 11. Knative prerequisite | ❌ | Knative Serving via hook Job | **Pulled into Phase 12 (2026-10-20): Knative Serving is part of Core; proposed install via the Knative Operator Helm chart rather than a hook Job — see Design direction decision 17 and Open.** Not started — split out of the original combined "Phase 4: Prerequisites" so Dapr (needed by Phase 5) isn't blocked on Knative design work. `knative-install-job.yaml` (post-install/post-upgrade hook Job), `knative.enabled`/`knative.version` values, preflight CRD check for Knative. Independent of every other phase — can land whenever, in parallel with anything above |
-| 12. Feature layers | ❌ | Operators enable features layer by layer, core outward (see Design direction) | Design only so far (decisions 8–17, 2026-10-20). Layers: Core (incl. Knative Serving — Phase 11 pulled in) → Events → Console → Members & roles, everything bundled. Core alone publishes nothing; Events v1 = in-memory Knative Broker fed via SinkBinding `K_SINK`, consumers attach Triggers, versioned `io.dws.*` CloudEvents (durability, retention, webhooks, filters, own broker parked). `console.enabled` switches the Console layer (and Events with it); chart 2.0 defaults to Core only; upgrading into Console must work; controller accepts only Dex tokens when Console is on. Next: Events layer design detail, then Console, then sub-phases |
+| 12. Feature layers | ❌ | Operators enable features layer by layer, core outward (see Design direction) | Design only so far (decisions 8–17, 2026-10-20). Layers: Core (incl. Knative Serving — Phase 11 pulled in) → Events → Console → Members & roles, everything bundled. Core alone publishes nothing; Events v1 = in-memory Knative Broker fed via SinkBinding `K_SINK`, consumers attach Triggers, versioned `io.dws.*` CloudEvents (durability, retention, webhooks, filters, own broker parked). `console.enabled` switches the Console layer (and Events with it); chart 2.0 defaults to Core only; upgrading into Console must work; controller accepts only Dex tokens when Console is on. L1–L3 confirmed and broken into 12.1a–c, 12.2a–e, 12.3a–e (see Phase 12 breakdown); L4 later |
 | 13. Bring-your-own infra | ❌ | Operators swap bundled Postgres / Redis / broker / OTLP for their own (see Design direction) | First slice: separate pub/sub and state-store hosts, with an allowlist of tested Dapr component types. Pick the allowlist. Related: the bundled-Redis-still-installs trade-off under Open items |
+
+### Phase 12 breakdown — L1 Core, L2 Events, L3 Console (2026-10-20, all three confirmed)
+
+Members & roles (L4) is broken down later.
+
+| # | Task | Expected outcome | Blocked by |
+|---|---|---|---|
+| **12.1** | **Core layer** | | |
+| 12.1a | Spike: Knative install path | Design note answering: Knative Operator Helm chart as a dependency on fresh install and on upgrade from 1.x (CRD ordering), turning Eventing on later, Serving networking layer, how orchestrator pods get `K_SINK`, version pins in sync with `dws-controller/k8s/serving-crds.yaml`, Serving feature flags for OWS 4.1g, clash with a cluster-wide Knative | — |
+| 12.1b | Bundle Knative Serving in Core | Every install brings up Knative Serving with the chart; step Knative Services become Ready; preflight fails clearly on conflicts; Serving feature flags configurable (unblocks OWS 4.1g) | 12.1a |
+| 12.1c | Core-only install, end to end | CI installs Core only (no Admin API, console, gateway, Dex, Events) and runs an OWS workflow through the controller API to completion | 12.1b |
+| **12.2** | **Events layer** | | |
+| 12.2a | Versioned lifecycle event contract | Every `io.dws.*` event is CloudEvents 1.0 with a source/subject convention and an explicit version; `docs/events.md` + schemas are the published reference; producers and Admin API are tested against it. No transport change | — |
+| 12.2b | Events layer in the chart | `events.enabled` brings up Knative Eventing, an in-memory Broker and the `K_SINK` wiring for controller and orchestrator; off renders none of it | 12.1a, 12.1b |
+| 12.2c | Producers publish to the Broker | Controller and orchestrator send lifecycle CloudEvents to `K_SINK` when present, nothing when absent, best-effort as today; lifecycle events leave Dapr pub/sub (stays for `emit`/`listen`). Ships together with 12.2d | 12.2a |
+| 12.2d | Admin API consumes via Trigger | The Admin API receives lifecycle events through its own Trigger instead of a Dapr subscription, same read-model results and idempotency | 12.2a, 12.2b |
+| 12.2e | Events end to end + operator docs | CI: with Events on, a test Trigger sink receives a workflow's instance/task events; with Events off, nothing is published. Docs: how to wire your own system with a Trigger (incl. a Camel K pointer); the setup guide warns about stale console history on lost events and recommends a durable broker from your own infra for production (decision 18) | 12.1c, 12.2b, 12.2c, 12.2d |
+| **12.3** | **Console layer** | | |
+| 12.3a | Console reads its settings at startup | One published console image works for any install: Admin API URL and OIDC issuer/client id/scopes come from the install at container start, not image build. Closes the console admin-URL open item | — |
+| 12.3b | Turning the Console on with `helm upgrade` works | Upgrading a release that never had bundled APISIX, with the gateway on, needs no manual steps (fixes the etcd hook hang + CRDs skipped on upgrade); CI install-without → upgrade-with on kind | — |
+| 12.3c | One front door: login on the console's hostname | Dex served at `https://<hostname>/dex` through the Gateway; issuer, console redirect URI and the Admin API/controller token-check settings all derived from the hostname | — |
+| 12.3d | Console layer switch | `console.enabled` + `hostname` brings up every L3 component and turns Events on; old per-component flags fail with a "moved to `console.enabled`" message; default install is Core only (chart 2.0); controller requires Dex tokens only when Console is on | 12.2b, 12.3c |
+| 12.3e | Console end to end + setup guide + 2.0 migration | CI: Core-only install → upgrade with Console on → sign in → submit a workflow → instance completes; tokenless controller call rejected. Docs: setup guide per layer (incl. decision 18 warning), 1.x → 2.0 migration, README values table by layer | 12.2e, 12.3a, 12.3b, 12.3d |
 
 ## Open items
 
