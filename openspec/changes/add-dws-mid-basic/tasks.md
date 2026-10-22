@@ -2,15 +2,15 @@
 
 ## 1. Package scaffold
 
-- [ ] 1.1 Create `dws-mid-basic/` with `go.mod` (`go 1.23`, `github.com/http-wasm/http-wasm-guest-tinygo` v0.4.0, a `golang.org/x/text` version that supports Go 1.23), committed `go.sum`, `version.txt` (`0.0.0`) and `.gitignore` (`bin/`); verify `go mod verify` passes in `dws-mid-basic/`
+- [x] 1.1 Create `dws-mid-basic/` with `go.mod` (`go 1.23`, `github.com/http-wasm/http-wasm-guest-tinygo` v0.4.0, a `golang.org/x/text` version that supports Go 1.23), committed `go.sum`, `version.txt` (`0.0.0`) and `.gitignore` (`bin/`); verify `go mod verify` passes in `dws-mid-basic/`
 - [ ] 1.2 Add the `Makefile` targets `lint`, `test`, `wasm`, `test-wasm` per design Decision 8; verify `make lint` runs clean on the empty scaffold
 
 ## 2. Guest logic (`internal/basicauth`)
 
-- [ ] 2.1 Write failing table tests for config parsing: valid config; unknown fields (`scheme`, `token`); absent, null and empty `username`/`password`; `:` in username; control characters in either; empty or `/`/`?`/`#` in `endpoint`; non-object and malformed JSON; all errors reported together. Verify `go test ./internal/...` fails for the missing code
-- [ ] 2.2 Implement `Parse` to make 2.1 pass; add a test that no error message contains any test username, password or JSON fragment; verify `go test ./internal/...` passes
-- [ ] 2.3 Write table tests for path matching (spec "Only the endpoint's invocation path is matched": method path, bare `/method`, query string, `pets` vs `pets-v2`, other endpoint, raw and `%2e` dot segments, non-invocation paths) and implement `Match`; verify they pass
-- [ ] 2.4 Write tests for the header value (`alice`/`s3cret` → `YWxpY2U6czNjcmV0`, `pa:ss:word` password, RFC 7617 `test`/`123£` → `dGVzdDoxMjPCow==`, decomposed `é` normalized to U+00E9) and implement `HeaderValue` with NFC + UTF-8 + `StdEncoding`; verify they pass
+- [x] 2.1 Write failing table tests for config parsing: valid config; unknown fields (`scheme`, `token`); absent, null and empty `username`/`password`; `:` in username; control characters in either; empty or `/`/`?`/`#` in `endpoint`; non-object and malformed JSON; all errors reported together. Verify `go test ./internal/...` fails for the missing code
+- [x] 2.2 Implement `Parse` to make 2.1 pass; add a test that no error message contains any test username, password or JSON fragment; verify `go test ./internal/...` passes
+- [x] 2.3 Write table tests for path matching (spec "Only the endpoint's invocation path is matched": method path, bare `/method`, query string, `pets` vs `pets-v2`, other endpoint, raw and `%2e` dot segments, non-invocation paths) and implement `Match`; verify they pass
+- [x] 2.4 Write tests for the header value (`alice`/`s3cret` → `YWxpY2U6czNjcmV0`, `pa:ss:word` password, RFC 7617 `test`/`123£` → `dGVzdDoxMjPCow==`, decomposed `é` normalized to U+00E9) and implement `HeaderValue` with NFC + UTF-8 + `StdEncoding`; verify they pass
 
 ## 3. Wasm entry point and binary
 
