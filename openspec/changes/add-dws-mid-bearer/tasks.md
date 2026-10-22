@@ -16,8 +16,8 @@ All commands run from `dws-mid-bearer/` unless stated. Package gate: `make lint 
 ## 3. Guest entrypoint and image (`dws-mid-bearer`)
 
 - [x] 3.1 Add `main.go`: read `handler.Host.GetConfig()`, `Parse`, `panic` with the static message on error, set `handler.HandleRequestFn`; no logging anywhere. Verify `go vet ./...` and `go build ./...` pass on the host toolchain.
-- [ ] 3.2 Add the `Dockerfile` (`tinygo/tinygo:0.34.0` build stage with the spike's flags, `busybox:1.37.0` runtime, `/bearer.wasm` mode 0644, `USER 65532:65532`, no entrypoint) and `.dockerignore`. Verify `make docker` succeeds, `docker run --rm --entrypoint head <image> -c 4 /bearer.wasm | od -An -c` shows `\0 a s m`, and record the `.wasm` size (the spike's combined guest was 218,133 bytes).
-- [ ] 3.3 Against the built module (not only plain-Go tests), check that an unknown field and an empty token abort at load. If TinyGo's `encoding/json` ignores `DisallowUnknownFields`, switch `Parse` to the `map[string]json.RawMessage` check from design D3 and keep 1.2 green. Verify by instantiating the module once under a small throwaway wazero harness kept out of the repo, or note why it was not possible.
+- [x] 3.2 Add the `Dockerfile` (`tinygo/tinygo:0.34.0` build stage with the spike's flags, `busybox:1.37.0` runtime, `/bearer.wasm` mode 0644, `USER 65532:65532`, no entrypoint) and `.dockerignore`. Verify `make docker` succeeds, `docker run --rm --entrypoint head <image> -c 4 /bearer.wasm | od -An -c` shows `\0 a s m`, and record the `.wasm` size (the spike's combined guest was 218,133 bytes).
+- [x] 3.3 Against the built module (not only plain-Go tests), check that an unknown field and an empty token abort at load. If TinyGo's `encoding/json` ignores `DisallowUnknownFields`, switch `Parse` to the `map[string]json.RawMessage` check from design D3 and keep 1.2 green. Verify by instantiating the module once under a small throwaway wazero harness kept out of the repo, or note why it was not possible.
 
 ## 4. CI and release wiring
 
