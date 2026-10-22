@@ -1,0 +1,161 @@
+name: dws-mid-basic
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'dws-mid-basic-v*'
+    paths:
+      - 'dws-mid-basic/**'
+      - '.github/workflows/dws-mid-basic.yml'
+  pull_request:
+    paths:
+      - 'dws-mid-basic/**'
+      - '.github/workflows/dws-mid-basic.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: dws-mid-basic-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege by default; build-image alone gets packages: write.
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/dws-mid-basic
+
+jobs:
+  test:
+    name: lint & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dws-mid-basic
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The guest module is `go 1.23`: TinyGo 0.34.0 (the only version
+      # http-wasm-guest-tinygo v0.4.0 works with) ships Go 1.23. See dws-mid-basic/CLAUDE.md.
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: dws-mid-basic/go.mod
+          cache: false
+
+      # go vet (guest + wasmtest) and the gofmt check.
+      - name: Lint
+        run: make lint
+
+      - name: Test
+        run: make test
+
+  wasm:
+    name: build basic.wasm & host test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dws-mid-basic
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # wasmtest is a separate module (`go 1.23`) that runs bin/basic.wasm in http-wasm-host-go.
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: dws-mid-basic/wasmtest/go.mod
+          cache: false
+
+      # Builds the Dockerfile's `build` stage (TinyGo 0.34.0) and extracts bin/basic.wasm.
+      - name: Build basic.wasm
+        run: make wasm
+
+      - name: Report basic.wasm size
+        run: |
+          size=$(wc -c < bin/basic.wasm)
+          echo "basic.wasm: ${size} bytes (budget: 1048576 = 1 MiB)"
+          {
+            echo "### basic.wasm"
+            echo
+            echo "Size: **${size} bytes** (budget 1048576 bytes = 1 MiB)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$size" -ge 1048576 ]; then
+            echo "::error::basic.wasm is ${size} bytes, over the 1 MiB budget (design Decision 5)"
+            exit 1
+          fi
+
+      - name: Host test (real basic.wasm in http-wasm-host-go)
+        run: make test-wasm
+
+  build-image:
+    name: build & push image
+    needs: [test, wasm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        # Skip on PRs: the image is built for validation but not pushed.
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=match,pattern=^dws-mid-basic-v(.*)$,group=1
+            type=sha,prefix=,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: dws-mid-basic
+          # Build on PRs to validate the Dockerfile; only push on merge to main.
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=dws-mid-basic
+          cache-to: type=gha,mode=max,scope=dws-mid-basic
+
+      # The digest is what the controller pins (4.1d) and what verify-live.sh takes as IMAGE=.
+      - name: Record image digest
+        env:
+          PUSHED: ${{ github.event_name != 'pull_request' }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "### dws-mid-basic image"
+            echo
+            if [ "$PUSHED" = "true" ]; then
+              echo "Digest: \`${DIGEST}\`"
+              echo
+              echo "Ref: \`${IMAGE_NAME}@${DIGEST}\`"
+              echo
+              echo "Tags:"
+              echo
+              echo '```'
+              echo "$TAGS"
+              echo '```'
+            else
+              echo "Pull request: image built to validate the Dockerfile, not pushed."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
