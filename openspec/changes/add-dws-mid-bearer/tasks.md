@@ -26,12 +26,12 @@ All commands run from `dws-mid-bearer/` unless stated. Package gate: `make lint 
 
 ## 5. Docs
 
-- [ ] 5.1 Write `README.md` (what it is, guest config, matching rule, fail-closed behavior, the 4.1d contract from design D4, TinyGo pin and why, how to build and probe, release steps) and `CLAUDE.md` (stack idioms only, linking the root file). Verify every command in the README runs as written.
-- [ ] 5.2 Add the package to the root `CLAUDE.md` package map and gate table; update ADR 0010 (name `dws-mid-bearer` replaces the proposed `dws-wasm-bearer`, measured size, empty-token decision) and the roadmap §4h rows (4.1c-bearer status, name). Verify with `grep -rn "dws-wasm-bearer" docs/ CLAUDE.md` that only the intentionally historical mentions remain.
+- [x] 5.1 Write `README.md` (what it is, guest config, matching rule, fail-closed behavior, the 4.1d contract from design D4, TinyGo pin and why, how to build and probe, release steps) and `CLAUDE.md` (stack idioms only, linking the root file). Verify every command in the README runs as written.
+- [x] 5.2 Add the package to the root `CLAUDE.md` package map and gate table; update ADR 0010 (name `dws-mid-bearer` replaces the proposed `dws-wasm-bearer`, measured size, empty-token decision) and the roadmap §4h rows (4.1c-bearer status, name). Verify with `grep -rn "dws-wasm-bearer" docs/ CLAUDE.md` that only the intentionally historical mentions remain.
 
 ## 6. Live verification and report
 
-- [ ] 6.1 Add `probe/verify.sh` and `probe/resources.yaml`: bearer-only, derived from the spike's probe, image from `IMAGE` (or built locally), init-container copy of `/bearer.wasm`, assertions for header at the target, caller-supplied overwrite, second-endpoint isolation, non-invocation passthrough, no token in daprd logs, plus an empty-token Deployment that must not forward a call. Verify `bash -n probe/verify.sh` and `shellcheck` if available.
+- [x] 6.1 Add `probe/verify.sh` and `probe/resources.yaml`: bearer-only, derived from the spike's probe, image from `IMAGE` (or built locally), init-container copy of `/bearer.wasm`, assertions for header at the target, caller-supplied overwrite, second-endpoint isolation, non-invocation passthrough, no token in daprd logs, plus an empty-token Deployment that must not forward a call. Verify `bash -n probe/verify.sh` and `shellcheck` if available.
 - [ ] 6.2 Run the probe against a Dapr cluster. In this session's container that is only possible if a cluster is reachable; otherwise leave it for Tony's local cluster and say so. Verify by the probe's `PASS` output and record what daprd did with the empty-token component (design D3).
 - [ ] 6.3 Final integration check and report: `make lint && make test`, `helm`/other packages untouched (`git diff --stat`), CI run green on the PR, then report the image name, digest (or "not yet pushed"), the manual follow-ups (seed first release, make GHCR package public) and every deviation: name change, no `path` field and the changed probe assertion, `Set` rather than `Add`, any probe not run.
 

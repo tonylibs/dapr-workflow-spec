@@ -83,10 +83,18 @@ an invalid header value, and silently trimming would change the credential). I w
 `Decoder.DisallowUnknownFields`; if it does not, the check is done by decoding into
 `map[string]json.RawMessage` first.
 
-Open runtime assumption, verified in the probe rather than assumed: that daprd 1.18 really refuses the
-component (and the sidecar) on a guest panic and does not skip the middleware. The probe adds a second
-Deployment with an empty-token Component and records what daprd does. If daprd instead skips the handler,
-D3 is insufficient and the guest must also fail closed per request.
+Verified against a real **daprd 1.18.1** (self-hosted mode, the built `bearer.wasm`, an `HTTPEndpoint`
+and an echo target; the Kubernetes probe could not run in the authoring container):
+
+| Component config | daprd | Call |
+|---|---|---|
+| empty token | `Failed to init component … CREATE_COMPONENT_FAILURE … daprd will exit gracefully`, exit 1 | refused, nothing reaches the target |
+| same, plus `ignoreErrors: true` | logs `Ignoring error processing component`, keeps running | **goes through with no `Authorization`** |
+| token containing a newline (recognisable value) | same failure as the first row | the token appears nowhere in the daprd log |
+
+So D3 holds only while the Component does not set `ignoreErrors`. The guest cannot defend against that: a
+module that failed to load cannot reject requests. This is why D4 forbids the flag, and why 4.1d should
+assert it in a test.
 
 ### D4. Contract for 4.1d (documented, not implemented here)
 
