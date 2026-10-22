@@ -3,7 +3,7 @@
 ## 1. Package scaffold
 
 - [x] 1.1 Create `dws-mid-basic/` with `go.mod` (`go 1.23`, `github.com/http-wasm/http-wasm-guest-tinygo` v0.4.0, a `golang.org/x/text` version that supports Go 1.23), committed `go.sum`, `version.txt` (`0.0.0`) and `.gitignore` (`bin/`); verify `go mod verify` passes in `dws-mid-basic/`
-- [ ] 1.2 Add the `Makefile` targets `lint`, `test`, `wasm`, `test-wasm` per design Decision 8; verify `make lint` runs clean on the empty scaffold
+- [x] 1.2 Add the `Makefile` targets `lint`, `test`, `wasm`, `test-wasm` per design Decision 8; verify `make lint` runs clean on the empty scaffold
 
 ## 2. Guest logic (`internal/basicauth`)
 
@@ -14,7 +14,7 @@
 
 ## 3. Wasm entry point and binary
 
-- [ ] 3.1 Write `main.go`: read `handler.Host.GetConfig()`, `basicauth.Parse`, panic with the field/rule-only message on error, otherwise register a handler that calls `Headers().Set("Authorization", …)` on a match and always returns `next=true`; no logging. Verify `go vet ./...` and `make lint` pass
+- [x] 3.1 Write `main.go`: read `handler.Host.GetConfig()`, `basicauth.Parse`, panic with the field/rule-only message on error, otherwise register a handler that calls `Headers().Set("Authorization", …)` on a match and always returns `next=true`; no logging. Verify `go vet ./...` and `make lint` pass
 - [ ] 3.2 Write the `Dockerfile` (`tinygo/tinygo:0.34.0` build with the spike's flags, `busybox:1.37.0` with only `/basic.wasm`) and the `make wasm` extraction; verify `make wasm` produces `bin/basic.wasm`, record its size, and confirm it is under 1 MiB (else apply design Decision 5's fallback and note it in the README)
 - [ ] 3.3 Create the `wasmtest/` module (`http-wasm-host-go` nethttp middleware around an `httptest` echo server, loading `../bin/basic.wasm` with a test guest config) covering: header on a matching path, caller header replaced (one `Authorization` only), pass-through for other path and other endpoint with headers/URI/body unchanged, `:` and non-ASCII credentials, and a config missing `password` failing middleware creation or every request without reaching the echo server. Verify `make test-wasm` passes
 
