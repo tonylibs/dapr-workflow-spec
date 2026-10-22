@@ -26,7 +26,7 @@
 
 ## 5. Live probe
 
-- [ ] 5.1 Write `dws-mid-basic/scripts/verify-live.sh` per design Decision 9 (local build or `IMAGE=<ref@digest>`, basic-only assertions, negative missing-password case, log-leak scan, EXIT cleanup); verify `bash -n` and `shellcheck` (if available) pass
+- [x] 5.1 Write `dws-mid-basic/scripts/verify-live.sh` per design Decision 9 (local build or `IMAGE=<ref@digest>`, basic-only assertions, negative missing-password case, log-leak scan, EXIT cleanup); verify `bash -n` and `shellcheck` (if available) pass
 - [ ] 5.2 Document the probe's prerequisites and the observed daprd behavior for a guest that refuses to start in the package README (filled in after 7.3)
 
 ## 6. Docs
