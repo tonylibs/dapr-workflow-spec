@@ -4,7 +4,7 @@ All commands run from `dws-mid-bearer/` unless stated. Package gate: `make lint 
 
 ## 1. Scaffold and config validation (`dws-mid-bearer`)
 
-- [x] 1.1 Create `go.mod` (`module github.com/dws/dws-mid-bearer` like the other Go packages, but `go 1.23` (TinyGo 0.34.0's ceiling) rather than their 1.26.9, `http-wasm-guest-tinygo v0.4.0`), `go.sum`, `Makefile` (`build`, `test`, `vet`, `fmt-check`, `lint`, `docker`, `clean`, same shape as `dws-call-grpc`), `version.txt` (`0.1.0`), `.gitignore`; verify `go mod verify && make lint` pass on the empty package.
+- [x] 1.1 Create `go.mod` (`module github.com/dws/dws-mid-bearer` like the other Go packages, but `go 1.23` (TinyGo 0.34.0's ceiling) rather than their 1.26.9, `http-wasm-guest-tinygo v0.4.0`), `go.sum`, `Makefile` (`build`, `test`, `vet`, `fmt-check`, `lint`, `docker`, `clean`, same shape as `dws-call-grpc`), `version.txt` (`0.0.0`, see 4.2), `.gitignore`; verify `go mod verify && make lint` pass on the empty package.
 - [x] 1.2 Write failing tests in `internal/bearer/config_test.go` for `Parse`: valid config; missing/empty/whitespace-only token; token with `\n`; missing/empty endpoint; endpoint with `/ ? #`; unknown field (`scheme`, `username`); empty input; non-object JSON; and for every failure that the error text names the field and never contains the supplied token. Verify they fail for the right reason (`go test ./internal/bearer`).
 - [x] 1.3 Implement `Config` and `Parse` with static per-field error messages (no `json` error text, no config bytes) until 1.2 passes under `go test -race ./internal/bearer`.
 
@@ -21,8 +21,8 @@ All commands run from `dws-mid-bearer/` unless stated. Package gate: `make lint 
 
 ## 4. CI and release wiring
 
-- [ ] 4.1 Add `.github/workflows/dws-mid-bearer.yml` modelled on `dws-call-grpc.yml` (triggers on `dws-mid-bearer/**`, `dws-mid-bearer-v*` tags and the workflow file; `test` job: `make lint && make test`; `build-image` job: build with `load: true`, smoke-check magic bytes and size, then push `:latest`, `:<sha>`, `:<version>` off PRs to `ghcr.io/${{ github.repository_owner }}/dws-mid-bearer`). Verify with `actionlint` if available and by the workflow's first run on the PR.
-- [ ] 4.2 Add the `dws-mid-bearer` package to `release-please-config.json` (`simple`, `version.txt`, `CHANGELOG.md`, `skip-github-release: true`), `"dws-mid-bearer": "0.1.0"` to `.release-please-manifest.json`, and `dws-mid-bearer` to the `component-release.yml` choices; re-check `bootstrap-sha` per `docs/release-process.md` ("First release of a new component") and add the component to that doc's table. Verify `python3 -m json.tool` on both JSON files and a diff review of the workflow.
+- [x] 4.1 Add `.github/workflows/dws-mid-bearer.yml` modelled on `dws-call-grpc.yml` (triggers on `dws-mid-bearer/**`, `dws-mid-bearer-v*` tags and the workflow file; `test` job: `make lint && make test`; `build-image` job: build with `load: true`, smoke-check magic bytes and size, then push `:latest`, `:<sha>`, `:<version>` off PRs to `ghcr.io/${{ github.repository_owner }}/dws-mid-bearer`). Verify with `actionlint` if available and by the workflow's first run on the PR.
+- [x] 4.2 Add the `dws-mid-bearer` package to `release-please-config.json` (`simple`, `version.txt`, `CHANGELOG.md`, `skip-github-release: true`), `"dws-mid-bearer": "0.0.0"` to `.release-please-manifest.json`, and `dws-mid-bearer` to the `component-release.yml` choices; start the manifest at `0.0.0` so the first `feat` yields an ordinary `0.1.0` release PR (no seed-and-force; document this in `docs/release-process.md` and add the component to its table). Verify `python3 -m json.tool` on both JSON files and a diff review of the workflow.
 
 ## 5. Docs
 

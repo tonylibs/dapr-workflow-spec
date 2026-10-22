@@ -1,0 +1,128 @@
+name: dws-mid-bearer
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'dws-mid-bearer-v*'
+    paths:
+      - 'dws-mid-bearer/**'
+      - '.github/workflows/dws-mid-bearer.yml'
+  pull_request:
+    paths:
+      - 'dws-mid-bearer/**'
+      - '.github/workflows/dws-mid-bearer.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: dws-mid-bearer-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/dws-mid-bearer
+
+jobs:
+  test:
+    name: lint & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dws-mid-bearer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The host toolchain only runs vet/format/tests. The shipped .wasm is built
+      # by TinyGo 0.34.0 inside the Dockerfile.
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: dws-mid-bearer/go.mod
+          cache: false
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: gofmt check
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed on:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Test
+        run: go test -race ./...
+
+  build-image:
+    name: build & push image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        # Skip on PRs: the image is built for validation but not pushed.
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=match,pattern=^dws-mid-bearer-v(.*)$,group=1
+            type=sha,prefix=,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # Loaded into the local daemon rather than pushed, so the next step checks
+      # the very image that would ship.
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: dws-mid-bearer
+          load: true
+          tags: dws-mid-bearer:smoke
+          cache-from: type=gha,scope=dws-mid-bearer
+          cache-to: type=gha,mode=max,scope=dws-mid-bearer
+
+      # Proves the delivery contract (a Wasm file at /bearer.wasm that a non-root
+      # init container can read and copy), not that the module runs: the live
+      # probe in dws-mid-bearer/probe does that.
+      - name: Smoke-test the image
+        run: |
+          magic=$(docker run --rm --entrypoint head dws-mid-bearer:smoke -c 4 /bearer.wasm | od -An -tx1 | tr -d ' \n')
+          [ "$magic" = "0061736d" ] || { echo "/bearer.wasm is not a Wasm module (magic: $magic)"; exit 1; }
+          size=$(docker run --rm --entrypoint wc dws-mid-bearer:smoke -c /bearer.wasm | cut -d' ' -f1)
+          [ "$size" -gt 10000 ] || { echo "/bearer.wasm is suspiciously small: $size bytes"; exit 1; }
+          echo "bearer.wasm: $size bytes"
+          dir=$(mktemp -d); chmod 0777 "$dir"
+          docker run --rm -v "$dir:/mnt/dws-wasm" --entrypoint cp dws-mid-bearer:smoke /bearer.wasm /mnt/dws-wasm/bearer.wasm
+          test -s "$dir/bearer.wasm"
+
+      # Fully cached by the build above, so this re-tags and uploads rather
+      # than rebuilding. Skipped on PRs: validated there, published on merge.
+      - name: Push
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: dws-mid-bearer
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=dws-mid-bearer
+          cache-to: type=gha,mode=max,scope=dws-mid-bearer

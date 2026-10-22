@@ -84,6 +84,13 @@
       "changelog-path": "CHANGELOG.md",
       "version-file": "version.txt",
       "skip-github-release": true
+    },
+    "dws-mid-bearer": {
+      "release-type": "simple",
+      "component": "dws-mid-bearer",
+      "changelog-path": "CHANGELOG.md",
+      "version-file": "version.txt",
+      "skip-github-release": true
     }
   }
 }

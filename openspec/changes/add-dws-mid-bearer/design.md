@@ -122,8 +122,9 @@ which targets handle unpredictably and which the spike's overwrite assertion for
   non-zero size, then pushes `:latest` / `:<sha>` / `:<version>` (tag `dws-mid-bearer-v*`) off PRs. Same
   load-then-push pattern as `dws-flow.yml`.
 - **release-please:** package `dws-mid-bearer`, `release-type: simple`, `version.txt`, `CHANGELOG.md`,
-  `skip-github-release: true`, manifest `0.1.0`; plus a `component-release` choice. First release follows
-  the "First release of a new component" runbook (`force=true`, `bootstrap-sha` reviewed).
+  `skip-github-release: true`, manifest `0.0.0` (changed from the initially planned `0.1.0`: with a `feat`
+  commit under the package, a `0.1.0` start would open a spurious `0.2.0` PR, so the first `feat` yields
+  an ordinary `0.1.0` release PR instead of the seed-and-force runbook); plus a `component-release` choice.
 - **Public GHCR:** the first push creates a private package. Making it public is a one-time manual setting
   on GitHub; it is reported, not scripted.
 - **Probe** (`probe/`): the spike's `verify.sh` pared down to one bearer endpoint, parameterised on the
@@ -150,4 +151,4 @@ which targets handle unpredictably and which the spike's overwrite assertion for
 
 Additive. Nothing deploys or references the image until 4.1d. Rollback is deleting the package, its
 workflow and its release-please entries. After merge: seed the first release per the runbook, make the
-GHCR package public, then 4.1d pins the resulting digest.
+GHCR package public, then 4.1d pins the resulting digest. Release steps: merge the `0.1.0` release PR, then run `component-release`.
