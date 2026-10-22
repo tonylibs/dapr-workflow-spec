@@ -31,7 +31,7 @@
 
 ## 6. Docs
 
-- [ ] 6.1 Write `dws-mid-basic/README.md` (what it does, guest-config contract, failure behavior, encoding rules, image contents and init-container usage, build/test commands, deviations from the task and ADR) and `dws-mid-basic/CLAUDE.md` (Go 1.23 / TinyGo 0.34.0 pin and why, no logging rule, gate commands); verify every command in them runs as written
+- [x] 6.1 Write `dws-mid-basic/README.md` (what it does, guest-config contract, failure behavior, encoding rules, image contents and init-container usage, build/test commands, deviations from the task and ADR) and `dws-mid-basic/CLAUDE.md` (Go 1.23 / TinyGo 0.34.0 pin and why, no logging rule, gate commands); verify every command in them runs as written
 - [ ] 6.2 Update root `CLAUDE.md` (package map row, gate table row `make lint && make test && make test-wasm`); verify the table renders and the commands match the Makefile
 - [ ] 6.3 Add a dated amendment to ADR 0010 recording the component names `dws-mid-basic` / `dws-mid-bearer` and the set-not-append header reading, and update roadmap §4h row 4.1c-basic (name, status, image); verify `grep -n "dws-wasm-basic"` leaves only the historical mentions the amendment explains
 
