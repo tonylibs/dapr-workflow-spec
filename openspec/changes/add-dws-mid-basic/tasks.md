@@ -22,7 +22,7 @@
 
 - [ ] 4.1 Add `.github/workflows/dws-mid-basic.yml` (jobs `test`, `wasm`, `build-image` per design Decision 8; path filters on `dws-mid-basic/**` and the workflow file; push on `main`, `dws-mid-basic-v*` tags and `workflow_dispatch`; digest in the job summary); verify with `actionlint` if available, and confirm the PR run is green with the image built but not pushed
 - [x] 4.2 Add the `dws-mid-basic` package to `release-please-config.json` (`simple`, `version.txt`, `CHANGELOG.md`, `skip-github-release: true`), `0.0.0` to `.release-please-manifest.json`, and the choice to `component-release.yml`; verify both JSON files parse with `jq`
-- [ ] 4.3 Dry-run release-please against the branch (`npx release-please release-pr --dry-run` with the repo's config, or the local `Manifest.buildPullRequests()` method in `docs/release-process.md`) and verify it proposes `dws-mid-basic` `0.1.0` listing only this change's commits and no other component; if it does not, switch to the documented bootstrap (manifest `0.1.0` + `force=true`) and record why in design.md
+- [x] 4.3 Dry-run release-please against the branch (`npx release-please release-pr --dry-run` with the repo's config, or the local `Manifest.buildPullRequests()` method in `docs/release-process.md`) and verify it proposes `dws-mid-basic` `0.1.0` listing only this change's commits and no other component; if it does not, switch to the documented bootstrap (manifest `0.1.0` + `force=true`) and record why in design.md
 
 ## 5. Live probe
 
@@ -32,8 +32,8 @@
 ## 6. Docs
 
 - [x] 6.1 Write `dws-mid-basic/README.md` (what it does, guest-config contract, failure behavior, encoding rules, image contents and init-container usage, build/test commands, deviations from the task and ADR) and `dws-mid-basic/CLAUDE.md` (Go 1.23 / TinyGo 0.34.0 pin and why, no logging rule, gate commands); verify every command in them runs as written
-- [ ] 6.2 Update root `CLAUDE.md` (package map row, gate table row `make lint && make test && make test-wasm`); verify the table renders and the commands match the Makefile
-- [ ] 6.3 Add a dated amendment to ADR 0010 recording the component names `dws-mid-basic` / `dws-mid-bearer` and the set-not-append header reading, and update roadmap §4h row 4.1c-basic (name, status, image); verify `grep -n "dws-wasm-basic"` leaves only the historical mentions the amendment explains
+- [x] 6.2 Update root `CLAUDE.md` (package map row, gate table row `make lint && make test && make test-wasm`); verify the table renders and the commands match the Makefile
+- [x] 6.3 Add a dated amendment to ADR 0010 recording the component names `dws-mid-basic` / `dws-mid-bearer` and the set-not-append header reading, and update roadmap §4h row 4.1c-basic (name, status, image); verify `grep -n "dws-wasm-basic"` leaves only the historical mentions the amendment explains
 
 ## 7. Integration checks
 
