@@ -21,7 +21,7 @@
 ## 4. CI and release
 
 - [ ] 4.1 Add `.github/workflows/dws-mid-basic.yml` (jobs `test`, `wasm`, `build-image` per design Decision 8; path filters on `dws-mid-basic/**` and the workflow file; push on `main`, `dws-mid-basic-v*` tags and `workflow_dispatch`; digest in the job summary); verify with `actionlint` if available, and confirm the PR run is green with the image built but not pushed
-- [ ] 4.2 Add the `dws-mid-basic` package to `release-please-config.json` (`simple`, `version.txt`, `CHANGELOG.md`, `skip-github-release: true`), `0.0.0` to `.release-please-manifest.json`, and the choice to `component-release.yml`; verify both JSON files parse with `jq`
+- [x] 4.2 Add the `dws-mid-basic` package to `release-please-config.json` (`simple`, `version.txt`, `CHANGELOG.md`, `skip-github-release: true`), `0.0.0` to `.release-please-manifest.json`, and the choice to `component-release.yml`; verify both JSON files parse with `jq`
 - [ ] 4.3 Dry-run release-please against the branch (`npx release-please release-pr --dry-run` with the repo's config, or the local `Manifest.buildPullRequests()` method in `docs/release-process.md`) and verify it proposes `dws-mid-basic` `0.1.0` listing only this change's commits and no other component; if it does not, switch to the documented bootstrap (manifest `0.1.0` + `force=true`) and record why in design.md
 
 ## 5. Live probe
