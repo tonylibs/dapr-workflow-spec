@@ -106,6 +106,7 @@ first-parent commit that touches `<component>/` (not bare `HEAD`, which would le
 | per-component build | `.github/workflows/dws-*.yml` | push to path / `<component>-v*` tag |
 | dws-step | `.github/workflows/dws-step.yml` | PR / push to `dws-step/**` on main / `dws-step-v*` tag / manual. Gate: `spotless:check` then `./mvnw verify`; image job builds (PR) or publishes `:latest` + `:<sha>` (+ `:<X.Y.Z>` on a tag). No image smoke test yet, see the workflow comment |
 | dws-flow | `.github/workflows/dws-flow.yml` | same triggers on `dws-flow/**` / `dws-flow-v*`. Gate: `dotnet test test/dws-flow.Tests.csproj`; image job smoke-tests `GET /healthz` before pushing |
+| dws-mid-bearer | `.github/workflows/dws-mid-bearer.yml` | same triggers on `dws-mid-bearer/**` / `dws-mid-bearer-v*`. Gate: `go vet`, `gofmt`, `go test -race`; image job builds `/bearer.wasm` with TinyGo 0.34.0, checks the Wasm magic bytes and a non-root `cp`, then pushes. Not pinned by the chart: the controller pins its digest (OWS 4.1d) |
 
 ## First release of a new component
 
@@ -145,6 +146,12 @@ Runbook (once per new component; do all steps for `dws-step` and `dws-flow`):
 3. **From then on, the normal three cuts apply**: the next `feat`/`fix` under the component opens
    its release PR, listing only commits after the seeded tag (reproduced: after seeding, a later
    `feat(step)` and `fix(flow)` are the only entries; an unrelated `docs` commit is absent).
+
+`dws-mid-bearer` (OWS 4.1c-bearer) skips the seed-and-force step. Its manifest entry starts at
+`0.0.0` and its first commits are `feat`, so release-please opens an ordinary `0.1.0` release PR;
+merge it (cut ①), then run `component-release` for `dws-mid-bearer` without `force` (cut ②). That
+publishes `ghcr.io/tonylibs/dws-mid-bearer:0.1.0`. The first push creates a **private** GHCR package;
+make it public once in the package settings (no pull secret is planned for the init container).
 
 `bootstrap-sha` is inert after step 2 and can be deleted in a later cleanup; leaving it is harmless.
 

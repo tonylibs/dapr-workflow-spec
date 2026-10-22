@@ -20,6 +20,7 @@ index: a package map plus rules that apply across every package. Each package al
 | [`dws-admin`](dws-admin) | Node, TypeScript, NestJS, Drizzle | Admin/query API + lifecycle-event projection. |
 | [`dws-console`](dws-console) | TypeScript, React, TanStack Start/Router, Vite | Admin console frontend. |
 | [`dws-flow`](dws-flow) | .NET 10 | Generic `kind: flow` single-node host (early phase). |
+| [`dws-mid-bearer`](dws-mid-bearer) | Go 1.23 language level, TinyGo 0.34.0 | Wasm HTTP middleware guest + delivery image: adds `Authorization: Bearer` on a step's Dapr sidecar (OWS 4.1c). |
 | [`charts/dws`](charts/dws) | Helm | Chart packaging the control plane (`dws-controller`, `dws-admin` + Postgres, optional console/Dapr/Redis/Dex/APISIX). Not a code package — see its own [`README.md`](charts/dws/README.md). |
 
 `dws-call-grpc`, `dws-call-asyncapi`, `dws-call-a2a`, `dws-admin`, `dws-console`, and `dws-flow` are
@@ -102,6 +103,7 @@ each package's own config:
 | `dws-call-a2a` | `uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest` |
 | `dws-admin` | `pnpm lint && pnpm test && pnpm build` |
 | `dws-console` | `pnpm check && pnpm typecheck && pnpm test && pnpm build` (`check` = Biome lint+format) |
+| `dws-mid-bearer` | `make lint && make test` (TinyGo only runs inside `make docker`) |
 | `dws-flow` | `dotnet test test/dws-flow.Tests.csproj` (name the test project: a bare `dotnet test` in `dws-flow/` only finds the app project, runs no tests and exits 0). No lint/format gate configured yet — no `.editorconfig`, no analyzers |
 
 Windows: Java packages use `mvnw.cmd` instead of `./mvnw`.
