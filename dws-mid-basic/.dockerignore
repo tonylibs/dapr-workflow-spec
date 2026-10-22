@@ -1,0 +1,11 @@
+# Only go.mod, go.sum, main.go and internal/ are needed to build basic.wasm.
+wasmtest/
+scripts/
+bin/
+*.md
+Makefile
+version.txt
+.git/
+.gitignore
+Dockerfile
+.dockerignore
