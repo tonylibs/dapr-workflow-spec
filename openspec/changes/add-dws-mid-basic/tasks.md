@@ -15,12 +15,12 @@
 ## 3. Wasm entry point and binary
 
 - [x] 3.1 Write `main.go`: read `handler.Host.GetConfig()`, `basicauth.Parse`, panic with the field/rule-only message on error, otherwise register a handler that calls `Headers().Set("Authorization", …)` on a match and always returns `next=true`; no logging. Verify `go vet ./...` and `make lint` pass
-- [ ] 3.2 Write the `Dockerfile` (`tinygo/tinygo:0.34.0` build with the spike's flags, `busybox:1.37.0` with only `/basic.wasm`) and the `make wasm` extraction; verify `make wasm` produces `bin/basic.wasm`, record its size, and confirm it is under 1 MiB (else apply design Decision 5's fallback and note it in the README)
+- [x] 3.2 Write the `Dockerfile` (`tinygo/tinygo:0.34.0` build with the spike's flags, `busybox:1.37.0` with only `/basic.wasm`) and the `make wasm` extraction; verify `make wasm` produces `bin/basic.wasm`, record its size, and confirm it is under 1 MiB (else apply design Decision 5's fallback and note it in the README)
 - [x] 3.3 Create the `wasmtest/` module (`http-wasm-host-go` nethttp middleware around an `httptest` echo server, loading `../bin/basic.wasm` with a test guest config) covering: header on a matching path, caller header replaced (one `Authorization` only), pass-through for other path and other endpoint with headers/URI/body unchanged, `:` and non-ASCII credentials, and a config missing `password` failing middleware creation or every request without reaching the echo server. Verify `make test-wasm` passes
 
 ## 4. CI and release
 
-- [ ] 4.1 Add `.github/workflows/dws-mid-basic.yml` (jobs `test`, `wasm`, `build-image` per design Decision 8; path filters on `dws-mid-basic/**` and the workflow file; push on `main`, `dws-mid-basic-v*` tags and `workflow_dispatch`; digest in the job summary); verify with `actionlint` if available, and confirm the PR run is green with the image built but not pushed
+- [x] 4.1 Add `.github/workflows/dws-mid-basic.yml` (jobs `test`, `wasm`, `build-image` per design Decision 8; path filters on `dws-mid-basic/**` and the workflow file; push on `main`, `dws-mid-basic-v*` tags and `workflow_dispatch`; digest in the job summary); verify with `actionlint` if available, and confirm the PR run is green with the image built but not pushed
 - [x] 4.2 Add the `dws-mid-basic` package to `release-please-config.json` (`simple`, `version.txt`, `CHANGELOG.md`, `skip-github-release: true`), `0.0.0` to `.release-please-manifest.json`, and the choice to `component-release.yml`; verify both JSON files parse with `jq`
 - [x] 4.3 Dry-run release-please against the branch (`npx release-please release-pr --dry-run` with the repo's config, or the local `Manifest.buildPullRequests()` method in `docs/release-process.md`) and verify it proposes `dws-mid-basic` `0.1.0` listing only this change's commits and no other component; if it does not, switch to the documented bootstrap (manifest `0.1.0` + `force=true`) and record why in design.md
 
@@ -37,7 +37,7 @@
 
 ## 7. Integration checks
 
-- [ ] 7.1 Run the package gate from `dws-mid-basic/`: `make lint && make test && make wasm && make test-wasm`; all pass
+- [x] 7.1 Run the package gate from `dws-mid-basic/`: `make lint && make test && make wasm && make test-wasm`; all pass
 - [ ] 7.2 After merge to `main`, confirm the CI push of `ghcr.io/tonylibs/dws-mid-basic`, that it pulls anonymously, and record the image name and digest
 - [ ] 7.3 Tony runs `IMAGE=ghcr.io/tonylibs/dws-mid-basic@<digest> dws-mid-basic/scripts/verify-live.sh` on the local Docker Desktop cluster; it prints `PASS`, and the output (digest, `basic.wasm` size, negative-case behavior) is recorded in the README and the change report
 
