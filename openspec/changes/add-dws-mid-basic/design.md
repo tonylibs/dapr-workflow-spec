@@ -150,11 +150,16 @@ contains any of the test credential strings.
   `dws-mid-basic-v*` tags and on `workflow_dispatch`; tags `main`, short sha, `latest`, version).
   The job summary prints the pushed digest.
 - **Release**: release-please package `dws-mid-basic` (`simple`, `version.txt`,
-  `skip-github-release: true`); manifest entry `0.0.0`, so the first `feat(mid-basic)` opens a
-  `0.1.0` release PR; `component-release.yml` gains the choice. Released by hand through
-  `component-release` like every component. This differs from the `dws-step`/`dws-flow` bootstrap
-  (manifest `0.1.0` + `force=true`) because this package has no pre-existing history to trim; the
-  release-please behavior is checked with a dry run before merge (task 4.3).
+  `skip-github-release: true`, `initial-version: 0.1.0`); manifest entry `0.0.0`, so the first
+  `feat(mid-basic)` opens a `0.1.0` release PR; `component-release.yml` gains the choice. Released
+  by hand through `component-release` like every component. This differs from the
+  `dws-step`/`dws-flow` bootstrap (manifest `0.1.0` + `force=true`) because this package has no
+  pre-existing history to trim. `initial-version` is needed: the release-please dry run (task 4.3,
+  release-please 17.11.2, `Manifest.buildPullRequests()` on local history) showed that a package
+  with no previous release gets `initialReleaseVersion()` = **1.0.0** whatever the manifest says;
+  with `initial-version: 0.1.0` it proposes `0.1.0` listing only this change's `feat(mid-basic)`
+  commits and no other component. The manifest-`0.1.0` bootstrap would have proposed `0.2.0` until
+  seeded. `initial-version` is ignored once a tag exists.
 - **Public**: GHCR packages linked to this repository inherit its visibility; the first push is
   checked and, if needed, flipped to public in the package settings (a manual step).
 

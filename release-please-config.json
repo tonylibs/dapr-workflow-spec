@@ -90,6 +90,7 @@
       "component": "dws-mid-basic",
       "changelog-path": "CHANGELOG.md",
       "version-file": "version.txt",
+      "initial-version": "0.1.0",
       "skip-github-release": true
     }
   }
