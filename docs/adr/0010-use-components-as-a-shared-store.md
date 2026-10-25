@@ -13,7 +13,7 @@
   (`DWS_FLOW_USE_STORE`, `DWS_STEP_USE_STORE`, `DWS_ORCHESTRATOR_USE_STORE`). 3i shipped the first
   reader. Everything else is unchanged.
 - **Amended:** 2026-10-22 — the bearer component ships as `dws-mid-bearer` (was the proposed
-  `dws-wasm-bearer`). Measured: `bearer.wasm` is 225,958 bytes (TinyGo 0.34.0). A missing, empty or
+  `dws-wasm-bearer`). Measured: `bearer.wasm` is about 226 KB (TinyGo 0.34.0). A missing, empty or
   malformed token aborts the guest at load so daprd refuses the Component; `ignoreErrors: true` on the
   Component defeats that (daprd skips the middleware and forwards the call unauthenticated), so the
   controller must never set it. See `dws-mid-bearer/README.md`.
