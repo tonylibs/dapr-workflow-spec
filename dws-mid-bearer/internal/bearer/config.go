@@ -7,14 +7,21 @@ import (
 	"strings"
 )
 
-// Config is the guestConfig of the bearer component. It has no scheme field:
-// which component Dapr loads is the scheme.
+// Config is the validated guestConfig of the bearer component. It has no scheme
+// field: which component Dapr loads is the scheme.
+//
+// The fields are private so that Parse is the only way to get a usable Config:
+// a value that skipped validation cannot exist outside this package. The zero
+// value matches nothing and so sets nothing.
 type Config struct {
-	// Endpoint is the name of the Dapr HTTPEndpoint this credential applies to.
-	Endpoint string
-	// Token is the bearer credential. It is a secret: never log it or put it in
+	endpoint string
+	// token is the bearer credential. It is a secret: never log it or put it in
 	// an error.
-	Token string
+	token string
+
+	// Derived once by Parse so the per-request path builds no strings.
+	prefix string // "/v1.0/invoke/<endpoint>/method"
+	header string // "Bearer <token>"
 }
 
 // misconfigured names the fields a controller would plausibly send to this
@@ -40,7 +47,7 @@ func Parse(raw []byte) (Config, error) {
 			return Config{}, errors.New("guestConfig has an unknown field: " + name)
 		}
 	}
-	if len(fields) > len(known(fields)) {
+	if hasUnknownField(fields) {
 		return Config{}, errors.New("guestConfig has an unknown field")
 	}
 
@@ -65,7 +72,12 @@ func Parse(raw []byte) (Config, error) {
 	if hasControl(token) {
 		return Config{}, errors.New("guestConfig.token contains a control character (trailing newline?)")
 	}
-	return Config{Endpoint: endpoint, Token: token}, nil
+	return Config{
+		endpoint: endpoint,
+		token:    token,
+		prefix:   "/v1.0/invoke/" + endpoint + "/method",
+		header:   "Bearer " + token,
+	}, nil
 }
 
 // stringField returns the named field as a string; absent and null yield "".
@@ -92,13 +104,14 @@ func hasControl(s string) bool {
 	return false
 }
 
-// known returns the recognised fields present in the config.
-func known(fields map[string]json.RawMessage) []string {
-	var present []string
-	for _, name := range []string{"endpoint", "token"} {
-		if _, ok := fields[name]; ok {
-			present = append(present, name)
+// hasUnknownField reports a key other than "endpoint" or "token". It returns a
+// bool, not the key, so the caller cannot put a key (possibly secret material)
+// in an error.
+func hasUnknownField(fields map[string]json.RawMessage) bool {
+	for name := range fields {
+		if name != "endpoint" && name != "token" {
+			return true
 		}
 	}
-	return present
+	return false
 }

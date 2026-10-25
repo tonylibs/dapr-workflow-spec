@@ -45,7 +45,16 @@ type fakeRequest struct {
 func (r *fakeRequest) GetURI() string      { return r.uri }
 func (r *fakeRequest) Headers() api.Header { return r.headers }
 
-var cfg = Config{Endpoint: "pets-api", Token: "abc123"}
+// cfg is built through Parse, the only constructor, like in production.
+var cfg = mustParse(`{"endpoint":"pets-api","token":"abc123"}`)
+
+func mustParse(raw string) Config {
+	c, err := Parse([]byte(raw))
+	if err != nil {
+		panic(err)
+	}
+	return c
+}
 
 func handle(t *testing.T, uri string, h *fakeHeaders) {
 	t.Helper()
@@ -131,5 +140,33 @@ func TestHandleNoAuthorizationAddedWhenNoneSent(t *testing.T) {
 func TestMatchesDeepPath(t *testing.T) {
 	if !cfg.Matches("/v1.0/invoke/pets-api/method/a/b/c") {
 		t.Error("deep path should match")
+	}
+}
+
+// A Config that skipped Parse must fail closed: it matches nothing and so never
+// stamps a header (an empty prefix would otherwise match every URI).
+func TestZeroConfigMatchesNothing(t *testing.T) {
+	var zero Config
+	for _, uri := range []string{
+		"/v1.0/invoke/pets-api/method/x",
+		"/v1.0/invoke//method/x",
+		"/anything",
+		"?x=1",
+		"/",
+		"",
+	} {
+		t.Run(uri, func(t *testing.T) {
+			if zero.Matches(uri) {
+				t.Fatalf("zero Config matched %q", uri)
+			}
+			h := newHeaders()
+			next, _ := zero.Handle(&fakeRequest{uri: uri, headers: h}, nil)
+			if !next {
+				t.Error("Handle must always continue to the next handler")
+			}
+			if len(h.values) != 0 {
+				t.Errorf("zero Config modified headers: %v", h.values)
+			}
+		})
 	}
 }

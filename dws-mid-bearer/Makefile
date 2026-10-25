@@ -1,6 +1,6 @@
-IMAGE ?= registry.io/dws/dws-mid-bearer:dev
+IMAGE ?= dws-mid-bearer:dev
 
-.PHONY: build test lint vet fmt-check docker clean
+.PHONY: build test lint vet fmt-check docker
 
 ## build: compile the package on the host toolchain (a sanity check only;
 ## the real artifact is the .wasm built by `make docker` with TinyGo 0.34.0)
@@ -33,7 +33,3 @@ lint: vet fmt-check
 ## docker: build the delivery image (TinyGo 0.34.0 inside the Dockerfile)
 docker:
 	docker build -t $(IMAGE) .
-
-## clean: remove build artifacts
-clean:
-	rm -rf bin
