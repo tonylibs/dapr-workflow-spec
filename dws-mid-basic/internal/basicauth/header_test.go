@@ -26,9 +26,8 @@ func TestHeaderValue(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &Config{Endpoint: "pets", Username: tt.username, Password: tt.password}
-			if got := cfg.HeaderValue(); got != tt.want {
-				t.Errorf("HeaderValue() = %q, want %q", got, tt.want)
+			if got := headerValue(tt.username, tt.password); got != tt.want {
+				t.Errorf("headerValue() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -36,8 +35,7 @@ func TestHeaderValue(t *testing.T) {
 
 // The decomposed form must encode as the two bytes C3 A9, not as the three bytes of e + U+0301.
 func TestHeaderValueDecomposedBytes(t *testing.T) {
-	cfg := &Config{Endpoint: "pets", Username: "é", Password: "x"}
-	raw, err := base64.StdEncoding.DecodeString(cfg.HeaderValue()[len("Basic "):])
+	raw, err := base64.StdEncoding.DecodeString(headerValue("é", "x")[len("Basic "):])
 	if err != nil {
 		t.Fatalf("header value is not standard padded base64: %v", err)
 	}

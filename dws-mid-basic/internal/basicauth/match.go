@@ -13,19 +13,27 @@ import (
 // A path holding a "." or ".." segment, raw or percent-encoded in any case, never matches. If
 // the sidecar cleaned such a path after this guest ran, the request could be routed to another
 // endpoint carrying this credential; not matching sends it out unauthenticated instead, which
-// is the safe direction.
+// is the safe direction. The zero Config, which has no endpoint, matches nothing.
 func (c *Config) Match(uri string) bool {
+	if c.methodPath == "" {
+		return false
+	}
+
 	path := uri
 	if i := strings.IndexByte(path, '?'); i >= 0 {
 		path = path[:i]
 	}
 
-	base := "/v1.0/invoke/" + c.Endpoint + "/method"
-	if path != base && !strings.HasPrefix(path, base+"/") {
+	if path != c.methodPath && !strings.HasPrefix(path, c.methodPath+"/") {
 		return false
 	}
 
 	return !slices.ContainsFunc(strings.Split(path, "/"), isDotSegment)
+}
+
+// methodPath is the Dapr invocation path of endpoint, the path Match compares requests against.
+func methodPath(endpoint string) string {
+	return "/v1.0/invoke/" + endpoint + "/method"
 }
 
 // isDotSegment reports whether segment is "." or "..", where each dot may be written as %2e or

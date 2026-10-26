@@ -3,7 +3,7 @@ package basicauth
 import "testing"
 
 func TestMatch(t *testing.T) {
-	cfg := &Config{Endpoint: "pets", Username: "alice", Password: "s3cret"}
+	cfg := newConfig("pets", "alice", "s3cret")
 	tests := []struct {
 		name string
 		uri  string
@@ -66,11 +66,22 @@ func TestMatch(t *testing.T) {
 }
 
 func TestMatchUsesTheConfiguredEndpoint(t *testing.T) {
-	cfg := &Config{Endpoint: "pets-v2"}
+	cfg := newConfig("pets-v2", "alice", "s3cret")
 	if !cfg.Match("/v1.0/invoke/pets-v2/method/x") {
 		t.Error("pets-v2 should match its own path")
 	}
 	if cfg.Match("/v1.0/invoke/pets/method/x") {
 		t.Error("pets-v2 must not match pets")
+	}
+}
+
+// A Config built outside Parse has no method path. It must match nothing, not every path that
+// starts with "/".
+func TestZeroConfigMatchesNothing(t *testing.T) {
+	var cfg Config
+	for _, uri := range []string{"/", "/x", "/v1.0/invoke/pets/method/x", "/v1.0/invoke//method", ""} {
+		if cfg.Match(uri) {
+			t.Errorf("zero Config matched %q", uri)
+		}
 	}
 }

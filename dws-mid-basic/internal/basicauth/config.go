@@ -15,11 +15,12 @@ import (
 	"unicode"
 )
 
-// Config is a validated guest config: one endpoint and one Basic credential.
+// Config is a validated guest config, reduced to what the guest serves with: the invocation path
+// of its one endpoint and the encoded Basic credential. Its fields are unexported so a usable
+// Config only comes from Parse; the zero Config matches no request.
 type Config struct {
-	Endpoint string
-	Username string
-	Password string
+	methodPath string // "/v1.0/invoke/<endpoint>/method"
+	header     string // the Authorization header value
 }
 
 // ConfigError reports every problem found in a guest config. Each problem names a field and the
@@ -39,6 +40,33 @@ const (
 	fieldUsername = "username"
 	fieldPassword = "password"
 )
+
+// rule is one check on a present, non-empty string value. A value breaks the rule when broken
+// reports true; problem completes the sentence that starts with the field name.
+type rule struct {
+	broken  func(string) bool
+	problem string
+}
+
+// fieldSpec is one guest config field and the rules its value must keep beyond being required.
+type fieldSpec struct {
+	name  string
+	rules []rule
+}
+
+// fieldSpecs is every field of the guest config, in the order their problems are reported.
+var fieldSpecs = []fieldSpec{
+	{name: fieldEndpoint, rules: []rule{
+		{broken: func(v string) bool { return strings.ContainsAny(v, "/?#") }, problem: "must not contain '/', '?' or '#'"},
+	}},
+	{name: fieldUsername, rules: []rule{
+		{broken: func(v string) bool { return strings.Contains(v, ":") }, problem: "must not contain ':' (RFC 7617)"},
+		{broken: hasControl, problem: "must not contain control characters"},
+	}},
+	{name: fieldPassword, rules: []rule{
+		{broken: hasControl, problem: "must not contain control characters"},
+	}},
+}
 
 // fieldKind is what kind of JSON value a present field held.
 type fieldKind int
@@ -65,14 +93,21 @@ func Parse(raw []byte) (*Config, error) {
 		return nil, &ConfigError{Problems: []string{fatal}}
 	}
 
-	endpoint, endpointProblems := checkEndpoint(fields[fieldEndpoint])
-	username, usernameProblems := checkUsername(fields[fieldUsername])
-	password, passwordProblems := checkPassword(fields[fieldPassword])
-	problems = slices.Concat(problems, endpointProblems, usernameProblems, passwordProblems)
+	values := make(map[string]string, len(fieldSpecs))
+	for _, spec := range fieldSpecs {
+		v, specProblems := spec.check(fields[spec.name])
+		problems = append(problems, specProblems...)
+		values[spec.name] = v
+	}
 	if len(problems) > 0 {
 		return nil, &ConfigError{Problems: problems}
 	}
-	return &Config{Endpoint: endpoint, Username: username, Password: password}, nil
+	return newConfig(values[fieldEndpoint], values[fieldUsername], values[fieldPassword]), nil
+}
+
+// newConfig derives a Config from field values that have already passed every rule.
+func newConfig(endpoint, username, password string) *Config {
+	return &Config{methodPath: methodPath(endpoint), header: headerValue(username, password)}
 }
 
 // readObject streams the top-level object token by token. Doing it by hand (instead of
@@ -109,9 +144,7 @@ func readObject(raw []byte) (fields map[string]*field, problems []string, fatal 
 			return nil, nil, notJSON
 		}
 
-		switch key {
-		case fieldEndpoint, fieldUsername, fieldPassword:
-		default:
+		if !isKnownField(key) {
 			problems = append(problems, unknownFieldProblem(key))
 			continue
 		}
@@ -145,6 +178,10 @@ func decodeField(value json.RawMessage) *field {
 		return &field{kind: kindNonString}
 	}
 	return &field{kind: kindString, value: s}
+}
+
+func isKnownField(name string) bool {
+	return slices.ContainsFunc(fieldSpecs, func(spec fieldSpec) bool { return spec.name == name })
 }
 
 // unknownFieldProblem names the field only when it looks like an identifier. A key is not a
@@ -183,43 +220,19 @@ func required(name string, f *field) (string, []string) {
 	return f.value, nil
 }
 
-// Each check* returns the field's value when it is valid, or the problems that make it invalid.
-
-func checkEndpoint(f *field) (string, []string) {
-	v, problems := required(fieldEndpoint, f)
+// check returns the field's value when it is valid, or every problem that makes it invalid.
+func (spec fieldSpec) check(f *field) (string, []string) {
+	v, problems := required(spec.name, f)
 	if problems != nil {
 		return "", problems
 	}
-	if strings.ContainsAny(v, "/?#") {
-		return "", []string{"endpoint must not contain '/', '?' or '#'"}
-	}
-	return v, nil
-}
-
-func checkUsername(f *field) (string, []string) {
-	v, problems := required(fieldUsername, f)
-	if problems != nil {
-		return "", problems
-	}
-	if strings.Contains(v, ":") {
-		problems = append(problems, "username must not contain ':' (RFC 7617)")
-	}
-	if hasControl(v) {
-		problems = append(problems, "username must not contain control characters")
+	for _, r := range spec.rules {
+		if r.broken(v) {
+			problems = append(problems, spec.name+" "+r.problem)
+		}
 	}
 	if problems != nil {
 		return "", problems
-	}
-	return v, nil
-}
-
-func checkPassword(f *field) (string, []string) {
-	v, problems := required(fieldPassword, f)
-	if problems != nil {
-		return "", problems
-	}
-	if hasControl(v) {
-		return "", []string{"password must not contain control characters"}
 	}
 	return v, nil
 }

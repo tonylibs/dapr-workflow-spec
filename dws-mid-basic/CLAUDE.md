@@ -70,7 +70,9 @@ type ConfigError struct{ Problems []string }
 
 Problem strings name a field and a rule (`password is required`, `username must not contain ':'
 (RFC 7617)`). Never put a configured value, a slice of the input or an `encoding/json` error in
-one: json errors quote the offending character and the input is a credential. Add a case to
+one: json errors quote the offending character and the input is a credential. Fields and their
+rules are rows in `fieldSpecs` (`config.go`); a rule's `problem` text follows the field name, and
+the known-field check reads the same table, so a new field or rule is one row there. Add a case to
 `TestParseInvalid` for every new rule, and a value to `TestErrorsNeverEchoValues` if the rule sees
 user data. Parsing is token-based (`json.Decoder.Token`) rather than `DisallowUnknownFields`, to get
 case-sensitive field names, duplicate and trailing-data detection, and message control; it works

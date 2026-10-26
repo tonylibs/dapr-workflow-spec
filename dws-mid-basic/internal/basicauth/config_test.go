@@ -16,32 +16,37 @@ func TestParseValid(t *testing.T) {
 		{
 			name: "basic",
 			raw:  `{"endpoint":"pets","username":"alice","password":"s3cret"}`,
-			want: Config{Endpoint: "pets", Username: "alice", Password: "s3cret"},
+			want: Config{methodPath: "/v1.0/invoke/pets/method", header: "Basic " + b64("alice:s3cret")},
 		},
 		{
 			name: "key order and whitespace do not matter",
 			raw:  " {\n \"password\" : \"s3cret\",\n \"endpoint\":\"pets\", \"username\":\"alice\" }\n",
-			want: Config{Endpoint: "pets", Username: "alice", Password: "s3cret"},
+			want: Config{methodPath: "/v1.0/invoke/pets/method", header: "Basic " + b64("alice:s3cret")},
 		},
 		{
 			name: "colon in password is allowed",
 			raw:  `{"endpoint":"pets","username":"alice","password":"pa:ss:word"}`,
-			want: Config{Endpoint: "pets", Username: "alice", Password: "pa:ss:word"},
+			want: Config{methodPath: "/v1.0/invoke/pets/method", header: "Basic " + b64("alice:pa:ss:word")},
 		},
 		{
 			name: "non-ASCII values",
 			raw:  `{"endpoint":"pets","username":"test","password":"123£"}`,
-			want: Config{Endpoint: "pets", Username: "test", Password: "123£"},
+			want: Config{methodPath: "/v1.0/invoke/pets/method", header: "Basic " + b64("test:123£")},
 		},
 		{
 			name: "JSON escapes are decoded",
 			raw:  `{"endpoint":"pets","username":"alïce","password":"a\"b\\c"}`,
-			want: Config{Endpoint: "pets", Username: "alïce", Password: `a"b\c`},
+			want: Config{methodPath: "/v1.0/invoke/pets/method", header: "Basic " + b64(`alïce:a"b\c`)},
 		},
 		{
 			name: "spaces inside a password are kept",
 			raw:  `{"endpoint":"pets","username":"alice","password":" p w "}`,
-			want: Config{Endpoint: "pets", Username: "alice", Password: " p w "},
+			want: Config{methodPath: "/v1.0/invoke/pets/method", header: "Basic " + b64("alice: p w ")},
+		},
+		{
+			name: "endpoint becomes the method path",
+			raw:  `{"endpoint":"orders-v2","username":"alice","password":"s3cret"}`,
+			want: Config{methodPath: "/v1.0/invoke/orders-v2/method", header: "Basic " + b64("alice:s3cret")},
 		},
 	}
 	for _, tt := range tests {

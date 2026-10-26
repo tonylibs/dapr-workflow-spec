@@ -24,12 +24,10 @@ func main() {
 }
 
 func handleRequest(cfg *basicauth.Config) api.HandleRequest {
-	// Encode once: the credential is constant for the life of the module.
-	header := cfg.HeaderValue()
 	return func(req api.Request, _ api.Response) (bool, uint32) {
 		if cfg.Match(req.GetURI()) {
 			// Set, not Add: the forwarded request carries exactly one Authorization header.
-			req.Headers().Set("Authorization", header)
+			req.Headers().Set("Authorization", cfg.HeaderValue())
 		}
 		return true, 0
 	}
