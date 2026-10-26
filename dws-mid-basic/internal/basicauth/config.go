@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -32,12 +33,26 @@ func (e *ConfigError) Error() string {
 	return "dws-mid-basic: " + strings.Join(e.Problems, "; ")
 }
 
-// field is one string field as it appeared in the config object.
+// The guest config's field names, compared case-sensitively.
+const (
+	fieldEndpoint = "endpoint"
+	fieldUsername = "username"
+	fieldPassword = "password"
+)
+
+// fieldKind is what kind of JSON value a present field held.
+type fieldKind int
+
+const (
+	kindString    fieldKind = iota // a JSON string; value holds it
+	kindNull                       // JSON null
+	kindNonString                  // anything else: number, bool, object, array
+)
+
+// field is one field as it appeared in the config object. A missing field has no *field at all.
 type field struct {
-	seen  bool   // key present (possibly null)
-	null  bool   // value was JSON null
-	typed bool   // value was something other than a string or null
-	value string // string value, when it was one
+	kind  fieldKind
+	value string // set when kind is kindString
 }
 
 // Parse validates raw, the bytes of the guest config. The config must be one JSON object with
@@ -50,14 +65,14 @@ func Parse(raw []byte) (*Config, error) {
 		return nil, &ConfigError{Problems: []string{fatal}}
 	}
 
-	cfg := &Config{}
-	problems = append(problems, checkEndpoint(fields["endpoint"], &cfg.Endpoint)...)
-	problems = append(problems, checkUsername(fields["username"], &cfg.Username)...)
-	problems = append(problems, checkPassword(fields["password"], &cfg.Password)...)
+	endpoint, endpointProblems := checkEndpoint(fields[fieldEndpoint])
+	username, usernameProblems := checkUsername(fields[fieldUsername])
+	password, passwordProblems := checkPassword(fields[fieldPassword])
+	problems = slices.Concat(problems, endpointProblems, usernameProblems, passwordProblems)
 	if len(problems) > 0 {
 		return nil, &ConfigError{Problems: problems}
 	}
-	return cfg, nil
+	return &Config{Endpoint: endpoint, Username: username, Password: password}, nil
 }
 
 // readObject streams the top-level object token by token. Doing it by hand (instead of
@@ -95,7 +110,7 @@ func readObject(raw []byte) (fields map[string]*field, problems []string, fatal 
 		}
 
 		switch key {
-		case "endpoint", "username", "password":
+		case fieldEndpoint, fieldUsername, fieldPassword:
 		default:
 			problems = append(problems, unknownFieldProblem(key))
 			continue
@@ -119,20 +134,17 @@ func readObject(raw []byte) (fields map[string]*field, problems []string, fatal 
 	return fields, problems, ""
 }
 
+// decodeField classifies value, which the decoder has already checked is valid JSON. null is
+// tested first because json.Unmarshal accepts it into a string as a no-op.
 func decodeField(value json.RawMessage) *field {
-	f := &field{seen: true}
-	trimmed := bytes.TrimSpace(value)
-	switch {
-	case string(trimmed) == "null":
-		f.null = true
-	case len(trimmed) > 0 && trimmed[0] == '"':
-		if err := json.Unmarshal(trimmed, &f.value); err != nil {
-			f.typed = true
-		}
-	default:
-		f.typed = true
+	if string(bytes.TrimSpace(value)) == "null" {
+		return &field{kind: kindNull}
 	}
-	return f
+	var s string
+	if err := json.Unmarshal(value, &s); err != nil {
+		return &field{kind: kindNonString}
+	}
+	return &field{kind: kindString, value: s}
 }
 
 // unknownFieldProblem names the field only when it looks like an identifier. A key is not a
@@ -161,9 +173,9 @@ func isIdentifier(s string) bool {
 // returns the value, or the problems that make the field unusable.
 func required(name string, f *field) (string, []string) {
 	switch {
-	case f == nil || f.null:
+	case f == nil || f.kind == kindNull:
 		return "", []string{name + " is required"}
-	case f.typed:
+	case f.kind == kindNonString:
 		return "", []string{name + " must be a string"}
 	case f.value == "":
 		return "", []string{name + " is required"}
@@ -171,22 +183,23 @@ func required(name string, f *field) (string, []string) {
 	return f.value, nil
 }
 
-func checkEndpoint(f *field, out *string) []string {
-	v, problems := required("endpoint", f)
+// Each check* returns the field's value when it is valid, or the problems that make it invalid.
+
+func checkEndpoint(f *field) (string, []string) {
+	v, problems := required(fieldEndpoint, f)
 	if problems != nil {
-		return problems
+		return "", problems
 	}
 	if strings.ContainsAny(v, "/?#") {
-		return []string{"endpoint must not contain '/', '?' or '#'"}
+		return "", []string{"endpoint must not contain '/', '?' or '#'"}
 	}
-	*out = v
-	return nil
+	return v, nil
 }
 
-func checkUsername(f *field, out *string) []string {
-	v, problems := required("username", f)
+func checkUsername(f *field) (string, []string) {
+	v, problems := required(fieldUsername, f)
 	if problems != nil {
-		return problems
+		return "", problems
 	}
 	if strings.Contains(v, ":") {
 		problems = append(problems, "username must not contain ':' (RFC 7617)")
@@ -195,22 +208,20 @@ func checkUsername(f *field, out *string) []string {
 		problems = append(problems, "username must not contain control characters")
 	}
 	if problems != nil {
-		return problems
+		return "", problems
 	}
-	*out = v
-	return nil
+	return v, nil
 }
 
-func checkPassword(f *field, out *string) []string {
-	v, problems := required("password", f)
+func checkPassword(f *field) (string, []string) {
+	v, problems := required(fieldPassword, f)
 	if problems != nil {
-		return problems
+		return "", problems
 	}
 	if hasControl(v) {
-		return []string{"password must not contain control characters"}
+		return "", []string{"password must not contain control characters"}
 	}
-	*out = v
-	return nil
+	return v, nil
 }
 
 func hasControl(s string) bool {

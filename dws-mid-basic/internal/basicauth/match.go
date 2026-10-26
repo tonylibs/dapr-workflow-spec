@@ -1,6 +1,9 @@
 package basicauth
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // Match reports whether uri, the request target as the host sees it, is on this config's
 // endpoint: its path, ignoring any query string, equals /v1.0/invoke/<endpoint>/method or has
@@ -22,12 +25,7 @@ func (c *Config) Match(uri string) bool {
 		return false
 	}
 
-	for _, segment := range strings.Split(path, "/") {
-		if isDotSegment(segment) {
-			return false
-		}
-	}
-	return true
+	return !slices.ContainsFunc(strings.Split(path, "/"), isDotSegment)
 }
 
 // isDotSegment reports whether segment is "." or "..", where each dot may be written as %2e or
