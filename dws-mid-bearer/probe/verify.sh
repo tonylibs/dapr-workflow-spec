@@ -109,9 +109,13 @@ done
 set -e
 echo "--- empty-token pod: state and daprd log (token was empty; nothing secret here) ---"
 kubectl get "$empty_pod" -n "$namespace" -o jsonpath='{range .status.containerStatuses[*]}{.name}{" ready="}{.ready}{" restarts="}{.restartCount}{"\n"}{end}'
-kubectl logs -n "$namespace" "$empty_pod" -c daprd --tail=40 2>&1 | grep -iE 'wasm|bearer|empty|token|error|fatal' | head -10 || true
+# Match on the log level: every line carries app_id=caller-empty, so a keyword
+# filter like "empty" selects everything. --previous is the crashed container.
+{ kubectl logs -n "$namespace" "$empty_pod" -c daprd --previous 2>/dev/null ||
+  kubectl logs -n "$namespace" "$empty_pod" -c daprd 2>&1; } |
+  grep -E 'level=(error|fatal)' | cut -c1-400 | head -5 || true
 if kubectl logs -n "$namespace" -l app=echo | grep -Fq 'path=/empty-case'; then
-  echo "FAIL: a call from the empty-token pod reached the target (daprd skipped the broken middleware); the guest must also fail closed per request" >&2
+  echo "FAIL: a call from the empty-token pod reached the target (daprd skipped the broken Wasm middleware); check the Component for ignoreErrors: true (design D3/D4)" >&2
   exit 1
 fi
 

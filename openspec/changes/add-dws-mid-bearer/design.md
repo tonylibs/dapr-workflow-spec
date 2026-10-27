@@ -96,6 +96,19 @@ So D3 holds only while the Component does not set `ignoreErrors`. The guest cann
 module that failed to load cannot reject requests. This is why D4 forbids the flag, and why 4.1d should
 assert it in a test.
 
+**Kubernetes run (task 6.2, 2026-10-28)**, on a Docker Desktop kind cluster (Dapr control plane 1.18.2,
+daprd 1.18.1, image copied by the init container as in D4): `probe/verify.sh` passed three times. For the
+empty-token Component, daprd logged `Failed to init component empty-auth (middleware.http.wasm/v1):
+[CREATE_COMPONENT_FAILURE] … wasm: error instantiating guest: module[1] function[_start] failed: wasm
+error: unreachable` (stack `main.runtime._panic`, `main._start`), then `daprd will exit gracefully` and
+`level=fatal`. The sidecar crash-looped (`ready=false`, 4 restarts in about 40 s), and every call from that
+pod failed with connection refused (curl exit 7); none reached the target.
+
+**Observed gap:** the guest's panic text (`dws-mid-bearer: guestConfig.token is missing or empty`) does
+**not** appear anywhere in the daprd log. daprd reports only the Wasm trap. The fail-closed behavior holds
+and nothing leaks, but an operator cannot tell from the log *which* field is wrong. The spec's "message
+naming `token`" is therefore true at the guest boundary (unit tests), not in what daprd shows.
+
 ### D4. Contract for 4.1d (documented, not implemented here)
 
 - Component `url: file:///mnt/dws-wasm/bearer.wasm`; init container runs `cp /bearer.wasm
@@ -146,8 +159,8 @@ which targets handle unpredictably and which the spike's overwrite assertion for
   would catch a toolchain bump in CI but adds a dependency; deferred, noted in the README.
 - **Plain-Go tests do not exercise the Wasm build** (TinyGo's `encoding/json`, `strings` behaviour) →
   the probe runs the actual module; the `DisallowUnknownFields` check in D3 is done against the built file.
-- **The probe cannot run in CI or in this session's container** (it needs a Dapr cluster) → it is run by
-  hand on Tony's local cluster; if it has not been run, the report says so instead of claiming it passed.
+- **The probe cannot run in CI** (it needs a Dapr cluster) → it is run by hand on Tony's local cluster;
+  it passed there on 2026-10-28 (see D3). Re-run it when TinyGo, the guest library or Dapr changes.
 - **Same-endpoint other paths get the token** (D2) → intended; one policy per endpoint.
 - **`dapr-app-id`-header invocations are not matched** → they pass through unauthenticated (never leak a
   credential); step images use the invoke URL form (4.1e).
