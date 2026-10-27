@@ -63,8 +63,7 @@ If `guestConfig` is absent, not valid JSON, has an unknown field, has a missing,
 `endpoint` or `token`, an `endpoint` containing `/`, `?`, `#` or a control character, or a `token`
 containing a control character (including a trailing newline), the module SHALL abort during
 initialisation so daprd fails to load the component. It MUST NOT fall back to passing requests without
-credentials. The guest's own error text names the failing field, but daprd currently reports only the
-Wasm trap (observed on daprd 1.18.1), so an operator cannot rely on the daprd log to see which field.
+credentials.
 
 #### Scenario: missing token
 - **WHEN** `guestConfig` is `{"endpoint":"pets-api"}`
@@ -74,6 +73,10 @@ Wasm trap (observed on daprd 1.18.1), so an operator cannot rely on the daprd lo
 #### Scenario: empty token
 - **WHEN** `guestConfig` is `{"endpoint":"pets-api","token":""}` or a whitespace-only token
 - **THEN** the module aborts at load and no request is ever forwarded by it
+
+#### Scenario: what the operator sees
+- **WHEN** any of these configs is loaded by daprd 1.18.1
+- **THEN** daprd logs the component failure and the Wasm trap and exits, and does not show the guest's field name
 
 #### Scenario: token with a trailing newline
 - **WHEN** the token value ends in `\n` (a Secret created with `echo` instead of `echo -n`)
