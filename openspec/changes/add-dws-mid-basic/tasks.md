@@ -27,19 +27,25 @@
 ## 5. Live probe
 
 - [x] 5.1 Write `dws-mid-basic/scripts/verify-live.sh` per design Decision 9 (local build or `IMAGE=<ref@digest>`, basic-only assertions, negative missing-password case, log-leak scan, EXIT cleanup); verify `bash -n` and `shellcheck` (if available) pass
-- [ ] 5.2 Document the probe's prerequisites and the observed daprd behavior for a guest that refuses to start in the package README (filled in after 7.3)
+- [x] 5.2 Document the probe's prerequisites and the observed daprd behavior for a guest that refuses to start in the package README (filled in after 7.3)
 
 ## 6. Docs
 
 - [x] 6.1 Write `dws-mid-basic/README.md` (what it does, guest-config contract, failure behavior, encoding rules, image contents and init-container usage, build/test commands, deviations from the task and ADR) and `dws-mid-basic/CLAUDE.md` (Go 1.23 / TinyGo 0.34.0 pin and why, no logging rule, gate commands); verify every command in them runs as written
-- [x] 6.2 Update root `CLAUDE.md` (package map row, gate table row `make lint && make test && make test-wasm`); verify the table renders and the commands match the Makefile
+- [x] 6.2 Update root `CLAUDE.md` (package map row, gate table row `make lint && make test && make wasm && make test-wasm` with `GOTOOLCHAIN=go1.23.12`); verify the table renders and the commands match the Makefile
 - [x] 6.3 Add a dated amendment to ADR 0010 recording the component names `dws-mid-basic` / `dws-mid-bearer` and the set-not-append header reading, and update roadmap §4h row 4.1c-basic (name, status, image); verify `grep -n "dws-wasm-basic"` leaves only the historical mentions the amendment explains
 
 ## 7. Integration checks
 
 - [x] 7.1 Run the package gate from `dws-mid-basic/`: `make lint && make test && make wasm && make test-wasm`; all pass
-- [ ] 7.2 After merge to `main`, confirm the CI push of `ghcr.io/tonylibs/dws-mid-basic`, that it pulls anonymously, and record the image name and digest
-- [ ] 7.3 Tony runs `IMAGE=ghcr.io/tonylibs/dws-mid-basic@<digest> dws-mid-basic/scripts/verify-live.sh` on the local Docker Desktop cluster; it prints `PASS`, and the output (digest, `basic.wasm` size, negative-case behavior) is recorded in the README and the change report
+- [ ] 7.2 After merge to `main`, confirm the CI push of `ghcr.io/tonylibs/dws-mid-basic`, that it pulls anonymously, and record the image name and digest; rerun `IMAGE=ghcr.io/tonylibs/dws-mid-basic@<digest> dws-mid-basic/scripts/verify-live.sh` against the published image
+- [x] 7.3 Tony runs `IMAGE=ghcr.io/tonylibs/dws-mid-basic@<digest> dws-mid-basic/scripts/verify-live.sh` on the local Docker Desktop cluster; it prints `PASS`, and the output (digest, `basic.wasm` size, negative-case behavior) is recorded in the README and the change report
+  - Run before merge against the locally built image (`IMAGE` unset), because the published digest
+    only exists after 7.2: `PASS`, `docker.io/library/dws-mid-basic@sha256:abc88cc9a8db580381a572b78e36076e1cb4b08dc9a5f3bc97daa8fd16a6dc0a`,
+    `basic.wasm` 283330 bytes, daprd 1.18.1 at `dapr.io/log-level: debug` (142 log lines scanned, no credential). Negative case: daprd exits fatally (`CrashLoopBackOff`),
+    the target receives nothing, and daprd logs only `wasm error: unreachable` (no field/rule text).
+    The first run also corrected the probe's own NFC expectation (`\xc3\xab` → `\xc3\xa9`).
+    Recorded in the README.
 
 ## Workflow follow-up
 

@@ -20,6 +20,9 @@ This package is **not** Go 1.26 like the other Go packages. `go.mod` says `go 1.
   `FROM tinygo/tinygo:0.34.0 AS build` and must run the same command the Makefile does.
 - The `wasmtest/` module is separate so wazero never enters the module TinyGo resolves. It pins
   `http-wasm-host-go` v0.7.0 and `wazero` v1.9.0 (v1.8.0 traps this module on Go 1.24+).
+- `make test-wasm` needs a 64-bit Go. On a 32-bit install (`go env GOARCH` = `386`) host-go panics
+  with `unaligned 64-bit atomic operation` in `newGuest` before any guest code runs; that is an
+  upstream host-go limit, not a guest bug. Run it as `GOARCH=amd64 make test-wasm`.
 
 ## Commands
 

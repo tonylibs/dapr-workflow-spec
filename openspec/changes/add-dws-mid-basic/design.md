@@ -196,5 +196,8 @@ release entries; the published image can stay unused.
 
 ## Open Questions
 
-- The exact daprd reaction to a guest that panics at load (Decision 4) — measured by the probe, it
-  changes only what the README says, not the guest.
+- ~~The exact daprd reaction to a guest that panics at load (Decision 4)~~ — measured 2026-10-28
+  (daprd 1.18.1): daprd exits fatally and the sidecar crash-loops, so nothing is forwarded
+  (fail-closed holds). daprd does not forward the guest's stderr, so its log shows only
+  `wasm error: unreachable` and the Component name, not the field/rule message. Recorded in the
+  README; the guest is unchanged.

@@ -74,7 +74,7 @@ colon_user=bob
 colon_pass='pa:ss:word'                                        # a ':' in the password is kept
 utf8_user=$'zoe\xcc\x81'                                       # decomposed e: guest must normalize to NFC
 utf8_pass=$'123\xc2\xa3'                                       # 123 + pound sign (RFC 7617 section 2.1)
-utf8_nfc_userpass=$'zo\xc3\xab:123\xc2\xa3'                    # what the target must see, in NFC
+utf8_nfc_userpass=$'zo\xc3\xa9:123\xc2\xa3'                    # what the target must see, in NFC (U+00E9)
 caller_header='Bearer caller-supplied'
 
 secret() { # secret <name> <guestConfig JSON>
@@ -166,6 +166,9 @@ spec:
         dapr.io/sidecar-image: $daprd_image
         dapr.io/volume-mounts: dws-wasm:/mnt/dws-wasm
         dapr.io/enable-native-sidecar: "false"
+        # The most verbose level: the log scan must hold at any level (spec), so check the one
+        # that logs the most.
+        dapr.io/log-level: debug
     spec:
       serviceAccountName: probe-caller
 $(install_init)
@@ -336,13 +339,15 @@ assert_eq "$(invoke unrelated-target probe -H "Authorization: $caller_header")" 
 
 echo "--- log scan"
 logs="$(kubectl logs -n "$namespace" "$pod" -c daprd 2>&1)"
+# Without debug lines the scan would prove nothing about the most verbose level.
+grep -q 'level=debug' <<<"$logs" || fail "daprd logged no debug line: dapr.io/log-level: debug did not take effect"
 for secret_value in "$alice_pass" "$colon_pass" "$utf8_pass" "$alice_expected" "${alice_expected#Basic }" \
   "$(b64 "$colon_user:$colon_pass")" "$(b64 "$utf8_nfc_userpass")" "$(b64 "$alice_user:$alice_pass")"; do
   if grep -Fq -- "$secret_value" <<<"$logs"; then
-    fail "a credential value appeared in default-level daprd logs"
+    fail "a credential value appeared in debug-level daprd logs"
   fi
 done
-echo "no credential in daprd logs"
+echo "no credential in daprd logs at debug level ($(grep -c . <<<"$logs") lines)"
 
 wasm_size="$(kubectl logs -n "$namespace" "$pod" -c wasm-size | tr -d '[:space:]')"
 

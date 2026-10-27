@@ -83,11 +83,27 @@ Because the handler is never registered, a host that keeps the module loaded aft
 fails every request instead of forwarding it without the credential: the call fails closed either
 way. `wasmtest` asserts that no request reaches the echo server in this case.
 
-<!-- TODO(7.3): record the observed daprd behavior when the guest refuses to start (does the
-     sidecar exit, crash-loop, or skip the component with an error log?) after running
-     scripts/verify-live.sh on a real cluster. The probe's negative case prints it. -->
-**Observed daprd behavior when the guest refuses to start:** _not yet measured._ Run the live probe
-below and fill this in.
+**Observed daprd behavior when the guest refuses to start** (daprd 1.18.1, measured 2026-10-28 by
+`scripts/verify-live.sh` with a config that has no `password`):
+
+- daprd fails to init the Component, logs `Error processing component, daprd will exit gracefully`,
+  then exits with `level=fatal msg="Fatal error from runtime: ..."`. The pod stays `Running` with
+  the `daprd` container not ready and in `CrashLoopBackOff`; it never serves a request.
+- A call through that sidecar fails, and the target receives nothing.
+- **The field/rule message is not in daprd's log.** daprd reports only the trap:
+
+  ```
+  error creating HTTP middleware middleware.http.wasm/v1: wasm: error instantiating guest:
+  module[1] function[_start] failed: wasm error: unreachable
+  wasm stack trace:
+      main.runtime._panic(i32,i32)
+      main._start()
+  ```
+
+  The panic text goes to the guest's stderr, which daprd does not forward. So an operator sees
+  *which* Component is broken (its name is in every line) but not *why*: check the Secret behind
+  its `guestConfig` against the table above. The full message is visible when the same config is
+  loaded by `wasmtest`, which captures the guest's stderr.
 
 ## Encoding
 
@@ -172,7 +188,7 @@ version host-go asks for, traps this module on Go 1.24 or newer.
 `scripts/verify-live.sh` deploys the image the way the controller will and checks what an echo
 target receives: `alice`/`s3cret`, a `:` in the password, a non-ASCII credential given in
 decomposed form (the target must see NFC), no credential for another endpoint or an endpoint-name
-prefix, a caller `Authorization` replaced, no credential in daprd logs, and, in a second pod whose
+prefix, a caller `Authorization` replaced, no credential in daprd logs with daprd at `debug` level (the scan fails if no debug line appears), and, in a second pod whose
 config has no password, that nothing reaches the target. It pins daprd 1.18.1 and deletes its
 namespace on exit.
 
@@ -186,6 +202,27 @@ Prerequisites: `kubectl` pointed at a cluster with the Dapr control plane (CRDs 
 injector). It uses the namespace `dws-mid-basic-probe` and pulls `python:3.13-alpine`,
 `curlimages/curl` and the daprd image. It prints `PASS` and the image digest, daprd image and
 `basic.wasm` size. Running it is a manual step; it needs a cluster.
+
+From Git Bash on Windows, keep MSYS from rewriting the in-node paths that `docker exec` receives
+(`/root/...`) while still converting the host paths `docker build`/`docker cp` need:
+
+```sh
+MSYS2_ARG_CONV_EXCL="/root;desktop-" bash dws-mid-basic/scripts/verify-live.sh
+```
+
+Last run (2026-10-28, Docker Desktop cluster, image built locally before the first publish, daprd at `debug`; 142 log lines scanned):
+
+```
+PASS: dws-mid-basic reached the echo target with the right Basic credential
+      (plain, ':' in password, non-ASCII/NFC); other endpoints untouched; caller header replaced;
+      no credential in daprd logs; a guest without a password sent nothing to the target
+Guest image:  docker.io/library/dws-mid-basic@sha256:abc88cc9a8db580381a572b78e36076e1cb4b08dc9a5f3bc97daa8fd16a6dc0a (built locally: true)
+Dapr sidecar: ghcr.io/dapr/daprd:1.18.1
+basic.wasm:   283330 bytes
+```
+
+The negative case's daprd behavior is under [Failure behavior](#failure-behavior). Rerun with
+`IMAGE=ghcr.io/tonylibs/dws-mid-basic@<digest>` once CI has published the image.
 
 ## Deviations from the proposal and ADR
 
