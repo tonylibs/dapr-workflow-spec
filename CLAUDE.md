@@ -69,6 +69,20 @@ Types in use: `feat`, `fix`, `refactor`, `docs`, `chore`, `perf`, `ci`, `test`.
     (`templates/controller/orchestrator-rbac.yaml`) and `dws-controller/k8s/controller-rbac.yaml`
     must create an account of that name with configmaps `get`/`list`/`watch`. Renaming it in one
     place only fails at runtime (pods are rejected, or the sidecar crash-loops), not at render time.
+- **Machine-auth token env contract** (`charts/dws` → `dws-admin`, `dws-controller`; auth
+  roadmap Phase 10, `openspec/changes/auth-phase-10-api-tokens`). With `auth.enabled=true` the
+  chart sets `DAPR_API_TOKEN` (sent by the app to its own sidecar) and, on `dws-admin` only,
+  `APP_API_TOKEN` (required by `dws-admin` on `:3000`), always as `secretKeyRef` to Secrets that
+  hold the value under key `token` — Dapr's own key for `dapr.io/api-token-secret` /
+  `dapr.io/app-token-secret`, not ours to rename. `dws-admin` reads exactly those names in
+  `src/config/configuration.ts`; `dws-controller` relies on the Dapr Java SDK reading
+  `DAPR_API_TOKEN` from the environment. A renamed variable is not a compile error: `dws-admin`
+  silently runs with the check off, or its relay and the controller's event publishing get 401
+  from their sidecars. Pinned on both sides: `charts/dws/tests/api-tokens-render-test.sh` (names,
+  `secretKeyRef` only, key `token`) and `dws-admin`'s `configuration.spec.ts` ("configuration
+  machine-auth tokens"). Change both together. The bundled APISIX reads the admin Dapr API token
+  as `DWS_ADMIN_DAPR_API_TOKEN` (`$env://` in the admin HTTPRoute); `dws.apiGateway.validate`
+  fails the render if that wiring drifts.
 - **Step-service request/response shape** (`dws-call-http`, `dws-call-grpc`, `dws-call-openapi`,
   `dws-call-asyncapi`, `dws-run`) is consumed by `dws-orchestrator`'s retry/error-classification
   logic (`WorkflowErrors.classify`). If you change a step-service's error/response contract,
