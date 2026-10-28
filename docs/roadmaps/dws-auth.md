@@ -50,7 +50,7 @@ flowchart TD
 | **7** | User management: an admin-only console screen to create users and assign one of a small set of built-in roles (e.g. `admin`/`operator`/`viewer`). New `dws-admin` route, reusing Phase 4's gateway + Dapr role check (only `admin`-role tokens may call it), which manages users through **Dex's own gRPC management API** — no user/password storage or hashing added to DWS's own database | Phases 0, 4 | ❌ not started — further-out, exploratory; see §4 for a real open risk before committing to this shape |
 | **8** | Make the bundled development IdP satisfy the browser client contract: adopt a released Dex version/configuration (or another in-chart IdP) with non-interactive `prompt=none` browser sessions and advertised RP-initiated logout; then verify token-expiry renewal, clean renewal failure, authenticated storage, logout, route restoration, and two-tab convergence | Phases 0, 1 | ❌ deferred — Dex 2.44.0 lacks the required browser-session and `end_session_endpoint` behavior; owns deferred checklist tasks 6.1, 6.2, 7.2, and 8.3 |
 | **9** | Content/version management (CMS layer) in `dws-admin`: own the workflow draft → active → archived lifecycle and version history as `dws-admin`'s own authored data, not a projection of controller events. Controller-reported deployment status (`applied`/`failed`/`drained`/`collected`) becomes a nested, controller-owned status on whichever version is `active` — never a competing lifecycle. Foundation for later per-user read/edit permissions on content (extends Phase 7's role model) | Phase 3 | ❌ not started — deliberately deferred; scoped down 2026-08-26 so Phase 3 ships as a plain stateless forward first |
-| **10** | **Dapr API token + App API token (added 2026-09-13)**: Dapr's own machine-auth pair, both on the `dapr-api-token` header so they compose with the bearer JWT rather than competing for `Authorization`. `dapr.io/api-token-secret` (`DAPR_API_TOKEN`) so only holders of the shared secret may call a sidecar's HTTP API — APISIX must inject it; `dapr.io/app-token-secret` (`APP_API_TOKEN`) so each app can verify a request genuinely came from its own sidecar. The app-side guard also closes the pod-IP direct-app-port bypass (§4) app-side and CNI-independently, and must exempt the kubelet-probed health route. Machine identity, never a replacement for user identity | Phase 4 + the pipeline-placement change | ❌ not started — scoped 2026-09-13 as its own later phase so the pubsub unblock can ship on its own |
+| **10** | **Dapr API token + App API token (added 2026-09-13)**: Dapr's own machine-auth pair, both on the `dapr-api-token` header so they compose with the bearer JWT rather than competing for `Authorization`. `dapr.io/api-token-secret` (`DAPR_API_TOKEN`) so only holders of the shared secret may call a sidecar's HTTP API — APISIX must inject it; `dapr.io/app-token-secret` (`APP_API_TOKEN`) so each app can verify a request genuinely came from its own sidecar. The app-side guard also closes the pod-IP direct-app-port bypass (§4) app-side and CNI-independently, and must exempt the kubelet-probed health route. Machine identity, never a replacement for user identity | Phase 4 + the pipeline-placement change | 🟢 implemented 2026-10-28 via `openspec/changes/auth-phase-10-api-tokens` — chart Secrets/annotations/env, APISIX header injection on the admin route, and `dws-admin`'s app-token guard + relay token, all behind `auth.enabled`; chart and `dws-admin` gates green. Not ✅ until the APISIX `$env://` spike (tasks 1.x) and the live cluster matrix (tasks 6.x) pass on the owner's cluster. The `dws-controller` app-port check is a follow-up (§4) |
 | **11** | **Service mesh (Istio) as the gate — evaluated 2026-09-13, not scheduled (see §2e)**: replace Dapr's `middleware.http.bearer` with Istio `RequestAuthentication` + `AuthorizationPolicy` on the mesh sidecar. Solves the `/dapr/subscribe` conflict *by construction* (envoy never intercepts daprd's intra-pod loopback calls) and closes §4's pod-IP bypass as a side effect — but it is an architecture change, not a swap: the `dws-admin` → `dws-controller` hop becomes workload-identity-gated rather than user-JWT-gated, Dapr or Istio (not both) must own mTLS, and Istio's own Gateway API support overlaps the APISIX dependency adopted in Phase 4 | Phases 4, 10 (complements 10, does not replace it — see §2e) | ❌ not started — exploratory; needs its own ADR before any commitment |
 
 ### Current progress (2026-09-01)
@@ -280,6 +280,26 @@ Follow-ups, still not blocking: apply `dapr.io/sidecar-listen-addresses` to `dws
 the pod-IP:8080 bypass (`quarkus.http.host=127.0.0.1` preferred); add `DAPR_CONTROLLER_APP_ID` to
 `dws-admin`'s chart Deployment.
 
+### Current progress (2026-10-28) — Phase 10 implemented, live verification pending
+
+- **Landed in code** (`openspec/changes/auth-phase-10-api-tokens`): with `auth.enabled=true` the chart
+	renders three Secrets (`<release>-admin-dapr-api-token`, `<release>-admin-app-api-token`,
+	`<release>-controller-dapr-api-token`, key `token`, generated or `existingSecret`), the
+	`dapr.io/api-token-secret` annotation on both control-plane pods, `dapr.io/app-token-secret` on
+	`dws-admin` only, and `DAPR_API_TOKEN` / `APP_API_TOKEN` as `secretKeyRef` env. The admin
+	HTTPRoute sets `dapr-api-token` from `$env://DWS_ADMIN_DAPR_API_TOKEN` on bundled APISIX; the
+	console route does not. `dws-admin` rejects every app-port request without the app token
+	(before body parsing), except exactly `GET /health`, and its relay presents `DAPR_API_TOKEN` to
+	its sidecar.
+- **Not yet proven live.** The APISIX header-injection path rests on two unverified assumptions
+	(design D4: `URLRewrite` + `RequestHeaderModifier` merge into one `proxy-rewrite`; `$env://`
+	resolves in `headers.set`), and daprd's inbound-token behaviour (design Risks) is likewise
+	unconfirmed. Both are gated by the change's spike and live-matrix tasks. Phase 10 moves to ✅
+	only after `verify.md` records them.
+- **Closes** the 2026-09-13 accepted risk below (pending the live run), and corrects §4: binding
+	`dws-controller` to `127.0.0.1` would break kubelet `httpGet` probes, so its pod-IP:8080 item is
+	re-pointed to an app-token follow-up.
+
 ### Decision (2026-09-13) — bearer moves to `httpPipeline`, callers forward the token, API tokens become Phase 10
 
 - **Decided.** The bearer handler moves from `spec.appHttpPipeline` to `spec.httpPipeline`, and every
@@ -303,10 +323,13 @@ the pod-IP:8080 bypass (`quarkus.http.host=127.0.0.1` preferred); add `DAPR_CONT
 	The two `auth-configuration.yaml` templates therefore deliberately diverge and
 	their "mirrors the other exactly" header comments must be rewritten to state why — otherwise a
 	future tidy-up reopens the hole.
-- **Accepted risk for this phase.** Once the gate leaves the app channel, `POST /dapr/events/dws` on
-	`dws-admin`'s app port is reachable unauthenticated by any pod-network peer — same class as the
-	§4 pod-IP bypass, and an event-injection path into the read model. Phase 10's App API token closes
-	it. Accepted knowingly, not overlooked.
+- **Accepted risk for this phase — closed by Phase 10 (2026-10-28, live verification pending).**
+	Once the gate left the app channel, `POST /dapr/events/dws` on `dws-admin`'s app port was
+	reachable unauthenticated by any pod-network peer — same class as the §4 pod-IP bypass, and an
+	event-injection path into the read model. `auth-phase-10-api-tokens` closes it: with
+	`auth.enabled=true`, `dws-admin` rejects every app-port request that lacks the App API token its
+	own sidecar attaches (only `GET /health` is exempt, for kubelet probes). The equivalent hole on
+	`dws-controller:8080` is still open; see §4.
 - **Re-verification owed**, because every existing piece of evidence was produced with the gate on the
 	other pipeline: the full negative-bearer matrix on both apps, the §2d non-buffered SSE proof (the
 	middleware now wraps a different leg), and APISIX's upstream health checks — they hit the
@@ -562,17 +585,15 @@ boundary, so the policy applies. Two open items, one mechanism.
 - Three sidecars per pod (app + daprd + istio-proxy) introduces a startup ordering race: daprd
 	initializing components before envoy is ready (`holdApplicationUntilProxyStarts`).
 - This roadmap's ground rule "JWT/role verification is Dapr-only" would need explicit amendment.
-	Istio satisfies its spirit — verification stays in infrastructure, never hand-rolled in app code
-	—**Relationship to Phase 10 (corrected 2026-09-21).** Complementary, not a replacement. Phase 10's
+	Istio satisfies its spirit — verification stays in infrastructure, never hand-rolled in app code.
+
+**Relationship to Phase 10 (corrected 2026-09-21).** Complementary, not a replacement. Phase 10's
 tokens guard the **app ↔ own-sidecar** legs — app → daprd `:3500` (`DAPR_API_TOKEN`) and daprd →
 app (`APP_API_TOKEN`). Both are intra-pod loopback, the exact traffic envoy never intercepts (the
 same property that makes a mesh fix `/dapr/subscribe`), so Istio cannot gate them. Istio gates the
 pod-boundary hops; Phase 10 gates the in-pod hops. Overlap is limited to pod-boundary callers
 (e.g. APISIX → sidecar, the §4 pod-IP bypass), where both would apply — defence in depth, not
 redundancy. Phase 10 stays scheduled regardless of the mesh decision.
-
-till
-earns its keep.
 
 **Status.** Recorded as Phase 11, exploratory. Deliberately decoupled from the 2026-09-13 pipeline
 move, which is a one-line unblock that can ship now; this is an architecture decision touching
@@ -635,14 +656,28 @@ whether a service mesh is wanted here at all.
   considered safe to run with real pubsub traffic. Not blocking the gateway routing/SSE-transport
   proof itself (§2d), which used a directly-authenticated delivery call to isolate the two
   concerns.
-- **Pod-IP:8080 direct-app-port bypass** (surfaced by the Phase 2 live run). The Phase 2
-  Service front-port change closes Service-based bypass, but a pod-network peer that dials
-  `<controller-pod-ip>:8080` still reaches the app container directly (verified 200 from
-  another pod on kindnet). Two workable fixes: (a) CNI-aware NetworkPolicy denying
-  pod-network ingress to `8080` without breaking kubelet probes (varies by CNI), or (b) bind
-  the Quarkus HTTP server to `127.0.0.1:8080` (`quarkus.http.host=127.0.0.1`) so only daprd
-  in the same pod (via loopback) can reach it. Preference for (b) — CNI-independent, no
-  probe interaction. Owns a follow-up change; not blocking Phase 3.
+- **Pod-IP:8080 direct-app-port bypass on `dws-controller` — severity high; next change after
+  Phase 10** (surfaced by the Phase 2 live run, re-assessed 2026-10-28 in
+  `auth-phase-10-api-tokens` design D7). The Phase 2 Service front-port change closes Service-based
+  bypass, but a pod-network peer that dials `<controller-pod-ip>:8080` still reaches the app
+  container directly (verified 200 from another pod on kindnet) with no token of any kind.
+  Exposed (`WorkflowResource`): `POST /workflows` and `DELETE /workflows/{name}`, which create and
+  delete Deployments, ConfigMaps, Dapr resources and Knative Services, plus the reads
+  `GET /workflows`, `GET /workflows/{name}` and `GET /workflows/{name}/plan` — unauthenticated
+  cluster write access, more serious than the read-model injection Phase 10 closed on `dws-admin`. Phase 10's
+  Dapr API token gates the controller's *sidecar* route to the same endpoints, not its app port.
+  - **Fix (sized, not started):** a Quarkus request filter ahead of resource matching comparing
+    `dapr-api-token` to `APP_API_TOKEN` (constant-time), exempting exactly `/q/health/live` and
+    `/q/health/ready`; a fourth chart Secret `<release>-controller-app-api-token`
+    (`auth.apiTokens.controller.appApi.existingSecret` is already reserved in `values.yaml`), the
+    `dapr.io/app-token-secret` annotation and `APP_API_TOKEN` env on the controller pod; tests
+    mirroring `dws-admin`'s guard. Same shape as the admin work, no new design questions; touches
+    `dws-controller` application code and its own release pipeline.
+  - **Withdrawn:** binding Quarkus to `127.0.0.1:8080` (`quarkus.http.host=127.0.0.1`), the earlier
+    preference. Kubelet `httpGet` probes dial the **pod IP**, not loopback, so the pod would never
+    become Ready; the "no probe interaction" claim was wrong. Workable only with `exec` probes. A
+    CNI-aware NetworkPolicy remains possible but is not enforced on kindnet or the target dev
+    cluster.
 - Role/Rego middleware remains intentionally unused: no stable Dex/OIDC role claim has been proven.
   Revisit only with a documented token claim and a Dapr middleware type verified against the target
   Dapr release.
