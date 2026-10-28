@@ -102,7 +102,8 @@ admin token is never sent to the console.
 The data plane resolves the reference from its own environment:
 
 - Bundled: `apisix.extraEnvVars` sources `DWS_ADMIN_DAPR_API_TOKEN` from the admin Dapr API token
-  Secret, and `apisix.nginx.envs` lists it. **Both** are needed: the first puts it in the pod,
+  Secret, and `apisix.nginx.envs` lists it (the subchart's own `apisix.nginx.envs`, which from this
+  chart's values is `apisix.apisix.nginx.envs`). **Both** are needed: the first puts it in the pod,
   the second emits the nginx `env` directive that lets worker processes read it. Defaults live in
   `values.yaml`, using `{{ .Release.Name }}` (see D1).
 - External: the operator must expose the same variable the same way. Documented in the README; the
