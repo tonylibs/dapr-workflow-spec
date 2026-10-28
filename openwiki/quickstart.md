@@ -1,7 +1,7 @@
 ---
-type: Repository Guide
-title: DWS OpenWiki quickstart
-description: Entry point for DWS users: run Open Workflow Spec workflows on Kubernetes and Dapr, organized by feature layer from the core engine outward.
+type: "Repository Guide"
+title: "DWS OpenWiki quickstart"
+description: "Entry point for DWS users: run Open Workflow Spec workflows on Kubernetes and Dapr, organized by feature layer from the core engine outward."
 tags: [dws, dapr, kubernetes, workflows, user-guide]
 ---
 
