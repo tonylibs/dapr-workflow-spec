@@ -28,6 +28,8 @@ export const FETCHER = Symbol('CONTROLLER_RELAY_FETCHER');
 export class ControllerRelayService {
   private readonly sidecarBaseUrl: string;
   private readonly controllerAppId: string;
+  // Dapr API token for this pod's own sidecar (DAPR_API_TOKEN); undefined = off.
+  private readonly apiToken: string | undefined;
 
   constructor(
     config: ConfigService<AppConfig, true>,
@@ -41,17 +43,28 @@ export class ControllerRelayService {
     const port = dapr.daprPort ?? '3500';
     this.sidecarBaseUrl = `http://${host}:${port}`;
     this.controllerAppId = dapr.controllerAppId;
+    // `configuration()` already maps blank to undefined; re-checked so a
+    // hand-built config cannot make the relay send an empty header.
+    const apiToken = config.get('apiToken', { infer: true });
+    this.apiToken = apiToken?.trim() ? apiToken : undefined;
   }
 
   // Forward a compile/submit request to dws-controller via this pod's own
   // Dapr sidecar. Bearer verification is Dapr's job on the controller side
   // (auth roadmap Phase 2's middleware.http.bearer + Configuration on the
   // controller sidecar), so we deliberately do not inspect the token here.
+  //
+  // With auth on, our own sidecar also demands `dapr-api-token` (the Dapr API
+  // token). The headers are built explicitly, so the *inbound* `dapr-api-token`
+  // — the app token the sidecar attached when it called us — is never relayed.
   async relayDeploy(authorization: string | undefined, contentType: string | undefined, body: Buffer, dryRun: boolean): Promise<RelayResponse> {
     const url = `${this.sidecarBaseUrl}/v1.0/invoke/${encodeURIComponent(this.controllerAppId)}/method/workflows${dryRun ? '?dryRun=true' : ''}`;
     const headers: Record<string, string> = {};
     if (authorization !== undefined) {
       headers.authorization = authorization;
+    }
+    if (this.apiToken) {
+      headers['dapr-api-token'] = this.apiToken;
     }
     if (contentType !== undefined) {
       headers['content-type'] = contentType;
