@@ -8,6 +8,6 @@ okf_version: "0.1"
 
 # Directories
 
-- [user-guide](user-guide/) - What you can do with DWS, layer by layer: Core engine, Events, Console, Add-ons.
-- [architecture](architecture/) - How it works under the hood (contributors).
-- [integrations](integrations/) - Component contracts under the hood (contributors).
+- [architecture](architecture/)
+- [integrations](integrations/)
+- [user-guide](user-guide/)
