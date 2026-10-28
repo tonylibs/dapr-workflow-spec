@@ -26,6 +26,18 @@
 #            frame WHILE the connection is still open (not merely at close) -- the actual
 #            buffering question this change deferred
 #        (d) console root routes to the console Service, and /dws-admin/* still wins
+#        (e) Phase 10 machine-auth tokens (auth roadmap, openspec auth-phase-10-api-tokens): the
+#            admin sidecar and the admin app port each require their own Dapr token. Every call
+#            that bypasses APISIX (port-forward straight to the sidecar, or pod-IP:3000 from the
+#            bearer-caller pod) either carries the token deliberately or is a negative case that
+#            leaves it out or forges it; through the Gateway, APISIX injects the token and replaces
+#            any forged one.
+#
+# Tokens: the admin Dapr API token is read ONCE from its chart-generated Secret
+# (<release>-admin-dapr-api-token, key `token`) into a shell variable and a mode-0600 header file
+# in the private scratch dir, and is only ever handed to curl as `-H @file` (so it is not on any
+# process command line). It is never echoed, logged or put in a failure message; every assertion
+# below prints status codes only. Do not add `set -x` to this script.
 #
 # Prerequisites: kubectl, helm, docker, node, curl, jq, on a cluster with Dapr's control plane
 # already installed (this script never installs a second one -- see dapr.enabled=false below).
@@ -461,9 +473,35 @@ admin_pod="$(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/component=adm
 [ -n "$admin_pod" ] || fail_and_exit "no admin pod found"
 echo "admin pod: $admin_pod"
 
-# Configuration is startup-only: restart the app(s) after every install/upgrade, before assertions.
+# Phase 10 machine-auth tokens: the chart must have rendered the admin pod's token wiring.
+# Existence/shape only -- the value is never printed. The Secret name derives from the bare
+# release name (templates/auth/api-token-secrets.yaml).
+ADMIN_DAPR_TOKEN_SECRET="${RELEASE}-admin-dapr-api-token"
+kubectl -n "$NAMESPACE" get deployment "${RELEASE}-admin" \
+  -o jsonpath='{.spec.template.metadata.annotations.dapr\.io/api-token-secret}' \
+  | grep -qx "$ADMIN_DAPR_TOKEN_SECRET" \
+  || fail_and_exit "admin Deployment does not carry dapr.io/api-token-secret=$ADMIN_DAPR_TOKEN_SECRET"
+kubectl -n "$NAMESPACE" get deployment "${RELEASE}-admin" \
+  -o jsonpath='{.spec.template.metadata.annotations.dapr\.io/app-token-secret}' \
+  | grep -qx "${RELEASE}-admin-app-api-token" \
+  || fail_and_exit "admin Deployment does not carry dapr.io/app-token-secret=${RELEASE}-admin-app-api-token"
+# Read the token inside the script, without echoing it. A header FILE (not -H "dapr-api-token: ...")
+# keeps it off every process command line; WORKDIR is a private mktemp -d removed by cleanup().
+ADMIN_DAPR_API_TOKEN="$(kubectl -n "$NAMESPACE" get secret "$ADMIN_DAPR_TOKEN_SECRET" -o jsonpath='{.data.token}' | base64 -d)"
+[ "${#ADMIN_DAPR_API_TOKEN}" -ge 32 ] || fail_and_exit "Secret $ADMIN_DAPR_TOKEN_SECRET has no token of at least 32 characters under key 'token'"
+(umask 077; printf 'dapr-api-token: %s\n' "$ADMIN_DAPR_API_TOKEN" >"$WORKDIR/hdr-dapr-token")
+unset ADMIN_DAPR_API_TOKEN
+# A different, same-length-ish value that is certainly not the token, for the "wrong token" cases.
+(umask 077; printf 'dapr-api-token: %s\n' "wrong-token-wrong-token-wrong-token-wrong" >"$WORKDIR/hdr-wrong-token")
+DAPR_TOKEN_HDR=(-H "@$WORKDIR/hdr-dapr-token")
+WRONG_TOKEN_HDR=(-H "@$WORKDIR/hdr-wrong-token")
+pass "admin pod carries the Dapr API/app token annotations; the admin Dapr API token was read from Secret $ADMIN_DAPR_TOKEN_SECRET without being printed"
+
+# Configuration and token env are startup-only: restart admin, controller AND APISIX (it reads
+# DWS_ADMIN_DAPR_API_TOKEN at start) after every install/upgrade, before assertions.
 restart_apps=(admin)
 [ "$INCLUDE_CONTROLLER" = 1 ] && restart_apps+=(controller)
+restart_apps+=(apisix)
 for app in "${restart_apps[@]}"; do
   kubectl -n "$NAMESPACE" rollout restart deployment/"${RELEASE}-$app"
 done
@@ -611,19 +649,87 @@ pass "missing and tampered-signature bearers both get HTTP 401 through the Gatew
 # sidecar's 3500 in gateway mode -- see templates/admin/service.yaml). If the SAME 401/200
 # behavior reproduces here, APISIX cannot be the component doing the enforcement, because
 # APISIX is not in this request's path at all.
+#
+# Phase 10: the sidecar now ALSO requires the admin Dapr API token. APISIX normally injects it,
+# but this path bypasses APISIX, so every request here that is meant to isolate the BEARER check
+# sends the real token itself (DAPR_TOKEN_HDR, a header file -- never echoed). The token-specific
+# negative cases follow below.
 code_missing_direct="$(curl -sS -o "$WORKDIR/a2-missing-direct.txt" -w '%{http_code}' \
+  "${DAPR_TOKEN_HDR[@]}" \
   "${ADMIN_DIRECT}/v1.0/invoke/${RELEASE}-admin/method/instances")"
-echo "GET (direct-to-sidecar, no Authorization, APISIX bypassed) -> HTTP $code_missing_direct"
+echo "GET (direct-to-sidecar, valid dapr-api-token, no Authorization, APISIX bypassed) -> HTTP $code_missing_direct"
 cat "$WORKDIR/a2-missing-direct.txt"; echo
-[ "$code_missing_direct" = "401" ] || fail_and_exit "expected 401 direct-to-sidecar with no bearer (APISIX bypassed), got $code_missing_direct"
+[ "$code_missing_direct" = "401" ] || fail_and_exit "expected 401 direct-to-sidecar with a valid dapr-api-token but no bearer (APISIX bypassed), got $code_missing_direct"
 
 code_valid_direct="$(curl -sS -o "$WORKDIR/a2-valid-direct.txt" -w '%{http_code}' \
+  "${DAPR_TOKEN_HDR[@]}" \
   -H "Authorization: Bearer $VALID_TOKEN" \
   "${ADMIN_DIRECT}/v1.0/invoke/${RELEASE}-admin/method/instances")"
-echo "GET (direct-to-sidecar, valid bearer, APISIX bypassed) -> HTTP $code_valid_direct"
-[ "$code_valid_direct" = "200" ] || fail_and_exit "expected 200 direct-to-sidecar with a valid bearer (APISIX bypassed), got $code_valid_direct"
+echo "GET (direct-to-sidecar, valid dapr-api-token + valid bearer, APISIX bypassed) -> HTTP $code_valid_direct"
+[ "$code_valid_direct" = "200" ] || fail_and_exit "expected 200 direct-to-sidecar with a valid token and bearer (APISIX bypassed), got $code_valid_direct"
 
 pass "direct-to-sidecar requests (APISIX entirely bypassed via a second port-forward straight to the admin Service) reproduce the identical 401/200 behavior -- Dapr's bearer middleware is the enforcement point, APISIX adds none of its own"
+
+# Phase 10 token matrix on the admin sidecar. Both checks must pass independently; satisfying one
+# must never bypass the other. Status codes only -- no token is printed.
+echo
+echo "=== 7b. Phase 10: the admin sidecar requires BOTH the Dapr API token and a valid bearer ==="
+admin_invoke="${ADMIN_DIRECT}/v1.0/invoke/${RELEASE}-admin/method/instances"
+expect_direct() { # <expected-code> <description> [curl args...]
+  local expected="$1" description="$2"
+  shift 2
+  local got
+  got="$(curl --max-time 20 -sS -o /dev/null -w '%{http_code}' "$@" "$admin_invoke")"
+  echo "direct-to-sidecar, ${description} -> HTTP ${got} (expected ${expected})"
+  [ "$got" = "$expected" ] || fail_and_exit "direct-to-sidecar, ${description}: expected ${expected}, got ${got}"
+}
+BEARER_HDR=(-H "Authorization: Bearer $VALID_TOKEN")
+expect_direct 401 "no dapr-api-token, no bearer"
+expect_direct 401 "valid bearer, NO dapr-api-token" "${BEARER_HDR[@]}"
+expect_direct 401 "valid bearer, WRONG dapr-api-token" "${BEARER_HDR[@]}" "${WRONG_TOKEN_HDR[@]}"
+expect_direct 401 "valid dapr-api-token, NO bearer" "${DAPR_TOKEN_HDR[@]}"
+expect_direct 401 "WRONG dapr-api-token, NO bearer" "${WRONG_TOKEN_HDR[@]}"
+expect_direct 401 "valid dapr-api-token, tampered bearer" "${DAPR_TOKEN_HDR[@]}" -H "Authorization: Bearer $TAMPERED_TOKEN"
+expect_direct 200 "valid dapr-api-token + valid bearer" "${DAPR_TOKEN_HDR[@]}" "${BEARER_HDR[@]}"
+pass "admin sidecar: no token, wrong token, token without bearer, bearer without token all get 401; both valid gets 200"
+
+# Through the Gateway the token is APISIX's job: a client-forged dapr-api-token must be REPLACED
+# (RequestHeaderModifier `set`), not forwarded. Valid bearer + forged token still succeeds because
+# the sidecar sees APISIX's token; the same forged token sent straight to the sidecar (above) is a 401.
+code_forged_gw="$(curl --max-time 20 -sS -o /dev/null -w '%{http_code}' \
+  "${WRONG_TOKEN_HDR[@]}" "${BEARER_HDR[@]}" "${GW}/dws-admin/instances")"
+echo "GET /dws-admin/instances (valid bearer, forged dapr-api-token, via Gateway) -> HTTP $code_forged_gw"
+[ "$code_forged_gw" = "200" ] || fail_and_exit "expected 200 through the Gateway with a forged dapr-api-token (APISIX should replace it), got $code_forged_gw"
+code_forged_nobearer_gw="$(curl --max-time 20 -sS -o /dev/null -w '%{http_code}' \
+  "${WRONG_TOKEN_HDR[@]}" "${GW}/dws-admin/instances")"
+echo "GET /dws-admin/instances (NO bearer, forged dapr-api-token, via Gateway) -> HTTP $code_forged_nobearer_gw"
+[ "$code_forged_nobearer_gw" = "401" ] || fail_and_exit "expected 401 through the Gateway with a forged token but no bearer, got $code_forged_nobearer_gw"
+pass "through the Gateway APISIX injects the admin Dapr API token and replaces a forged one (200 with a valid bearer, still 401 without one)"
+
+# Phase 10 app token: the admin APP port (:3000) must reject anything that did not come from the
+# pod's own sidecar. Hit it at the POD IP from another pod (the bearer-caller), which is the exact
+# bypass this phase closes. /health stays open for the kubelet probes. No token is needed or sent:
+# these are all negative cases (missing or forged), so nothing sensitive is on any command line.
+echo
+echo "=== 7c. Phase 10: the admin app port rejects callers that bypass the sidecar ==="
+admin_pod_ip="$(kubectl -n "$NAMESPACE" get pod "$admin_pod" -o jsonpath='{.status.podIP}')"
+[ -n "$admin_pod_ip" ] || fail_and_exit "could not resolve the admin pod IP"
+expect_app_port() { # <expected-code> <description> <curl args...>
+  local expected="$1" description="$2"
+  shift 2
+  local got
+  got="$(MSYS_NO_PATHCONV=1 kubectl -n "$NAMESPACE" exec deployment/bearer-caller -c caller -- \
+    curl --max-time 20 -sS -o /dev/null -w '%{http_code}' "$@")"
+  echo "pod-IP:3000, ${description} -> HTTP ${got} (expected ${expected})"
+  [ "$got" = "$expected" ] || fail_and_exit "pod-IP:3000, ${description}: expected ${expected}, got ${got}"
+}
+expect_app_port 401 "GET /instances, no token" "http://${admin_pod_ip}:3000/instances"
+expect_app_port 401 "GET /instances, wrong token" -H 'dapr-api-token: wrong-token-wrong-token-wrong-token-wrong' "http://${admin_pod_ip}:3000/instances"
+expect_app_port 401 "forged POST /dapr/events/dws, no token" -X POST -H 'Content-Type: application/json' -d '{}' "http://${admin_pod_ip}:3000/dapr/events/dws"
+expect_app_port 401 "forged POST /dapr/events/dws, wrong token" -X POST -H 'Content-Type: application/json' \
+  -H 'dapr-api-token: wrong-token-wrong-token-wrong-token-wrong' -d '{}' "http://${admin_pod_ip}:3000/dapr/events/dws"
+expect_app_port 200 "GET /health (kubelet probe path)" "http://${admin_pod_ip}:3000/health"
+pass "admin app port: pod-IP calls with no or a forged token get 401 (including a forged /dapr/events/dws); /health stays 200 for the kubelet"
 
 # All five negative cases and a positive control on each independent enforcement path.
 matrix_apps=(admin)
@@ -639,7 +745,11 @@ for app in "${matrix_apps[@]}"; do
     esac
     [ "$variant" != valid ] || expected=200
     if [ "$app" = admin ]; then
-      code="$(curl --max-time 20 -sS -o "$WORKDIR/matrix-body" -w '%{http_code}' "${headers[@]}" \
+      # Admin goes straight to the sidecar, bypassing APISIX, so it must send the Dapr API token
+      # itself or every variant would 401 for the wrong reason. The bearer matrix is meant to
+      # isolate the bearer check. The controller is reached through the caller's own sidecar.
+      code="$(curl --max-time 20 -sS -o "$WORKDIR/matrix-body" -w '%{http_code}' \
+        "${DAPR_TOKEN_HDR[@]}" "${headers[@]}" \
         "${ADMIN_DIRECT}/v1.0/invoke/${RELEASE}-admin/method/instances")"
     else
       code="$(MSYS_NO_PATHCONV=1 kubectl -n "$NAMESPACE" exec deployment/bearer-caller -c caller -- \
