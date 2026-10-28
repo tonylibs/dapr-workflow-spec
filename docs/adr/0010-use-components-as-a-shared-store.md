@@ -12,6 +12,11 @@
   environment variable per host, stamped by the controller on every host Deployment
   (`DWS_FLOW_USE_STORE`, `DWS_STEP_USE_STORE`, `DWS_ORCHESTRATOR_USE_STORE`). 3i shipped the first
   reader. Everything else is unchanged.
+- **Amended:** 2026-10-22 — the two Decision 4a components are named **`dws-mid-basic`** and
+  **`dws-mid-bearer`** (proposed earlier as `dws-wasm-basic` / `dws-wasm-bearer`); binaries stay
+  `basic.wasm` / `bearer.wasm`. The scheme table's "appends" is read as the *Guest behavior*
+  paragraph states it: each guest **sets** `Authorization`, replacing a caller-supplied value, so a
+  forwarded request carries exactly one. 4.1c-basic: `openspec/changes/add-dws-mid-basic`.
 - **Context:** [`docs/roadmaps/openworkflow-features.md`](../roadmaps/openworkflow-features.md)
   §4g (Phase 7 split). This is the `UseResolver` refactor that comes before Phases 7a–7c.
 - **Related:** [ADR 0001](0001-workflow-runtime-v2-decisions.md) Decision 2 (function images serve
@@ -187,10 +192,10 @@ OAuth2 shape (Decision 5) with a different middleware.
 its own guest module, image, CI pipeline and release — and the controller picks the component from
 the policy's scheme:
 
-| Component (proposed name) | Scheme | What the guest does |
+| Component | Scheme | What the guest does |
 |---|---|---|
-| `dws-wasm-bearer` | `bearer` | **appends** `Authorization: Bearer <token>` |
-| `dws-wasm-basic` | `basic` | **composes** `base64(user:pass)` from the configured username and password, then **appends** `Authorization: Basic <composed>` |
+| `dws-mid-bearer` | `bearer` | **sets** `Authorization: Bearer <token>` |
+| `dws-mid-basic` | `basic` | **composes** `base64(user:pass)` from the configured username and password, then **sets** `Authorization: Basic <composed>` |
 
 There is no `scheme` field in the guest config and no scheme switch in either guest: which
 component the Dapr `Component` loads *is* the scheme.
@@ -220,7 +225,7 @@ are removed. Applies to `dws-call-http`, `dws-call-openapi`, `dws-call-a2a`.
 
 **Delivering the Wasm binary.**
 
-- **Two images**, `dws-wasm-bearer` and `dws-wasm-basic`, each built with **TinyGo 0.34.0** (pinned —
+- **Two images**, `dws-mid-bearer` and `dws-mid-basic`, each built with **TinyGo 0.34.0** (pinned —
   see spike results) and wrapped in a small image (`busybox` base, for `cp`), published **public**
   on GHCR alongside the other component images — no pull secret. Each is its own release-please
   package, versioned and released by hand independently, like every component.
@@ -327,7 +332,7 @@ the controller, to fetch function definitions; it is never read at runtime.
 - **Knative must allow init containers and `emptyDir`** — `config-features`:
   `kubernetes.podspec-init-containers` and `kubernetes.podspec-volumes-emptydir` (extensions, off
   unless enabled). Belongs with Helm Phase 11 (Knative) and a chart preflight.
-- **Two new components to release:** `dws-wasm-bearer` and `dws-wasm-basic`, each built with
+- **Two new components to release:** `dws-mid-bearer` and `dws-mid-basic`, each built with
   TinyGo 0.34.0 pinned and versioned independently. The controller must pin both image digests.
 - **Step-service pod changes beyond Wasm:** sidecar-readiness wait in step images, and
   `dapr.io/metrics-port` moved off 9090 on Knative step services.
