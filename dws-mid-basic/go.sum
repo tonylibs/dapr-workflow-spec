@@ -1,0 +1,4 @@
+github.com/http-wasm/http-wasm-guest-tinygo v0.4.0 h1:sWd1hqOL8LF3DVRPXloVELTQItibKtDCtVSA4UfMf4Y=
+github.com/http-wasm/http-wasm-guest-tinygo v0.4.0/go.mod h1:zcKr7h/t5ha2ZWIMwV4iOqhfC/qno/tNPYgybVkn/MQ=
+golang.org/x/text v0.22.0 h1:bofq7m3/HAFvbF51jz3Q9wLg3jkvSPuiZu/pD1XwgtM=
+golang.org/x/text v0.22.0/go.mod h1:YRoo4H8PVmsu+E3Ou7cqLVH8oXWIHVoX0jqUWALQhfY=
