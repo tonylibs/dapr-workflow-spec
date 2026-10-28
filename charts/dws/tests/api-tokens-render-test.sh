@@ -204,6 +204,24 @@ env_entry "$admin_dep" APP_API_TOKEN | grep -qF "name: \"$app_ann\"" \
   || die "admin APP_API_TOKEN secret differs from dapr.io/app-token-secret"
 ok
 
+# helm test: the token-negative Job's sidecar requires the controller's token Secret, the Job
+# reads it only through a secretKeyRef, and its script has no way to print it. The bearer
+# negative Job's sidecar must NOT require a token (its 401 must come from the bearer middleware).
+token_job="$(require_doc auth_on Job "$fullname-controller-token-negative-test")"
+grep -qx "        dapr.io/api-token-secret: \"$release-controller-dapr-api-token\"" "$token_job" \
+  || die "token-negative test Job's sidecar does not require the controller Dapr API token Secret"
+entry="$(env_entry "$token_job" SENTINEL_DAPR_API_TOKEN)"
+grep -q 'secretKeyRef:' <<<"$entry" || die "token-negative test Job does not read the token through a secretKeyRef"
+if grep -Eq '^ +value:' <<<"$entry"; then die "token-negative test Job carries a literal token value"; fi
+if grep -Eq 'set -x|curl[^|]* -v|--verbose|echo[^#]*SENTINEL_DAPR_API_TOKEN|printenv|^ *env *$' "$token_job"; then
+  die "token-negative test Job could print the token (set -x / curl -v / echo of the variable)"
+fi
+negative_job="$(require_doc auth_on Job "$fullname-controller-auth-negative-test")"
+if grep -q 'api-token-secret' "$negative_job"; then
+  die "the bearer-negative test Job's sidecar requires an API token; its 401 would no longer isolate the bearer middleware"
+fi
+ok
+
 # The two components use two different Secrets.
 [ "$(sed -n 's/^ *dapr.io\/api-token-secret: "\(.*\)"$/\1/p' "$admin_dep")" != "$(sed -n 's/^ *dapr.io\/api-token-secret: "\(.*\)"$/\1/p' "$ctrl_dep")" ] \
   || die "admin and controller share one dapr.io/api-token-secret"
