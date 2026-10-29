@@ -26,6 +26,12 @@ dapr:
 
 # Orchestrator behaviour.
 dws:
+  # Log output format: `json` selects the structured one-line-per-record format documented in
+  # docs/log-format.md; unset, `text` or anything else keeps the default Spring Boot console output.
+  # Read by LogFormatEnvironmentPostProcessor, which maps it onto logging.structured.format.console
+  # before Logback is initialised.
+  log:
+    format: ${DWS_LOG_FORMAT:text}
   # Dapr Configuration store component holding workflow definitions.
   config-store: ${DAPR_CONFIG_STORE:dws-definitions}
   # Immutable, versioned key for this pod's single definition (e.g. order-workflow@v3). Required.

@@ -182,6 +182,15 @@ no OTel dependency and degrade to "no `trace_id`" when no agent is attached.
 
 #### Spike findings (recorded during apply)
 
+- **3.1 / 4.1 — Spring Boot (`dws-orchestrator`, `dws-step`): a blank
+  `logging.structured.format.console` does leave plain logging, but its mere presence turns the
+  startup banner off, so it is not a no-op.** Both packages therefore use the D7 fallback: a small
+  `EnvironmentPostProcessor` (registered under Boot 4.x's `org.springframework.boot.EnvironmentPostProcessor`
+  key) reads `dws.log.format: ${DWS_LOG_FORMAT:text}` from `application.yaml` and, only for `json`,
+  sets the property to the package's formatter class and `spring.main.banner-mode=off` (the banner
+  is written to stdout outside the logging system). It runs after config data and before
+  `LoggingApplicationListener`, so boot lines are JSON too. Remaining non-JSON stdout in JSON mode is
+  JVM-level `WARNING: sun.misc.Unsafe` output from netty, outside any logging system.
 - **6.1 — `dws-flow`: `Activity.Current` is set inside a Dapr Workflow activity** under
   `Dapr.Workflow` 1.18.10. The SDK's internal `Dapr.Workflow.Worker.WorkflowTrace` ("restores
   workflow trace context as `Activity.Current` for workflow and activity dispatch") owns an
