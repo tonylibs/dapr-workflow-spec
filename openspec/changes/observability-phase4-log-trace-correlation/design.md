@@ -182,6 +182,21 @@ no OTel dependency and degrade to "no `trace_id`" when no agent is attached.
 
 #### Spike findings (recorded during apply)
 
+- **2.1 — `dws-controller`: the `quarkus-logging-json` extension cannot meet the contract, so the
+  D7 fallback (custom formatter) is used.** With 3.37.4, `mdc.flat-fields=true` does emit MDC
+  `trace_id`/`span_id` as top-level keys and `key-overrides=LOGGER_NAME=logger,LEVEL=severity` (enum
+  constant names) yields the four base keys, but exceptions come out as one `stackTrace` string
+  rather than `exception.type`/`.message`/`.stacktrace`, and there is no scrubber hook (a bearer token
+  and `password=hunter2` were emitted verbatim). Application code cannot plug a formatter into
+  Quarkus's own console handler (`LoggingSetupRecorder` takes formatters only from extension build
+  items). Chosen: a `@QuarkusMain` (`ControllerMain`) reads `DWS_LOG_FORMAT` before `Quarkus.run`
+  and, for `json`, disables the Quarkus console handler and banner and installs a JUL
+  `JsonLogFormatter` behind a stdout handler on the root logger, so boot records are JSON too (records
+  below INFO are dropped until Quarkus applies its levels). Trace IDs come from
+  `ExtLogRecord.getMdc`, which the agent's JBoss logmanager MDC instrumentation intercepts. Limits:
+  `quarkus:dev` does not run the `@QuarkusMain`, so dev mode stays text; a failed Quarkus start can
+  append Quarkus's text fallback. Stamping on orchestrators reads `dws.log.format`
+  (`DWS_LOG_FORMAT`, default `text`) through `DwsConfig`.
 - **3.1 / 4.1 — Spring Boot (`dws-orchestrator`, `dws-step`): a blank
   `logging.structured.format.console` does leave plain logging, but its mere presence turns the
   startup banner off, so it is not a no-op.** Both packages therefore use the D7 fallback: a small

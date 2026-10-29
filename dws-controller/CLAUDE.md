@@ -62,6 +62,7 @@ Windows: use `mvnw.cmd`; POSIX shells (Git Bash): use `./mvnw`.
 | `k8s` | Apply pass. `StackSynthesizer` renders the plan (cdk8s for Knative/Dapr, fabric8 models for ConfigMap/Deployment); `StackApplier` mutates + rolls out + GCs; `StackReader` answers all GETs from the cluster. |
 | `model` | Records: `DeploymentPlan`, `StepService`, `OrchestratorSpec`, status projections. |
 | `config` | `DwsConfig` `@ConfigMapping` over `dws.*` in `application.yaml`. |
+| `logging` | `DWS_LOG_FORMAT=json` support: `JsonLogFormatter` + `LogScrubber` implement `docs/log-format.md`; `StructuredLogging.install` (called from `ControllerMain` before `Quarkus.run`) disables Quarkus' console handler and puts the JSON handler on the root logger, so boot records are JSON too. Unset/unknown = Quarkus' own output, untouched. Never pass a secret to a log call. |
 
 ### Key invariants
 
