@@ -85,11 +85,20 @@
       "version-file": "version.txt",
       "skip-github-release": true
     },
+    "dws-mid-basic": {
+      "release-type": "simple",
+      "component": "dws-mid-basic",
+      "changelog-path": "CHANGELOG.md",
+      "version-file": "version.txt",
+      "initial-version": "0.1.0",
+      "skip-github-release": true
+    },
     "dws-mid-bearer": {
       "release-type": "simple",
       "component": "dws-mid-bearer",
       "changelog-path": "CHANGELOG.md",
       "version-file": "version.txt",
+      "initial-version": "0.1.0",
       "skip-github-release": true
     }
   }

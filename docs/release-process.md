@@ -147,8 +147,10 @@ Runbook (once per new component; do all steps for `dws-step` and `dws-flow`):
    its release PR, listing only commits after the seeded tag (reproduced: after seeding, a later
    `feat(step)` and `fix(flow)` are the only entries; an unrelated `docs` commit is absent).
 
-`dws-mid-bearer` (OWS 4.1c-bearer) skips the seed-and-force step. Its manifest entry starts at
-`0.0.0` and its first commits are `feat`, so release-please opens an ordinary `0.1.0` release PR;
+`dws-mid-basic` and `dws-mid-bearer` (OWS 4.1c) skip the seed-and-force step. Each manifest entry
+starts at `0.0.0` and each package sets `"initial-version": "0.1.0"` in `release-please-config.json`
+(without it, a package with no previous release is proposed at `1.0.0` whatever the manifest says), so
+the first `feat` opens an ordinary `0.1.0` release PR (`dws-mid-basic` 0.1.0 came out this way);
 merge it (cut ①), then run `component-release` for `dws-mid-bearer` without `force` (cut ②). That
 publishes `ghcr.io/tonylibs/dws-mid-bearer:0.1.0`. The first push creates a **private** GHCR package;
 make it public once in the package settings (no pull secret is planned for the init container).
