@@ -21,10 +21,11 @@ index: a package map plus rules that apply across every package. Each package al
 | [`dws-console`](dws-console) | TypeScript, React, TanStack Start/Router, Vite | Admin console frontend. |
 | [`dws-flow`](dws-flow) | .NET 10 | Generic `kind: flow` single-node host (early phase). |
 | [`dws-mid-basic`](dws-mid-basic) | Go 1.23, TinyGo 0.34.0 (pinned) | Wasm guest for daprd's `middleware.http.wasm`: adds `Authorization: Basic` on a step's sidecar (ADR 0010 Decision 4a). Image only delivers `basic.wasm` to an init container. |
+| [`dws-mid-bearer`](dws-mid-bearer) | Go 1.23 language level, TinyGo 0.34.0 | Wasm HTTP middleware guest + delivery image: adds `Authorization: Bearer` on a step's Dapr sidecar (OWS 4.1c). |
 | [`charts/dws`](charts/dws) | Helm | Chart packaging the control plane (`dws-controller`, `dws-admin` + Postgres, optional console/Dapr/Redis/Dex/APISIX). Not a code package — see its own [`README.md`](charts/dws/README.md). |
 
-`dws-call-grpc`, `dws-call-asyncapi`, `dws-call-a2a`, `dws-admin`, `dws-console`, `dws-flow`, and
-`dws-mid-basic` are not yet listed in `AGENTS.md`'s component table — that table predates them. Don't treat its absence
+`dws-call-grpc`, `dws-call-asyncapi`, `dws-call-a2a`, `dws-admin`, `dws-console`, `dws-flow`,
+`dws-mid-basic`, and `dws-mid-bearer` are not yet listed in `AGENTS.md`'s component table — that table predates them. Don't treat its absence
 as "this package doesn't exist."
 
 ## Cross-cutting style rules
@@ -103,6 +104,7 @@ each package's own config:
 | `dws-call-a2a` | `uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest` |
 | `dws-admin` | `pnpm lint && pnpm test && pnpm build` |
 | `dws-console` | `pnpm check && pnpm typecheck && pnpm test && pnpm build` (`check` = Biome lint+format) |
+| `dws-mid-bearer` | `make lint && make test` (TinyGo only runs inside `make docker`) |
 | `dws-flow` | `dotnet test test/dws-flow.Tests.csproj` (name the test project: a bare `dotnet test` in `dws-flow/` only finds the app project, runs no tests and exits 0). No lint/format gate configured yet — no `.editorconfig`, no analyzers |
 | `dws-mid-basic` | `make lint && make test && make wasm && make test-wasm`, with `GOTOOLCHAIN=go1.23.12` exported (TinyGo 0.34.0 rejects newer Go). `make wasm` needs Docker, or `TINYGO=/path/to/tinygo` pointing at TinyGo 0.34.0 exactly; see its `CLAUDE.md` |
 

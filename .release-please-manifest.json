@@ -11,5 +11,6 @@
   "dws-run": "0.2.0",
   "dws-call-a2a": "0.2.0",
   "dws-flow": "0.3.0",
-  "dws-mid-basic": "0.1.0"
+  "dws-mid-basic": "0.1.0",
+  "dws-mid-bearer": "0.0.0"
 }

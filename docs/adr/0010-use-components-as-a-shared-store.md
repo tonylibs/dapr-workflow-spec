@@ -17,6 +17,10 @@
   `basic.wasm` / `bearer.wasm`. The scheme table's "appends" is read as the *Guest behavior*
   paragraph states it: each guest **sets** `Authorization`, replacing a caller-supplied value, so a
   forwarded request carries exactly one. 4.1c-basic: `openspec/changes/add-dws-mid-basic`.
+- **Amended:** 2026-10-29 — 4.1c-bearer: `bearer.wasm` is about 226 KB (TinyGo 0.34.0). A missing,
+  empty or malformed token aborts the guest at load so daprd refuses the Component; `ignoreErrors:
+  true` on the Component defeats that (daprd skips the middleware and forwards the call
+  unauthenticated), so the controller must never set it. See `dws-mid-bearer/README.md`.
 - **Context:** [`docs/roadmaps/openworkflow-features.md`](../roadmaps/openworkflow-features.md)
   §4g (Phase 7 split). This is the `UseResolver` refactor that comes before Phases 7a–7c.
 - **Related:** [ADR 0001](0001-workflow-runtime-v2-decisions.md) Decision 2 (function images serve
