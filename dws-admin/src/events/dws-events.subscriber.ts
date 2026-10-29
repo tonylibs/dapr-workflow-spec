@@ -8,6 +8,15 @@ import { ControllerEventsHandler } from './controller-events.handler';
 import { OrchestratorEventsHandler } from './orchestrator-events.handler';
 import { InstanceEventsService, type LiveEvent } from './instance-events.service';
 
+// Logged event fields come from whoever published to the topic, and the
+// CloudEvents SDK echoes offending attribute names/values into its error
+// messages. Keep only the first line, capped, so a bad event cannot flood the
+// log or carry a multi-line payload into it (JSON mode also scrubs credentials).
+function bounded(text: string): string {
+  const [first] = text.split('\n', 1);
+  return first.length > 200 ? `${first.slice(0, 200)}...` : first;
+}
+
 /**
  * Owns processing of the shared dws.events topic. Every event type funnels
  * through this one entry point and is dispatched by envelope.type to
@@ -42,7 +51,7 @@ export class DwsEventsSubscriber {
       envelope = decodeEventEnvelope(message);
     } catch (err) {
       if (err instanceof InvalidEventEnvelopeError) {
-        this.logger.warn(`Discarding malformed event: ${err.message}`);
+        this.logger.warn(`Discarding malformed event: ${bounded(err.message)}`);
         return;
       }
       throw err;
@@ -59,7 +68,7 @@ export class DwsEventsSubscriber {
       } else if (this.orchestratorEvents.canHandle(type)) {
         pending.event = await this.orchestratorEvents.process(tx, envelope);
       } else {
-        this.logger.debug(`Ignoring unhandled event type: ${type}`);
+        this.logger.debug(`Ignoring unhandled event type: ${bounded(type)}`);
       }
     });
 

@@ -650,6 +650,19 @@ tracing:
 {{- end }}
 
 {{/*
+DWS_LOG_FORMAT container env entry (docs/log-format.md). Emits nothing unless observability.enabled
+and observability.logs.enabled are both true, so the default render is unchanged. The value is
+validated by dws.observability.validate (json|text). Callers wrap the include in `with` and indent
+the result with nindent, so an empty result leaves no blank line in the env list.
+*/}}
+{{- define "dws.observability.logFormatEnv" -}}
+{{- if and .Values.observability.enabled .Values.observability.logs.enabled -}}
+- name: DWS_LOG_FORMAT
+  value: {{ .Values.observability.logs.format | quote }}
+{{- end -}}
+{{- end }}
+
+{{/*
 OpenTelemetry Operator injection annotations for one pod template. Takes a dict
 `{root: $, language: "java"|"nodejs"|"dotnet", container: "<app container name>"}`.
 

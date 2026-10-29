@@ -5,6 +5,12 @@ spring:
   application:
     name: dws-step
 
+dws:
+  log:
+    # json switches console logging to the shared structured format (docs/log-format.md); anything
+    # else keeps text. Read by LogFormatEnvironmentPostProcessor.
+    format: ${DWS_LOG_FORMAT:text}
+
 logging:
   level:
     io.dws.step: INFO

@@ -1,25 +1,47 @@
-# Dev/eval OTLP receiver for verifying observability Phase 1 against a live cluster.
+# Dev/eval OTLP receiver for verifying observability against a live cluster: traces
+# (Phase 1/2a) and trace-correlated logs (Phase 4).
 #
 # NOT part of the chart and NOT production scaffolding — the chart deliberately ships no
-# collector in Phase 1 (`observability.collector.enabled` is reserved for Phase 6 and does
-# nothing yet). This exists so the Phase 1 live check has somewhere to send telemetry.
+# collector (`observability.collector.enabled` is reserved for Phase 6 and does nothing yet).
+# This exists so the live checks have somewhere to send telemetry.
 #
 #   kubectl apply -n <release-namespace> -f charts/dws/tests/fixtures/otel-collector-dev.yaml
 #   kubectl port-forward -n <release-namespace> svc/jaeger 16686:16686
 #   # -> http://localhost:16686
+#   kubectl port-forward -n <release-namespace> svc/loki 3100:3100
+#   # log lines of one trace (trace_id is Loki structured metadata, not a label):
+#   curl -G localhost:3100/loki/api/v1/query_range \
+#     --data-urlencode 'query={k8s_namespace_name="<release-namespace>"} | trace_id="<32-hex trace id>"'
 #
 # The Collector Service is named `dws-otel-collector` on purpose: that is what the chart's
 # default `observability.otlp.endpoint` (http://dws-otel-collector:4318) resolves to, so a
 # release in the same namespace needs no endpoint override at all.
 #
 # Division of labour:
-#   - Jaeger renders the TRACE TREE. Phase 1's deliverable is one connected trace across
+#   - Jaeger renders the TRACE TREE. The deliverable is one connected trace across
 #     controller -> Dapr -> admin -> Postgres, and parentage is what has to be proven;
 #     reading that out of raw log lines means matching trace/parent-span IDs by hand.
-#   - The Collector's `debug` exporter proves METRICS AND LOGS arrive too, which Phase 1 also
-#     requires and which Jaeger does not accept.
+#   - Loki stores the LOG LINES and answers "which lines belong to this trace_id". Logs reach
+#     it through the Collector's `otlphttp/loki` exporter (Loki 3.x native OTLP endpoint).
+#   - The Collector's `debug` exporter proves METRICS AND LOGS arrive too, which Jaeger does
+#     not accept.
 #
-# Storage is in-memory. Everything is lost when a pod restarts. That is the intent.
+# Single log path (docs/log-format.md): DWS components write one JSON object per line to stdout
+# (observability.logs.format=json), the node writes it to /var/log/pods, and the `filelog`
+# receiver below parses it into an OTLP log record. The agents' own OTLP log export is off
+# (the chart sets OTEL_LOGS_EXPORTER=none), so no line arrives twice. The `filelog` receiver:
+#   - reads only the namespace this file is applied into (K8S_NAMESPACE, from the downward API);
+#   - skips the `daprd` sidecar (a different log schema) and this collector's own container
+#     (its `debug` exporter prints every record to stdout; reading that back is a feedback loop),
+#     plus the Jaeger and Loki containers, which are not DWS components;
+#   - turns a line that starts with `{` into timestamp, severity, body (`message`), the
+#     `logger.name` attribute and the record's trace/span IDs; any other line is forwarded with
+#     the raw line as its body and no trace context (text mode, startup banners).
+# tests/observability-render-test.sh asserts the exclusions and the trace-context operators are
+# still here, and the chart README repeats this receiver block verbatim: change both together.
+#
+# Storage is in-memory (Jaeger) or an emptyDir (Loki). Everything is lost when a pod restarts.
+# That is the intent.
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -45,11 +67,60 @@ data:
             endpoint: 0.0.0.0:4317
       filelog:
         include:
-          - /var/log/pods/*/*/*.log
+          - /var/log/pods/${env:K8S_NAMESPACE}_*/*/*.log
+        exclude:
+          - /var/log/pods/*/daprd/*.log
+          - /var/log/pods/*/collector/*.log
+          - /var/log/pods/*/jaeger/*.log
+          - /var/log/pods/*/loki/*.log
         start_at: end
         include_file_path: true
         operators:
+          # CRI/containerd line framing, plus k8s.* resource attributes from the file path.
           - type: container
+          # Only a line that starts with "{" is a DWS JSON record; anything else keeps its raw body.
+          - type: json_parser
+            id: dws_json
+            if: 'body startsWith "{"'
+            timestamp:
+              parse_from: attributes.timestamp
+              layout_type: gotime
+              layout: '2006-01-02T15:04:05Z07:00'
+            severity:
+              parse_from: attributes.severity
+          - type: trace_parser
+            id: dws_trace
+            if: 'attributes.trace_id != nil'
+            trace_id:
+              parse_from: attributes.trace_id
+            span_id:
+              parse_from: attributes.span_id
+          - type: move
+            id: dws_message
+            if: 'attributes.message != nil'
+            from: attributes.message
+            to: body
+          - type: move
+            id: dws_logger
+            if: 'attributes.logger != nil'
+            from: attributes.logger
+            to: attributes["logger.name"]
+          - type: remove
+            id: dws_drop_timestamp
+            if: 'attributes.timestamp != nil'
+            field: attributes.timestamp
+          - type: remove
+            id: dws_drop_severity
+            if: 'attributes.severity != nil'
+            field: attributes.severity
+          - type: remove
+            id: dws_drop_trace_id
+            if: 'attributes.trace_id != nil'
+            field: attributes.trace_id
+          - type: remove
+            id: dws_drop_span_id
+            if: 'attributes.span_id != nil'
+            field: attributes.span_id
     processors:
       batch: {}
     exporters:
@@ -61,6 +132,9 @@ data:
         endpoint: jaeger:4317
         tls:
           insecure: true
+      # Loki 3.x ingests OTLP natively under /otlp; the exporter appends /v1/logs itself.
+      otlphttp/loki:
+        endpoint: http://loki:3100/otlp
     service:
       pipelines:
         traces:
@@ -74,7 +148,7 @@ data:
         logs:
           receivers: [otlp, filelog]
           processors: [batch]
-          exporters: [debug]
+          exporters: [debug, otlphttp/loki]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -102,6 +176,12 @@ spec:
         - name: collector
           image: otel/opentelemetry-collector-contrib:0.115.1
           args: ["--config=/etc/otel/config.yaml"]
+          env:
+            # Scopes the filelog receiver to this namespace (${env:K8S_NAMESPACE} in the config).
+            - name: K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           ports:
             - name: otlp-grpc
               containerPort: 4317
@@ -205,3 +285,114 @@ spec:
     - name: ui
       port: 16686
       targetPort: ui
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-config
+  labels:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/component: observability-dev
+data:
+  config.yaml: |
+    # Single-binary, single-replica, filesystem storage: dev/eval only.
+    auth_enabled: false
+    server:
+      http_listen_port: 3100
+    common:
+      instance_addr: 127.0.0.1
+      path_prefix: /loki
+      replication_factor: 1
+      ring:
+        kvstore:
+          store: inmemory
+      storage:
+        filesystem:
+          chunks_directory: /loki/chunks
+          rules_directory: /loki/rules
+    schema_config:
+      configs:
+        - from: "2024-04-01"
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+    limits_config:
+      # Required by Loki's OTLP endpoint: trace_id, span_id and the other log-record attributes
+      # are stored as structured metadata, which is how a trace_id stays queryable without
+      # becoming a (high-cardinality) label.
+      allow_structured_metadata: true
+    analytics:
+      reporting_enabled: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loki
+  labels:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/component: observability-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: loki
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: loki
+        app.kubernetes.io/component: observability-dev
+      annotations:
+        dapr.io/enabled: "false"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: loki
+          image: grafana/loki:3.7.9
+          args: ["-config.file=/etc/loki/config.yaml"]
+          ports:
+            - name: http
+              containerPort: 3100
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 15
+          volumeMounts:
+            - name: config
+              mountPath: /etc/loki
+            - name: data
+              mountPath: /loki
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: loki-config
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki
+  labels:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/component: observability-dev
+spec:
+  selector:
+    app.kubernetes.io/name: loki
+  ports:
+    - name: http
+      port: 3100
+      targetPort: http

@@ -305,11 +305,30 @@ done
 assert_absent 'OTEL_EXPORTER_OTLP_HEADERS' "$instrumentation" \
   "a header environment variable rendered with no header source configured"
 
-# Signal toggles select otlp/none per signal.
+# Signal toggles select otlp/none for traces and metrics. Logs are NOT a toggle here: the agents
+# never export logs over OTLP (stdout -> filelog is the single log path), so OTEL_LOGS_EXPORTER is
+# "none" whatever observability.logs.enabled says. Match the exporter by NAME: counting bare
+# `value: "none"` lines cannot tell which signal went dark.
+exporter_of() { # <instrumentation render> <signal: TRACES|METRICS|LOGS>
+  grep -A1 -E "^    - name: OTEL_$2_EXPORTER$" <<<"$1" | grep -E '^      value:' | sed -E 's/^ *value: //'
+}
 signals="$(render "${base_args[@]}" "${obs_args[@]}" --set observability.metrics.enabled=false \
   -s templates/observability/instrumentation.yaml)"
-assert_count '^      value: "none"$' "$signals" 1 "metrics.enabled=false must select exactly one 'none' exporter"
-assert_count '^      value: "otlp"$' "$signals" 2 "traces and logs must still export via otlp"
+[ "$(exporter_of "$signals" TRACES)" = '"otlp"' ] || fail "traces must still export via otlp when only metrics are disabled"
+[ "$(exporter_of "$signals" METRICS)" = '"none"' ] || fail "metrics.enabled=false must select the 'none' metrics exporter"
+[ "$(exporter_of "$signals" LOGS)" = '"none"' ] || fail "OTEL_LOGS_EXPORTER must be none: the collector's filelog receiver is the only log path"
+assert_count '^      value: "none"$' "$signals" 2 "metrics.enabled=false must leave exactly two 'none' exporters (metrics and logs)"
+assert_count '^      value: "otlp"$' "$signals" 1 "only traces may still export via otlp"
+
+# Logs stay 'none' with the logs toggle on (the default) and off; only traces/metrics follow theirs.
+for logs_flag in true false; do
+  logs_render="$(render "${base_args[@]}" "${obs_args[@]}" --set observability.logs.enabled=$logs_flag \
+    -s templates/observability/instrumentation.yaml)"
+  [ "$(exporter_of "$logs_render" LOGS)" = '"none"' ] \
+    || fail "OTEL_LOGS_EXPORTER is not 'none' with observability.logs.enabled=$logs_flag (agent OTLP log export would duplicate filelog lines)"
+  [ "$(exporter_of "$logs_render" TRACES)" = '"otlp"' ] || fail "traces exporter changed with observability.logs.enabled=$logs_flag"
+  [ "$(exporter_of "$logs_render" METRICS)" = '"otlp"' ] || fail "metrics exporter changed with observability.logs.enabled=$logs_flag"
+done
 
 # service.namespace=dws survives an operator attempt to override it.
 attrs_values="$(mktemp)"
@@ -561,5 +580,117 @@ for off_flags in "" "--set observability.enabled=true --set observability.workfl
   [ "$role" = "$role_off" ] \
     || fail "the controller Role depends on observability flags (flags: '$off_flags')"
 done
+
+
+# =============================================================================================
+# 9. Log format: observability.logs.format -> DWS_LOG_FORMAT on the controller and admin
+# =============================================================================================
+# docs/log-format.md. The variable renders only when observability.enabled AND
+# observability.logs.enabled are true; the default render (section 1) already proves the
+# disabled case is byte-identical, this section pins the enabled matrix.
+format_pods() { render "${base_args[@]}" "$@" "${deployments_only[@]}"; }
+
+# The variable must sit inside the right container: split the rendered Deployments per document
+# and require exactly one DWS_LOG_FORMAT entry in each, with the expected value.
+doc_of() { # <render> <resource-name-regex on its metadata name>
+  awk -v want="$2" '
+    /^---$/ { if (keep) printf "%s", buf; buf=""; keep=0 }
+    { buf = buf $0 "\n" }
+    /^# Source: / { if ($0 ~ want) keep=1 }
+    END { if (keep) printf "%s", buf }' <<<"$1"
+}
+assert_log_format() { # <render> <expected value> <label>
+  local ctrl adm
+  ctrl="$(doc_of "$1" 'controller/deployment[.]yaml')"
+  adm="$(doc_of "$1" 'admin/deployment[.]yaml')"
+  [ -n "$ctrl" ] && [ -n "$adm" ] || fail "$3: could not isolate the controller/admin Deployment documents"
+  assert_count '^            - name: DWS_LOG_FORMAT$' "$ctrl" 1 "$3: the controller container must carry exactly one DWS_LOG_FORMAT"
+  assert_count '^            - name: DWS_LOG_FORMAT$' "$adm" 1 "$3: the admin container must carry exactly one DWS_LOG_FORMAT"
+  assert_count "^              value: \"$2\"\$" "$(grep -A1 -E '^            - name: DWS_LOG_FORMAT$' <<<"$ctrl")" 1 "$3: the controller DWS_LOG_FORMAT must be $2"
+  assert_count "^              value: \"$2\"\$" "$(grep -A1 -E '^            - name: DWS_LOG_FORMAT$' <<<"$adm")" 1 "$3: the admin DWS_LOG_FORMAT must be $2"
+}
+
+assert_log_format "$(format_pods "${obs_args[@]}")" json "observability on, default format"
+assert_log_format "$(format_pods "${obs_args[@]}" --set observability.logs.format=text)" text "observability on, format=text"
+assert_log_format "$(format_pods "${obs_args[@]}" "${auth_args[@]}")" json "observability and auth on"
+
+assert_absent 'DWS_LOG_FORMAT' "$(format_pods)" "DWS_LOG_FORMAT rendered with observability disabled"
+assert_absent 'DWS_LOG_FORMAT' "$(format_pods --set observability.logs.format=text)" \
+  "DWS_LOG_FORMAT rendered with observability disabled and format=text (the value must have no effect while the master switch is off)"
+assert_absent 'DWS_LOG_FORMAT' "$(format_pods "${obs_args[@]}" --set observability.logs.enabled=false)" \
+  "DWS_LOG_FORMAT rendered with observability.logs.enabled=false"
+assert_absent 'DWS_LOG_FORMAT' "$(format_pods "${obs_args[@]}" --set observability.logs.enabled=false --set observability.logs.format=text)" \
+  "DWS_LOG_FORMAT rendered with observability.logs.enabled=false and format=text"
+# An empty include must not leave a whitespace-only line behind (the chart already has a couple
+# elsewhere in these Deployments; the count must not move when the variable is switched off).
+ws_on="$(count '^[[:space:]]+$' "$(format_pods "${obs_args[@]}")")"
+ws_off="$(count '^[[:space:]]+$' "$(format_pods "${obs_args[@]}" --set observability.logs.enabled=false)")"
+[ "$ws_on" -eq "$ws_off" ] \
+  || fail "the DWS_LOG_FORMAT include changes the number of whitespace-only lines ($ws_on with logs on, $ws_off with logs off)"
+
+# Any value other than json|text fails the render with a message that names both.
+for bad_format in yaml JSON Text logfmt ""; do
+  bad_out="$(render "${base_args[@]}" "${obs_args[@]}" --set-string "observability.logs.format=$bad_format" 2>&1 >/dev/null)" \
+    && fail "observability.logs.format=\"$bad_format\" rendered; it must be rejected"
+  grep -q 'observability\.logs\.format' <<<"$bad_out" \
+    || fail "the invalid-format error for \"$bad_format\" does not name observability.logs.format: $bad_out"
+  grep -q '"json"' <<<"$bad_out" && grep -q '"text"' <<<"$bad_out" \
+    || fail "the invalid-format error for \"$bad_format\" does not name both json and text: $bad_out"
+done
+
+# =============================================================================================
+# 10. Reference collector: the filelog receiver keeps its exclusions and trace-context operators
+# =============================================================================================
+# The chart ships no collector; tests/fixtures/otel-collector-dev.yaml is the one in-repo
+# configuration, and the chart README repeats its filelog receiver for operators to adapt. These
+# assertions exist so the exclusions (sidecar logs, the collector's own output) and the operators
+# that bind trace_id/span_id cannot be dropped silently: everything still renders and lints.
+fixture="$chart_dir/tests/fixtures/otel-collector-dev.yaml"
+readme="$chart_dir/README.md"
+[ -f "$fixture" ] || fail "missing collector fixture $fixture"
+
+# The receiver block, dedented so it begins with `filelog:`.
+fixture_filelog="$(awk '/^      filelog:$/ {f=1} /^    processors:$/ {f=0} f' "$fixture" | sed -E 's/^      //')"
+[ -n "$fixture_filelog" ] || fail "no filelog receiver found in $fixture"
+
+assert_has() { # <needle (fixed string)> <message>
+  grep -Fq -- "$1" <<<"$fixture_filelog" || fail "collector fixture filelog receiver: $2 (expected a line containing: $1)"
+}
+assert_has '- /var/log/pods/${env:K8S_NAMESPACE}_*/*/*.log' "must be scoped to the release namespace, not every pod on the node"
+assert_has '- /var/log/pods/*/daprd/*.log' "must exclude the daprd sidecar (a different log schema)"
+assert_has '- /var/log/pods/*/collector/*.log' "must exclude the collector's own container (feedback loop through its debug exporter)"
+assert_has '- type: container' "must parse the CRI line framing and k8s.* attributes"
+assert_has '- type: json_parser' "must parse DWS JSON lines"
+assert_has "if: 'body startsWith \"{\"'" "json_parser must run only on bodies that start with {, so non-JSON lines pass through raw"
+assert_has 'parse_from: attributes.timestamp' "must take the record time from timestamp"
+assert_has 'parse_from: attributes.severity' "must take the severity from severity"
+assert_has '- type: trace_parser' "must bind trace_id/span_id to the record's trace context"
+assert_has 'parse_from: attributes.trace_id' "trace_parser must read trace_id"
+assert_has 'parse_from: attributes.span_id' "trace_parser must read span_id"
+assert_has 'from: attributes.message' "must move message to the body"
+assert_has 'to: body' "must move message to the body"
+assert_has 'from: attributes.logger' "must move logger to logger.name"
+assert_has 'to: attributes["logger.name"]' "must move logger to the logger.name attribute"
+
+# Operator order matters: container before json_parser before trace_parser before the moves.
+operator_order="$(grep -E '^ +- type: (container|json_parser|trace_parser|move)$' <<<"$fixture_filelog" | sed -E 's/^ +- type: //' | tr '\n' ' ')"
+[ "$operator_order" = "container json_parser trace_parser move move " ] \
+  || fail "collector fixture filelog operator order is '$operator_order'; expected 'container json_parser trace_parser move move '"
+
+# The logs pipeline must still deliver to a trace-queryable backend as well as to debug.
+fixture_logs_pipeline="$(awk '/^        logs:$/ {f=1} f' "$fixture" | sed -n '1,5p')"
+grep -Fq 'receivers: [otlp, filelog]' <<<"$fixture_logs_pipeline" \
+  || fail "collector fixture logs pipeline must receive from filelog"
+grep -Fq 'exporters: [debug, otlphttp/loki]' <<<"$fixture_logs_pipeline" \
+  || fail "collector fixture logs pipeline must export to debug and to Loki over OTLP"
+grep -Fq 'allow_structured_metadata: true' "$fixture" \
+  || fail "the fixture's Loki must allow structured metadata, or its OTLP endpoint rejects trace_id/span_id"
+
+# The README's reference block must be the fixture's receiver verbatim.
+readme_filelog="$(awk '/^```yaml$/ {getline nxt; if (nxt == "filelog:") {f=1; print nxt; next}} f && /^```$/ {f=0} f' "$readme")"
+[ -n "$readme_filelog" ] || fail "$readme has no yaml block starting with 'filelog:' (the reference receiver)"
+if ! diff -u <(printf '%s\n' "$fixture_filelog") <(printf '%s\n' "$readme_filelog"); then
+  fail "the README reference filelog receiver differs from tests/fixtures/otel-collector-dev.yaml (diff above); change both together"
+fi
 
 echo "observability-render-test.sh: all checks passed"

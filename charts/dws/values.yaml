@@ -452,8 +452,19 @@ observability:
   metrics:
     enabled: true
   logs:
+    # Gates log delivery: with observability.enabled=true this renders DWS_LOG_FORMAT on the
+    # controller and admin (and, through the controller, on compiled orchestrators). It no longer
+    # selects an agent OTLP log exporter: the Instrumentation always sets OTEL_LOGS_EXPORTER=none,
+    # because stdout read by the collector's `filelog` receiver is the single log path.
     enabled: true
-    # Reserved for the Phase 4 log/trace correlation work: json or text.
+    # Log line format of the DWS components: `json` or `text`; anything else fails the render.
+    #   json - one JSON object per line on stdout with trace_id/span_id when a span is active
+    #          (docs/log-format.md), so a collector can correlate logs with traces.
+    #   text - each component's pre-existing output; the escape hatch if `kubectl logs` readability
+    #          matters more than trace correlation.
+    # Effective only when observability.enabled and observability.logs.enabled are both true;
+    # otherwise no DWS_LOG_FORMAT is rendered and every component logs text. A change reaches
+    # already-deployed compiled workflows only on their next deploy.
     format: json
   # Whether the tracing-only Dapr Configuration `dws-tracing` renders for compiled workflow
   # sidecars. Separate from the master switch so an operator can observe the control plane
