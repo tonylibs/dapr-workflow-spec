@@ -18,10 +18,23 @@ public interface DwsConfig {
 
   Reconcile reconcile();
 
+  Log log();
+
   /** Garbage-collection cadence for drained previous versions. */
   interface Reconcile {
     @WithDefault("30s")
     String every();
+  }
+
+  interface Log {
+    /**
+     * Log format ({@code DWS_LOG_FORMAT}): {@code json} or, for anything else, {@code text}. The
+     * controller's own logging reads the environment variable directly before Quarkus starts (see
+     * {@code StructuredLogging}); this binding exists so the value can be stamped on the
+     * orchestrator Deployments it compiles.
+     */
+    @WithDefault("text")
+    String format();
   }
 
   interface Orchestrator {

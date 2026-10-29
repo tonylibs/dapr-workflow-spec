@@ -1,8 +1,10 @@
 package io.dws.controller.compile;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import io.dws.controller.logging.StructuredLogging;
 import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.ImageCatalog;
 import java.io.IOException;
@@ -63,5 +65,35 @@ class OrchestratorEnvContractTest {
           .as("dws-orchestrator application.yaml must read ${%s}", name)
           .contains("${" + name + ":");
     }
+  }
+
+  /**
+   * Not in the compiled env map: the synthesizer stamps {@code DWS_LOG_FORMAT=json} on instrumented
+   * Deployments only. A name the orchestrator does not read silently leaves it on text logs.
+   */
+  @Test
+  @DisplayName("the orchestrator reads DWS_LOG_FORMAT, the variable the synthesizer stamps")
+  void orchestratorReadsTheLogFormatVariable() throws IOException {
+    assumeTrue(
+        Files.isRegularFile(ORCHESTRATOR_CONFIG),
+        "dws-orchestrator sources not alongside dws-controller; contract not checkable here");
+
+    assertReadsLogFormat(Files.readString(ORCHESTRATOR_CONFIG, StandardCharsets.UTF_8));
+  }
+
+  @Test
+  @DisplayName("the log-format check fails when the orchestrator config lacks the variable")
+  void logFormatCheckFailsWhenTheVariableIsMissing() {
+    String drifted = "logging:\n  structured:\n    format:\n      console: ${DWS_LOG_FMT:}\n";
+
+    assertThatThrownBy(() -> assertReadsLogFormat(drifted))
+        .isInstanceOf(AssertionError.class)
+        .hasMessageContaining(StructuredLogging.FORMAT_ENV);
+  }
+
+  private static void assertReadsLogFormat(String orchestratorConfig) {
+    assertThat(orchestratorConfig)
+        .as("dws-orchestrator application.yaml must read ${%s}", StructuredLogging.FORMAT_ENV)
+        .contains("${" + StructuredLogging.FORMAT_ENV);
   }
 }
