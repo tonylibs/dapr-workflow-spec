@@ -56,8 +56,8 @@ Gates are the per-package commands from the root `CLAUDE.md`; run each from its 
 
 ## 8. Roadmap and project docs
 
-- [ ] 8.1 Update the Phase 4 row of `docs/roadmaps/observability.md` (status, what shipped, Track B remainder) and the 2a′ row to require `DWS_LOG_FORMAT` stamping in runtime-v2 Phase 4 synthesis; add a Findings-log entry for the decisions that changed (agent log export off, collector fixture as the only collector config). Verify by reading the rendered rows.
-- [ ] 8.2 Add the `DWS_LOG_FORMAT` and six-field contract to the root `CLAUDE.md` "Cross-package contract-change etiquette" section. Verify the entry names every package that reads it.
+- [x] 8.1 Update the Phase 4 row of `docs/roadmaps/observability.md` (status, what shipped, Track B remainder) and the 2a′ row to require `DWS_LOG_FORMAT` stamping in runtime-v2 Phase 4 synthesis; add a Findings-log entry for the decisions that changed (agent log export off, collector fixture as the only collector config). Verify by reading the rendered rows.
+- [x] 8.2 Add the `DWS_LOG_FORMAT` and six-field contract to the root `CLAUDE.md` "Cross-package contract-change etiquette" section. Verify the entry names every package that reads it.
 
 ## 9. Integration and live evidence
 
