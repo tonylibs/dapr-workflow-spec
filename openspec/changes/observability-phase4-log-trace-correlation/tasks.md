@@ -18,10 +18,10 @@ Gates are the per-package commands from the root `CLAUDE.md`; run each from its 
 
 ## 3. dws-orchestrator (Spring Boot)
 
-- [ ] 3.1 Add the custom structured-log formatter class and wire `logging.structured.format.console` from `DWS_LOG_FORMAT` in `application.yaml` (confirm a blank value leaves plain logging; otherwise add the `EnvironmentPostProcessor` fallback from `design.md` D7). Keep the existing `logging.level.io.dws.orchestrator: INFO`. Verify with a `LogFormatContractTest` running every golden case, including MDC `trace_id`/`span_id` present and absent.
-- [ ] 3.2 Audit the call sites in `WorkflowDefinitionLoader`, `WorkflowRuntimeBootstrap`, `CallServiceActivity`, `EmitEventActivity`, `AdminEventActivity` for secrets and exception messages that can embed URLs or headers; add a test that a run with `use.secrets` configured logs no resolved `SECRET_*` value. Verify by that test passing.
-- [ ] 3.3 Record in `dws-orchestrator/CLAUDE.md` the rule that no log call goes inside workflow-function code (ADR 0009 decisions 1–2) and the `DWS_LOG_FORMAT` contract. Verify the text is present and names the ADR.
-- [ ] 3.4 Run the package gate: `cd dws-orchestrator && ./mvnw verify` passes.
+- [x] 3.1 Add the custom structured-log formatter class and wire `logging.structured.format.console` from `DWS_LOG_FORMAT` in `application.yaml` (confirm a blank value leaves plain logging; otherwise add the `EnvironmentPostProcessor` fallback from `design.md` D7). Keep the existing `logging.level.io.dws.orchestrator: INFO`. Verify with a `LogFormatContractTest` running every golden case, including MDC `trace_id`/`span_id` present and absent.
+- [x] 3.2 Audit the call sites in `WorkflowDefinitionLoader`, `WorkflowRuntimeBootstrap`, `CallServiceActivity`, `EmitEventActivity`, `AdminEventActivity` for secrets and exception messages that can embed URLs or headers; add a test that a run with `use.secrets` configured logs no resolved `SECRET_*` value. Verify by that test passing.
+- [x] 3.3 Record in `dws-orchestrator/CLAUDE.md` the rule that no log call goes inside workflow-function code (ADR 0009 decisions 1–2) and the `DWS_LOG_FORMAT` contract. Verify the text is present and names the ADR.
+- [x] 3.4 Run the package gate: `cd dws-orchestrator && ./mvnw verify` passes.
 
 ## 4. dws-step (Spring Boot)
 
