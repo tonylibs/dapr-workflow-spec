@@ -90,5 +90,10 @@ Called unconditionally from templates/preflight.yaml.
 {{- end }}
 {{- /* Reached for its fail() side effect: this is the only rejecter of an unknown protocol. */ -}}
 {{- $_ := include "dws.observability.daprOtelProtocol" . }}
+{{- /* observability.logs.format is rendered verbatim into DWS_LOG_FORMAT; a typo would be read as text by every component, silently. */ -}}
+{{- $logFormat := .Values.observability.logs.format | default "" | toString }}
+{{- if not (has $logFormat (list "json" "text")) }}
+{{- fail (printf "observability.logs.format must be \"json\" or \"text\", got %q. It is rendered as DWS_LOG_FORMAT on the controller and admin; any other value would be read as text by the components without warning." $logFormat) }}
+{{- end }}
 {{- end }}
 {{- end }}

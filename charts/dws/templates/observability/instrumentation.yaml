@@ -55,8 +55,15 @@ spec:
       value: {{ ternary "otlp" "none" .Values.observability.traces.enabled | quote }}
     - name: OTEL_METRICS_EXPORTER
       value: {{ ternary "otlp" "none" .Values.observability.metrics.enabled | quote }}
+    {{- /*
+      Always "none", independent of observability.logs.enabled. Container stdout read by the
+      collector's filelog receiver is the ONLY log path (docs/log-format.md): with the agent's OTLP
+      log export also on, every JSON line would reach the backend twice, in two different shapes.
+      observability.logs.enabled now gates DWS_LOG_FORMAT (dws.observability.logFormatEnv), not an
+      exporter.
+    */}}
     - name: OTEL_LOGS_EXPORTER
-      value: {{ ternary "otlp" "none" .Values.observability.logs.enabled | quote }}
+      value: "none"
     {{- with (include "dws.observability.otlpSecretName" .) }}
     {{- /*
       Header credentials are never inlined here: helm's release metadata and `helm get manifest`
