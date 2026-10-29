@@ -7,13 +7,22 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import type { AppConfig } from './config/configuration';
 import { configureBodyParsers } from './http/body-parsers';
+import { isJsonLogFormat, JsonLogger } from './logging/json-logger';
 import { runMigrations } from './store/run-migrations';
 
 async function bootstrap() {
   // rawBody: the compile/submit relay to dws-controller forwards the request
   // body verbatim (YAML or JSON) — Nest's JSON parser would drop YAML and
   // re-serialise JSON, changing the content-hashed version on the far side.
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
+  //
+  // DWS_LOG_FORMAT=json swaps Nest's console logger for the structured one
+  // (docs/log-format.md). bufferLogs holds the framework's startup lines until
+  // it is installed so they are JSON too; any other value changes nothing.
+  const jsonLogs = isJsonLogFormat(process.env.DWS_LOG_FORMAT);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true, bufferLogs: jsonLogs });
+  if (jsonLogs) {
+    app.useLogger(new JsonLogger());
+  }
   const config = app.get(ConfigService<AppConfig, true>);
 
   // Body-parser wiring lives in its own module because its *ordering* is the
