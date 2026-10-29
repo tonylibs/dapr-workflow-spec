@@ -6,7 +6,7 @@ Gates are the per-package commands from the root `CLAUDE.md`; run each from its 
 
 ## 1. Contract reference (docs)
 
-- [ ] 1.1 Add `docs/log-format.md` stating the contract from `design.md` D2 (six keys, `exception.*`, severity map, `DWS_LOG_FORMAT` semantics, omission rule) and the canonical golden cases (plain, in-span, out-of-span, exception, multi-line, bearer token, `password=` pair) as JSON lines. Verify the file renders and each golden line parses with `jq -e .`.
+- [x] 1.1 Add `docs/log-format.md` stating the contract from `design.md` D2 (six keys, `exception.*`, severity map, `DWS_LOG_FORMAT` semantics, omission rule) and the canonical golden cases (plain, in-span, out-of-span, exception, multi-line, bearer token, `password=` pair) as JSON lines. Verify the file renders and each golden line parses with `jq -e .`.
 
 ## 2. dws-controller (Quarkus) — own logs, `DWS_LOG_FORMAT`, orchestrator stamping
 
