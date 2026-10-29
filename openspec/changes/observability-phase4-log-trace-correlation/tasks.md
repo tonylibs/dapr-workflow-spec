@@ -31,10 +31,10 @@ Gates are the per-package commands from the root `CLAUDE.md`; run each from its 
 
 ## 5. dws-admin (NestJS)
 
-- [ ] 5.1 Add `@opentelemetry/api` and a JSON `LoggerService` that reads `trace.getActiveSpan()`, installed with `bufferLogs`/`app.useLogger` only when `DWS_LOG_FORMAT=json`, with the scrubber and the severity mapping from `design.md` D2. Verify with a Jest spec that runs every golden case and asserts key names, omission when no active span, and one line per record.
-- [ ] 5.2 Confirm in the built image (or a local run with the Node auto-instrumentation `--require`) that the app's `@opentelemetry/api` resolves the same global as the agent, so an HTTP request's log lines carry the request span's IDs. Verify by an integration-style Jest test using an in-memory tracer provider, and record the image-level check for the live run in group 9.
-- [ ] 5.3 Audit `dws-events.subscriber.ts`, `orchestrator-events.handler.ts` and `controller-events.handler.ts` messages (they interpolate `err.message` and event types) for secrets; add the bearer-token test. Verify by the spec passing.
-- [ ] 5.4 Run the package gate: `cd dws-admin && pnpm lint && pnpm test && pnpm build` passes.
+- [x] 5.1 Add `@opentelemetry/api` and a JSON `LoggerService` that reads `trace.getActiveSpan()`, installed with `bufferLogs`/`app.useLogger` only when `DWS_LOG_FORMAT=json`, with the scrubber and the severity mapping from `design.md` D2. Verify with a Jest spec that runs every golden case and asserts key names, omission when no active span, and one line per record.
+- [x] 5.2 Confirm in the built image (or a local run with the Node auto-instrumentation `--require`) that the app's `@opentelemetry/api` resolves the same global as the agent, so an HTTP request's log lines carry the request span's IDs. Verify by an integration-style Jest test using an in-memory tracer provider, and record the image-level check for the live run in group 9.
+- [x] 5.3 Audit `dws-events.subscriber.ts`, `orchestrator-events.handler.ts` and `controller-events.handler.ts` messages (they interpolate `err.message` and event types) for secrets; add the bearer-token test. Verify by the spec passing.
+- [x] 5.4 Run the package gate: `cd dws-admin && pnpm lint && pnpm test && pnpm build` passes.
 
 ## 6. dws-flow (.NET)
 
