@@ -25,9 +25,9 @@ Gates are the per-package commands from the root `CLAUDE.md`; run each from its 
 
 ## 4. dws-step (Spring Boot)
 
-- [ ] 4.1 Add the same formatter and `application.yaml` mapping as 3.1 in `dws-step` (own copy; no shared artifact) and a `LogFormatContractTest` over the golden cases. Verify the test passes.
-- [ ] 4.2 Audit `StepRuntimeBootstrap` log calls for secrets and add the bearer-token/`password=` test. Verify by the test passing.
-- [ ] 4.3 Run the package gate: `cd dws-step && ./mvnw spotless:check && ./mvnw verify` passes.
+- [x] 4.1 Add the same formatter and `application.yaml` mapping as 3.1 in `dws-step` (own copy; no shared artifact) and a `LogFormatContractTest` over the golden cases. Verify the test passes.
+- [x] 4.2 Audit `StepRuntimeBootstrap` log calls for secrets and add the bearer-token/`password=` test. Verify by the test passing.
+- [x] 4.3 Run the package gate: `cd dws-step && ./mvnw spotless:check && ./mvnw verify` passes.
 
 ## 5. dws-admin (NestJS)
 
