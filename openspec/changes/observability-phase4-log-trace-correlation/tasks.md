@@ -38,10 +38,10 @@ Gates are the per-package commands from the root `CLAUDE.md`; run each from its 
 
 ## 6. dws-flow (.NET)
 
-- [ ] 6.1 Spike: determine whether `Activity.Current` is set inside a Dapr Workflow activity under `Dapr.Workflow` 1.18.10 and record the answer in `design.md` D7. Verify with a small test host or recorded reasoning from the SDK source, written into the note.
-- [ ] 6.2 Add a named `ConsoleFormatter` implementing the contract (TraceId/SpanId from `Activity.Current`, omitted when default; severity map; exception keys; scrubber) and register it in `Program.cs` only when `DWS_LOG_FORMAT=json`. Verify in `test/` with a golden-case test over every case in 1.1.
-- [ ] 6.3 Document in `dws-flow/CLAUDE.md` the `DWS_LOG_FORMAT` contract and the 6.1 finding. Verify the text is present.
-- [ ] 6.4 Run the package gate: `cd dws-flow && dotnet test test/dws-flow.Tests.csproj` passes (name the test project; a bare `dotnet test` runs nothing).
+- [x] 6.1 Spike: determine whether `Activity.Current` is set inside a Dapr Workflow activity under `Dapr.Workflow` 1.18.10 and record the answer in `design.md` D7. Verify with a small test host or recorded reasoning from the SDK source, written into the note.
+- [x] 6.2 Add a named `ConsoleFormatter` implementing the contract (TraceId/SpanId from `Activity.Current`, omitted when default; severity map; exception keys; scrubber) and register it in `Program.cs` only when `DWS_LOG_FORMAT=json`. Verify in `test/` with a golden-case test over every case in 1.1.
+- [x] 6.3 Document in `dws-flow/CLAUDE.md` the `DWS_LOG_FORMAT` contract and the 6.1 finding. Verify the text is present.
+- [x] 6.4 Run the package gate: `cd dws-flow && dotnet test test/dws-flow.Tests.csproj` passes (name the test project; a bare `dotnet test` runs nothing).
 
 ## 7. charts/dws
 

@@ -180,6 +180,19 @@ short spike with a defined fallback, and the conformance test is the acceptance 
 The Java formatters read the OTel context through MDC rather than the OTel API so the packages take
 no OTel dependency and degrade to "no `trace_id`" when no agent is attached.
 
+#### Spike findings (recorded during apply)
+
+- **6.1 — `dws-flow`: `Activity.Current` is set inside a Dapr Workflow activity** under
+  `Dapr.Workflow` 1.18.10. The SDK's internal `Dapr.Workflow.Worker.WorkflowTrace` ("restores
+  workflow trace context as `Activity.Current` for workflow and activity dispatch") owns an
+  `ActivitySource` named `Dapr.Workflow`; `GrpcProtocolHandler.ProcessActivityAsync` calls
+  `WorkflowTrace.StartActivityTrace(ActivityRequest)`, which parses the request's
+  `ParentTraceContext` (`traceparent`/`tracestate`) with `ActivityContext.TryParse` and starts an
+  `Activity` under it; a scope restores the previous `Activity.Current` on dispose. So activity log
+  lines carry the workflow's trace context whenever the sidecar sends one. Evidence: IL of the
+  referenced `net10.0` assembly, not a live sidecar run; with no inbound context, lines carry no or a
+  fresh root context. No fallback needed — the formatter reads `Activity.Current` as designed.
+
 ### D8. Secrets and bearer tokens
 
 The audit of today's call sites found no secret-bearing arguments: the orchestrator logs app IDs,
