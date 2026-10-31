@@ -77,12 +77,12 @@ not pin the workload kind, so it should not need a change.
 
 ## Defects found during the live run (not log-format)
 
-Recorded in the evidence file, "Defects found on the way"; none has an issue yet:
+Recorded in the evidence file, "Defects found on the way":
 
-1. `dapr.enabled=false` leaves the Redis Components pointing at a bundled Redis that is not
+1. [#180](https://github.com/tonylibs/dapr-workflow-spec/issues/180) — `dapr.enabled=false` leaves the Redis Components pointing at a bundled Redis that is not
    installed (`Secret "dws-redis" not found`); the documented answer is `redis.external.*`, but the
    preflight does not say so.
-2. The controller image fails `POST /workflows` with a jsii package-cache permission error on
+2. [#181](https://github.com/tonylibs/dapr-workflow-spec/issues/181) — The controller image fails `POST /workflows` with a jsii package-cache permission error on
    `/home/default` (mode 0770); `JSII_RUNTIME_PACKAGE_CACHE=disabled` works around it.
-3. Re-posting a deployed workflow fails: the controller's `PUT` on the step KService drops the
+3. [#182](https://github.com/tonylibs/dapr-workflow-spec/issues/182) — Re-posting a deployed workflow fails: the controller's `PUT` on the step KService drops the
    immutable `serving.knative.dev/creator` annotation.
