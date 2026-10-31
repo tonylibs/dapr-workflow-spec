@@ -440,6 +440,11 @@ first one Helm evaluates.
 {{- fail "apiGateway.tls.enabled=true requires apiGateway.tls.certificateName naming an existing TLS Secret in the release namespace" -}}
 {{- end -}}
 {{- end -}}
+{{- /* Bundled APISIX only: the chart owns that workload, so it must prove the admin Dapr API
+       token reaches it. An external APISIX is the operator's to wire (README). */ -}}
+{{- if .Values.apisix.enabled -}}
+{{- include "dws.apiGateway.validateAdminTokenWiring" . -}}
+{{- end -}}
 {{- end -}}
 {{- end }}
 
@@ -666,5 +671,136 @@ application container.
 {{- if $.Values.observability.enabled -}}
 instrumentation.opentelemetry.io/inject-{{ .language }}: {{ include "dws.observability.instrumentationName" $ | quote }}
 instrumentation.opentelemetry.io/container-names: {{ .container | quote }}
+{{- end -}}
+{{- end }}
+
+{{/*
+Dapr machine-auth tokens (auth roadmap Phase 10, openspec change auth-phase-10-api-tokens).
+Everything below is only used when auth.enabled=true; callers gate on that, nothing here
+re-checks it.
+
+One token per (component, kind), three Secrets in total:
+  <release>-admin-dapr-api-token       admin sidecar's `dapr-api-token` (also sent by APISIX)
+  <release>-admin-app-api-token        token Dapr attaches when the admin sidecar calls the admin app
+  <release>-controller-dapr-api-token  controller sidecar's `dapr-api-token`
+Each holds the token under key `token` -- Dapr's contract for dapr.io/api-token-secret and
+dapr.io/app-token-secret, not ours to rename. The controller's app API token (kind appApi) is
+reserved for a follow-up change and is deliberately not rendered.
+
+Helpers take a dict `{root: $, component: "admin"|"controller", kind: "daprApi"|"appApi"}`.
+
+Names derive from .Release.Name, NOT dws.fullname, and are NOT truncated: the bundled APISIX
+subchart renders its extraEnvVars through `tpl` in its own context, where .Release.Name is the
+parent release name but dws.fullname does not exist. One rule for all three names (and for the
+APISIX default in values.yaml) keeps them from drifting.
+*/}}
+{{- define "dws.apiTokens.generatedSecretName" -}}
+{{- $suffix := get (dict "daprApi" "dapr-api-token" "appApi" "app-api-token") .kind -}}
+{{- if not $suffix -}}
+{{- fail (printf "dws.apiTokens: unknown token kind %q (want daprApi or appApi)" .kind) -}}
+{{- end -}}
+{{- printf "%s-%s-%s" .root.Release.Name .component $suffix -}}
+{{- end }}
+
+{{/*
+Operator-supplied Secret name for one token, or the empty string. `dig` rather than a plain
+field access so a values file from before this feature (e.g. `helm upgrade --reuse-values`)
+cannot nil-pointer the render.
+*/}}
+{{- define "dws.apiTokens.existingSecret" -}}
+{{- dig "auth" "apiTokens" .component .kind "existingSecret" "" .root.Values.AsMap -}}
+{{- end }}
+
+{{/*
+Name of the Secret that holds one token: the operator's existingSecret when set, otherwise the
+chart-generated Secret (templates/auth/api-token-secrets.yaml).
+*/}}
+{{- define "dws.apiTokens.secretName" -}}
+{{- $existing := include "dws.apiTokens.existingSecret" . -}}
+{{- if $existing -}}
+{{- $existing -}}
+{{- else -}}
+{{- include "dws.apiTokens.generatedSecretName" . -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Generate-or-reuse value for one chart-generated token: reuse the `token` already stored in the
+chart's own Secret (helm upgrade), else mint 48 random alphanumerics (helm install). Same
+pattern as dws.dex.resolvePassword. `lookup` returns nothing under `helm template`/`--dry-run`,
+so those print a fresh random token on every run -- render tests must never echo Secret data.
+Call this once per Secret: `include` is not memoized, a second call would mint a different token.
+*/}}
+{{- define "dws.apiTokens.value" -}}
+{{- $secret := lookup "v1" "Secret" (include "dws.namespace" .root) (include "dws.apiTokens.generatedSecretName" .) -}}
+{{- $stored := dig "data" "token" "" $secret -}}
+{{- if $stored -}}
+{{- $stored | b64dec -}}
+{{- else -}}
+{{- randAlphaNum 48 -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+`valueFrom.secretKeyRef` for one token, for an env entry. The token reaches a container only
+this way, never as a literal `value:`. Usage, inside a container's env list:
+  - name: DAPR_API_TOKEN
+    <include "dws.apiTokens.secretKeyRef" (dict "root" . "component" "admin" "kind" "daprApi"), nindent 4>
+*/}}
+{{- define "dws.apiTokens.secretKeyRef" -}}
+valueFrom:
+  secretKeyRef:
+    name: {{ include "dws.apiTokens.secretName" . | quote }}
+    key: token
+{{- end }}
+
+{{/*
+Environment variable the gateway data plane reads the admin Dapr API token from. The admin
+HTTPRoute references it as `$env://<name>`; the bundled APISIX gets it from
+apisix.extraEnvVars + apisix.apisix.nginx.envs (values.yaml), an external APISIX from the
+operator (README, "Machine-auth tokens"). One definition for the route, the validation and the docs.
+*/}}
+{{- define "dws.apiGateway.adminTokenEnvName" -}}
+DWS_ADMIN_DAPR_API_TOKEN
+{{- end }}
+
+{{/*
+Bundled-gateway wiring guard for the admin Dapr API token (design D4). Rendering fails unless the
+bundled APISIX BOTH sources DWS_ADMIN_DAPR_API_TOKEN by secretKeyRef from the admin Dapr API token
+Secret AND lists it in its nginx `env` allow-list. Without the first the route would reference a
+variable that does not exist; without the second nginx workers cannot read it; and if the Secret
+differs (e.g. auth.apiTokens.admin.daprApi.existingSecret was set but APISIX was not re-pointed),
+APISIX would inject a stale value that the Dapr sidecar then answers with 401 on every admin
+request. Only called for the bundled gateway (apiGateway.enabled and apisix.enabled): an external
+APISIX is the operator's to wire (README, "Machine-auth tokens").
+
+NOTE: the bundled subchart's own `apisix.nginx.envs` lives under the subchart's top-level
+`apisix:` key, so from this chart's values it is `apisix.apisix.nginx.envs`.
+*/}}
+{{- define "dws.apiGateway.validateAdminTokenWiring" -}}
+{{- $envName := include "dws.apiGateway.adminTokenEnvName" . -}}
+{{- $tokenSecret := include "dws.apiTokens.secretName" (dict "root" . "component" "admin" "kind" "daprApi") -}}
+{{- $extraEnv := .Values.apisix.extraEnvVars | default list -}}
+{{- if not (kindIs "slice" $extraEnv) -}}
+{{- fail (printf "apisix.extraEnvVars must be a list of env entries when apiGateway.enabled=true and apisix.enabled=true: it has to define %s, sourced by secretKeyRef from Secret %q (key \"token\"), because the admin HTTPRoute injects the Dapr API token as $env://%s" $envName $tokenSecret $envName) -}}
+{{- end -}}
+{{- $entry := dict -}}
+{{- range $e := $extraEnv -}}
+{{- if and (kindIs "map" $e) (eq (toString (get $e "name")) $envName) -}}
+{{- $_ := set $entry "env" $e -}}
+{{- end -}}
+{{- end -}}
+{{- if not (hasKey $entry "env") -}}
+{{- fail (printf "apisix.extraEnvVars has no %s entry. The bundled APISIX must expose it: the admin HTTPRoute sets the dapr-api-token header from $env://%s, and without it every /dws-admin request is rejected 401 by the Dapr sidecar. Restore the chart default or add an entry: name: %s, valueFrom.secretKeyRef.name: %s, valueFrom.secretKeyRef.key: token" $envName $envName $envName $tokenSecret) -}}
+{{- end -}}
+{{- $ref := dig "valueFrom" "secretKeyRef" (dict) (get $entry "env") -}}
+{{- $refName := tpl (toString (get $ref "name")) . -}}
+{{- if or (not $ref) (ne $refName $tokenSecret) (ne (toString (get $ref "key")) "token") -}}
+{{- $current := ternary "no secretKeyRef (a literal value or another source)" (printf "Secret %q key %q" $refName (toString (get $ref "key"))) (not $ref) -}}
+{{- fail (printf "apisix.extraEnvVars entry %s must be sourced by secretKeyRef from the admin Dapr API token Secret %q (key \"token\"), but it currently uses %s. The admin Dapr API token Secret is %q (the chart-generated default %s-admin-dapr-api-token unless auth.apiTokens.admin.daprApi.existingSecret is set). Override apisix.extraEnvVars so this entry's valueFrom.secretKeyRef.name is %q; otherwise APISIX injects a token the admin sidecar rejects with 401." $envName $tokenSecret $current $tokenSecret .Release.Name $tokenSecret) -}}
+{{- end -}}
+{{- $nginxEnvs := dig "apisix" "nginx" "envs" list .Values.apisix -}}
+{{- if not (has $envName $nginxEnvs) -}}
+{{- fail (printf "apisix.apisix.nginx.envs (the bundled APISIX chart's apisix.nginx.envs) must list %s. APISIX's nginx workers can only read environment variables named in that allow-list, so without it $env://%s resolves to nothing and every /dws-admin request is rejected 401 by the Dapr sidecar." $envName $envName) -}}
 {{- end -}}
 {{- end }}

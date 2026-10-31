@@ -29,6 +29,14 @@ spec:
         {{- if or .Values.auth.enabled .Values.observability.enabled }}
         dapr.io/config: {{ include "dws.controller.configName" . | quote }}
         {{- end }}
+        {{- if .Values.auth.enabled }}
+        {{- /*
+          Dapr API token for the controller's sidecar (auth roadmap Phase 10). No app token here:
+          the controller's app-port check is a follow-up change, so this pod deliberately carries
+          no dapr.io/app-token-secret and no APP_API_TOKEN.
+        */}}
+        dapr.io/api-token-secret: {{ include "dws.apiTokens.secretName" (dict "root" . "component" "controller" "kind" "daprApi") | quote }}
+        {{- end }}
         {{- /*
           OpenTelemetry Java agent injection, targeted at the `controller` container only — an
           untargeted annotation would make the Operator try to instrument the daprd sidecar too.
@@ -94,6 +102,15 @@ spec:
               value: "{{ .Values.controller.images.run.scriptPython.repository }}:{{ .Values.controller.images.run.scriptPython.tag }}"
             - name: DWS_IMAGES_ORCHESTRATOR
               value: "{{ .Values.controller.images.orchestrator.repository }}:{{ .Values.controller.images.orchestrator.tag }}"
+            {{- if .Values.auth.enabled }}
+            {{- /*
+              Once the controller's sidecar requires dapr-api-token, the controller's own calls to
+              it (lifecycle-event publishing via the Dapr Java SDK, which reads DAPR_API_TOKEN from
+              the environment) must carry it. Always a secretKeyRef, never a literal.
+            */}}
+            - name: DAPR_API_TOKEN
+              {{- include "dws.apiTokens.secretKeyRef" (dict "root" . "component" "controller" "kind" "daprApi") | nindent 14 }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /q/health/live

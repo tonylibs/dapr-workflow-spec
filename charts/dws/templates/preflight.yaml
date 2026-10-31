@@ -10,3 +10,10 @@ resource itself.
 {{- include "dws.observability.validate" . -}}
 {{- include "dws.apiGateway.validate" . -}}
 {{- include "dws.console.legacyIngress.validate" . -}}
+{{- if and .Values.auth.enabled .Values.admin.enabled .Values.controller.enabled -}}
+{{- $admin := include "dws.apiTokens.secretName" (dict "root" . "component" "admin" "kind" "daprApi") -}}
+{{- $controller := include "dws.apiTokens.secretName" (dict "root" . "component" "controller" "kind" "daprApi") -}}
+{{- if eq $admin $controller -}}
+{{- fail "admin and controller Dapr API tokens must use different Secrets; set distinct auth.apiTokens.admin.daprApi.existingSecret and auth.apiTokens.controller.daprApi.existingSecret" -}}
+{{- end -}}
+{{- end -}}

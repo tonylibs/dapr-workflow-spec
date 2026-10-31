@@ -122,6 +122,39 @@ auth:
   jwksURL: ""
   dex:
     enabled: false
+  # Dapr machine-auth tokens (auth roadmap Phase 10; charts/dws/README.md, "Machine-auth tokens").
+  # Rendered ONLY when auth.enabled=true; there is no separate switch (auth.enabled=false is the
+  # kill switch). Two kinds of token, one Secret per (component, kind), each holding the token
+  # under the key `token` (Dapr's contract for dapr.io/api-token-secret / dapr.io/app-token-secret):
+  #   daprApi  the `dapr-api-token` a caller must present to that component's sidecar API.
+  #   appApi   the token Dapr attaches when the sidecar calls the app (the app must check it).
+  # By default the chart generates each token (48 random characters) into a Secret named
+  # <release>-<component>-<dapr-api|app-api>-token and keeps it stable across `helm upgrade`.
+  # A generated token is readable by anyone who can read the Helm release Secret; for production
+  # create the Secret yourself and name it below, which keeps the token out of Helm entirely:
+  #   kubectl create secret generic my-admin-dapr-token --from-literal=token="$(openssl rand -hex 24)"
+  # daprd reads the token at startup, so restart the affected pods after install, upgrade or
+  # rotation (the post-install NOTES print the exact commands).
+  apiTokens:
+    admin:
+      daprApi:
+        # Existing Secret (same namespace, key `token`) to use instead of a chart-generated one.
+        # When set, the bundled APISIX must read the SAME Secret: override apisix.extraEnvVars
+        # below, or render fails with a message naming both Secrets.
+        existingSecret: ""
+      appApi:
+        # Existing Secret (key `token`) for the token dws-admin's sidecar attaches to calls into
+        # the dws-admin app port (:3000); dws-admin rejects every other caller.
+        existingSecret: ""
+    controller:
+      daprApi:
+        # Existing Secret (key `token`) for dws-controller's sidecar API token. The controller
+        # container receives it as DAPR_API_TOKEN so its own event publishing keeps working.
+        existingSecret: ""
+      appApi:
+        # RESERVED for a follow-up change (dws-controller's app-port check). Documented here so
+        # the value shape is stable; NOT rendered or consulted by this chart version.
+        existingSecret: ""
 
 # Apache APISIX (auth roadmap §2b, docs/roadmaps/dws-auth.md): the optional Gateway API data
 # plane + ingress controller backing the shared console/admin front door (see apiGateway below).
@@ -141,6 +174,32 @@ auth:
 # charts/dws/README.md#upgrading-from-a-pre-gateway-release for the verified recipe).
 apisix:
   enabled: false
+  # Admin Dapr API token injection (auth roadmap Phase 10; openspec auth-phase-10-api-tokens D4).
+  # The admin HTTPRoute sets the `dapr-api-token` request header to `$env://DWS_ADMIN_DAPR_API_TOKEN`
+  # (a reference APISIX resolves from its own environment, so the token never appears in a
+  # manifest). Two settings make that variable exist in the bundled APISIX, and BOTH are required:
+  #   1. extraEnvVars (here)   puts DWS_ADMIN_DAPR_API_TOKEN in the pod, from the admin Dapr API
+  #                            token Secret. The entries are run through `tpl` by the APISIX
+  #                            subchart, whose .Release.Name is this release's name.
+  #   2. apisix.nginx.envs     (below, nested under the subchart's own `apisix:` key) emits the
+  #                            nginx `env` directive that lets worker processes read it.
+  # If you set auth.apiTokens.admin.daprApi.existingSecret, change the Secret name here to match;
+  # rendering fails (naming both Secrets) if they disagree, or if either setting is dropped.
+  # These defaults assume auth.enabled=true, which apiGateway.enabled=true requires anyway. For
+  # an auth-off, apisix-only install, set `apisix.extraEnvVars=null` and clear the nginx envs.
+  # Verified live on docker-desktop 2026-10-31: APISIX 3.17 resolves `$env://` inside the route's proxy-rewrite header
+  # and the ingress controller merges it with the URLRewrite filter; see the
+  # tasks 1.x spike in openspec/changes/auth-phase-10-api-tokens; see the chart README.
+  extraEnvVars:
+    - name: DWS_ADMIN_DAPR_API_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: "{{ .Release.Name }}-admin-dapr-api-token"
+          key: token
+  apisix:
+    nginx:
+      envs:
+        - DWS_ADMIN_DAPR_API_TOKEN
   service:
     type: ClusterIP
     # The upstream apisix subchart's own default (externalTrafficPolicy: Cluster) is only valid

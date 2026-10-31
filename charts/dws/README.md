@@ -265,6 +265,143 @@ header-name-to-secret-key mapping that the single-string contract above cannot e
 deployment that needs authenticated Dapr export should point `observability.otlp.endpoint` at an
 in-cluster collector and let that collector authenticate upstream.
 
+## Machine-auth tokens
+
+With `auth.enabled=true` the chart also turns on Dapr's two machine-auth tokens for the
+control-plane sidecars (auth roadmap Phase 10; openspec change `auth-phase-10-api-tokens`). They
+are additive to the bearer JWT check, not a replacement for it, and render **only** when
+`auth.enabled=true` — with auth off none of the Secrets, annotations, env vars or route header
+below exist. There is no separate switch; `auth.enabled=false` is the kill switch.
+
+| Token | Secret (generated name) | What it does |
+|---|---|---|
+| admin Dapr API token | `<release>-admin-dapr-api-token` | A caller of the `dws-admin` sidecar's HTTP API must send it as the `dapr-api-token` header. The `dws-admin` app sends it on its own calls to its sidecar (`DAPR_API_TOKEN`), and the Gateway injects it on the `/dws-admin` route. |
+| admin app API token | `<release>-admin-app-api-token` | Dapr attaches it to every call from the `dws-admin` sidecar into the app port; `dws-admin` (`APP_API_TOKEN`) rejects any other caller, which closes the `<pod-ip>:3000` bypass. `GET /health` stays open for kubelet probes. |
+| controller Dapr API token | `<release>-controller-dapr-api-token` | Same as the admin Dapr API token, for the `dws-controller` sidecar. The controller container receives it as `DAPR_API_TOKEN` so its own event publishing keeps working. |
+
+Each component gets its own token, so a leak from one pod does not unlock another sidecar. Names
+come from the bare release name (`.Release.Name`), not the chart fullname, and every Secret holds
+the token under the key **`token`** (Dapr's contract for `dapr.io/api-token-secret` and
+`dapr.io/app-token-secret`). The controller's *app* token is reserved: `dws-controller`'s
+app-port check is a follow-up change, so its pod carries no `dapr.io/app-token-secret` and no
+`APP_API_TOKEN` yet, and `auth.apiTokens.controller.appApi.existingSecret` is not consulted.
+
+The tokens reach the containers only as `secretKeyRef` env vars and pod annotations naming a
+Secret. The chart never prints a token: `NOTES.txt` names the Secrets and the restart command,
+nothing more, and `tests/api-tokens-render-test.sh` never echoes Secret data either.
+
+### Generated or supplied
+
+By default the chart generates each token (48 random alphanumerics) and, on `helm upgrade`,
+reads it back from the cluster so it stays stable. **A generated token is readable by anyone who
+can read the Helm release Secret** (Helm stores the rendered manifest there) — the same trade-off
+the generated Dex and Postgres credentials make. `helm template` and `--dry-run` have no cluster
+to read, so they print a fresh random token on every run; do not paste their output anywhere.
+
+For production, create the Secret yourself — that keeps the token out of Helm entirely — and name
+it:
+
+```bash
+kubectl create secret generic my-admin-dapr-token --namespace dws-system \
+  --from-literal=token="$(openssl rand -hex 24)"
+
+helm upgrade --install dws charts/dws --namespace dws-system \
+  --set auth.enabled=true \
+  --set auth.apiTokens.admin.daprApi.existingSecret=my-admin-dapr-token
+```
+
+The three values are `auth.apiTokens.admin.daprApi.existingSecret`,
+`auth.apiTokens.admin.appApi.existingSecret` and
+`auth.apiTokens.controller.daprApi.existingSecret`. Each Secret must live in the release namespace
+and carry the key `token`; a named Secret is never created, modified or deleted by the chart.
+
+### Restart after every change (daprd reads the token at startup)
+
+daprd reads its token environment once, at start. After the first install with auth on, any
+`helm upgrade` that changes a token or a pod template, and any rotation, restart the affected
+workloads and wait for them — admin, controller **and** (if the Gateway is on) APISIX:
+
+```bash
+kubectl rollout restart --namespace dws-system \
+  deployment/<release>-dws-admin deployment/<release>-dws-controller deployment/<release>-apisix
+kubectl rollout status --namespace dws-system deployment/<release>-dws-admin
+```
+
+(`NOTES.txt` prints this with your real names.) Upgrading an existing `auth.enabled=true` release
+restarts the pods anyway because their templates change, but expect a brief window in which the
+old APISIX sends no token to the new admin sidecar (401): the upgrade is not zero-downtime for the
+admin API. Roll back with `helm rollback` or `auth.enabled=false`; chart-generated Secrets are
+removed on uninstall, supplied ones are never touched.
+
+### Rotating a token
+
+1. Replace the value in the Secret without printing it. For a chart-generated Secret (the chart
+   reads the stored value back on the next upgrade, so the new one sticks):
+   ```bash
+   kubectl patch secret <release>-admin-dapr-api-token --namespace dws-system --type merge \
+     --patch "{\"stringData\":{\"token\":\"$(openssl rand -hex 24)\"}}"
+   ```
+   For a supplied Secret, update it however you manage it.
+2. Restart the pods that use it **and** APISIX if it is the admin Dapr API token (command
+   above). Rotating the admin Dapr API token without restarting APISIX leaves the Gateway
+   injecting the old value, and every `/dws-admin` request returns 401.
+3. Check without revealing anything — with the Gateway on, the admin Service fronts the sidecar,
+   which must answer 401 to a call with no token (`<release>-dws-admin` is the admin fullname;
+   `NOTES.txt` and `kubectl get deploy` show yours):
+   ```bash
+   kubectl port-forward --namespace dws-system svc/<release>-dws-admin 3000:3000 &
+   curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/v1.0/invoke/<release>-dws-admin/method/instances
+   kill %1
+   ```
+
+### Gateway: the admin route injects the Dapr API token
+
+With `apiGateway.enabled=true`, the admin `HTTPRoute` carries a `RequestHeaderModifier` filter
+that `set`s the `dapr-api-token` header to `$env://DWS_ADMIN_DAPR_API_TOKEN` — a reference APISIX
+resolves from its own environment, so the token is never a cleartext value in any manifest. `set`
+(not `add`) means a client-supplied `dapr-api-token` is overwritten. The console route has no such
+filter, so the admin token is never sent to the console.
+
+> **Verified on Docker Desktop, 2026-10-31.** APISIX 3.17 resolves the environment reference, and ingress-controller 2.1.0 merges both filters into one Service `proxy-rewrite` configuration. A token-protected echo app confirmed the distinct app token reaches the app, including with a forged client header. See `openspec/changes/auth-phase-10-api-tokens/verify.md`.
+
+**Bundled APISIX (`apisix.enabled=true`)**: wired by default in `values.yaml`, two settings that
+are both required:
+
+```yaml
+apisix:
+  extraEnvVars:                      # puts the variable in the pod, from the admin Dapr API token Secret
+    - name: DWS_ADMIN_DAPR_API_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: "{{ .Release.Name }}-admin-dapr-api-token"
+          key: token
+  apisix:
+    nginx:
+      envs:                          # the APISIX chart's nginx.envs: lets nginx workers read it
+        - DWS_ADMIN_DAPR_API_TOKEN
+```
+
+Render fails with a message naming the problem if the variable is missing from `extraEnvVars`, if
+it is sourced from a different Secret than the admin Dapr API token Secret (for example after you
+set `auth.apiTokens.admin.daprApi.existingSecret` and forgot to re-point APISIX — override
+`apisix.extraEnvVars` with your Secret's name), or if it is absent from the nginx `envs`.
+These defaults assume `auth.enabled=true`, which `apiGateway.enabled=true` requires anyway; for an
+auth-off install that only wants APISIX, clear both settings.
+
+**External APISIX (`apisix.enabled=false`)**: the chart cannot render into a workload it does not
+own, and nothing is added to it. You must expose the same variable the same way:
+
+- set `DWS_ADMIN_DAPR_API_TOKEN` on the APISIX data-plane pods from the admin Dapr API token Secret
+  (`<release>-admin-dapr-api-token`, or your `existingSecret`, key `token`). A Secret reference
+  only works within a namespace, so if APISIX runs elsewhere, copy the Secret there (or manage
+  one Secret yourself and name it in both places);
+- list `DWS_ADMIN_DAPR_API_TOKEN` in APISIX's nginx `env` allow-list (`nginx_config.envs` in its
+  `config.yaml`; `apisix.nginx.envs` in the APISIX Helm chart);
+- restart APISIX whenever the token changes.
+
+Without both, the Gateway sends no valid token and every `/dws-admin` request returns 401 from
+the Dapr sidecar.
+
 ## Validating changes to this chart
 
 The observability render test compares a committed fixture byte-for-byte, so it requires Helm
@@ -280,8 +417,11 @@ bash tests/api-gateway-render-test.sh .
 bash tests/auth-pipeline-placement-test.sh .
 bash tests/observability-render-test.sh .
 bash tests/orchestrator-wiring-render-test.sh .
+bash tests/api-tokens-render-test.sh .
 ```
 
 `scripts/verify-console-ingress-migration.sh` (repo root) additionally rehearses the pre-Gateway
 migration end to end against a real cluster in a disposable namespace; see its header comment for
 prerequisites.
+
+The gateway live script supports GW_E2E_CONTROLLER_TAG to select an available controller tag, GW_E2E_VERIFY_RESTARTS=1 to test individual pod deletion recovery, and GW_E2E_KEEP_NAMESPACE=1 to retain its disposable namespace for additional probes. Clean retained releases with the script's normal cleanup on the next run.

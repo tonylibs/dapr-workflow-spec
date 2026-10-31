@@ -163,6 +163,25 @@ the console's dev-server URL, not this service's port, from a browser.
 
 ---
 
+## Machine-auth tokens (optional)
+
+Two optional environment variables carry Dapr's machine-auth tokens (auth roadmap Phase 10). Both
+are off when unset or blank, and with both unset the service behaves exactly as it did before they
+existed. The Helm chart sets them from chart-managed Secrets only when `auth.enabled=true`; the
+names are a contract with the chart (pinned by `configuration.spec.ts`), so don't rename them on
+one side only.
+
+| Variable | Used for |
+|---|---|
+| `APP_API_TOKEN` | The *app API token*: the value this pod's sidecar attaches as the `dapr-api-token` header on every call into the app. When set, the app port rejects every request that does not carry it with `401` (same body whether the header is missing or wrong), before any body is parsed or route runs. Only an exact `GET /health` is exempt, because the kubelet's probes dial the pod IP and cannot send it; `/health/`, `/Health` and `/docs` still need the token. This closes the `<pod-ip>:3000` bypass, including forged `POST /dapr/events/dws`. |
+| `DAPR_API_TOKEN` | The *Dapr API token* for this pod's own sidecar. When set, the compile/submit relay (`POST /workflows`) sends it as `dapr-api-token` on its call to the sidecar, next to the caller's `Authorization` header, which is still forwarded verbatim. The inbound `dapr-api-token` (the app token) is never forwarded. |
+
+Neither value is logged or returned in any response. For local development under `dapr run`, leave
+both unset, or export the same two variables in the environment you run `dapr run` from — daprd
+reads `DAPR_API_TOKEN` and `APP_API_TOKEN` too, so the sidecar and the app then agree.
+
+---
+
 ## Build & test
 
 Event-ingestion tests exercise the real upsert SQL (`ON CONFLICT ... DO UPDATE` merge rules) against

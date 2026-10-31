@@ -50,6 +50,14 @@ spec:
         # Stays gated on auth alone: only the auth topology puts a Service in front of port 3500.
         # Observability does not expose the sidecar, so enabling it must not widen this bind.
         dapr.io/sidecar-listen-addresses: "[::],0.0.0.0"
+        {{- /*
+          Dapr machine-auth tokens (auth roadmap Phase 10, templates/auth/api-token-secrets.yaml):
+          the sidecar API requires the first token, and the sidecar attaches the second to every
+          call into the app port so dws-admin can reject anyone else (the pod-IP:3000 bypass).
+          daprd reads both at startup, so pods must restart after a change.
+        */}}
+        dapr.io/api-token-secret: {{ include "dws.apiTokens.secretName" (dict "root" . "component" "admin" "kind" "daprApi") | quote }}
+        dapr.io/app-token-secret: {{ include "dws.apiTokens.secretName" (dict "root" . "component" "admin" "kind" "appApi") | quote }}
         {{- end }}
         {{- /*
           OpenTelemetry Node.js agent injection, targeted at the `admin` container only — an
@@ -143,6 +151,19 @@ spec:
               value: {{ .Values.admin.pubsub.topic | quote }}
             - name: DAPR_CONTROLLER_APP_ID
               value: {{ include "dws.controller.fullname" . | quote }}
+            {{- end }}
+            {{- if .Values.auth.enabled }}
+            {{- /*
+              Set explicitly from the Secrets rather than relying on the Dapr injector to populate
+              them in the app container (it differs across Dapr versions, and a missing or
+              duplicate variable is a silent failure). DAPR_API_TOKEN is what dws-admin sends to
+              its own sidecar; APP_API_TOKEN is what it requires from callers on :3000. Always a
+              secretKeyRef, never a literal. Names are the chart <-> dws-admin env contract.
+            */}}
+            - name: DAPR_API_TOKEN
+              {{- include "dws.apiTokens.secretKeyRef" (dict "root" . "component" "admin" "kind" "daprApi") | nindent 14 }}
+            - name: APP_API_TOKEN
+              {{- include "dws.apiTokens.secretKeyRef" (dict "root" . "component" "admin" "kind" "appApi") | nindent 14 }}
             {{- end }}
           livenessProbe:
             httpGet:
