@@ -261,6 +261,10 @@ env_entry "$ctrl_dep" DAPR_API_TOKEN | grep -qF 'name: "s-ctrl-dapr"' || die "co
 ok
 
 # A disabled component gets no orphan Secret.
+render_fails shared_dapr_secret "must use different Secrets" "${auth_args[@]}" \
+  --set auth.apiTokens.admin.daprApi.existingSecret=shared-token \
+  --set auth.apiTokens.controller.daprApi.existingSecret=shared-token
+
 render admin_off "${auth_args[@]}" --set admin.enabled=false
 [ "$(token_secret_names admin_off | tr '\n' ' ')" = "$release-controller-dapr-api-token " ] \
   || die "admin.enabled=false still renders admin token Secrets"

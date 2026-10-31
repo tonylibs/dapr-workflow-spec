@@ -187,8 +187,8 @@ apisix:
   # rendering fails (naming both Secrets) if they disagree, or if either setting is dropped.
   # These defaults assume auth.enabled=true, which apiGateway.enabled=true requires anyway. For
   # an auth-off, apisix-only install, set `apisix.extraEnvVars=null` and clear the nginx envs.
-  # UNVERIFIED LIVE: that APISIX 3.17 resolves `$env://` inside the route's proxy-rewrite header
-  # (and that the ingress controller merges it with the URLRewrite filter) is gated on the
+  # Verified live on docker-desktop 2026-10-31: APISIX 3.17 resolves `$env://` inside the route's proxy-rewrite header
+  # and the ingress controller merges it with the URLRewrite filter; see the
   # tasks 1.x spike in openspec/changes/auth-phase-10-api-tokens; see the chart README.
   extraEnvVars:
     - name: DWS_ADMIN_DAPR_API_TOKEN

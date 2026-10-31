@@ -127,6 +127,12 @@ cleanup() {
     [ -n "${pid:-}" ] && kill "$pid" >/dev/null 2>&1 || true
   done
 
+  if [ "${GW_E2E_KEEP_NAMESPACE:-0}" = 1 ] && [ -n "${WORKDIR:-}" ]; then
+    echo "Keeping disposable namespace $NAMESPACE for follow-up verification"
+    rm -rf "$WORKDIR"
+    return
+  fi
+
   # The chart-owned GatewayClass (cluster-scoped, dws.apiGateway.className) carries an
   # apisix.apache.org/gc-protection finalizer that only a LIVE apisix-ingress-controller can
   # clear. `helm uninstall` gives no ordering guarantee that the controller processes this
@@ -414,6 +420,7 @@ helm install "$RELEASE" "$CHART_DIR" \
   --timeout 10m \
   --set dapr.enabled=false \
   --set controller.enabled=${CONTROLLER_ENABLED} \
+  --set controller.image.tag="${GW_E2E_CONTROLLER_TAG:-}" \
   --set postgresql.enabled=true \
   --set admin.enabled=true \
   --set admin.image.repository=dws-admin \
@@ -970,6 +977,31 @@ admin_prefix_code="$(curl -sS -o "$WORKDIR/a4-admin-body.json" -w '%{http_code}'
 jq -e 'has("items")' "$WORKDIR/a4-admin-body.json" >/dev/null \
   || fail_and_exit "/dws-admin/instances did not return the admin JSON shape -- console may have shadowed the admin route"
 pass "/dws-admin/instances still returns the admin JSON payload (not the console's HTML) -- the admin PathPrefix rule wins over the console's catch-all /"
+
+if [ "${GW_E2E_VERIFY_RESTARTS:-0}" = 1 ]; then
+  components=(admin apisix)
+  [ "$INCLUDE_CONTROLLER" != 1 ] || components+=(controller)
+  for component in "${components[@]}"; do
+    selector="app.kubernetes.io/component=$component"
+    [ "$component" != apisix ] || selector="app.kubernetes.io/name=apisix,app.kubernetes.io/instance=$RELEASE"
+    kubectl -n "$NAMESPACE" delete pods -l "$selector" --wait=true
+    kubectl -n "$NAMESPACE" rollout status "deployment/${RELEASE}-${component}" --timeout=3m
+    recovered=0
+    for _ in $(seq 1 30); do
+      code="$(MSYS_NO_PATHCONV=1 kubectl -n "$NAMESPACE" exec deployment/bearer-caller -c caller -- \
+        curl --max-time 10 -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $VALID_TOKEN" \
+        "http://${APISIX_GATEWAY_SVC}/dws-admin/instances" || true)"
+      if [ "$code" = 200 ]; then recovered=1; break; fi
+      sleep 2
+    done
+    [ "$recovered" = 1 ] || fail_and_exit "$component restart did not recover authenticated Gateway requests"
+    pass "$component pod deletion recovered Ready and authenticated Gateway HTTP 200"
+  done
+  kubectl -n "$NAMESPACE" logs deployment/"${RELEASE}-admin" -c daprd >"$WORKDIR/restarted-admin-daprd.log"
+  grep -q 'app is subscribed to the following topics: \[\[dws.events\]\]' "$WORKDIR/restarted-admin-daprd.log" \
+    || fail_and_exit "admin subscription did not re-register after restart"
+  pass "admin subscription re-registered after restart"
+fi
 
 echo
 echo "=== ${PASS_COUNT} assertions passed. verify-gateway-sse-path.sh: all checks passed ==="

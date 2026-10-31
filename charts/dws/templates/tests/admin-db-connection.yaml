@@ -1,4 +1,42 @@
 {{- if .Values.admin.enabled }}
+{{- if .Values.auth.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{ include "dws.admin.fullname" . }}-db-connection-test"
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: admin
+  annotations:
+    "helm.sh/hook": test
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "{{ include "dws.admin.fullname" . }}-db-test"
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: curl
+          image: curlimages/curl:8.11.1
+          command: ["sh", "-c"]
+          args:
+            - |
+              until curl -sSf http://localhost:3501/v1.0/healthz >/dev/null 2>&1; do sleep 1; done
+              trap 'curl -sS -X POST http://localhost:3500/v1.0/shutdown >/dev/null 2>&1 || true' EXIT
+              body=$(curl -sS -w '\n%{http_code}' "http://localhost:3500/v1.0/invoke/{{ include "dws.admin.fullname" . }}/method/health")
+              status=$(echo "$body" | tail -n1)
+              payload=$(echo "$body" | sed '$d')
+              if [ "$status" != "200" ]; then
+                echo "admin /health returned HTTP $status"
+                exit 1
+              fi
+              echo "$payload" | grep -q '"database":{"status":"up"' || exit 1
+              echo "admin database health is up"
+{{- else }}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -29,4 +67,5 @@ spec:
             exit 1
           }
   restartPolicy: Never
+{{- end }}
 {{- end }}

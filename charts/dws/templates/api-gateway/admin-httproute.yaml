@@ -18,9 +18,7 @@ here, and ONLY on this route -- the console route has no such filter, so the adm
 sent to the console. The value is an `$env://` reference that APISIX resolves from its own
 environment (bundled: apisix.extraEnvVars + apisix.apisix.nginx.envs in values.yaml, enforced by
 dws.apiGateway.validate; external: the operator exposes the same variable, see the chart README),
-so the token never appears in this manifest. PENDING live spike (openspec tasks 1.1-1.3): that the
-pinned apisix-ingress-controller merges this filter with URLRewrite into one proxy-rewrite
-config, and that APISIX 3.17 resolves `$env://` in proxy-rewrite headers. No literal-token
+so the token never appears in this manifest. Verified on docker-desktop 2026-10-31: the ingress controller places both filters in one Service proxy-rewrite configuration, and APISIX resolves the environment reference. See the change verify.md. No literal-token
 fallback exists in this chart; if the spike fails, the design is revisited, not worked around.
 
 Path-prefix matching ranks this rule ahead of the console's PathPrefix "/" rule

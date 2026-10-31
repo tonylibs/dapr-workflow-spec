@@ -362,11 +362,7 @@ resolves from its own environment, so the token is never a cleartext value in an
 (not `add`) means a client-supplied `dapr-api-token` is overwritten. The console route has no such
 filter, so the admin token is never sent to the console.
 
-> **Pending live confirmation.** This design assumes (a) the pinned apisix-ingress-controller
-> merges the `URLRewrite` and `RequestHeaderModifier` filters into one `proxy-rewrite` config and
-> (b) APISIX 3.17 resolves `$env://` inside `proxy-rewrite` headers. Both are gated on the spike in
-> openspec `auth-phase-10-api-tokens` tasks 1.1–1.3, which needs a cluster. The chart has no
-> literal-token fallback; if the spike fails, the design is revisited rather than worked around.
+> **Verified on Docker Desktop, 2026-10-31.** APISIX 3.17 resolves the environment reference, and ingress-controller 2.1.0 merges both filters into one Service `proxy-rewrite` configuration. A token-protected echo app confirmed the distinct app token reaches the app, including with a forged client header. See `openspec/changes/auth-phase-10-api-tokens/verify.md`.
 
 **Bundled APISIX (`apisix.enabled=true`)**: wired by default in `values.yaml`, two settings that
 are both required:
@@ -427,3 +423,5 @@ bash tests/api-tokens-render-test.sh .
 `scripts/verify-console-ingress-migration.sh` (repo root) additionally rehearses the pre-Gateway
 migration end to end against a real cluster in a disposable namespace; see its header comment for
 prerequisites.
+
+The gateway live script supports GW_E2E_CONTROLLER_TAG to select an available controller tag, GW_E2E_VERIFY_RESTARTS=1 to test individual pod deletion recovery, and GW_E2E_KEEP_NAMESPACE=1 to retain its disposable namespace for additional probes. Clean retained releases with the script's normal cleanup on the next run.

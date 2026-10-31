@@ -113,7 +113,7 @@ The data plane resolves the reference from its own environment:
   makes "supply your own Secret" safe: the guard forces the operator to re-point APISIX instead
   of letting the route inject a stale value that Dapr then 401s.
 
-**Unverified assumptions, gated by a spike (tasks 1.x) before any chart work is built on them:**
+**Live spike passed (2026-10-31, docker-desktop; tasks 1.1-1.4).** The ingress controller places the merged proxy-rewrite configuration on the APISIX Service referenced by the Route. An echo app behind a token-protected sidecar returned only `match: true, length: 48`, including for a forged client header: APISIX resolves the environment reference and daprd replaces the sidecar API token with the app token. Retain the RequestHeaderModifier approach. See `verify.md` for evidence. The original assumptions were:
 (a) the pinned ingress controller (apisix-ingress-controller 2.1.0) merges `URLRewrite` and
 `RequestHeaderModifier` into a single `proxy-rewrite` configuration rather than one overwriting the
 other; (b) APISIX 3.17 resolves `$env://` inside `proxy-rewrite`'s `headers.set`, i.e. secret

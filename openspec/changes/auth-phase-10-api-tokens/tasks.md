@@ -6,10 +6,10 @@ render-only check.
 
 ## 1. Spike: can APISIX inject a Secret-backed header? (gates group 4)
 
-- [ ] 1.1 On a disposable namespace with bundled APISIX, create an `HTTPRoute` with both a `URLRewrite` and a `RequestHeaderModifier` `set` filter. Verify via the APISIX Admin API (`/apisix/admin/routes`) that both land in one `proxy-rewrite` config (design D4 assumption a). Record the JSON in `verify.md`.
-- [ ] 1.2 Set `apisix.extraEnvVars` (Secret-sourced) and `apisix.nginx.envs` for a test variable, use `$env://VAR` as the header value, and verify an echo upstream receives the Secret's value, not the literal `$env://VAR` string (assumption b). Never print the value: compare by hash or length only.
-- [ ] 1.3 Decide the path and record it in `design.md` D4: pass → proceed; (a) fails → switch to `PluginConfig`/`ExtensionRef`; (b) fails → stop and ask the owner before using any literal-in-manifest fallback.
-- [ ] 1.4 Verify on the same cluster what daprd sends the app: confirm the inbound `dapr-api-token` the app sees on a service-invoked request is the **app** token, not the Dapr API token that APISIX/the caller sent (design Risks). Update D3 if it is not.
+- [x] 1.1 On a disposable namespace with bundled APISIX, create an `HTTPRoute` with both a `URLRewrite` and a `RequestHeaderModifier` `set` filter. Verify via the APISIX Admin API (`/apisix/admin/routes`) that both land in one `proxy-rewrite` config (design D4 assumption a). Record the JSON in `verify.md`.
+- [x] 1.2 Set `apisix.extraEnvVars` (Secret-sourced) and `apisix.nginx.envs` for a test variable, use `$env://VAR` as the header value, and verify an echo upstream receives the Secret's value, not the literal `$env://VAR` string (assumption b). Never print the value: compare by hash or length only.
+- [x] 1.3 Decide the path and record it in `design.md` D4: pass → proceed; (a) fails → switch to `PluginConfig`/`ExtensionRef`; (b) fails → stop and ask the owner before using any literal-in-manifest fallback.
+- [x] 1.4 Verify on the same cluster what daprd sends the app: confirm the inbound `dapr-api-token` the app sees on a service-invoked request is the **app** token, not the Dapr API token that APISIX/the caller sent (design Risks). Update D3 if it is not.
 
 ## 2. dws-admin: app-token middleware and relay
 
@@ -41,11 +41,11 @@ render-only check.
 ## 5. Callers that deliberately skip the token
 
 - [x] 5.1 `scripts/verify-gateway-sse-path.sh`: the direct-to-sidecar and direct-to-app calls (port-forward to the admin Service, `bearer-caller` pod) must now send the required token header from a Secret read inside the script without echoing it, and gain new negative cases (no token, wrong token, valid bearer + no token, valid token + no bearer, forged `dapr-api-token` through the Gateway). Verify against `bash -n` and shellcheck here; live run is group 6.
-- [ ] 5.2 `charts/dws/templates/tests/controller-auth-negative.yaml`: keep passing (the Job calls through its own sidecar, so its call is unaffected); add a second assertion that the controller sidecar's public API rejects a call with no `dapr-api-token`, without printing any token. Verify by render and, live, `helm test`.
-  - Render done, live `helm test` pending (group 6). The controller sidecar API is loopback-only (no `dapr.io/sidecar-listen-addresses` on the controller), so a hook pod cannot call it. Implemented instead as a second Job, `<controller>-token-negative-test`, whose own sidecar is configured with the controller's token Secret: 401 with no or a wrong token, 200 with the Secret's token, and the controller Service path 401 or refused. The token goes through `SENTINEL_DAPR_API_TOKEN`, never `DAPR_API_TOKEN`, to avoid injector duplication. Asserting on the real controller sidecar still needs same-pod access (task 6.3).
+- [x] 5.2 `charts/dws/templates/tests/controller-auth-negative.yaml`: keep passing (the Job calls through its own sidecar, so its call is unaffected); add a second assertion that the controller sidecar's public API rejects a call with no `dapr-api-token`, without printing any token. Verify by render and, live, `helm test`.
+  - Render and live `helm test` passed on 2026-10-31. The controller sidecar API is loopback-only (no `dapr.io/sidecar-listen-addresses` on the controller), so a hook pod cannot call it. Implemented instead as a second Job, `<controller>-token-negative-test`, whose own sidecar is configured with the controller's token Secret: 401 with no or a wrong token, 200 with the Secret's token, and the controller Service path 401 or refused. The token goes through `SENTINEL_DAPR_API_TOKEN`, never `DAPR_API_TOKEN`, to avoid injector duplication. Asserting on the real controller sidecar still needs same-pod access (task 6.3).
 - [x] 5.3 `.github/workflows/helm.yml` pubsub e2e job installs with auth off, so its direct `:3000` and `:3500` calls are unaffected; verify by reading the job's `--set` list and note it in `verify.md`. If any other job turns auth on, update its calls.
-- [ ] 5.4 Confirm `scripts/verify-console-ingress-migration.sh` needs no change (it issues no direct app or sidecar calls) and that it passes in group 6.
-  - Read: no change needed (it makes no direct app or sidecar call; its only live calls are `wget` to the legacy admin-gateway nginx `/healthz`). Its bundled and external auth-on upgrade steps still render with the new defaults and guard. The "passes in group 6" half is pending.
+- [x] 5.4 Confirm `scripts/verify-console-ingress-migration.sh` needs no change (it issues no direct app or sidecar calls) and that it passes in group 6.
+  - Read: no change needed (it makes no direct app or sidecar call; its only live calls are `wget` to the legacy admin-gateway nginx `/healthz`). Its bundled and external auth-on upgrade steps still render with the new defaults and guard. Final migration run passed all 19 assertions on 2026-10-31.
 
 ## 6. Live verification on the owner's local cluster
 
@@ -53,21 +53,21 @@ Daprd reads `Configuration` and token env only at startup. After every `helm ins
 `kubectl rollout restart` admin, controller **and** APISIX, and wait for rollout, before asserting.
 Never print a token; assert on status codes.
 
-- [ ] 6.1 Install with `auth.enabled=true`, `apiGateway.enabled=true`, `apisix.enabled=true`. Verify the subscription registers (`app is subscribed to the following topics: [[dws.events]]`), a `dws.events` message reaches the read model, and daprd logs show no 401 from the app channel (`/dapr/subscribe`, delivery, `/dapr/config`).
-- [ ] 6.2 Negative bearer matrix on **both apps**, now with the correct Dapr API token on every request: no-auth / malformed / tampered-sig / wrong-aud / wrong-iss → 401, valid → 200. Admin via the sidecar, controller via service invocation from the caller pod. Record the matrix.
-- [ ] 6.3 Token matrix on the admin sidecar: valid bearer + no token, valid bearer + wrong token, valid token + no bearer → 401; both valid → 200. Controller sidecar public API with no token → 401. Record.
-- [ ] 6.4 Pod-IP bypass closed: from another pod, `GET <admin-pod-ip>:3000/instances` and a forged `POST <admin-pod-ip>:3000/dapr/events/dws` with no token and with a wrong token → 401, read model unchanged. `GET <admin-pod-ip>:3000/health` → 200, and the pod stays Ready (kubelet probes). Record the controller `<pod-ip>:8080` result as still open (expected 200), supporting D7.
-- [ ] 6.5 Non-buffered SSE (§2d) through Gateway → APISIX → Dapr invoke → Nest: a named `event: instance` frame arrives while the connection is still open. Record time-to-first-frame.
-- [ ] 6.6 APISIX upstream health checks: query the Admin API and confirm the admin upstream still has no active/passive `checks` (script assertion), or, if that changed, that the probe carries the token. Ten authenticated requests stay 200 after the negative cases.
-- [ ] 6.7 Pod restart behavior: delete the admin pod, the controller pod, and the APISIX pod in turn. Verify each comes back Ready, the Gateway serves 200 with a valid bearer within the rollout window, the subscription re-registers, and the injected token still matches (no 401 loop).
-- [ ] 6.8 Forged `dapr-api-token` through the Gateway with a valid bearer still returns 200 (APISIX replaced it) and a forged one cannot be used to reach the sidecar directly (401).
-- [ ] 6.9 Run `scripts/verify-gateway-sse-path.sh` and `scripts/verify-console-ingress-migration.sh`; both exit 0. Run `helm test` on the release; passes.
-- [ ] 6.10 Write `openspec/changes/auth-phase-10-api-tokens/verify.md` with cluster context, commands, exit codes, and the full matrix as a table (no tokens, no JWTs). Report the matrix to the owner.
+- [x] 6.1 Install with `auth.enabled=true`, `apiGateway.enabled=true`, `apisix.enabled=true`. Verify the subscription registers (`app is subscribed to the following topics: [[dws.events]]`), a `dws.events` message reaches the read model, and daprd logs show no 401 from the app channel (`/dapr/subscribe`, delivery, `/dapr/config`).
+- [x] 6.2 Negative bearer matrix on **both apps**, now with the correct Dapr API token on every request: no-auth / malformed / tampered-sig / wrong-aud / wrong-iss → 401, valid → 200. Admin via the sidecar, controller via service invocation from the caller pod. Record the matrix.
+- [x] 6.3 Token matrix on the admin sidecar: valid bearer + no token, valid bearer + wrong token, valid token + no bearer → 401; both valid → 200. Controller sidecar public API with no token → 401. Record.
+- [x] 6.4 Pod-IP bypass closed: from another pod, `GET <admin-pod-ip>:3000/instances` and a forged `POST <admin-pod-ip>:3000/dapr/events/dws` with no token and with a wrong token → 401, read model unchanged. `GET <admin-pod-ip>:3000/health` → 200, and the pod stays Ready (kubelet probes). Record the controller `<pod-ip>:8080` result as still open (expected 200), supporting D7.
+- [x] 6.5 Non-buffered SSE (§2d) through Gateway → APISIX → Dapr invoke → Nest: a named `event: instance` frame arrives while the connection is still open. Record time-to-first-frame.
+- [x] 6.6 APISIX upstream health checks: query the Admin API and confirm the admin upstream still has no active/passive `checks` (script assertion), or, if that changed, that the probe carries the token. Ten authenticated requests stay 200 after the negative cases.
+- [x] 6.7 Pod restart behavior: delete the admin pod, the controller pod, and the APISIX pod in turn. Verify each comes back Ready, the Gateway serves 200 with a valid bearer within the rollout window, the subscription re-registers, and the injected token still matches (no 401 loop).
+- [x] 6.8 Forged `dapr-api-token` through the Gateway with a valid bearer still returns 200 (APISIX replaced it) and a forged one cannot be used to reach the sidecar directly (401).
+- [x] 6.9 Run `scripts/verify-gateway-sse-path.sh` and `scripts/verify-console-ingress-migration.sh`; both exit 0. Run `helm test` on the release; passes.
+- [x] 6.10 Write `openspec/changes/auth-phase-10-api-tokens/verify.md` with cluster context, commands, exit codes, and the full matrix as a table (no tokens, no JWTs). Report the matrix to the owner.
 
 ## 7. Roadmap and contracts
 
-- [ ] 7.1 `docs/roadmaps/dws-auth.md`: mark Phase 10 done with a dated progress entry; rewrite the "Accepted risk" bullet in the 2026-09-13 decision as closed; correct §4's pod-IP:8080 item (re-point to the controller app-token follow-up, withdraw `quarkus.http.host=127.0.0.1` because kubelet `httpGet` probes dial the pod IP); correct the §2e Phase 10 paragraph if verification shows it was wrong. Verify the document renders and links resolve.
-  - Done except "mark Phase 10 done": the row says 🟢 implemented, not ✅, until groups 1 and 6 pass. The §2e paragraph was not changed on substance (no live data yet); a pre-existing splice in it was repaired.
+- [x] 7.1 `docs/roadmaps/dws-auth.md`: mark Phase 10 done with a dated progress entry; rewrite the "Accepted risk" bullet in the 2026-09-13 decision as closed; correct §4's pod-IP:8080 item (re-point to the controller app-token follow-up, withdraw `quarkus.http.host=127.0.0.1` because kubelet `httpGet` probes dial the pod IP); correct the §2e Phase 10 paragraph if verification shows it was wrong. Verify the document renders and links resolve.
+  - Phase 10 marked verified 2026-10-31; §2e remains accurate (complementary machine identity), and §4 retains the controller follow-up.
 - [x] 7.2 Root `CLAUDE.md`: add the chart ↔ `dws-admin` token env contract (`DAPR_API_TOKEN`, `APP_API_TOKEN`, Secret key `token`) to the cross-package contract section, naming the tests that pin it. Verify it matches the names in `configuration.ts` and the Deployment.
 - [x] 7.3 Record the `dws-controller` finding (D7) as a roadmap §4 open item with severity, scope and the sized work, so the follow-up change has a starting point. Verify the item names the exact endpoints exposed.
 
