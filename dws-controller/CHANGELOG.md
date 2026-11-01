@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.3.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-controller-v1.2.1...dws-controller-v1.3.0) (2026-11-01)
+
+
+### Features
+
+* **controller:** add DWS_LOG_FORMAT json logging with scrubber and contract test ([5220cd4](https://github.com/tonylibs/dapr-workflow-spec/commit/5220cd4ab8c6166ae145f515c38327dfa5d9eab0))
+* **controller:** stamp DWS_LOG_FORMAT=json on instrumented orchestrators ([474e48f](https://github.com/tonylibs/dapr-workflow-spec/commit/474e48fe0c2204158cfff27263ce3ce288a2cba7))
+
+
+### Bug Fixes
+
+* **controller:** keep document URL query and userinfo out of OpenAPI fetch errors ([60726b0](https://github.com/tonylibs/dapr-workflow-spec/commit/60726b0cfecb7d07b852f8b63f55d59f1fdc4fe7))
+
+
+### Documentation
+
+* **openspec:** propose observability-phase4-log-trace-correlation ([1488723](https://github.com/tonylibs/dapr-workflow-spec/commit/14887238840cba7cb9c32a30cfe5feabdba241b5))
+
 ## [1.2.1](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-controller-v1.2.0...dws-controller-v1.2.1) (2026-10-11)
 
 
