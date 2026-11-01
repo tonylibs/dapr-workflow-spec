@@ -24,6 +24,12 @@
   starts without waiting on an app port, so curl runs immediately, exits, and the sidecar
   is torn down by daprd's /shutdown API. Job then reaches Succeeded and `helm test`
   returns quickly.
+
+  Dapr API token (auth roadmap Phase 10): this Job's own sidecar deliberately has NO
+  dapr.io/api-token-secret, so its call is unaffected by the controller's token requirement
+  (service invocation arrives at the controller's sidecar over internal gRPC, which the token
+  does not gate) and the 401 above can only come from the bearer middleware. The token itself is
+  asserted by the second Job in this file, which never prints it.
 */}}
 {{- if and .Values.controller.enabled .Values.auth.enabled }}
 apiVersion: batch/v1
@@ -75,5 +81,110 @@ spec:
               # alongside daprd. daprd exits its process on /shutdown; the Pod then reaches
               # Succeeded/Failed and `helm test` returns.
               curl -sS -X POST http://localhost:3500/v1.0/shutdown >/dev/null 2>&1 || true
+              exit $rc
+---
+{{- /*
+  Dapr API token assertion (auth roadmap Phase 10, openspec auth-phase-10-api-tokens task 5.2).
+
+  The controller sidecar's own HTTP API is loopback-only, so no other pod can call it, and a
+  helm test Job cannot share the controller pod's network namespace. What this Job proves live
+  instead, from a pod that CAN reach a sidecar of its own:
+
+    1. a sidecar started with dapr.io/api-token-secret naming the controller's Dapr API token
+       Secret (the very Secret and annotation the controller pod uses) answers 401 to a call with
+       no dapr-api-token, and 401 to a wrong one;
+    2. the same call with the right token succeeds -- so the Secret holds the key `token` and the
+       token is enforced end to end, not merely configured;
+    3. the controller Service path (targetPort 3500) never serves an un-tokened sidecar API call
+       to the pod network: 401 or a refused connection are both acceptable (loopback bind), any
+       2xx/3xx/4xx-other would mean the API is open.
+
+  Asserting the REAL controller sidecar from inside its own pod (kubectl debug / exec) is live
+  verification task 6.3, not something a hook can do.
+
+  The token is read into a variable named SENTINEL_DAPR_API_TOKEN (deliberately not
+  DAPR_API_TOKEN, which the sidecar injector may also populate) from a secretKeyRef, sent only as a
+  request header, and never echoed: no `set -x`, no curl -v, only status codes are printed.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{ include "dws.controller.fullname" . }}-token-negative-test"
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        {{- include "dws.labels" . | nindent 8 }}
+        app.kubernetes.io/component: controller
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "{{ include "dws.controller.fullname" . }}-token-negative-test"
+        dapr.io/api-token-secret: {{ include "dws.apiTokens.secretName" (dict "root" . "component" "controller" "kind" "daprApi") | quote }}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: curl
+          image: curlimages/curl:8.11.1
+          env:
+            - name: SENTINEL_DAPR_API_TOKEN
+              {{- include "dws.apiTokens.secretKeyRef" (dict "root" . "component" "controller" "kind" "daprApi") | nindent 14 }}
+          command: ["sh", "-c"]
+          args:
+            - |
+              # Wait for the local sidecar. /v1.0/healthz on the public port is not token-gated.
+              until curl -sSf http://localhost:3501/v1.0/healthz >/dev/null 2>&1; do
+                echo "waiting for local daprd" >&2
+                sleep 1
+              done
+              api=http://localhost:3500/v1.0/metadata
+              rc=0
+
+              status=$(curl -sS -o /dev/null -w '%{http_code}' "$api" || true)
+              echo "no-token sidecar API status: $status"
+              if [ "$status" = "401" ]; then
+                echo "PASS: the sidecar rejected a call with no dapr-api-token"
+              else
+                echo "FAIL: expected 401 for a call with no dapr-api-token, got $status"
+                rc=1
+              fi
+
+              status=$(curl -sS -o /dev/null -w '%{http_code}' -H "dapr-api-token: not-the-token" "$api" || true)
+              echo "wrong-token sidecar API status: $status"
+              if [ "$status" = "401" ]; then
+                echo "PASS: the sidecar rejected a wrong dapr-api-token"
+              else
+                echo "FAIL: expected 401 for a wrong dapr-api-token, got $status"
+                rc=1
+              fi
+
+              status=$(curl -sS -o /dev/null -w '%{http_code}' -H "dapr-api-token: ${SENTINEL_DAPR_API_TOKEN}" "$api" || true)
+              echo "correct-token sidecar API status: $status"
+              if [ "$status" = "200" ]; then
+                echo "PASS: the sidecar accepted the token from the controller Dapr API token Secret"
+              else
+                echo "FAIL: expected 200 with the Secret's token, got $status"
+                rc=1
+              fi
+
+              status=$(curl -sS -m 10 -o /dev/null -w '%{http_code}' "http://{{ include "dws.controller.fullname" . }}.{{ include "dws.namespace" . }}.svc:{{ .Values.controller.service.port }}/v1.0/metadata" || true)
+              echo "controller Service path, no token, status: $status"
+              if [ "$status" = "401" ] || [ "$status" = "000" ]; then
+                echo "PASS: the controller Service path does not serve an un-tokened sidecar API call"
+              else
+                echo "FAIL: expected 401 or a refused connection from the controller Service path, got $status"
+                rc=1
+              fi
+
+              # This sidecar now requires the token on every call, including shutdown.
+              curl -sS -X POST -H "dapr-api-token: ${SENTINEL_DAPR_API_TOKEN}" http://localhost:3500/v1.0/shutdown >/dev/null 2>&1 || true
               exit $rc
 {{- end }}

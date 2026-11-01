@@ -74,6 +74,9 @@ jobs:
       - name: Verify orchestrator wiring (RBAC, service account, actor state store)
         run: bash ${{ env.CHART_DIR }}/tests/orchestrator-wiring-render-test.sh ${{ env.CHART_DIR }}
 
+      - name: Verify Dapr API and app token wiring (never prints Secret data)
+        run: bash ${{ env.CHART_DIR }}/tests/api-tokens-render-test.sh ${{ env.CHART_DIR }}
+
       - name: Template (default values)
         run: helm template dws ${{ env.CHART_DIR }} > /tmp/render-default.yaml
 

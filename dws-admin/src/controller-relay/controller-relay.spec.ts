@@ -1,6 +1,12 @@
+import type { AddressInfo } from 'node:net';
 import { ConfigService } from '@nestjs/config';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { Test } from '@nestjs/testing';
 import type { AppConfig } from '../config/configuration';
-import { ControllerRelayService, type Fetcher } from './controller-relay.service';
+import { configureAppTokenGuard } from '../http/app-token-guard';
+import { configureBodyParsers } from '../http/body-parsers';
+import { ControllerRelayController } from './controller-relay.controller';
+import { ControllerRelayService, FETCHER, type Fetcher } from './controller-relay.service';
 
 // Captures every arg the relay hands to fetch so the test can assert the
 // wire shape without a real sidecar.
@@ -11,7 +17,7 @@ interface Call {
   body?: Buffer;
 }
 
-function makeService(overrides: Partial<AppConfig['dapr']> = {}): { service: ControllerRelayService; calls: Call[] } {
+function makeService(overrides: Partial<AppConfig['dapr']> = {}, apiToken?: string): { service: ControllerRelayService; calls: Call[] } {
   const calls: Call[] = [];
   const fetcher: Fetcher = async (url, init) => {
     calls.push({ url, method: init.method, headers: init.headers, body: init.body });
@@ -33,6 +39,7 @@ function makeService(overrides: Partial<AppConfig['dapr']> = {}): { service: Con
       controllerAppId: 'dws-controller',
       ...overrides,
     },
+    apiToken,
   });
   return { service: new ControllerRelayService(config, fetcher), calls };
 }
@@ -90,5 +97,116 @@ describe('ControllerRelayService', () => {
     await service.relayDeploy('Bearer x', 'application/json', Buffer.from('{}'), true);
 
     expect(calls[0].url.endsWith('/method/workflows?dryRun=true')).toBe(true);
+  });
+
+  describe('Dapr API token', () => {
+    const DAPR_API_TOKEN = 'sidecar-api-token-0123456789';
+
+    it('attaches dapr-api-token to the sidecar call when configured, alongside Authorization', async () => {
+      const { service, calls } = makeService({}, DAPR_API_TOKEN);
+
+      await service.relayDeploy('Bearer abc.def.ghi', 'application/json', Buffer.from('{}'), false);
+
+      expect(calls[0].headers['dapr-api-token']).toBe(DAPR_API_TOKEN);
+      expect(calls[0].headers.authorization).toBe('Bearer abc.def.ghi');
+    });
+
+    it('attaches dapr-api-token even when the caller sent no Authorization', async () => {
+      const { service, calls } = makeService({}, DAPR_API_TOKEN);
+
+      await service.relayDeploy(undefined, undefined, Buffer.alloc(0), false);
+
+      expect(calls[0].headers['dapr-api-token']).toBe(DAPR_API_TOKEN);
+      expect(calls[0].headers.authorization).toBeUndefined();
+    });
+
+    it('omits dapr-api-token when no Dapr API token is configured', async () => {
+      const { service, calls } = makeService();
+
+      await service.relayDeploy('Bearer x', 'application/json', Buffer.from('{}'), false);
+
+      expect(Object.keys(calls[0].headers)).not.toContain('dapr-api-token');
+    });
+
+    it.each(['', '   '])('omits dapr-api-token when it is configured as %j', async (blank) => {
+      const { service, calls } = makeService({}, blank);
+
+      await service.relayDeploy('Bearer x', 'application/json', Buffer.from('{}'), false);
+
+      expect(Object.keys(calls[0].headers)).not.toContain('dapr-api-token');
+    });
+  });
+});
+
+// The inbound `dapr-api-token` is the *app* token — it authenticates our own
+// sidecar to this app. It must never be forwarded to the sidecar or on to the
+// controller; the outbound header is the separately configured Dapr API token.
+// Driven over HTTP through the real guard so the inbound header is really there.
+describe('POST /workflows relay over HTTP', () => {
+  const APP_TOKEN = 'app-api-token-fedcba9876';
+  const DAPR_API_TOKEN = 'sidecar-api-token-0123456789';
+  let app: NestExpressApplication;
+  let origin: string;
+  let calls: Call[];
+
+  async function boot(apiToken: string | undefined): Promise<void> {
+    calls = [];
+    const fetcher: Fetcher = async (url, init) => {
+      calls.push({ url, method: init.method, headers: init.headers, body: init.body });
+      return {
+        status: 201,
+        headers: { get: () => null },
+        arrayBuffer: async () => new Uint8Array([]).buffer,
+      };
+    };
+    const moduleRef = await Test.createTestingModule({
+      controllers: [ControllerRelayController],
+      providers: [
+        ControllerRelayService,
+        { provide: FETCHER, useValue: fetcher },
+        {
+          provide: ConfigService,
+          useValue: new ConfigService<AppConfig, true>({
+            dapr: { pubsubName: 'pubsub', topic: 'dws.events', controllerAppId: 'dws-controller' },
+            apiToken,
+            appToken: APP_TOKEN,
+          }),
+        },
+      ],
+    }).compile();
+    app = moduleRef.createNestApplication<NestExpressApplication>({ rawBody: true, logger: false });
+    configureAppTokenGuard(app, APP_TOKEN);
+    configureBodyParsers(app);
+    await app.listen(0);
+    origin = `http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`;
+  }
+
+  const post = () =>
+    fetch(`${origin}/workflows`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer caller.jwt.value', 'dapr-api-token': APP_TOKEN },
+      body: '{}',
+    });
+
+  afterEach(() => app?.close());
+
+  it('sends the Dapr API token, not the inbound app token, and keeps Authorization', async () => {
+    await boot(DAPR_API_TOKEN);
+
+    expect((await post()).status).toBe(201);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].headers['dapr-api-token']).toBe(DAPR_API_TOKEN);
+    expect(calls[0].headers.authorization).toBe('Bearer caller.jwt.value');
+    expect(JSON.stringify(calls[0].headers)).not.toContain(APP_TOKEN);
+  });
+
+  it('sends no dapr-api-token at all when none is configured, rather than forwarding the inbound one', async () => {
+    await boot(undefined);
+
+    expect((await post()).status).toBe(201);
+
+    expect(Object.keys(calls[0].headers)).not.toContain('dapr-api-token');
+    expect(JSON.stringify(calls[0].headers)).not.toContain(APP_TOKEN);
   });
 });

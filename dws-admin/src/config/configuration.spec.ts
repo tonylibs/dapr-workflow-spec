@@ -51,6 +51,61 @@ describe('configuration', () => {
   });
 });
 
+// The chart sets these two names on the dws-admin Deployment (secretKeyRef from
+// the token Secrets, auth.enabled only). A rename on either side is a silent
+// runtime failure — the feature just turns off — so the exact names are pinned
+// here and by the chart's api-tokens render test.
+describe('configuration machine-auth tokens', () => {
+  const ORIGINAL_ENV = process.env;
+
+  beforeEach(() => {
+    process.env = { ...ORIGINAL_ENV, DATABASE_URL: 'postgres://ignored' };
+    delete process.env.DAPR_API_TOKEN;
+    delete process.env.APP_API_TOKEN;
+  });
+
+  afterAll(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  it('reads the Dapr API token from DAPR_API_TOKEN and the app token from APP_API_TOKEN', () => {
+    process.env.DAPR_API_TOKEN = 'sidecar-token';
+    process.env.APP_API_TOKEN = 'app-token';
+
+    const config = configuration();
+
+    expect(config.apiToken).toBe('sidecar-token');
+    expect(config.appToken).toBe('app-token');
+  });
+
+  it('does not read the tokens from any other name', () => {
+    process.env.DAPR_APP_TOKEN = 'wrong-name';
+    process.env.API_TOKEN = 'wrong-name';
+
+    const config = configuration();
+
+    expect(config.apiToken).toBeUndefined();
+    expect(config.appToken).toBeUndefined();
+  });
+
+  it('is off by default', () => {
+    const config = configuration();
+
+    expect(config.apiToken).toBeUndefined();
+    expect(config.appToken).toBeUndefined();
+  });
+
+  it('treats blank values as unset', () => {
+    process.env.DAPR_API_TOKEN = '';
+    process.env.APP_API_TOKEN = '   ';
+
+    const config = configuration();
+
+    expect(config.apiToken).toBeUndefined();
+    expect(config.appToken).toBeUndefined();
+  });
+});
+
 // A source assertion rather than a request-level one: `enableCors` gone from
 // bootstrap is the actual removal this step performs, and the fastest way to
 // pin that down is to assert it is not present in the compiled source text.

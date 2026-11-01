@@ -7,8 +7,19 @@ admin request through the sidecar's bearer middleware before dws-admin's app cod
 
 Method, request body, query string, and Authorization/content headers are untouched by this
 rule — Gateway API HTTPRoute forwarding is transparent for anything not named in `filters`, and
-this rule adds only the one URLRewrite filter. No response-buffering/transforming filter is
-configured, so SSE responses on this same path stream through unmodified.
+this rule adds only the URLRewrite filter and the one request-header filter below. No
+response-buffering/transforming filter is configured, so SSE responses on this same path stream
+through unmodified.
+
+Dapr API token (auth roadmap Phase 10, openspec auth-phase-10-api-tokens D4): the admin sidecar
+now requires a `dapr-api-token` header on every call, in addition to the bearer check. A
+RequestHeaderModifier `set` (not `add`, so any client-supplied header is overwritten) injects it
+here, and ONLY on this route -- the console route has no such filter, so the admin token is never
+sent to the console. The value is an `$env://` reference that APISIX resolves from its own
+environment (bundled: apisix.extraEnvVars + apisix.apisix.nginx.envs in values.yaml, enforced by
+dws.apiGateway.validate; external: the operator exposes the same variable, see the chart README),
+so the token never appears in this manifest. Verified on docker-desktop 2026-10-31: the ingress controller places both filters in one Service proxy-rewrite configuration, and APISIX resolves the environment reference. See the change verify.md. No literal-token
+fallback exists in this chart; if the spike fails, the design is revisited, not worked around.
 
 Path-prefix matching ranks this rule ahead of the console's PathPrefix "/" rule
 (console-httproute.yaml) on the shared listener, so /dws-admin/* always resolves here.
@@ -40,6 +51,11 @@ spec:
             path:
               type: ReplacePrefixMatch
               replacePrefixMatch: /v1.0/invoke/{{ include "dws.admin.fullname" . }}/method
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set:
+              - name: dapr-api-token
+                value: {{ printf "$env://%s" (include "dws.apiGateway.adminTokenEnvName" .) | quote }}
       backendRefs:
         - name: {{ include "dws.admin.fullname" . }}
           port: {{ .Values.admin.service.port }}

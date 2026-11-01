@@ -6,6 +6,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import type { AppConfig } from './config/configuration';
+import { configureAppTokenGuard } from './http/app-token-guard';
 import { configureBodyParsers } from './http/body-parsers';
 import { isJsonLogFormat, JsonLogger } from './logging/json-logger';
 import { runMigrations } from './store/run-migrations';
@@ -24,6 +25,11 @@ async function bootstrap() {
     app.useLogger(new JsonLogger());
   }
   const config = app.get(ConfigService<AppConfig, true>);
+
+  // First of all, ahead of the body parsers: with APP_API_TOKEN configured, a
+  // peer reaching <pod-ip>:3000 without the sidecar's token is told 401 before
+  // any body is buffered or parsed. No-op when the token is unset.
+  configureAppTokenGuard(app, config.get('appToken', { infer: true }));
 
   // Body-parser wiring lives in its own module because its *ordering* is the
   // behaviour, and the HTTP-level tests boot against the same function.

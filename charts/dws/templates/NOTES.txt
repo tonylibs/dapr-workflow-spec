@@ -13,6 +13,31 @@ APISIX/Gateway API is externally managed (apisix.enabled=false); this chart only
 GatewayClass/Gateway/HTTPRoute objects, bound to apiGateway.external.gatewayProxyName.
 {{- end }}
 {{- end }}
+{{- if .Values.auth.enabled }}
+
+Dapr machine-auth tokens are enabled (auth.enabled=true). The tokens live in these Secrets, each
+under the key `token`:
+{{- if .Values.admin.enabled }}
+  - {{ include "dws.apiTokens.secretName" (dict "root" . "component" "admin" "kind" "daprApi") }}  (admin sidecar API token{{ if and .Values.apiGateway.enabled .Values.apisix.enabled }}; the bundled APISIX injects it{{ end }})
+  - {{ include "dws.apiTokens.secretName" (dict "root" . "component" "admin" "kind" "appApi") }}  (admin app-port token)
+{{- end }}
+{{- if .Values.controller.enabled }}
+  - {{ include "dws.apiTokens.secretName" (dict "root" . "component" "controller" "kind" "daprApi") }}  (controller sidecar API token)
+{{- end }}
+This chart never prints a token. daprd reads its token only at startup, so after every install,
+upgrade or token rotation restart the pods that use them and wait for the rollout:
+
+  kubectl rollout restart -n {{ include "dws.namespace" . }}{{ if .Values.admin.enabled }} deployment/{{ include "dws.admin.fullname" . }}{{ end }}{{ if .Values.controller.enabled }} deployment/{{ include "dws.controller.fullname" . }}{{ end }}{{ if and .Values.apiGateway.enabled .Values.apisix.enabled }} {{ ternary "daemonset" "deployment" (.Values.apisix.useDaemonSet | default false) }}/{{ include "dws.apisix.fullname" . }}{{ end }}
+
+A chart-generated token is also stored in the Helm release Secret; supply
+auth.apiTokens.<component>.<kind>.existingSecret to keep it out of Helm. See
+charts/dws/README.md, "Machine-auth tokens".
+{{- if and .Values.apiGateway.enabled (not .Values.apisix.enabled) }}
+The Gateway's APISIX is externally managed: expose the admin Dapr API token Secret above to it as
+the environment variable {{ include "dws.apiGateway.adminTokenEnvName" . }} and list that name in its nginx env allow-list, or every
+/dws-admin request is rejected 401 by the Dapr sidecar.
+{{- end }}
+{{- end }}
 {{- if .Values.dex.enabled }}
 Dex (dws-console's in-chart IdP) is enabled.
 
