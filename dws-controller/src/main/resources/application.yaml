@@ -8,6 +8,10 @@ dws:
     # ServiceAccount orchestrator pods run as; needs configmaps get/list/watch (the definition
     # Component reads its ConfigMap as the pod's service account). Env: DWS_ORCHESTRATOR_SERVICE_ACCOUNT.
     service-account: dws-orchestrator
+  log:
+    # json | text. Env: DWS_LOG_FORMAT. The controller's own logs follow the environment variable;
+    # an instrumented orchestrator Deployment is stamped with DWS_LOG_FORMAT=json only when this is json.
+    format: text
   # Prebuilt step/orchestrator images. Override registry and tags per environment.
   images:
     call-http: ghcr.io/tonylibs/dws-call-http:latest

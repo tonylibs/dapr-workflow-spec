@@ -104,7 +104,11 @@ public class StackApplier {
       client
           .resource(
               synthesizer.orchestratorDeployment(
-                  plan, namespace, config.orchestrator().serviceAccount(), settings))
+                  plan,
+                  namespace,
+                  config.orchestrator().serviceAccount(),
+                  settings,
+                  config.log().format()))
           .inNamespace(namespace)
           .createOr(NonDeletingOperation::update);
 

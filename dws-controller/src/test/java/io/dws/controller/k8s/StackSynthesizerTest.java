@@ -30,6 +30,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Direct unit tests for the pure cdk8s synthesis in {@link StackSynthesizer} — no cluster involved.
@@ -694,6 +696,71 @@ class StackSynthesizerTest {
         .extracting(EnvVar::getName)
         .filteredOn(name -> name.startsWith("OTEL_"))
         .containsExactlyInAnyOrder("OTEL_RESOURCE_ATTRIBUTES", "OTEL_SERVICE_NAME");
+  }
+
+  @Test
+  @DisplayName("json log format with observability off renders exactly today's Deployment")
+  void jsonLogFormatWithSettingsOffRendersTodaysDeployment() {
+    assertThat(
+            synthesizer.orchestratorDeployment(
+                orchestratorPlan(), NAMESPACE, SERVICE_ACCOUNT, ObservabilitySettings.OFF, "json"))
+        .isEqualTo(todaysOrchestratorDeployment());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"json", "JSON", " json "})
+  @DisplayName("instrumented plus a json controller format stamps DWS_LOG_FORMAT=json")
+  void instrumentedWithJsonFormatStampsLogFormat(String controllerFormat) {
+    Deployment deployment =
+        synthesizer.orchestratorDeployment(
+            orchestratorPlan(), NAMESPACE, SERVICE_ACCOUNT, ON, controllerFormat);
+
+    List<EnvVar> env = orchestratorEnv(deployment);
+    assertThat(envVar(env, "DWS_LOG_FORMAT").getValue()).isEqualTo("json");
+    assertThat(env).extracting(EnvVar::getName).filteredOn("DWS_LOG_FORMAT"::equals).hasSize(1);
+  }
+
+  @ParameterizedTest
+  @NullSource
+  @ValueSource(strings = {"", "text", "yaml"})
+  @DisplayName("instrumented without a json controller format stamps nothing")
+  void instrumentedWithTextOrAbsentFormatStampsNothing(String controllerFormat) {
+    List<EnvVar> env =
+        orchestratorEnv(
+            synthesizer.orchestratorDeployment(
+                orchestratorPlan(), NAMESPACE, SERVICE_ACCOUNT, ON, controllerFormat));
+
+    assertThat(env).extracting(EnvVar::getName).doesNotContain("DWS_LOG_FORMAT");
+    // And the form that takes no format at all is the same as text.
+    assertThat(
+            synthesizer.orchestratorDeployment(orchestratorPlan(), NAMESPACE, SERVICE_ACCOUNT, ON))
+        .isEqualTo(
+            synthesizer.orchestratorDeployment(
+                orchestratorPlan(), NAMESPACE, SERVICE_ACCOUNT, ON, "text"));
+  }
+
+  @Test
+  @DisplayName("an existing DWS_LOG_FORMAT, literal or secret-sourced, is never overwritten")
+  void existingLogFormatIsKept() {
+    for (io.dws.controller.model.EnvValue existing :
+        List.of(new Literal("text"), new SecretKeyRef("log-config", "format"))) {
+      DeploymentPlan plan = orchestratorPlan("wf", "v1", Map.of("DWS_LOG_FORMAT", existing));
+
+      List<EnvVar> rendered =
+          orchestratorEnv(
+              synthesizer.orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT, ON, "json"));
+
+      assertThat(rendered)
+          .extracting(EnvVar::getName)
+          .filteredOn("DWS_LOG_FORMAT"::equals)
+          .hasSize(1);
+      EnvVar kept = envVar(rendered, "DWS_LOG_FORMAT");
+      if (existing instanceof Literal) {
+        assertThat(kept.getValue()).isEqualTo("text");
+      } else {
+        assertThat(kept.getValueFrom().getSecretKeyRef().getName()).isEqualTo("log-config");
+      }
+    }
   }
 
   @Test

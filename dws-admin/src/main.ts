@@ -8,13 +8,22 @@ import { AppModule } from './app.module';
 import type { AppConfig } from './config/configuration';
 import { configureAppTokenGuard } from './http/app-token-guard';
 import { configureBodyParsers } from './http/body-parsers';
+import { isJsonLogFormat, JsonLogger } from './logging/json-logger';
 import { runMigrations } from './store/run-migrations';
 
 async function bootstrap() {
   // rawBody: the compile/submit relay to dws-controller forwards the request
   // body verbatim (YAML or JSON) — Nest's JSON parser would drop YAML and
   // re-serialise JSON, changing the content-hashed version on the far side.
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
+  //
+  // DWS_LOG_FORMAT=json swaps Nest's console logger for the structured one
+  // (docs/log-format.md). bufferLogs holds the framework's startup lines until
+  // it is installed so they are JSON too; any other value changes nothing.
+  const jsonLogs = isJsonLogFormat(process.env.DWS_LOG_FORMAT);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true, bufferLogs: jsonLogs });
+  if (jsonLogs) {
+    app.useLogger(new JsonLogger());
+  }
   const config = app.get(ConfigService<AppConfig, true>);
 
   // First of all, ahead of the body parsers: with APP_API_TOKEN configured, a

@@ -23,6 +23,12 @@ Before initializing the holder, startup collects this node's named `use.timeouts
 
 The resolver retains the validated JSON values in memory, so Flow performs no configuration reads while executing a workflow. At present the sequencer consumes named `use.timeouts` entries for task-level `timeout`; a timeout string that begins with an ISO-8601 duration designator remains an inline duration. The resolver also recognizes named errors and retries at boot so their configuration is validated and ready for their future consumers.
 
+### Structured logs
+
+Set `DWS_LOG_FORMAT=json` (case-insensitive; surrounding whitespace is allowed) before starting `dws-flow` to write its logging-system records as one JSON object per stdout line. Other values, including an unset variable, retain the normal text console formatter. This is the host implementation behind the structured-log capability described in [Add-ons](../user-guide/add-ons.md#trace-correlated-logs--today); the chart/deployed-stack coverage remains separate from this component contract.
+
+Each JSON record has `timestamp`, uppercase `severity`, `logger`, and `message`. `WARN` and `FATAL` are the rendered severities for .NET Warning and Critical levels. When the active .NET `Activity` has valid IDs, the record also carries `trace_id` and `span_id`; exception records add `exception.type`, `exception.message`, and `exception.stacktrace`. Messages, exception messages, and stack traces are scrubbed for common credential-key values and Bearer/Basic credentials, replacing the value with `[REDACTED]`. The canonical cross-component schema is [`docs/log-format.md`](../../docs/log-format.md).
+
 ## Sequencing and child dispatch
 
 ```mermaid

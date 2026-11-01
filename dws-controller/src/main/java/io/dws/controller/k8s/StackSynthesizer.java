@@ -30,6 +30,7 @@ import imports.io.dapr.WorkflowAccessPolicySpec;
 import imports.io.dapr.WorkflowAccessPolicySpecRules;
 import imports.io.dapr.WorkflowAccessPolicySpecRulesActivities;
 import imports.io.dapr.WorkflowAccessPolicySpecRulesCallers;
+import io.dws.controller.logging.StructuredLogging;
 import io.dws.controller.model.BindingComponent;
 import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.EnvValue;
@@ -568,13 +569,32 @@ public class StackSynthesizer {
       String namespace,
       String serviceAccount,
       ObservabilitySettings settings) {
+    return orchestratorDeployment(plan, namespace, serviceAccount, settings, "text");
+  }
+
+  /**
+   * As the four-argument form, and when the deploy is instrumented and {@code logFormat} (the
+   * controller's own {@code DWS_LOG_FORMAT}) is {@code json}, the orchestrator also logs JSON, so
+   * its lines carry the trace context the agent injects. Text is expressed by absence.
+   */
+  public Deployment orchestratorDeployment(
+      DeploymentPlan plan,
+      String namespace,
+      String serviceAccount,
+      ObservabilitySettings settings,
+      String logFormat) {
     OrchestratorSpec orchestrator = plan.orchestrator();
     Map<String, String> annotations =
         orchestratorAnnotations(
             orchestratorAnnotations(orchestrator),
             settings,
             orchestratorConfiguration(plan, settings));
-    List<EnvVar> env = orchestratorEnv(plan, orchestrator.env(), settings.enabled());
+    List<EnvVar> env =
+        orchestratorEnv(
+            plan,
+            orchestrator.env(),
+            settings.enabled(),
+            settings.enabled() && StructuredLogging.isJson(logFormat));
     Map<String, String> labels = Labels.forPlan(plan);
     Map<String, String> selector = Map.of("app", orchestrator.name());
     Map<String, String> podLabels = new LinkedHashMap<>(labels);
@@ -643,10 +663,11 @@ public class StackSynthesizer {
    * The orchestrator container environment. Untouched unless instrumented, when it gains {@code
    * OTEL_SERVICE_NAME} (the Dapr app ID — the OpenTelemetry Operator would otherwise inject the
    * Deployment name, which outranks a {@code service.name} resource attribute) and the workflow
-   * identity appended to {@code OTEL_RESOURCE_ATTRIBUTES}. Existing values are never overwritten.
+   * identity appended to {@code OTEL_RESOURCE_ATTRIBUTES}, plus {@code DWS_LOG_FORMAT=json} when
+   * {@code jsonLogs}. Existing values are never overwritten.
    */
   private static List<EnvVar> orchestratorEnv(
-      DeploymentPlan plan, Map<String, EnvValue> env, boolean instrumented) {
+      DeploymentPlan plan, Map<String, EnvValue> env, boolean instrumented, boolean jsonLogs) {
     List<EnvVar> vars = envVars(env);
     if (!instrumented) {
       return vars;
@@ -678,6 +699,11 @@ public class StackSynthesizer {
     } else {
       String current = existing.getValue();
       existing.setValue(current == null || current.isBlank() ? identity : current + "," + identity);
+    }
+    if (jsonLogs
+        && vars.stream().noneMatch(var -> StructuredLogging.FORMAT_ENV.equals(var.getName()))) {
+      vars.add(
+          new EnvVarBuilder().withName(StructuredLogging.FORMAT_ENV).withValue("json").build());
     }
     return vars;
   }

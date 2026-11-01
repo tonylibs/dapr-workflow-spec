@@ -32,6 +32,7 @@ on:
           - dws-run
           - dws-call-a2a
           - dws-mid-basic
+          - dws-mid-bearer
       version:
         description: 'Exact version to release (e.g. 1.2.0). Leave blank to use the version already bumped in .release-please-manifest.json.'
         required: false

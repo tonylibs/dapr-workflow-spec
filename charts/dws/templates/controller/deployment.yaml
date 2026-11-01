@@ -111,6 +111,9 @@ spec:
             - name: DAPR_API_TOKEN
               {{- include "dws.apiTokens.secretKeyRef" (dict "root" . "component" "controller" "kind" "daprApi") | nindent 14 }}
             {{- end }}
+            {{- with (include "dws.observability.logFormatEnv" .) }}
+            {{- . | nindent 12 }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /q/health/live

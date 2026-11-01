@@ -67,7 +67,7 @@ The schema-required `with.endpoint` on a call task is not used for routing. Chan
 
 A definition may declare `use.secrets` as unique DNS-1123 Kubernetes Secret names. Each name maps to that Secret's `value` key; the controller records typed `secretKeyRef` environment values rather than reading or serializing plaintext. Kubernetes resolves missing Secret/key references when a workload starts. The controller projects only each step's required credentials and the orchestrator's declared secrets, then the orchestrator reads `SECRET_<NAME>` once at startup. It exposes those values to jq as `$secrets` in `set` and `switch` expressions (dot notation for identifier-like names and bracket notation for other valid names). This is a DWS extension and is deliberately hazardous: authors must not place its values in workflow data, emitted events, or logs. The related feature status and future protocol work are tracked in the [OWS DSL feature roadmap](roadmap.md).
 
-HTTP and OpenAPI endpoints can use inline or named `basic`, `bearer`, or OAuth2 `client_credentials` policies; credential fields must reference declared secrets. The controller rejects literals, undeclared references, absent named policies, and unsupported OAuth grants before deployment. Basic and Bearer runner configuration produces the outbound `Authorization` header. For OAuth, the controller groups calls that share an external host and canonical policy into version-scoped Dapr `HTTPEndpoint` and OAuth middleware `Component` resources, each restricted to the requesting step app IDs and paths. Every participating step then receives one workload-specific Dapr `Configuration`, selected through its `dapr.io/config` annotation, whose deterministically ordered HTTP pipeline contains that step's OAuth middleware handlers. This single-configuration boundary also composes tracing when a workload needs it, as described in [Orchestrator tracing and replay boundary](#orchestrator-tracing-and-replay-boundary). The runners invoke the endpoint through their local Dapr sidecar; they neither fetch nor cache OAuth tokens.
+HTTP and OpenAPI endpoints can use inline or named `basic`, `bearer`, or OAuth2 `client_credentials` policies; credential fields must reference declared secrets. The controller rejects literals, undeclared references, absent named policies, and unsupported OAuth grants before deployment. **Today**, Basic and Bearer runner configuration produces the outbound `Authorization` header. For OAuth, the controller groups calls that share an external host and canonical policy into version-scoped Dapr `HTTPEndpoint` and OAuth middleware `Component` resources, each restricted to the requesting step app IDs and paths. Every participating step then receives one workload-specific Dapr `Configuration`, selected through its `dapr.io/config` annotation, whose deterministically ordered HTTP pipeline contains that step's OAuth middleware handlers. This single-configuration boundary also composes tracing when a workload needs it, as described in [Orchestrator tracing and replay boundary](#orchestrator-tracing-and-replay-boundary). The runners invoke the endpoint through their local Dapr sidecar; they neither fetch nor cache OAuth tokens.
 
 ```mermaid
 sequenceDiagram
@@ -82,9 +82,29 @@ sequenceDiagram
   Sidecar->>External: send request with OAuth token
 ```
 
-This sequence shows the OAuth path: Dapr owns token acquisition and external authorization, while the runner owns only request construction and sidecar invocation. Basic and Bearer calls instead attach their generated header directly.
+This sequence shows the OAuth path: Dapr owns token acquisition and external authorization, while the runner owns only request construction and sidecar invocation. **Today**, Basic and Bearer calls instead attach their generated header directly.
 
-Source: `dws-controller/src/main/java/io/dws/controller/compile/WorkflowCompiler.java`, `dws-controller/src/main/java/io/dws/controller/k8s/StackSynthesizer.java`, `dws-orchestrator/src/main/java/io/dws/orchestrator/config/WorkflowRuntimeBootstrap.java`, `dws-call-http/internal/runner/runner.go`, and `dws-call-openapi/src/request.ts`. The live Dapr path-isolation probe passed on 2026-10-05: the intended external path received the issued bearer token and an unrelated path received no `Authorization` header. The probe used an existing Dapr 1.18.2 control plane, one patch above the chart's 1.18.1 default, so repeat the check against the deployed Dapr version when upgrading it; its evidence is in `openspec/changes/archive/2026-10-05-workflow-auth/verify.md`.
+### Planned Basic and Bearer sidecar middleware
+
+The `dws-mid-bearer` delivery image and `bearer.wasm` guest now exist, but no workflow deploys them: controller wiring is the unstarted 4.1d item in the [OWS DSL feature roadmap](roadmap.md). This is a future replacement for direct runner-side Bearer header creation, not a new workflow-author setting.
+
+When the controller implements [ADR 0010 Decision 4a](../../docs/adr/0010-use-components-as-a-shared-store.md#decision-4a-basicbearer--a-wasm-middleware-injects-the-header-the-controller-composes-its-config), it will compose secret-backed `guestConfig` for each protected endpoint, add a `middleware.http.wasm` component and workload configuration, and deliver `/bearer.wasm` to the sidecar through a pinned `dws-mid-bearer` init-container image. The guest accepts only JSON `endpoint` and `token` strings. It replaces `Authorization` only for `/v1.0/invoke/<endpoint>/method` and its subpaths; it leaves other endpoints and non-invocation requests alone. Invalid, empty, or newline-containing credentials make the guest fail at load, so the Component must **not** set `ignoreErrors: true`—that Dapr option would skip the middleware and forward the request without the Bearer header.
+
+```mermaid
+sequenceDiagram
+  participant Step as Step image
+  participant Sidecar as Dapr sidecar
+  participant Guest as bearer.wasm guest
+  participant Target as Protected endpoint
+  Step->>Sidecar: invoke configured endpoint
+  Sidecar->>Guest: process invocation request
+  Guest->>Guest: match endpoint path and replace Authorization
+  Guest->>Target: continue protected request
+```
+
+This planned sequence shows the boundary after 4.1d: the step image invokes its sidecar, while the Wasm guest owns the Bearer credential and only applies it to its configured endpoint.
+
+Source: `dws-controller/src/main/java/io/dws/controller/compile/WorkflowCompiler.java`, `dws-controller/src/main/java/io/dws/controller/k8s/StackSynthesizer.java`, `dws-orchestrator/src/main/java/io/dws/orchestrator/config/WorkflowRuntimeBootstrap.java`, `dws-call-http/internal/runner/runner.go`, `dws-call-openapi/src/request.ts`, and `dws-mid-bearer/README.md`. The live Dapr path-isolation probe passed on 2026-10-05: the intended external path received the issued bearer token and an unrelated path received no `Authorization` header. The probe used an existing Dapr 1.18.2 control plane, one patch above the chart's 1.18.1 default, so repeat the check against the deployed Dapr version when upgrading it; its evidence is in `openspec/changes/archive/2026-10-05-workflow-auth/verify.md`. The new bearer guest's Kubernetes probe passed against Dapr 1.18.1 on a local kind cluster on 2026-10-28; it is not evidence of controller integration.
 
 ### For iteration
 

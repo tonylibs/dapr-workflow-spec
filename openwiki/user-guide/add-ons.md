@@ -11,7 +11,7 @@ Add-ons are not layers: switch them on next to whichever [layers](feature-layers
 
 | Add-on | Gives you | Status |
 |---|---|---|
-| [Observability](#observability) | Traces (and agent metrics/logs) to your OTLP collector | Today, partial coverage |
+| [Observability](#observability) | Traces, metrics, and trace-correlated structured logs | Today, partial coverage |
 | [Bring-your-own infra](#bring-your-own-infra) | Your Postgres, Redis, broker, OTLP instead of bundled ones | Today for Postgres/Redis/OTLP; more planned (Phase 13) |
 | [Engine auth](#engine-auth-planned) | Tokens for CI and services calling the engine | Planned, not designed |
 | Service mesh | Istio | Exploratory |
@@ -37,6 +37,26 @@ helm upgrade dws oci://ghcr.io/tonylibs/charts/dws -n dws-system --reuse-values 
 | `observability.traces.samplingRate` | Sampling ratio (the app agent decides; Dapr follows) |
 | `observability.operator.required` | `false` skips the "Operator installed?" preflight |
 | `observability.workflows.enabled` | Default `true`: lets workflow runtimes be traced (step 2 below) |
+| `observability.logs.enabled` | Default `true`: with the master switch, enables structured-log delivery configuration |
+| `observability.logs.format` | Default `json`; use `text` to keep component logs in their prior text format |
+
+### Trace-correlated logs — Today
+
+With `observability.enabled=true`, the chart's default log format is JSON. The controller and
+Admin API write one JSON record per line to **stdout**. A traced record includes its `trace_id` and
+`span_id`; credentials in the structured fields are scrubbed. The controller applies the same
+format to an instrumented orchestrator when you deploy or redeploy that workflow.
+
+Your collector must read container stdout from node log files with a `filelog` receiver (typically
+as a DaemonSet), parse the JSON, and send it to your log backend. DWS deliberately sets
+`OTEL_LOGS_EXPORTER=none`: agent OTLP log export is not a second delivery path. The chart does not
+install a collector. See the [chart's collector receiver example](../../charts/dws/README.md#logs-and-trace-correlation)
+and the canonical [structured log format](../../docs/log-format.md).
+
+**Watch out:** `kubectl logs` combines stdout and stderr. JVM launchers, agents, and libraries can
+still write non-JSON diagnostics to stderr, so piping the combined stream directly to `jq` can fail.
+The observed JSON-only guarantee is for DWS logging-system output on stdout. Existing workflow
+versions keep their prior configuration until redeployed.
 
 **Trace your workflows too** (two switches):
 
@@ -46,7 +66,7 @@ helm upgrade dws oci://ghcr.io/tonylibs/charts/dws -n dws-system --reuse-values 
 
 | Covered today | Not yet |
 |---|---|
-| `dws-controller`, Admin API, workflow runtimes (`dws-orchestrator`) | Step services (Knative), `dws-flow` / `dws-step` |
+| Traces: `dws-controller`, Admin API, workflow runtimes (`dws-orchestrator`). Structured JSON logs: controller, Admin API, orchestrator; `dws-flow` and `dws-step` implement the format but lack deployed-stack evidence. | Step services (Knative) for traces and structured logs; deployed `dws-flow` / `dws-step` instrumentation awaits runtime-v2 synthesis. |
 
 Details: [chart README → OpenTelemetry](../../charts/dws/README.md#opentelemetry-observability-phase-1),
 [`docs/roadmaps/observability.md`](../../docs/roadmaps/observability.md).

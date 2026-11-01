@@ -230,6 +230,114 @@ to the un-instrumented orchestrator. To also remove `dws-tracing`, set
 `observability.workflows.enabled=false` or `observability.enabled=false` and upgrade the chart,
 after redeploying (or deleting) workflows that still reference it.
 
+### Logs and trace correlation
+
+With `observability.enabled=true` the controller and admin write one JSON object per line to
+stdout, carrying `trace_id` and `span_id` whenever a span is active, so the log lines of a trace
+can be found from the trace ID. The line contract is [`docs/log-format.md`](../../docs/log-format.md).
+
+| Value | Default | Meaning |
+|---|---|---|
+| `observability.logs.format` | `json` | `json` or `text`; anything else fails the render. Rendered as `DWS_LOG_FORMAT` on the `controller` and `admin` containers. |
+| `observability.logs.enabled` | `true` | With `observability.enabled`, gates whether `DWS_LOG_FORMAT` is rendered at all. With either toggle off the variable is absent and every component logs text, exactly as before. |
+
+**Single log path.** Stdout is the only way log lines leave a pod: the node writes them under
+`/var/log/pods` and your collector's `filelog` receiver reads them. The `Instrumentation` resource
+sets `OTEL_LOGS_EXPORTER=none` unconditionally, so the application agents never also export logs
+over OTLP and no line is delivered twice. This chart does not install a collector; yours must be able
+to read node log files (an agent or DaemonSet-style collector). The receiver below is the reference
+to adapt; it is the same block as in
+[`tests/fixtures/otel-collector-dev.yaml`](tests/fixtures/otel-collector-dev.yaml), which pairs it
+with a dev-only Loki so the lines of one `trace_id` can be queried. `tests/observability-render-test.sh`
+fails if the two diverge or if the exclusions and trace-context operators disappear.
+
+```yaml
+filelog:
+  include:
+    - /var/log/pods/${env:K8S_NAMESPACE}_*/*/*.log
+  exclude:
+    - /var/log/pods/*/daprd/*.log
+    - /var/log/pods/*/collector/*.log
+    - /var/log/pods/*/jaeger/*.log
+    - /var/log/pods/*/loki/*.log
+  start_at: end
+  include_file_path: true
+  operators:
+    # CRI/containerd line framing, plus k8s.* resource attributes from the file path.
+    - type: container
+    # Only a line that starts with "{" is a DWS JSON record; anything else keeps its raw body.
+    - type: json_parser
+      id: dws_json
+      if: 'body startsWith "{"'
+      timestamp:
+        parse_from: attributes.timestamp
+        layout_type: gotime
+        layout: '2006-01-02T15:04:05Z07:00'
+      severity:
+        parse_from: attributes.severity
+    - type: trace_parser
+      id: dws_trace
+      if: 'attributes.trace_id != nil'
+      trace_id:
+        parse_from: attributes.trace_id
+      span_id:
+        parse_from: attributes.span_id
+    - type: move
+      id: dws_message
+      if: 'attributes.message != nil'
+      from: attributes.message
+      to: body
+    - type: move
+      id: dws_logger
+      if: 'attributes.logger != nil'
+      from: attributes.logger
+      to: attributes["logger.name"]
+    - type: remove
+      id: dws_drop_timestamp
+      if: 'attributes.timestamp != nil'
+      field: attributes.timestamp
+    - type: remove
+      id: dws_drop_severity
+      if: 'attributes.severity != nil'
+      field: attributes.severity
+    - type: remove
+      id: dws_drop_trace_id
+      if: 'attributes.trace_id != nil'
+      field: attributes.trace_id
+    - type: remove
+      id: dws_drop_span_id
+      if: 'attributes.span_id != nil'
+      field: attributes.span_id
+```
+
+Adapt the `include` pattern to the namespace(s) your release runs in (the fixture takes it from the
+collector pod's own namespace). The `daprd` and collector exclusions are not optional: the sidecar
+logs in a different schema, and the collector's `debug` exporter prints every record to its own
+stdout, which would be read back in an endless loop. A line that does not start with `{` (text mode,
+startup banners) is forwarded with the raw line as its body and no trace context.
+
+**Things to know**
+
+- **Compiled workflow orchestrators change on their next deploy only.** The controller stamps
+  `DWS_LOG_FORMAT=json` onto the orchestrator Deployments it generates when that deploy is already
+  instrumented (the `observability.enabled` store flag, see
+  [Compiled workflow orchestrators](#compiled-workflow-orchestrators)) and its own value is `json`.
+  Changing `observability.logs.format` does not retrofit running orchestrators; each workflow picks
+  it up when it is next deployed. The variable lives on the Deployment, not in the definition
+  ConfigMap, so content-addressed definition versions are unaffected.
+- **A `trace_id` can point at a trace that does not exist.** The agent stamps any valid span context
+  onto a log line, but only traced requests that survive `observability.traces.samplingRate`
+  (default `0.1`) are exported. Most lines therefore carry a `trace_id` with no trace behind it. Set
+  `observability.traces.samplingRate=1` when you need every line to resolve, for example during
+  evidence runs.
+- **`json` is harder to read in `kubectl logs`.** Pipe through `jq`, or set
+  `observability.logs.format=text` to get each component's previous output back. The `text` escape
+  keeps `observability.logs.enabled` and the single log path as they are, but `filelog` then
+  forwards raw bodies without `trace_id`, so trace correlation is lost; set
+  `observability.logs.enabled=false` to stop rendering the variable altogether.
+- **Rollback** is `observability.logs.format=text` and a `helm upgrade`; the controller and admin
+  roll, and compiled workflows follow on their next deploy.
+
 ### OTLP headers
 
 Header credentials (a SaaS backend API key, for example) always travel through a Secret; they are
