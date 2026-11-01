@@ -144,6 +144,9 @@ spec:
             - name: DAPR_CONTROLLER_APP_ID
               value: {{ include "dws.controller.fullname" . | quote }}
             {{- end }}
+            {{- with (include "dws.observability.logFormatEnv" .) }}
+            {{- . | nindent 12 }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /health

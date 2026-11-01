@@ -94,6 +94,9 @@ spec:
               value: "{{ .Values.controller.images.run.scriptPython.repository }}:{{ .Values.controller.images.run.scriptPython.tag }}"
             - name: DWS_IMAGES_ORCHESTRATOR
               value: "{{ .Values.controller.images.orchestrator.repository }}:{{ .Values.controller.images.orchestrator.tag }}"
+            {{- with (include "dws.observability.logFormatEnv" .) }}
+            {{- . | nindent 12 }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /q/health/live

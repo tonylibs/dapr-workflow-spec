@@ -70,6 +70,18 @@ Types in use: `feat`, `fix`, `refactor`, `docs`, `chore`, `perf`, `ci`, `test`.
     (`templates/controller/orchestrator-rbac.yaml`) and `dws-controller/k8s/controller-rbac.yaml`
     must create an account of that name with configmaps `get`/`list`/`watch`. Renaming it in one
     place only fails at runtime (pods are rejected, or the sidecar crash-loops), not at render time.
+- **Structured log format** ([`docs/log-format.md`](docs/log-format.md)): `dws-controller`,
+  `dws-admin`, `dws-orchestrator`, `dws-flow` and `dws-step` each read `DWS_LOG_FORMAT` (`json`,
+  trimmed and case-insensitive; anything else means today's text) and, in JSON mode, write one
+  object per line with the six keys `timestamp`, `severity`, `logger`, `message`, `trace_id`,
+  `span_id` (the last two omitted outside a valid span) plus `exception.type`/`.message`/
+  `.stacktrace`. Each package has its own formatter and its own golden-case test — there is no
+  shared library, so a key renamed in one package and not the others is not a build error; change
+  all five and `docs/log-format.md` together. The chart renders `DWS_LOG_FORMAT` on controller and
+  admin from `observability.logs.format`; the controller stamps it on instrumented orchestrators
+  (`OrchestratorEnvContractTest` asserts the sibling `application.yaml` reads it). Runtime-v2
+  Phase 4 synthesis must stamp it on `dws-flow`/`dws-step` too. A package that reads a different
+  name silently stays on text.
 - **Step-service request/response shape** (`dws-call-http`, `dws-call-grpc`, `dws-call-openapi`,
   `dws-call-asyncapi`, `dws-run`) is consumed by `dws-orchestrator`'s retry/error-classification
   logic (`WorkflowErrors.classify`). If you change a step-service's error/response contract,

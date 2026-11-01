@@ -22,6 +22,16 @@ and the Dapr subscription routes — there is no second listener or port.
 > only the clients connected to *that* replica. Running more than one `dws-admin` needs a
 > cross-replica bus (Postgres `LISTEN`/`NOTIFY`, or a dedicated pub/sub topic) first.
 
+### Log format
+
+`DWS_LOG_FORMAT=json` (trimmed, case-insensitive) switches the server's logger to one JSON object per
+line on stdout, with `trace_id`/`span_id` taken from the active OpenTelemetry span when the Node agent
+is attached. Any other value, or none, keeps Nest's default console output. The shared contract
+(keys, severity vocabulary, credential scrubbing) is [`docs/log-format.md`](../docs/log-format.md);
+the implementation is `src/logging/json-logger.ts`. The `db:migrate` CLI keeps its plain `console`
+output. `@opentelemetry/api` is pinned to 1.9.x deliberately: an API only reads a registered global
+whose minor version is at least its own, so a newer pin could silently see nothing next to an older agent.
+
 ---
 
 ## Module layout

@@ -135,3 +135,35 @@ you add a similarly non-obvious mechanism, document it the same way rather than 
 
 Same Spotless + `googleJavaFormat` 1.32.0 config as `dws-controller`, auto-applied on
 `process-sources` — no separate format command needed.
+
+### Logging: no log call in workflow-function code; `DWS_LOG_FORMAT` selects the structured format
+
+**No log call goes inside workflow-function code** — `InterpreterWorkflow` and the child workflows
+(`ForkBranchWorkflow`, `ScopeRunnerWorkflow`). That code re-executes on replay, so a line there is
+written again on every replay, and it does not run under a span the engine keeps stable
+([ADR 0009](../docs/adr/0009-trace-context-across-workflow-replay.md), decisions 1–2). Log from
+activities (they run under the `activity:<name>` span and carry trace context) or from
+startup/shutdown code. Not enforced by a test; keep it in review.
+
+**Never pass a secret to a log call**: no resolved `SECRET_*` value, bearer token, `Authorization`
+header or credential. Log identifiers (app IDs, definition keys, node IDs, topics) rather than
+payloads, and be careful with exception messages from the Dapr client, which can embed URLs or
+headers. `SecretLoggingTest` covers a run with `use.secrets`; the JSON scrubber is defence in depth,
+and text mode has none.
+
+**`DWS_LOG_FORMAT`** is the package-wide log-format switch, specified in
+[`docs/log-format.md`](../docs/log-format.md) (keys, severity map, scrubber, golden cases):
+
+- `application.yaml` exposes it as `dws.log.format: ${DWS_LOG_FORMAT:text}` — the literal name must
+  stay there, `dws-controller`'s `OrchestratorEnvContractTest` asserts the orchestrator reads it.
+- `LogFormatEnvironmentPostProcessor` (registered in `META-INF/spring.factories` under
+  `org.springframework.boot.EnvironmentPostProcessor`) maps a trimmed, case-insensitive `json` onto
+  `logging.structured.format.console` = `DwsJsonLogFormatter` (and `spring.main.banner-mode=off`,
+  since the banner is printed outside the logging system), before Logback initialises, so boot
+  lines are JSON too. Anything else (unset, empty, `text`, `yaml`) sets nothing and leaves Spring
+  Boot's default console output and banner unchanged. Do not set the Boot property to an empty
+  string instead: that also suppresses the banner.
+- `DwsJsonLogFormatter` takes `trace_id`/`span_id` from the MDC keys the OpenTelemetry Java agent
+  populates (no OTel dependency), omits both when absent or invalid, and scrubs `message`,
+  `exception.message` and `exception.stacktrace`. `LogFormatContractTest` runs golden cases 1–11 (12,
+  `FATAL`, does not exist in Logback); keep it green when touching the formatter.

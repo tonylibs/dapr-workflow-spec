@@ -208,6 +208,37 @@ configuration API errors → Dapr/gRPC exceptions) surface as those exceptions. 
 before the workflow is registered.
 Tests use a recording `IUseStore` stand-in; `DaprUseStore` needs a sidecar and has no unit test.
 
+### Logging: `DWS_LOG_FORMAT=json` selects a contract formatter; anything else leaves logging unchanged
+
+The shared structured-log contract (keys, severity map, scrubber regexes, 12 golden cases) lives in
+[`docs/log-format.md`](../docs/log-format.md); read it before touching the formatter. `Program.cs`
+reads `DWS_LOG_FORMAT` (the only place `Environment.` is allowed) and, only when
+`DwsJsonConsoleFormatter.IsJsonMode` is true (trimmed, case-insensitive `json`), registers
+`DwsJsonConsoleFormatter` (name `dws-json`) as the console formatter. Unset, empty, `text` or any other
+value keeps the stock console output and never fails startup. In JSON mode every record is one stdout
+line with `timestamp`, `severity` (`Critical`→`FATAL`, `Warning`→`WARN`, ...), `logger`, scrubbed
+`message`, `trace_id`/`span_id` from `Activity.Current` (omitted when absent or all-zero) and, for an
+exception, `exception.type`/`.message`/`.stacktrace` (scrubbed). `DwsJsonConsoleFormatterTests` is the
+package's conformance test and runs all 12 golden cases; keep it green rather than changing a key on this
+side only. Never pass a secret to a log call in either format — the scrubber is defence in depth.
+Pre-host failures (for example a `DefinitionLoadException` thrown before `CreateBuilder`) are unhandled
+exceptions written by the runtime, not by this formatter. Don't call `Environment.`/`DateTime.UtcNow`
+from the formatter file: `ReplayTests` scans `src/` for them (timestamps use `TimeProvider.System`).
+
+**6.1 finding — `Activity.Current` inside a Dapr Workflow activity (`Dapr.Workflow` 1.18.10):** it is set.
+`Dapr.Workflow.dll` contains an internal `Dapr.Workflow.Worker.WorkflowTrace` (XML doc: "Restores workflow
+trace context as `Activity.Current` for workflow and activity dispatch") that owns a static
+`ActivitySource` named `Dapr.Workflow`. IL inspection shows
+`GrpcProtocolHandler.<ProcessActivityAsync>` calls `WorkflowTrace.StartActivityTrace(ActivityRequest)`
+(and `SetCurrentError` on failure), which parses the `ParentTraceContext` (`traceparent`/`tracestate`)
+carried on the sidecar's `ActivityRequest`, starts an `Activity` with that parent (via
+`ActivitySource.StartActivity` or `new Activity(...).SetParentId(...).Start()`), and returns a
+`TraceActivityScope` that restores the previous `Activity.Current` on dispose. So activity code (and
+log calls made from it) sees a non-null `Activity.Current` whose `TraceId` is the workflow's trace when
+the sidecar sends a trace context. Workflow-function code gets the same via `StartOrchestrationTrace`.
+Caveat: not exercised against a live sidecar here; if the sidecar sends no trace context, `Activity.Current`
+may be absent or a fresh root, and lines then carry no (or an unrelated) `trace_id`.
+
 ### Tests: xUnit `[Fact]` + FluentAssertions, present-tense verb test names, `IDisposable` for teardown, raw string literal fixtures
 
 ```csharp
