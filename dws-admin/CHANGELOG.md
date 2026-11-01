@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-admin-v0.2.1...dws-admin-v0.3.0) (2026-11-01)
+
+
+### Features
+
+* **admin:** add JSON structured logger with trace correlation behind DWS_LOG_FORMAT ([8afdc0b](https://github.com/tonylibs/dapr-workflow-spec/commit/8afdc0be547acba5c20544afde81bae9d1b3433f))
+
+
+### Bug Fixes
+
+* **admin:** bound and scrub producer-controlled fields in event subscriber logs ([697bcb0](https://github.com/tonylibs/dapr-workflow-spec/commit/697bcb068ac5c51ea8cf3a902f7dd5be58e144d8))
+
 ## [0.2.1](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-admin-v0.2.0...dws-admin-v0.2.1) (2026-09-14)
 
 

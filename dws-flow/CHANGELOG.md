@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-flow-v0.3.0...dws-flow-v0.4.0) (2026-11-01)
+
+
+### Features
+
+* **flow:** add DWS_LOG_FORMAT=json console formatter with trace correlation ([739d145](https://github.com/tonylibs/dapr-workflow-spec/commit/739d145a6eb89f4f54f126554010fe6bebb4aa6b))
+
 ## [0.3.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-flow-v0.2.0...dws-flow-v0.3.0) (2026-10-19)
 
 
