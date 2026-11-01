@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-admin-v0.3.0...dws-admin-v0.4.0) (2026-11-01)
+
+
+### Features
+
+* **auth:** Dapr API token and app API token for control-plane sidecars (auth phase 10) ([e8fd920](https://github.com/tonylibs/dapr-workflow-spec/commit/e8fd920735e67f40224f2d1114e8e61e1af5ddd0))
+
 ## [0.3.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-admin-v0.2.1...dws-admin-v0.3.0) (2026-11-01)
 
 
