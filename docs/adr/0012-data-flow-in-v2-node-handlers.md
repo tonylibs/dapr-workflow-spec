@@ -1,6 +1,6 @@
 # ADR 0012: Data Flow in v2 — Node Handler Chain, Context and Step Envelope
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-11-02; Decision 9 confirmed 2026-10-14)
 - **Date:** 2026-10-14
 - **Context:** [`docs/roadmaps/workflow-runtime-architecture-roadmap.md`](../roadmaps/workflow-runtime-architecture-roadmap.md)
   Phase 2.0 item 2 (where the v1 data-flow transforms live in v2), and the `switch` seam found by 3a
@@ -147,7 +147,7 @@ A golden corpus, run by v1, by the v2 Step handlers and by the Flow companion pa
 | DF-1 | Policy for secrets exported into `$context`: the context sits in workflow history in plain text | Deferred |
 | DF-2 | Payload size guard: context and data travel on every call and are stored in history | Not started |
 | DF-3 | Map data-flow faults to the OWS standard `validation` / `expression` error types, so `catch` can match them | Not started |
-| 5.1 | Run the shared corpus on v1; fix divergences, including the schema dialect | Not started |
+| 5.1 | Run the shared corpus on v1; fix divergences, including the schema dialect | Done: met by 2.0b, v1 passes 53/54, the one divergence is 5.2's |
 | 2i | Apply the Decision 9 builtin policy in the `dws-step` evaluator | Not started |
 | 5.2 | Apply the Decision 9 builtin policy in the v1 evaluator | Not started |
 
