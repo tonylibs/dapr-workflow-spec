@@ -1,4 +1,4 @@
-schema: spec-driven
+schema: intent-driven
 
 context: |
   DWS is a configuration-driven Kubernetes workflow platform built on Dapr and the
@@ -35,6 +35,10 @@ rules:
   design:
     - Document any changed cross-component contract, including task-to-resource mapping and step-service HTTP behavior.
     - Preserve immutable, content-addressed workflow definition versioning unless the change explicitly revises it.
+    - This repository keeps ADRs in docs/adr/, not a top-level adr/ folder. Wherever the schema says <repo>/adr/, read docs/adr/ instead.
+  adr:
+    - This repository keeps ADRs in docs/adr/, not a top-level adr/ folder. Wherever the schema says <repo>/adr/, read and write docs/adr/ instead; never create a top-level adr/ directory.
+    - Continue the existing NNNN sequence in docs/adr/ (next number = highest existing + 1) and follow the format of the existing ADRs there.
   specs:
     - Express requirements as observable behavior with scenarios for success, validation failure, and compatibility where relevant.
     - Specify the owning component for each requirement.
