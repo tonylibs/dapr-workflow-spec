@@ -129,7 +129,6 @@ scope is for Copilot Requests, not repository access.
 | Variable | CLI | Notes |
 |---|---|---|
 | `CLAUDE_CODE_OAUTH_TOKEN` | Claude Code | Subscription token from `claude setup-token` on the host. |
-| `ANTHROPIC_API_KEY` | Claude Code | API billing. Pre-approved, so interactive `claude` does not prompt for it. Takes precedence over the OAuth token when both are set. |
 | `OPENAI_API_KEY` | Codex | Codex ignores the env var, so the sandbox runs `codex login --with-api-key` once (stored in `~/.codex/auth.json`). |
 | `COPILOT_GITHUB_TOKEN` | Copilot CLI | Fine-grained PAT with only the **Copilot Requests** account permission; classic PATs are not supported. It is not used for `gh`/Git. |
 | `GEMINI_API_KEY` | Antigravity (`agy`) | Also sets `"modelProvider": "gemini"` in `~/.gemini/antigravity-cli/settings.json`, so `agy` uses Gemini API billing instead of your Google account sign-in. |
