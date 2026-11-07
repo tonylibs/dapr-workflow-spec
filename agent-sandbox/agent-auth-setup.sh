@@ -13,10 +13,9 @@
 # Values are never printed.
 set -eu
 
-ALLOWED_NAMES="ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN OPENAI_API_KEY COPILOT_GITHUB_TOKEN GEMINI_API_KEY GH_TOKEN GIT_USER_NAME GIT_USER_EMAIL"
+ALLOWED_NAMES="CLAUDE_CODE_OAUTH_TOKEN OPENAI_API_KEY COPILOT_GITHUB_TOKEN GEMINI_API_KEY GH_TOKEN GIT_USER_NAME GIT_USER_EMAIL"
 ENV_FILE="$HOME/.config/agent-sandbox/credentials.env"
 SSH_ENV_FILE="$HOME/.ssh/environment"
-CLAUDE_CONFIG="$HOME/.claude.json"
 AGY_SETTINGS="$HOME/.gemini/antigravity-cli/settings.json"
 
 is_allowed() {
@@ -97,18 +96,7 @@ if [ -n "$(token GH_TOKEN)" ]; then
     configured="$configured gh"
 fi
 
-# Claude Code reads CLAUDE_CODE_OAUTH_TOKEN and ANTHROPIC_API_KEY from the session
-# environment. An interactive session asks once before using ANTHROPIC_API_KEY;
-# pre-approve it the same way that prompt does (by the key's last 20 characters).
-anthropic_key=$(token ANTHROPIC_API_KEY)
-if [ -n "$anthropic_key" ]; then
-    [ -s "$CLAUDE_CONFIG" ] || echo '{}' > "$CLAUDE_CONFIG"
-    key_suffix=$(printf '%s' "$anthropic_key" | tail -c 20)
-    jq_in_place "$CLAUDE_CONFIG" --arg suffix "$key_suffix" '
-        .customApiKeyResponses.approved = (((.customApiKeyResponses.approved // []) - [$suffix]) + [$suffix])
-        | .customApiKeyResponses.rejected = ((.customApiKeyResponses.rejected // []) - [$suffix])'
-    configured="$configured claude(api-key)"
-fi
+# Claude Code reads its subscription OAuth token from the session environment.
 if [ -n "$(token CLAUDE_CODE_OAUTH_TOKEN)" ]; then
     configured="$configured claude(oauth-token)"
 fi
