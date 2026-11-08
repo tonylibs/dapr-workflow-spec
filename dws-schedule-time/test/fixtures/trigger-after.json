@@ -1,0 +1,1 @@
+{"workflow":"order-sync","version":"v1abc","appId":"order-sync-v1abc","kind":"after","schedule":"PT10M"}
