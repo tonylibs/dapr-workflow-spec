@@ -1,5 +1,5 @@
 {
-  "image": "dws-agent-sandbox:github-auth-prep-temp",
+  "image": "ghcr.io/tonylibs/dws-agent-sandbox:latest",
   "entrypoint": ["/usr/local/bin/sshd-start"],
   "timeout_seconds": null,
   "cpu": "2",
