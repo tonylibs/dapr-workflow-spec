@@ -13,7 +13,9 @@
     <PackageReference Include="Dapr.Client" Version="1.18.10" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Compile Remove="test/**/*.cs" />
-  </ItemGroup>
+  <PropertyGroup>
+    <!-- Keep the test project and its bin/obj out of every default glob (Compile, and the Web SDK's
+         **/*.json Content, which otherwise copies the test build's json files into this output). -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);test/**</DefaultItemExcludes>
+  </PropertyGroup>
 </Project>
