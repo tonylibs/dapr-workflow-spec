@@ -48,13 +48,13 @@
 
 ## 4. dws-schedule-time: package scaffold
 
-- [ ] 4.1 Create `dws-schedule-time/` in the `dws-flow` layout:
+- [x] 4.1 Create `dws-schedule-time/` in the `dws-flow` layout:
   - `dws-schedule-time.csproj` (net10.0, Nullable enable) that reads `version.txt`;
   - `test/dws-schedule-time.Tests.csproj` (xUnit, FluentAssertions);
   - `.slnx`, `Dockerfile` (non-root, `/healthz`), `README.md`, `CHANGELOG.md`.
-- [ ] 4.2 Write `dws-schedule-time/CLAUDE.md`: commands (always name the test project), the style rules inherited from `dws-flow`, the cross-package contracts it consumes, and "Environment. only in Program.cs".
-- [ ] 4.3 Port `DwsJsonConsoleFormatter` from `dws-flow` and its 12 golden-case tests (`docs/log-format.md`). Wire `DWS_LOG_FORMAT` in `Program.cs`.
-- [ ] 4.4 Gate: `cd dws-schedule-time && dotnet test test/dws-schedule-time.Tests.csproj`.
+- [x] 4.2 Write `dws-schedule-time/CLAUDE.md`: commands (always name the test project), the style rules inherited from `dws-flow`, the cross-package contracts it consumes, and "Environment. only in Program.cs".
+- [x] 4.3 Port `DwsJsonConsoleFormatter` from `dws-flow` and its 12 golden-case tests (`docs/log-format.md`). Wire `DWS_LOG_FORMAT` in `Program.cs`.
+- [x] 4.4 Gate: `cd dws-schedule-time && dotnet test test/dws-schedule-time.Tests.csproj`.
 
 ## 5. dws-schedule-time: trigger model, active version and job reconciliation
 
@@ -71,11 +71,11 @@
 
 ## 6. dws-schedule-time: firing and the start contract
 
-- [ ] 6.1 Write failing tests, then implement `InstanceIds`:
+- [x] 6.1 Write failing tests, then implement `InstanceIds`:
   - `dws-sched:<w>:<yyyyMMddTHHmmssZ>` (cron: truncate to the minute; every: anchor tick);
   - `dws-after:<w>:<seq>`.
   Use the due time from the job event instead if the spike (1.3) found it.
-- [ ] 6.2 Define `IWorkflowStarter` (`StartAsync`, `GetStatusAsync`). Write failing tests, then implement `OrchestratorInvokeStarter` (Dapr service invocation; `202`/`200` mean success; 5xx/429/transport mean retryable; other 4xx are non-retryable). Implement `CrossAppWorkflowStarter` only if task 1.4 confirmed option (a).
+- [x] 6.2 Define `IWorkflowStarter` (`StartAsync`, `GetStatusAsync`). Write failing tests, then implement `OrchestratorInvokeStarter` (Dapr service invocation; `202`/`200` mean success; 5xx/429/transport mean retryable; other 4xx are non-retryable). Implement `CrossAppWorkflowStarter` only if task 1.4 confirmed option (a).
 - [ ] 6.2a Write failing tests, then implement `StartClaim` (design Decision 6) over the state store, with ETag first-write and a TTL (`DWS_SCHEDULE_TIME_CLAIM_TTL`, default 24 h):
   - won claim → start → `started`;
   - lost to `started` → success without starting;
