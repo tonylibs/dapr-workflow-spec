@@ -38,6 +38,15 @@ public class Names {
     return "dws-def-" + workflow + "-" + versionId;
   }
 
+  /**
+   * Name of a scheduled version's trigger ConfigMap ({@code dws-trigger-W-vN}), read by {@code
+   * dws-schedule-time}. Version-scoped like the definition ConfigMap, so the stack's label-scoped
+   * GC removes it with the version.
+   */
+  public static String triggerResource(String workflow, String versionId) {
+    return "dws-trigger-" + workflow + "-" + versionId;
+  }
+
   public static String orchestrator(String workflow, String versionId) {
     return workflow + "-" + versionId;
   }

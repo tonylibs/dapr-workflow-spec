@@ -2,7 +2,9 @@ package io.dws.controller.api;
 
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.startsWith;
@@ -108,6 +110,25 @@ class WorkflowResourceTest {
         .then()
         .statusCode(400)
         .body("errors", not(hasSize(0)));
+
+    assertThat(managedConfigMaps()).isZero();
+  }
+
+  @Test
+  @DisplayName("an invalid schedule is rejected with 400 naming the field, and nothing is applied")
+  void invalidScheduleIsRejected() {
+    String twoTriggers =
+        fixture("order.yaml")
+            .replace("\ndo:\n", "\nschedule: { every: PT1H, cron: \"0 0 * * *\" }\ndo:\n");
+
+    given()
+        .contentType(YAML)
+        .body(twoTriggers)
+        .when()
+        .post("/workflows")
+        .then()
+        .statusCode(400)
+        .body("errors", hasItem(containsString("exactly one of 'every', 'cron' or 'after'")));
 
     assertThat(managedConfigMaps()).isZero();
   }
