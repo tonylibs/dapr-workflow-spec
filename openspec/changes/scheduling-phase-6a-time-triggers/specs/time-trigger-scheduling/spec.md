@@ -5,10 +5,10 @@
 Owner: `dws-schedule-time`. The scheduler SHALL watch, in its namespace, ConfigMaps labeled
 `dws.io/trigger=time` and orchestrator Deployments labeled `dws.io/managed-by=dws-controller`. A
 workflow's active trigger SHALL be the trigger config of its version whose orchestrator Deployment
-exists and is not labeled `dws.io/drain`.
+exists and is not annotated `dws.io/drain: "true"`.
 
 #### Scenario: Draining version's trigger is ignored
-- **GIVEN** versions A (labeled `dws.io/drain`) and B of `order-sync` both have trigger ConfigMaps
+- **GIVEN** versions A (annotated `dws.io/drain: "true"`) and B of `order-sync` both have trigger ConfigMaps
 - **WHEN** the scheduler resolves active triggers
 - **THEN** only version B's trigger is active for `order-sync`
 
@@ -48,7 +48,7 @@ be deleted.
 
 #### Scenario: New version takes over the schedule
 - **GIVEN** version A of `order-sync` is active with `cron: "0 * * * *"`
-- **WHEN** version B with `cron: "30 * * * *"` is deployed and version A is labeled `dws.io/drain`
+- **WHEN** version B with `cron: "30 * * * *"` is deployed and version A is annotated `dws.io/drain: "true"`
 - **THEN** job `dws-sched-order-sync` is overwritten with version B's schedule
 - **AND** the next fire starts an instance on version B's orchestrator app-id
 

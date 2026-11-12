@@ -82,6 +82,12 @@ Windows: use `mvnw.cmd`; POSIX shells (Git Bash): use `./mvnw`.
 - **Task names are unique across the whole definition**, at every depth — the app-id/Knative Service
   name derives from the task name alone, so a duplicate is a deployed-object collision. Rejected at
   compile time.
+- **Time triggers** (scheduling Phase 6a): `TimeSchedule` validates `schedule` on the *raw* tree
+  before the typed parse (the SDK `Schedule` has no `read` field), and a scheduled version gets one
+  immutable, create-only ConfigMap `dws-trigger-W-vN` (`dws.io/trigger=time`, key `trigger.json`)
+  for `dws-schedule-time`. Its shape, the label and the drain annotation are a cross-package
+  contract pinned by `SchedulerContractTest` against `../dws-schedule-time/test/fixtures/`. The v2
+  strategy rejects `schedule`.
 - **Rollout**: the controller only annotates the superseded orchestrator `dws.io/drain=true`. Draining is
   the orchestrator's concern; the controller collects that version once its Deployment reports
   `status.replicas == 0` (a null status means "not reported yet", never "drained").

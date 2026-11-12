@@ -26,25 +26,25 @@
 
 ## 3. dws-controller: schedule validation and trigger ConfigMap
 
-- [ ] 3.1 Add the `com.cronutils:cron-utils` dependency (Unix 5-field definition) and verify the license is compatible.
-- [ ] 3.2 Write failing compiler tests for every `workflow-schedule-compilation` validation scenario:
+- [x] 3.1 Add the `com.cronutils:cron-utils` dependency (Unix 5-field definition) and verify the license is compatible.
+- [x] 3.2 Write failing compiler tests for every `workflow-schedule-compilation` validation scenario:
   - valid cron accepted; duration object accepted;
   - malformed, 4-field and 6-field cron rejected;
   - duration below 1 s rejected;
   - runtime expression rejected;
   - more than one trigger rejected;
   - `on` rejected; `read` without `on` rejected; `{}` rejected.
-- [ ] 3.3 Implement the `schedule` checks in `V1OrchestratorCompiler.semanticErrors`. Add duration normalization to canonical ISO-8601 (object → string).
-- [ ] 3.4 Write a failing test, then make `V2StructuralCompiler` reject any `schedule` with the "not yet supported on runtime v2" error.
-- [ ] 3.5 Add a `TriggerSpec` (workflow, version, appId, kind, schedule) to `DeploymentPlan` (nullable when there is no schedule) and `Names.triggerResource(w, versionId)`.
-- [ ] 3.6 Write failing `StackSynthesizer` tests:
+- [x] 3.3 Implement the `schedule` checks in `V1OrchestratorCompiler.semanticErrors`. Add duration normalization to canonical ISO-8601 (object → string).
+- [x] 3.4 Write a failing test, then make `V2StructuralCompiler` reject any `schedule` with the "not yet supported on runtime v2" error.
+- [x] 3.5 Add a `TriggerSpec` (workflow, version, appId, kind, schedule) to `DeploymentPlan` (nullable when there is no schedule) and `Names.triggerResource(w, versionId)`.
+- [x] 3.6 Write failing `StackSynthesizer` tests:
   - a scheduled plan renders one ConfigMap with the standard labels plus `dws.io/trigger=time` and the exact `trigger.json`;
   - an unscheduled plan renders none.
-- [ ] 3.7 Implement the trigger ConfigMap synthesis and apply. Verify that `StackApplier` teardown deletes it with the stack, and add a test for that.
-- [ ] 3.8 Add a test asserting the version ID for an unscheduled definition is unchanged. Add a test pinning `Labels.DRAIN` = `dws.io/drain` and `dws.io/trigger`, because the scheduler depends on both.
-- [ ] 3.9 Export a sample `trigger.json` per kind as a shared fixture for the scheduler's parser test (`dws-schedule-time/test/fixtures/`).
-- [ ] 3.10 Update `dws-controller/k8s/controller-rbac.yaml` and the chart controller Role only if ConfigMap create/delete is not already granted (check first).
-- [ ] 3.11 Gate: `cd dws-controller && ./mvnw spotless:check && ./mvnw verify`.
+- [x] 3.7 Implement the trigger ConfigMap synthesis and apply. Verify that `StackApplier` teardown deletes it with the stack, and add a test for that.
+- [x] 3.8 Add a test asserting the version ID for an unscheduled definition is unchanged. Add a test pinning `Labels.DRAIN` = `dws.io/drain` and `dws.io/trigger`, because the scheduler depends on both. *Done in `SchedulerContractTest`, which also pins that drain is an annotation, not a label.*
+- [x] 3.9 Export a sample `trigger.json` per kind as a shared fixture for the scheduler's parser test (`dws-schedule-time/test/fixtures/`).
+- [x] 3.10 Update `dws-controller/k8s/controller-rbac.yaml` and the chart controller Role only if ConfigMap create/delete is not already granted (check first). *Checked: both already grant configmaps `create`/`delete`/`deletecollection`; the trigger ConfigMap is immutable and create-only, so no change.*
+- [x] 3.11 Gate: `cd dws-controller && ./mvnw spotless:check && ./mvnw verify`.
 
 ## 4. dws-schedule-time: package scaffold
 

@@ -4,7 +4,8 @@
   orchestrator's `POST /workflows/{name}/instances` (`WorkflowController.start`), which always
   generates the instance ID. The cluster is the controller's only store: every resource carries
   `dws.io/workflow`, `dws.io/version` and `dws.io/managed-by`. An old version's orchestrator
-  Deployment is labeled `dws.io/drain` when a new version takes over, and
+  Deployment is annotated `dws.io/drain: "true"` (an annotation, not a label;
+  `StackApplier.isDraining`) when a new version takes over, and
   `StackReader.current` defines the current version as the non-draining one.
 - **Source idea.** `docs/draft-scheduler-event-trigger-split.md` splits Phase 6 into separate
   trigger components. This change is Phase 6a. Decisions taken for this change:
@@ -96,7 +97,9 @@ The version ID is still the content digest of the definition text. Nothing chang
 
 The scheduler runs two informers in its namespace: trigger ConfigMaps and managed orchestrator
 Deployments. It applies the same rule as `StackReader.current`: the active version is the one whose
-Deployment is not labeled `dws.io/drain`. This makes the drain label part of a cross-package
+Deployment does not carry the `dws.io/drain: "true"` annotation (it is an annotation, not a
+label, so the scheduler cannot select on it; it filters informer results instead). This makes the
+drain annotation part of a cross-package
 contract. The root `CLAUDE.md` contract section and a controller-side test pin it, as was done for
 `OrchestratorEnvContractTest`.
 
