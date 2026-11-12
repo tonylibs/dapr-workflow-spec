@@ -12,7 +12,7 @@
 
 ## 2. dws-orchestrator: idempotent start with caller-supplied instance ID
 
-- [ ] 2.1 Write failing tests in `WorkflowController` tests:
+- [x] 2.1 Write failing tests in `WorkflowController` tests:
   - no `instanceId` → `202` with a generated ID (unchanged);
   - new `instanceId` → `202` with that ID;
   - existing `instanceId` → `200` with the existing instance, and no second start;
@@ -20,9 +20,9 @@
   - a concurrent already-exists error from Dapr → `200`;
   - an unknown `instanceId` is not mistaken for an existing one (the Java SDK returns a non-null state with empty name and epoch `createdAt` for it; spike 1.2);
   - a completed, terminated or failed instance with that ID is reported as existing, not restarted (Dapr would replace it).
-- [ ] 2.2 Implement the optional `instanceId` query parameter in `WorkflowController.start`: validate it, check existence with `getWorkflowState(id, false)` (not-found is empty name / epoch `createdAt`, never `null`), call `scheduleNewWorkflow(name, input, instanceId)`, and map already-exists to `200`.
-- [ ] 2.3 Update `dws-orchestrator/README.md` to document the start API.
-- [ ] 2.4 Gate: `cd dws-orchestrator && ./mvnw verify` (`mvnw.cmd` on Windows).
+- [x] 2.2 Implement the optional `instanceId` query parameter in `WorkflowController.start`: validate it, check existence with `getWorkflowState(id, false)` (not-found is empty name / epoch `createdAt`, never `null`), call `scheduleNewWorkflow(name, input, instanceId)`, and map already-exists to `200`.
+- [x] 2.3 Update `dws-orchestrator/README.md` to document the start API.
+- [x] 2.4 Gate: `cd dws-orchestrator && ./mvnw verify` (`mvnw.cmd` on Windows).
 
 ## 3. dws-controller: schedule validation and trigger ConfigMap
 
