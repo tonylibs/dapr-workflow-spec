@@ -1,0 +1,1 @@
+{"workflow":"nightly-report","version":"v71c8885f","appId":"nightly-report","kind":"cron","schedule":"0 2 * * 1-5"}
