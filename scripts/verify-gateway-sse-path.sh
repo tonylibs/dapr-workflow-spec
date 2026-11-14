@@ -415,10 +415,14 @@ pass "disposable Redis and mock JWKS IdP are Ready in $NAMESPACE"
 # ================================================================================================
 echo
 echo "=== 4. helm install $RELEASE $CHART_DIR --namespace $NAMESPACE (bundled gateway mode) ==="
+# scheduleTime.enabled=false: dws-schedule-time is Core and on by default, but this run checks the
+# console/admin SSE path, not scheduling, and step 4b waits for EVERY Deployment -- its pinned image
+# has no published tag until its first component-release, so it would never become Ready here.
 helm install "$RELEASE" "$CHART_DIR" \
   --namespace "$NAMESPACE" \
   --timeout 10m \
   --set dapr.enabled=false \
+  --set scheduleTime.enabled=false \
   --set controller.enabled=${CONTROLLER_ENABLED} \
   --set controller.image.tag="${GW_E2E_CONTROLLER_TAG:-}" \
   --set postgresql.enabled=true \
