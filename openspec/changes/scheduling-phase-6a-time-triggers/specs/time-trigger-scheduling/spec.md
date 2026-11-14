@@ -141,14 +141,7 @@ the instance being awaited.
 Owner: `dws-schedule-time`. When a start fails with a transport error, 5xx or 429, the job handler SHALL
 report failure so Dapr retries the fire up to 3 times, 10 seconds apart. A fire that still fails
 SHALL be dropped and logged at error level with the workflow, fire key and cause. Other 4xx SHALL
-be logged and dropped without retry. The scheduler SHALL NOT catch up missed fires itself. Ticks
-that Dapr replays after scheduler downtime SHALL collapse onto one instance, because they share one
-fire key and the start is idempotent per instance ID.
-
-#### Scenario: Replayed burst after downtime starts one instance
-- **GIVEN** `dws-schedule-time` was down for several `every` intervals
-- **WHEN** Dapr delivers the missed ticks in a burst to two replicas
-- **THEN** exactly one instance is started, even if the workflow completes within milliseconds
+be logged and dropped without retry.
 
 #### Scenario: Target recovers within the retry window
 - **GIVEN** the orchestrator returns 503 for the first start attempt and 202 for the second
@@ -159,6 +152,17 @@ fire key and the start is idempotent per instance ID.
 - **GIVEN** the orchestrator is unreachable for longer than the retry window
 - **WHEN** a fire is handled
 - **THEN** no instance is started for that fire key, an error log names the workflow and fire key, and the next scheduled fire is attempted normally
+
+### Requirement: Missed fires are not caught up, and replayed ticks collapse
+
+Owner: `dws-schedule-time`. The scheduler SHALL NOT catch up missed fires itself. Ticks that Dapr
+replays after scheduler downtime SHALL collapse onto one instance, because they share one fire key
+and the start is idempotent per instance ID.
+
+#### Scenario: Replayed burst after downtime starts one instance
+- **GIVEN** `dws-schedule-time` was down for several `every` intervals
+- **WHEN** Dapr delivers the missed ticks in a burst to two replicas
+- **THEN** exactly one instance is started, even if the workflow completes within milliseconds
 
 ### Requirement: Job callbacks and starts work with machine auth on
 

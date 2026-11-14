@@ -113,7 +113,9 @@ The scheduler registers job `dws-sched-<workflow>`. Its data is
 
 Reconcile reads the existing job (`GetJob`) and overwrites only when version, kind or schedule
 differ. This keeps an `every` anchor stable across restarts and across replicas that reconcile
-concurrently. Handlers are mapped with the SDK's job-handler endpoint (`/job/<name>`).
+concurrently. The job callback `POST /job/<name>` is mapped by hand rather than with the SDK's
+`MapDaprScheduledJobHandler`, so the handler decides explicitly between `200` (done or dropped) and
+`500` (Dapr retries per the job's failure policy).
 
 Why not a cron binding (draft D2): a binding fires in every replica, and with N replicas it would
 start N instances. Jobs deliver each trigger to one replica of the app-id, and the Scheduler service
@@ -145,12 +147,14 @@ The spike showed the job callback carries only the raw payload, with no due time
 always computed as above. Because it derives from the delivery time, ticks that Dapr replays after
 downtime (see Decision 8) map to one key and collapse onto one instance.
 
-The start seam is an `IWorkflowStarter` with `StartAsync(target, instanceId, input)` and
-`GetStatusAsync(target, instanceId)`:
+The start seam is an `IWorkflowStarter` with `StartAsync(appId, workflow, instanceId, inputJson)`
+(outcome `Started`, `Retryable` or `NonRetryable`) and `GetStatusAsync(appId, instanceId)` (`Running`,
+`Terminal`, `NotFound` or `Error`, read from the orchestrator's `runtimeStatus`):
 - **(a) `CrossAppWorkflowStarter`.** `DaprWorkflowClient` against the orchestrator's app-id.
   **Rejected by the spike (ADR 0013, Amendment 1):** the client has no target app-id and always
   schedules into its own app-id's engine, and a duplicate ID replaces a completed instance. Not built.
-- **(b) `OrchestratorInvokeStarter`** (the mechanism). `DaprClient` service invocation, with
+- **(b) `OrchestratorInvokeStarter`** (the mechanism). Dapr service invocation through the
+  `HttpClient` from `DaprClient.CreateInvokeHttpClient()`, which carries `DAPR_API_TOKEN`, with
   `Content-Type: application/json` (the orchestrator answers `400` without it):
   - start: `POST workflows/{name}/instances?instanceId=…` on the orchestrator's app-id; `202` and
     `200` both mean success;

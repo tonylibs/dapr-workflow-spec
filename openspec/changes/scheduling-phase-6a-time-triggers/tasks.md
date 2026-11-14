@@ -131,11 +131,15 @@
 
 ## 10. Docs and close-out
 
-- [ ] 10.1 Update the root `CLAUDE.md`:
+- [x] 10.1 Update the root `CLAUDE.md`:
   - package map row for `dws-schedule-time` and its gate command;
   - cross-package contracts (trigger ConfigMap, drain label, start `instanceId`, instance-ID format, scheduler `DAPR_API_TOKEN`);
   - a sixth package in the `DWS_LOG_FORMAT` contract.
   Update `docs/log-format.md` for the new package.
-- [ ] 10.2 Update `docs/roadmaps/openworkflow-features.md`: the Phase 6 row is split into 6a/6b, and the scheduling coverage row is updated. Mark `docs/draft-scheduler-event-trigger-split.md` as superseded by ADR 0013 for 6a.
-- [ ] 10.3 Add a release note and a chart `NOTES.txt` line: definitions with `schedule` start firing, or may newly fail validation, on their next deploy.
-- [ ] 10.4 Run `openspec validate scheduling-phase-6a-time-triggers --type change --strict` and fix any findings before archive.
+  - The drain marker is recorded as an annotation, not a label. The new "Trigger ConfigMap and drain marker" contract also covers the scheduler Role; the start-contract entry now says any future orchestrator access control must allow app-id `dws-schedule-time`.
+- [x] 10.2 Update `docs/roadmaps/openworkflow-features.md`: the Phase 6 row is split into 6a/6b, and the scheduling coverage row is updated. Mark `docs/draft-scheduler-event-trigger-split.md` as superseded by ADR 0013 for 6a.
+  - Phase 6 split into 6a (implemented, live verification pending) and 6b (`schedule.on`, not started); the draft is marked superseded for 6a only and stays input for 6b.
+- [x] 10.3 Add a release note and a chart `NOTES.txt` line: definitions with `schedule` start firing, or may newly fail validation, on their next deploy.
+  - There is no release-notes file in the repo, so the note is the chart README section "Upgrading to scheduling Phase 6a (time triggers)". `NOTES.txt` prints the same warning while `scheduleTime.enabled`.
+- [x] 10.4 Run `openspec validate scheduling-phase-6a-time-triggers --type change --strict` and fix any findings before archive.
+  - Strict validation flagged one requirement over 500 characters; split into "Fire failures are retried briefly, then dropped" and "Missed fires are not caught up, and replayed ticks collapse" with the scenarios unchanged. `design.md` Decisions 5 and 6 now match the code (hand-mapped job callback; actual starter signatures). Valid with `--strict`.
