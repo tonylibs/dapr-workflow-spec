@@ -20,7 +20,7 @@
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
-  name: {{ include "dws.fullname" . }}-actor-statestore
+  name: {{ include "dws.actorStateStore.name" . }}
   namespace: {{ include "dws.namespace" . }}
   labels:
     {{- include "dws.labels" . | nindent 4 }}

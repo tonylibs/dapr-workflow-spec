@@ -96,6 +96,34 @@ controller:
       repository: ghcr.io/tonylibs/dws-orchestrator
       tag: "0.1.0"
 
+# dws-schedule-time: fires the time triggers of the DSL `schedule` block (`every`, `cron`,
+# `after`) for v1 workflows (scheduling Phase 6a, docs/adr/0013-time-triggers-in-dws-schedule-time.md).
+# Core layer (ADR 0007), so it is on by default: without it a scheduled workflow deploys but never
+# fires. It watches the trigger ConfigMaps and orchestrator Deployments the controller writes
+# (read-only RBAC), keeps one Dapr job per scheduled workflow, and starts instances through Dapr
+# service invocation of the orchestrator. Its start claims and `after` bookkeeping live in the
+# chart's shared state store Component (<fullname>-actor-statestore), which supports the ETags
+# and TTLs it needs. Values are validated by values.schema.json (unknown keys are rejected).
+scheduleTime:
+  enabled: true
+  # More than one replica is safe: Dapr delivers each job to one replica, and starts are
+  # deduplicated per instance ID through the state-store claim.
+  replicaCount: 1
+  image:
+    repository: ghcr.io/tonylibs/dws-schedule-time
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  # How often the current instance of an `after` workflow is polled for a terminal status
+  # (ISO-8601 duration, at least 1 s). Rendered as DWS_SCHEDULE_TIME_AFTER_POLL_INTERVAL.
+  afterPollInterval: PT15S
+  # TTL of the per-instance start claims in the state store (ISO-8601 duration). Rendered as
+  # DWS_SCHEDULE_TIME_CLAIM_TTL.
+  claimTtl: PT24H
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
 # Dapr-native JWT authentication for the controller (dws-console auth roadmap Phase 2,
 # docs/roadmaps/dws-auth.md). Off by default so existing releases keep working; enabling
 # switches the controller Service to front the Dapr sidecar port (3500) so no caller can
@@ -154,6 +182,12 @@ auth:
       appApi:
         # RESERVED for a follow-up change (dws-controller's app-port check). Documented here so
         # the value shape is stable; NOT rendered or consulted by this chart version.
+        existingSecret: ""
+    scheduleTime:
+      daprApi:
+        # Existing Secret (key `token`) for dws-schedule-time's sidecar API token (Secret
+        # <release>-schedule-time-dapr-api-token otherwise). The scheduler container receives it
+        # as DAPR_API_TOKEN for its jobs, state and service-invocation calls to that sidecar.
         existingSecret: ""
 
 # Apache APISIX (auth roadmap §2b, docs/roadmaps/dws-auth.md): the optional Gateway API data

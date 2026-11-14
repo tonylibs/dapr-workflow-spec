@@ -1,0 +1,39 @@
+{{- if .Values.scheduleTime.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "dws.scheduleTime.fullname" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: schedule-time
+rules:
+  # Read-only by design (helm-schedule-time-deployment spec): the scheduler only lists and watches
+  # what dws-controller writes, and keeps its own state in Dapr jobs and the state store.
+  # Trigger ConfigMaps (dws.io/trigger=time, key trigger.json).
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  # Orchestrator Deployments (dws.io/managed-by=dws-controller); the dws.io/drain annotation
+  # marks the superseded version, so a workflow's active trigger is its non-draining version's.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "dws.scheduleTime.fullname" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: schedule-time
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "dws.scheduleTime.fullname" . }}
+    namespace: {{ include "dws.namespace" . }}
+roleRef:
+  kind: Role
+  name: {{ include "dws.scheduleTime.fullname" . }}
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

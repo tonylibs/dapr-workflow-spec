@@ -24,10 +24,13 @@ under the key `token`:
 {{- if .Values.controller.enabled }}
   - {{ include "dws.apiTokens.secretName" (dict "root" . "component" "controller" "kind" "daprApi") }}  (controller sidecar API token)
 {{- end }}
+{{- if .Values.scheduleTime.enabled }}
+  - {{ include "dws.apiTokens.secretName" (dict "root" . "component" "schedule-time" "kind" "daprApi") }}  (dws-schedule-time sidecar API token)
+{{- end }}
 This chart never prints a token. daprd reads its token only at startup, so after every install,
 upgrade or token rotation restart the pods that use them and wait for the rollout:
 
-  kubectl rollout restart -n {{ include "dws.namespace" . }}{{ if .Values.admin.enabled }} deployment/{{ include "dws.admin.fullname" . }}{{ end }}{{ if .Values.controller.enabled }} deployment/{{ include "dws.controller.fullname" . }}{{ end }}{{ if and .Values.apiGateway.enabled .Values.apisix.enabled }} {{ ternary "daemonset" "deployment" (.Values.apisix.useDaemonSet | default false) }}/{{ include "dws.apisix.fullname" . }}{{ end }}
+  kubectl rollout restart -n {{ include "dws.namespace" . }}{{ if .Values.admin.enabled }} deployment/{{ include "dws.admin.fullname" . }}{{ end }}{{ if .Values.controller.enabled }} deployment/{{ include "dws.controller.fullname" . }}{{ end }}{{ if .Values.scheduleTime.enabled }} deployment/{{ include "dws.scheduleTime.fullname" . }}{{ end }}{{ if and .Values.apiGateway.enabled .Values.apisix.enabled }} {{ ternary "daemonset" "deployment" (.Values.apisix.useDaemonSet | default false) }}/{{ include "dws.apisix.fullname" . }}{{ end }}
 
 A chart-generated token is also stored in the Helm release Secret; supply
 auth.apiTokens.<component>.<kind>.existingSecret to keep it out of Helm. See

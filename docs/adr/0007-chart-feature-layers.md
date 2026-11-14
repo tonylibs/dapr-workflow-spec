@@ -33,7 +33,8 @@ Verified against the chart as of this date:
 | `observability.enabled` | Off by default, own sub-toggles |
 
 There is no `values.schema.json`. Today's guards are `fail` calls in `_preflight.tpl` and
-`_helpers.tpl`.
+`_helpers.tpl`. (Update, scheduling Phase 6a: a partial `charts/dws/values.schema.json` now exists.
+It closes only the `scheduleTime` block and leaves every other key open; see question 8.)
 
 ## Proposed decision
 
@@ -153,7 +154,11 @@ the toggles; an individual toggle always overrides its preset.
    Dapr invocation. Same issuer and audience for both, or a separate service credential?
 7. **Dapr API token vs gateway.** The token applies to all callers, so the console gateway must
    inject it. Record as a soft dependency between L1 and L2?
-8. **Guards.** Keep `fail` calls only, or also add `values.schema.json`?
+8. **Guards.** Keep `fail` calls only, or also add `values.schema.json`? *Partly answered by
+   scheduling Phase 6a (`openspec/changes/scheduling-phase-6a-time-triggers`): the chart ships a
+   `values.schema.json` that closes only `scheduleTime` (unknown or ill-typed keys fail the
+   render) and constrains nothing else, so existing values files and `--reuse-values` upgrades are
+   unaffected. Extending it to the other blocks is still open.*
 9. **Presets.** A `profile` key, or shipped values files?
 10. **Members scope.** Role set, claim/group-to-role mapping, and the line between Phase 7 and
     Phase 9.

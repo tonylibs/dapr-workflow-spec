@@ -1,0 +1,102 @@
+{{- if .Values.scheduleTime.enabled }}
+{{- /*
+  dws-schedule-time (scheduling Phase 6a, ADR 0013): fires `schedule` time triggers for v1
+  workflows. It serves only its sidecar's job callbacks (POST /job/<name>) and /healthz, so there is
+  no Service: Dapr creates the <app-id>-dapr Service its sidecar needs. Starts leave through its own
+  sidecar as service invocation of the orchestrator app-id.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dws.scheduleTime.fullname" . }}
+  namespace: {{ include "dws.namespace" . }}
+  labels:
+    {{- include "dws.labels" . | nindent 4 }}
+    app.kubernetes.io/component: schedule-time
+spec:
+  replicas: {{ .Values.scheduleTime.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "dws.scheduleTime.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dws.labels" . | nindent 8 }}
+        app.kubernetes.io/component: schedule-time
+      annotations:
+        dapr.io/enabled: "true"
+        {{- /* Stable app-id: Dapr jobs belong to the app-id that registered them. */}}
+        dapr.io/app-id: {{ include "dws.scheduleTime.fullname" . | quote }}
+        dapr.io/app-port: "8080"
+        {{- if .Values.auth.enabled }}
+        {{- /*
+          Dapr API token for the scheduler's sidecar (auth roadmap Phase 10 pattern). The app sends
+          it on every sidecar call (jobs, state, service invocation) through the Dapr .NET SDK,
+          which reads DAPR_API_TOKEN below. No app token: the only inbound caller is its own sidecar
+          delivering job callbacks.
+        */}}
+        dapr.io/api-token-secret: {{ include "dws.apiTokens.secretName" (dict "root" . "component" "schedule-time" "kind" "daprApi") | quote }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "dws.scheduleTime.fullname" . }}
+      {{- include "dws.component.scheduling" (dict "root" . "component" .Values.scheduleTime) | nindent 6 }}
+      {{- if and .Values.dapr.enabled (not .Values.redis.external.host) }}
+      initContainers:
+        # The sidecar initialises the chart's unscoped Redis Components (state store, pub/sub) and
+        # fatally exits on a first connection-refused, so wait for the in-chart Redis first (see
+        # controller/deployment.yaml and admin/deployment.yaml).
+        - name: wait-for-redis
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              host_port='{{ include "dws.redis.host" . }}'
+              host=${host_port%:*}
+              port=${host_port##*:}
+              until nc -z "$host" "$port"; do
+                echo "waiting for redis $host:$port" >&2
+                sleep 2
+              done
+      {{- end }}
+      containers:
+        - name: schedule-time
+          image: "{{ .Values.scheduleTime.image.repository }}:{{ .Values.scheduleTime.image.tag }}"
+          imagePullPolicy: {{ .Values.scheduleTime.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # Namespace the trigger ConfigMap / orchestrator Deployment watch runs in.
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # Start claims and `after` bookkeeping; the store must support ETags and TTLs.
+            - name: DWS_SCHEDULE_TIME_STATE_STORE
+              value: {{ include "dws.actorStateStore.name" . | quote }}
+            - name: DWS_SCHEDULE_TIME_AFTER_POLL_INTERVAL
+              value: {{ .Values.scheduleTime.afterPollInterval | quote }}
+            - name: DWS_SCHEDULE_TIME_CLAIM_TTL
+              value: {{ .Values.scheduleTime.claimTtl | quote }}
+            {{- if .Values.auth.enabled }}
+            {{- /* Read by the Dapr .NET SDK, never by the app; always a secretKeyRef. */}}
+            - name: DAPR_API_TOKEN
+              {{- include "dws.apiTokens.secretKeyRef" (dict "root" . "component" "schedule-time" "kind" "daprApi") | nindent 14 }}
+            {{- end }}
+            {{- with (include "dws.observability.logFormatEnv" .) }}
+            {{- . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+          resources:
+            {{- include "dws.component.resources" (dict "root" . "component" .Values.scheduleTime) | nindent 12 }}
+{{- end }}

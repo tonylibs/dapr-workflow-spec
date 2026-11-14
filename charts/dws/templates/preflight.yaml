@@ -10,10 +10,21 @@ resource itself.
 {{- include "dws.observability.validate" . -}}
 {{- include "dws.apiGateway.validate" . -}}
 {{- include "dws.console.legacyIngress.validate" . -}}
-{{- if and .Values.auth.enabled .Values.admin.enabled .Values.controller.enabled -}}
-{{- $admin := include "dws.apiTokens.secretName" (dict "root" . "component" "admin" "kind" "daprApi") -}}
-{{- $controller := include "dws.apiTokens.secretName" (dict "root" . "component" "controller" "kind" "daprApi") -}}
-{{- if eq $admin $controller -}}
-{{- fail "admin and controller Dapr API tokens must use different Secrets; set distinct auth.apiTokens.admin.daprApi.existingSecret and auth.apiTokens.controller.daprApi.existingSecret" -}}
+{{- /*
+Every enabled component's sidecar must require its own Dapr API token: one shared Secret would let
+any of them call the others' sidecar APIs.
+*/ -}}
+{{- if .Values.auth.enabled -}}
+{{- $seen := dict -}}
+{{- range $c := list (dict "name" "admin" "enabled" .Values.admin.enabled) (dict "name" "controller" "enabled" .Values.controller.enabled) (dict "name" "schedule-time" "enabled" .Values.scheduleTime.enabled) -}}
+{{- if $c.enabled -}}
+{{- $ref := dict "root" $ "component" $c.name "kind" "daprApi" -}}
+{{- $secret := include "dws.apiTokens.secretName" $ref -}}
+{{- $key := include "dws.apiTokens.valuesKey" $ref -}}
+{{- with get $seen $secret -}}
+{{- fail (printf "%s and %s Dapr API tokens must use different Secrets; set distinct auth.apiTokens.%s.daprApi.existingSecret and auth.apiTokens.%s.daprApi.existingSecret" . $c.name (include "dws.apiTokens.valuesKey" (dict "component" .)) $key) -}}
+{{- end -}}
+{{- $_ := set $seen $secret $c.name -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
