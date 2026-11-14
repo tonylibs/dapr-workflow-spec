@@ -122,13 +122,13 @@
 
 ## 9. Live verification
 
-- [ ] 9.1 On a local cluster with the chart installed, deploy workflows with `every: PT1M`, `cron: "*/2 * * * *"` and `after: PT30S`. Check that instances start with the expected IDs and that `after` waits for completion plus the delay.
-- [ ] 9.2 Takeover: deploy a new version with a different cron and check that the next fire starts on the new version. Delete the workflow and check that its job is gone.
-- [ ] 9.3 Restart the `dws-schedule-time` pod. Check that no unchanged job was re-anchored and that the `after` sequence continued.
+- [x] 9.1 On a local cluster with the chart installed, deploy workflows with `every: PT1M`, `cron: "*/2 * * * *"` and `after: PT30S`. Check that instances start with the expected IDs and that `after` waits for completion plus the delay.
+- [x] 9.2 Takeover: deploy a new version with a different cron and check that the next fire starts on the new version. Delete the workflow and check that its job is gone.
+- [x] 9.3 Restart the `dws-schedule-time` pod. Check that no unchanged job was re-anchored and that the `after` sequence continued.
 - [ ] 9.4 Scale `dws-schedule-time` to 2 replicas and check that there are no duplicate instances per fire key. Also stop both pods for several intervals, restart them, and check that the replayed burst starts exactly one instance.
 - [ ] 9.5 Repeat 9.1 with `auth.enabled=true` and check that there are no 401s in either sidecar (draft D11).
-- [ ] 9.6 Record the evidence under `docs/roadmaps/` (as `observability-phase*-evidence.md` does) and link it from the ADR.
-  - **Blocked in the agent sandbox** (9.1–9.6 all open): its kernel refuses to lower `oom_score_adj` even for root, and kubelet sets it for every pod, so no Kubernetes node can start (kind fails with `runc init: failed to update /proc/self/oom_score_adj: Permission denied`, also with `failCgroupV1: false`). `docs/roadmaps/scheduling-phase6a-evidence.md` holds the procedure and expected result for each check, marked NOT YET RUN; fill it from a real cluster, then link it from ADR 0013.
+- [x] 9.6 Record the evidence under `docs/roadmaps/` (as `observability-phase*-evidence.md` does) and link it from the ADR.
+  - Live run 2026-11-14 on `docker-desktop` (Kubernetes 1.34.3, Dapr 1.18.2): 9.1–9.3 passed. 9.4 remains open because all replayed callbacks failed before initial cluster synchronization; only the next ordinary tick started. 9.5 remains open because invocation starts omit the sidecar API token and return 401. Evidence and follow-ups: [`docs/roadmaps/scheduling-phase6a-evidence.md`](../../../docs/roadmaps/scheduling-phase6a-evidence.md), linked from ADR 0013. Default controller submission also needed `JSII_RUNTIME_PACKAGE_CACHE=disabled` in this run. No application source fixes were made.
 
 ## 10. Docs and close-out
 
