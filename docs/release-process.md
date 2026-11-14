@@ -85,6 +85,12 @@ first-parent commit that touches `<component>/` (not bare `HEAD`, which would le
   component (no CHANGELOG yet) or a hotfix tag.
 - **② before ③.** `chart_release.py` pins the highest existing `<component>-v*` tag.
   If you run chart-release before the component tag exists, it pins nothing new.
+- **Which images the chart pins.** `VALUES_ANCHORS` in `.github/scripts/chart_release.py` lists
+  every component whose image `charts/dws/values.yaml` pins, keyed by the `repository:` string that
+  precedes its `tag:`. A new chart-deployed component needs an entry there, or chart-release never
+  moves its tag. `dws-schedule-time` (`scheduleTime.image`) is pinned this way; its `0.1.0` default
+  only resolves once its first `dws-schedule-time-v0.1.0` image exists (bootstrap, see
+  "First release of a new component").
 
 ## Common flows
 
