@@ -1,7 +1,7 @@
 #!/bin/sh
 # Configure agent CLI credentials from KEY=VALUE lines on stdin.
 #
-# The host launchers (new-ssh-sandbox.ps1, new_ssh_sandbox.py) stream the host's
+# The host launcher (new_ssh_sandbox.py) streams the host's
 # agent tokens here with `docker exec -i` right after the sandbox is created, so the
 # tokens never appear in `docker inspect`, a command line, or the OpenSandbox store.
 #
@@ -13,7 +13,7 @@
 # Values are never printed.
 set -eu
 
-ALLOWED_NAMES="CLAUDE_CODE_OAUTH_TOKEN OPENAI_API_KEY COPILOT_GITHUB_TOKEN GEMINI_API_KEY GH_TOKEN GIT_USER_NAME GIT_USER_EMAIL"
+ALLOWED_NAMES="CLAUDE_CODE_OAUTH_TOKEN COPILOT_GITHUB_TOKEN GEMINI_API_KEY GH_TOKEN GIT_USER_NAME GIT_USER_EMAIL"
 ENV_FILE="$HOME/.config/agent-sandbox/credentials.env"
 SSH_ENV_FILE="$HOME/.ssh/environment"
 AGY_SETTINGS="$HOME/.gemini/antigravity-cli/settings.json"
@@ -101,12 +101,7 @@ if [ -n "$(token CLAUDE_CODE_OAUTH_TOKEN)" ]; then
     configured="$configured claude(oauth-token)"
 fi
 
-# Codex does not read API keys from the environment; it needs a stored login.
-openai_key=$(token OPENAI_API_KEY)
-if [ -n "$openai_key" ]; then
-    printf '%s' "$openai_key" | codex login --with-api-key >/dev/null
-    configured="$configured codex"
-fi
+# Codex's ~/.codex/auth.json is copied separately by the host launcher.
 
 # Copilot CLI reads COPILOT_GITHUB_TOKEN from the session environment directly, but
 # omnigent strips it from the agents it spawns; omnigent-copilot-bootstrap writes it to

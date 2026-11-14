@@ -183,7 +183,7 @@ RUN mkdir -p /run/sshd /root/.ssh /etc/ssh/sshd_config.d \
         'PermitRootLogin prohibit-password' \
         'PubkeyAuthentication yes' \
         'SetEnv KUBECONFIG=/root/.kube-local/config JAVA_HOME=/opt/java/openjdk GOPATH=/root/go GOMODCACHE=/root/go/pkg/mod UV_TOOL_BIN_DIR=/root/.local/bin PATH=/root/.local/bin:/root/.local/share/pnpm/bin:/usr/local/go/bin:/root/go/bin:/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
-        'PermitUserEnvironment CLAUDE_CODE_OAUTH_TOKEN,OPENAI_API_KEY,COPILOT_GITHUB_TOKEN,GEMINI_API_KEY,GH_TOKEN' \
+        'PermitUserEnvironment CLAUDE_CODE_OAUTH_TOKEN,COPILOT_GITHUB_TOKEN,GEMINI_API_KEY,GH_TOKEN' \
         'X11Forwarding no' \
         'PrintMotd no' \
         > /etc/ssh/sshd_config.d/99-agent-sandbox.conf \

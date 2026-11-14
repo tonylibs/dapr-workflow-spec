@@ -1,0 +1,14 @@
+{
+  "name": "dapr-workflow-spec (draft)",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "24"
+    }
+  },
+  "mounts": [
+    "source=${localEnv:USERPROFILE}/.codex/auth.json,target=/tmp/host-codex-auth.json,type=bind,readonly"
+  ],
+  "postCreateCommand": "npm install --global --no-audit --no-fund @openai/codex@latest && codex --version && bash .devcontainer/draft/copy-auth.sh",
+  "remoteUser": "vscode"
+}

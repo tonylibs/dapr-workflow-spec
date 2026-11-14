@@ -3,11 +3,53 @@
 import contextlib
 import io
 import subprocess
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import new_ssh_sandbox as helper
+
+
+class CodexAuthTests(unittest.TestCase):
+    def test_copies_host_auth_file_and_secures_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            auth = home / ".codex" / "auth.json"
+            auth.parent.mkdir()
+            auth.write_text('{"tokens":{"access_token":"test-secret"}}', encoding="utf-8")
+            with patch.object(helper, "run", return_value=subprocess.CompletedProcess([], 0)) as docker:
+                helper.copy_codex_auth("sandbox-test", home)
+            commands = [call.args[0] for call in docker.call_args_list]
+            self.assertEqual(commands, [
+                ["docker", "exec", "sandbox-test", "sh", "-c",
+                 "umask 077; mkdir -p /root/.codex && chmod 700 /root/.codex"],
+                ["docker", "cp", str(auth), "sandbox-test:/root/.codex/auth.json"],
+                ["docker", "exec", "sandbox-test", "chmod", "600", "/root/.codex/auth.json"],
+            ])
+            self.assertNotIn("test-secret", repr(commands))
+
+    def test_missing_auth_file_keeps_manual_login(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(helper, "run") as docker:
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                helper.copy_codex_auth("sandbox-test", Path(directory))
+            docker.assert_not_called()
+            self.assertIn("manual", output.getvalue())
+
+    def test_copy_or_permission_failure_stops_setup_without_printing_credentials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            auth = home / ".codex" / "auth.json"
+            auth.parent.mkdir()
+            auth.write_text('{"tokens":{"access_token":"test-secret"}}', encoding="utf-8")
+            for failed_step in range(3):
+                results = [subprocess.CompletedProcess([], 0)] * failed_step
+                results.append(subprocess.CompletedProcess([], 1, stderr="test-secret"))
+                with self.subTest(step=failed_step), patch.object(helper, "run", side_effect=results):
+                    with self.assertRaisesRegex(RuntimeError, "Codex auth") as caught:
+                        helper.copy_codex_auth("sandbox-test", home)
+                    self.assertNotIn("test-secret", str(caught.exception))
 
 
 class CredentialSetupTests(unittest.TestCase):
@@ -33,7 +75,7 @@ class CredentialSetupTests(unittest.TestCase):
 
     def test_reports_docker_stdout_when_stderr_is_empty(self):
         result = subprocess.CompletedProcess([], 127, stdout="exec: agent-auth-setup: not found", stderr="")
-        with patch.dict(helper.os.environ, {"OPENAI_API_KEY": "test-secret"}, clear=True), patch.object(
+        with patch.dict(helper.os.environ, {"CLAUDE_CODE_OAUTH_TOKEN": "test-secret"}, clear=True), patch.object(
             helper.subprocess, "run", return_value=result
         ):
             with self.assertRaisesRegex(RuntimeError, "agent-auth-setup: not found") as caught:
@@ -42,7 +84,7 @@ class CredentialSetupTests(unittest.TestCase):
 
     def test_reports_exit_code_without_output(self):
         result = subprocess.CompletedProcess([], 137, stdout="", stderr="")
-        with patch.dict(helper.os.environ, {"OPENAI_API_KEY": "test-secret"}, clear=True), patch.object(
+        with patch.dict(helper.os.environ, {"CLAUDE_CODE_OAUTH_TOKEN": "test-secret"}, clear=True), patch.object(
             helper.subprocess, "run", return_value=result
         ):
             with self.assertRaisesRegex(RuntimeError, "exit code 137"):
@@ -50,12 +92,20 @@ class CredentialSetupTests(unittest.TestCase):
 
     def test_does_not_expose_tokens_in_failure_output(self):
         result = subprocess.CompletedProcess([], 1, stdout="", stderr="rejected test-secret")
-        with patch.dict(helper.os.environ, {"OPENAI_API_KEY": "test-secret"}, clear=True), patch.object(
+        with patch.dict(helper.os.environ, {"CLAUDE_CODE_OAUTH_TOKEN": "test-secret"}, clear=True), patch.object(
             helper.subprocess, "run", return_value=result
         ):
             with self.assertRaises(RuntimeError) as caught:
                 helper.forward_agent_tokens("sandbox-test")
             self.assertNotIn("test-secret", str(caught.exception))
+
+    def test_openai_api_key_does_not_configure_codex(self):
+        with patch.dict(helper.os.environ, {"OPENAI_API_KEY": "test-secret"}, clear=True), patch.object(
+            helper.shutil, "which", return_value=None
+        ), patch.object(helper.subprocess, "run") as docker:
+            with contextlib.redirect_stdout(io.StringIO()):
+                helper.forward_agent_tokens("sandbox-test")
+            docker.assert_not_called()
 
 
 class StartupTests(unittest.TestCase):
@@ -89,6 +139,7 @@ class StartupTests(unittest.TestCase):
             ]))
             stack.enter_context(patch.object(helper.SandboxSync, "create", side_effect=create))
             stack.enter_context(patch.object(helper, "forward_agent_tokens"))
+            stack.enter_context(patch.object(helper, "copy_codex_auth"))
             stack.enter_context(patch.object(helper, "allocate_ssh_port", return_value=22222))
             stack.enter_context(patch.object(helper, "docker_ip", return_value="172.17.0.2"))
             stack.enter_context(patch.object(helper, "run"))

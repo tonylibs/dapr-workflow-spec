@@ -76,24 +76,23 @@ to the host-gateway IPv4 address behind the certificate-valid hostname `kubernet
 To create a fully configured local SSH sandbox with a fresh localhost SSH port for Orca, run:
 
 ```powershell
-.\agent-sandbox\new-ssh-sandbox.ps1
+py -3 .\agent-sandbox\new_ssh_sandbox.py
 ```
 
-The helper calls `osb sandbox create`, provisions only `~/.ssh/dws_sandbox.pub`, creates a
+The helper creates a sandbox through the OpenSandbox Python SDK, provisions `~/.ssh/dws_sandbox.pub`, creates a
 localhost-only TCP bridge on an available random port, and prints the exact `host:port` for Orca.
 Use `root` as the SSH username and `/workspace` as Orca's remote project directory. The
 repository is cloned directly into `/workspace`, not `/home/workspace/dapr-workflow-spec`.
 If a restored terminal reports `chdir(2) failed`, check that its saved remote project path
 exists in the current sandbox and reopen the project from `/workspace`.
-Edit `agent-sandbox/ssh-sandbox.psd1` or `agent-sandbox/ssh-sandbox.json` to change the image,
-resource limits, lifetime, or set a fixed local SSH port. Leaving `SshPort`/`ssh_port` null avoids
+Edit `agent-sandbox/ssh-sandbox.json` to change the image,
+resource limits, lifetime, or set a fixed local SSH port. Leaving `ssh_port` null avoids
 Orca host-key cache conflicts between freshly provisioned sandboxes. The default profile uses
-manual cleanup (`none`/`null` timeout), so remember to kill the sandbox when finished.
-By default, both helpers reuse the local image. Pass `-PullImage` to the PowerShell helper or
-`--pull-image` to the Python helper to refresh the configured image before creating a sandbox:
+manual cleanup (`null` timeout), so remember to kill the sandbox when finished.
+By default, the helper reuses the local image. Pass `--pull-image` to refresh the configured
+image before creating a sandbox:
 
 ```powershell
-.\agent-sandbox\new-ssh-sandbox.ps1 -PullImage
 py -3 .\agent-sandbox\new_ssh_sandbox.py --pull-image
 ```
 
@@ -102,41 +101,42 @@ paths for direct SSH commands and restores them in Bash shells. After changing t
 rebuild or pull the updated image and create a new sandbox; existing containers keep their
 original SSH configuration.
 
-The equivalent Python command is:
-
-```powershell
-py -3 .\agent-sandbox\new_ssh_sandbox.py
-```
-
 Its settings are in `agent-sandbox/ssh-sandbox.json`. It uses the OpenSandbox Python SDK for
 lifecycle and sandbox file operations, and Docker only for the localhost-only SSH bridge and for
-forwarding agent tokens (below).
+copying Codex auth and forwarding agent tokens (below).
 
 If credential setup reports that `agent-auth-setup` is missing, the cached image predates
-token forwarding. Rerun with `--pull-image` (or `-PullImage` for PowerShell) to refresh it;
+token forwarding. Rerun with `--pull-image` to refresh it;
 locally built images need to be rebuilt from the current Dockerfile.
 
-### Agent CLI login via tokens
+### Agent CLI login
 
-Both helpers forward these host environment variables into the sandbox when they are set, so the
-agent CLIs start already signed in. Unset variables are skipped; those CLIs keep their manual login.
-They also copy the host's global `git config user.name` and `user.email` into the sandbox's global
-Git config. For GitHub, set `GH_TOKEN` on the host or sign in to the host's `gh` CLI; the helpers
-fall back to `gh auth token` when `GH_TOKEN` is unset. The sandbox configures `gh` and Git's HTTPS
+The helper copies the host's `~/.codex/auth.json` into `/root/.codex/auth.json` for Codex,
+matching the auth-file approach in `.devcontainer/draft`. Sign in to Codex on the host first.
+On Windows the source is `$env:USERPROFILE/.codex/auth.json`; otherwise it is under `$HOME`.
+The copy uses `docker cp`, with directory mode 700 and file mode 600 inside the sandbox.
+The host file is left unchanged, and its contents are never printed or passed as command-line
+arguments. If the file is missing, the helper skips it and reports that Codex needs manual login.
+`OPENAI_API_KEY` is no longer forwarded or used to log Codex in.
+
+The helper forwards these host environment variables into the sandbox when they are set, so the
+other agent CLIs start already signed in. Unset variables are skipped; those CLIs keep their manual login.
+It also copies the host's global `git config user.name` and `user.email` into the sandbox's global
+Git config. For GitHub, set `GH_TOKEN` on the host or sign in to the host's `gh` CLI; the helper
+falls back to `gh auth token` when `GH_TOKEN` is unset. The sandbox configures `gh` and Git's HTTPS
 credential helper from that token. `COPILOT_GITHUB_TOKEN` is kept separate because its permission
 scope is for Copilot Requests, not repository access.
 
 | Variable | CLI | Notes |
 |---|---|---|
 | `CLAUDE_CODE_OAUTH_TOKEN` | Claude Code | Subscription token from `claude setup-token` on the host. |
-| `OPENAI_API_KEY` | Codex | Codex ignores the env var, so the sandbox runs `codex login --with-api-key` once (stored in `~/.codex/auth.json`). |
 | `COPILOT_GITHUB_TOKEN` | Copilot CLI | Fine-grained PAT with only the **Copilot Requests** account permission; classic PATs are not supported. It is not used for `gh`/Git. |
 | `GEMINI_API_KEY` | Antigravity (`agy`) | Also sets `"modelProvider": "gemini"` in `~/.gemini/antigravity-cli/settings.json`, so `agy` uses Gemini API billing instead of your Google account sign-in. |
 | `GH_TOKEN` | GitHub CLI and Git HTTPS | A GitHub token with the repository permissions needed for your intended `gh` and Git operations. Falls back to the host's `gh auth token`. |
 
 ```powershell
 $env:CLAUDE_CODE_OAUTH_TOKEN = "..."   # plus any of the others
-.\agent-sandbox\new-ssh-sandbox.ps1
+py -3 .\agent-sandbox\new_ssh_sandbox.py
 ```
 
 The tokens are streamed over `docker exec -i` stdin into `agent-auth-setup`, so they never appear
@@ -146,8 +146,8 @@ The image's Bash startup hooks load this file into login and interactive shells,
 Orca remote terminals. Values are parsed as data, never evaluated as shell code.
 `/root/.ssh/environment` is also maintained for direct SSH commands.
 
-Rebuild and publish the updated image, then create a new sandbox with `-PullImage` or
-`--pull-image` from a shell where the desired token variables are set. Connect Orca to the
+Rebuild and publish the updated image, then create a new sandbox with `--pull-image`
+from a shell where the desired token variables are set. Connect Orca to the
 SSH endpoint printed by the launcher; no Orca setup script is needed.
 
 To add or rotate tokens on a running sandbox, pipe the full set again. For example, using
@@ -157,8 +157,9 @@ the existing host environment variable rather than typing a token into command h
 "COPILOT_GITHUB_TOKEN=$env:COPILOT_GITHUB_TOKEN" | docker exec -i sandbox-<id> agent-auth-setup
 ```
 
-Names left out are removed from the credential files, except Codex's stored login, which stays until
-`codex logout`; previously configured global Git name/email stay until changed with `git config`.
+Names left out are removed from the credential files. Codex's copied login is managed separately
+and stays until `codex logout`; recreate the sandbox to copy an updated host login. Previously
+configured global Git name/email stay until changed with `git config`.
 Open a fresh Orca terminal to load the updated credentials. Existing processes
 retain their old environment; restarting the terminal is required to remove omitted tokens.
 To reload added or changed tokens in an existing Bash terminal, run:

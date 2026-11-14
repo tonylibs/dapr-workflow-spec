@@ -25,7 +25,6 @@ DEFAULT_CONFIG = SCRIPT_DIR / "ssh-sandbox.json"
 # ALLOWED_NAMES in agent-auth-setup.sh, agent-env.sh, and PermitUserEnvironment in the Dockerfile.
 AGENT_TOKEN_NAMES = (
     "CLAUDE_CODE_OAUTH_TOKEN",
-    "OPENAI_API_KEY",
     "COPILOT_GITHUB_TOKEN",
     "GEMINI_API_KEY",
     "GH_TOKEN",
@@ -165,6 +164,28 @@ def command_failure_details(command: Any) -> str:
     return "\n".join(output) if output else "The sandbox command returned no output."
 
 
+def copy_codex_auth(container: str, home: Path) -> None:
+    """Copy the host's stored Codex login without exposing its contents."""
+    auth = home / ".codex" / "auth.json"
+    if not auth.is_file():
+        print("No host ~/.codex/auth.json found; Codex will need manual login.")
+        return
+
+    commands = [
+        ["docker", "exec", container, "sh", "-c",
+         "umask 077; mkdir -p /root/.codex && chmod 700 /root/.codex"],
+        ["docker", "cp", str(auth), f"{container}:/root/.codex/auth.json"],
+        ["docker", "exec", container, "chmod", "600", "/root/.codex/auth.json"],
+    ]
+    for command in commands:
+        result = run(command, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Could not copy or secure Codex auth in the sandbox (exit code {result.returncode})."
+            )
+    print("Codex auth copied from host ~/.codex/auth.json.")
+
+
 def forward_agent_tokens(container: str) -> None:
     """Stream the host's agent tokens into the sandbox's agent-auth-setup over stdin.
 
@@ -188,7 +209,7 @@ def forward_agent_tokens(container: str) -> None:
     if not lines:
         print(
             f"No agent tokens set ({', '.join(AGENT_TOKEN_NAMES)}); "
-            "agent CLIs and Git will need manual setup."
+            "other agent CLIs and Git will need manual setup."
         )
         return
 
@@ -294,6 +315,7 @@ def main() -> int:
                 f"(exit code {verification.exit_code}):\n"
                 f"{command_failure_details(verification)}"
             )
+        copy_codex_auth(container, home)
         forward_agent_tokens(container)
 
         ssh_port = fixed_ssh_port or allocate_ssh_port(config["ssh_host"])
