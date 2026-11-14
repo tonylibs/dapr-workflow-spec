@@ -201,3 +201,6 @@ restart checks passed. Downtime replay failed during initial cluster synchroniza
 auth-enabled workflow starts failed with 401 because the invocation client did not supply
 the sidecar API token. Tasks 9.4 and 9.5 remain open; this change is not ready to archive.
 The run also needed a controller jsii cache workaround. It does not verify Dapr 1.18.7.
+Follow-up fixes (no rerun yet): starts now pass the sidecar API token explicitly, job callbacks
+wait for the first cluster list instead of answering retry, and the controller image disables the
+jsii package cache. 9.4 and 9.5 must be rerun before archive.

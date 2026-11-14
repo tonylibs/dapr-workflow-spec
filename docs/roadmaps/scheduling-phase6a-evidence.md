@@ -158,6 +158,21 @@ regression test covering the actual invocation-client token wiring, rebuild the 
 and repeat all three auth-enabled schedules. Current unit tests pass while this live path fails.
 The apply skill requires pausing on blockers; no scheduler source fix was made in this verification run.
 
+## Follow-up fixes (after this run; rerun pending)
+
+The three blockers above are fixed on `feat/time-scheduler`; 9.4 and 9.5 must be rerun with images
+rebuilt from that branch before the change is archived.
+
+| Finding | Fix | Covered offline by |
+|---|---|---|
+| 9.5: starts get 401, `CreateInvokeHttpClient()` sends no token | `Program.cs` passes `DAPR_API_TOKEN` through `OrchestratorInvokeStarter.CreateInvokeClient` | `SendsTheDaprApiTokenThroughTheRealInvokeClient` (real SDK client, socket-level fake sidecar), `ProgramHandsTheDaprApiTokenToTheInvokeClient` |
+| 9.4: replayed ticks and their immediate retries all arrive before the first cluster list and are answered retry | `JobDispatcher` holds each callback until the list completes (up to 30 s) and keys it by its delivery time | `HoldsACallbackThatArrivesBeforeTheFirstList...`, `CollapsesAReplayedBurstHeldDuringTheFirstListOntoOneInstance`, `KeysTheFireByTheDeliveryTimeNotByWhenTheListCompleted` |
+| Controller image answers `POST /workflows` with 500 (jsii cache in a 0770 home) | `Dockerfile.jvm` sets `JSII_RUNTIME_PACKAGE_CACHE=disabled` | `RuntimeImageTest`; reproduced with a 0770 `HOME` (34/70 `StackSynthesizerTest` errors without it, none with it) |
+
+The replay fix assumes Dapr's job callback waits at least as long as the first cluster list takes
+(1–2 s in this run). The rerun should confirm one instance for the replayed slot and no `499`
+(callback cancelled by the sidecar) while the scheduler holds a callback.
+
 ## Reproduction and retained evidence
 
 Use the image build and chart configuration above, then submit this definition with the appropriate
