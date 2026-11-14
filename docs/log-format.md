@@ -1,6 +1,6 @@
 # DWS structured log format
 
-`dws-controller`, `dws-admin`, `dws-orchestrator`, `dws-flow` and `dws-step` share one structured
+`dws-controller`, `dws-admin`, `dws-orchestrator`, `dws-flow`, `dws-step` and `dws-schedule-time` share one structured
 log format so that a log line written during a traced operation can be found from that trace's
 `trace_id`, and a collector can index every component's lines without per-package parsing.
 
@@ -50,7 +50,7 @@ operators key off them.
 | JBoss Logging (`dws-controller`) | `FATAL`→`FATAL`, `ERROR`→`ERROR`, `WARN`/`WARNING`→`WARN`, `INFO`→`INFO`, `DEBUG`/`CONFIG`/`FINE`→`DEBUG`, `TRACE`/`FINER`/`FINEST`→`TRACE` |
 | Logback (`dws-orchestrator`, `dws-step`) | `ERROR` `WARN` `INFO` `DEBUG` `TRACE` map to themselves; no native `FATAL` |
 | NestJS (`dws-admin`) | `fatal`→`FATAL`, `error`→`ERROR`, `warn`→`WARN`, `log`→`INFO`, `debug`→`DEBUG`, `verbose`→`TRACE` |
-| .NET (`dws-flow`) | `Critical`→`FATAL`, `Error`→`ERROR`, `Warning`→`WARN`, `Information`→`INFO`, `Debug`→`DEBUG`, `Trace`→`TRACE` |
+| .NET (`dws-flow`, `dws-schedule-time`) | `Critical`→`FATAL`, `Error`→`ERROR`, `Warning`→`WARN`, `Information`→`INFO`, `Debug`→`DEBUG`, `Trace`→`TRACE` |
 
 ### Trace context source
 
@@ -59,7 +59,7 @@ operators key off them.
 | `dws-controller` | MDC `trace_id` / `span_id` (OTel Java agent's JBoss logmanager MDC instrumentation) |
 | `dws-orchestrator`, `dws-step` | MDC `trace_id` / `span_id` (OTel Java agent's Logback MDC instrumentation) |
 | `dws-admin` | `trace.getActiveSpan()?.spanContext()` from `@opentelemetry/api` (global registered by the Node agent) |
-| `dws-flow` | `Activity.Current` (`TraceId` / `SpanId`) |
+| `dws-flow`, `dws-schedule-time` | `Activity.Current` (`TraceId` / `SpanId`); `dws-schedule-time`'s `DwsJsonConsoleFormatter` is a copy of `dws-flow`'s, pinned by the same 12 golden cases |
 
 A context whose trace ID is all zeros, or that is otherwise invalid, is treated as absent.
 
