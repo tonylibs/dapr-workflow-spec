@@ -26,6 +26,13 @@ public static partial class InstanceIds
         return Build(AfterSource, workflow, sequence.ToString(CultureInfo.InvariantCulture));
     }
 
+    /// <summary>The instance ID of a cron fire, keyed by <see cref="FireKeys.Cron"/>.</summary>
+    public static string Cron(string workflow, DateTimeOffset deliveredAt) => Scheduled(workflow, FireKeys.Cron(deliveredAt));
+
+    /// <summary>The instance ID of an every fire, keyed by <see cref="FireKeys.Every"/> from the job's anchor.</summary>
+    public static string Every(string workflow, DateTimeOffset anchor, TimeSpan interval, DateTimeOffset deliveredAt) =>
+        Scheduled(workflow, FireKeys.Every(anchor, interval, deliveredAt));
+
     /// <summary>Whether the orchestrator's start endpoint accepts <paramref name="instanceId"/> (1-256 of <c>[A-Za-z0-9:._-]</c>).</summary>
     public static bool IsValid(string instanceId) => AllowedId().IsMatch(instanceId);
 

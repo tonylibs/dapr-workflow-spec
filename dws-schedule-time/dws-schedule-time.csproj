@@ -11,6 +11,8 @@
   <ItemGroup>
     <!-- Pinned with dws-flow's Dapr .NET SDK. -->
     <PackageReference Include="Dapr.Client" Version="1.18.10" />
+    <PackageReference Include="Dapr.Jobs" Version="1.18.10" />
+    <PackageReference Include="KubernetesClient" Version="21.0.8" />
   </ItemGroup>
 
   <PropertyGroup>

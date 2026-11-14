@@ -3,14 +3,9 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this package.
 
 Root-level cross-cutting rules (commits, contract-change etiquette, per-package gate commands) are in
-the repo root [`CLAUDE.md`](../CLAUDE.md). This file is dws-schedule-time-specific idioms only.
-
-`dws-schedule-time` fires `schedule` time triggers (`every`, `cron`, `after`) for v1 workflows
-(scheduling Phase 6a, [ADR 0013](../docs/adr/0013-time-triggers-in-dws-schedule-time.md), OpenSpec
-change `scheduling-phase-6a-time-triggers`). It is early: today it holds the scaffold and the caller
-side of the workflow start contract (`InstanceIds`, `FireKeys`, `IWorkflowStarter`,
-`OrchestratorInvokeStarter`). The stack and layout copy `dws-flow`; its
-[`CLAUDE.md`](../dws-flow/CLAUDE.md) style rules apply here unless this file says otherwise.
+the repo root [`CLAUDE.md`](../CLAUDE.md). This file is dws-schedule-time-specific. The .NET style rules
+are inherited from [`../dws-flow/CLAUDE.md`](../dws-flow/CLAUDE.md); read its style guide first. Purpose
+and behaviour are in [`README.md`](README.md).
 
 ## Commands
 
@@ -18,44 +13,66 @@ side of the workflow start contract (`InstanceIds`, `FireKeys`, `IWorkflowStarte
 cd dws-schedule-time
 dotnet build
 dotnet test test/dws-schedule-time.Tests.csproj
-dotnet test test/dws-schedule-time.Tests.csproj --filter "FullyQualifiedName~FireKeysTests"   # one class
+dotnet test test/dws-schedule-time.Tests.csproj --filter "FullyQualifiedName~AfterLifecycleTests"   # one class
 ```
 
-Always name the test project. A bare `dotnet test` in `dws-schedule-time/` resolves to
-`dws-schedule-time.csproj`, which compiles none of `test/**`, so it runs nothing and exits 0.
+Always name the test project. A bare `dotnet test` in this folder resolves to the app project, which has
+no tests, so it exits 0 without running anything. No lint/format gate is configured (same as `dws-flow`).
 
-No lint/format gate is configured (same as `dws-flow`); raise adding one as a separate decision.
+## Style rules (inherited from dws-flow)
 
-## Style rules inherited from `dws-flow`
+- Nullable reference types on; no `== null`/`!= null`, no `!` in `src/` (use `is null`, `??`,
+  `IsNullOrWhiteSpace`, pattern matching).
+- Catch only with a `when` filter naming the exception types, or a condition for background loops that must
+  never crash the host (`when (!stoppingToken.IsCancellationRequested)`). No bare `catch (Exception)`.
+- One-line `<summary>` per public type, no per-member XML docs.
+- Tests: xUnit `[Fact]`/`[Theory]` + FluentAssertions, present-tense names, no mocking library: hand-written
+  recording stand-ins live in `test/TestDoubles.cs` (`RecordingJobRegistry`, `InMemoryVersionedStore` with
+  real ETag semantics, `RecordingStarter`, `ManualTime`).
+- `Environment.` is read only in `Program.cs`, and wall-clock time only through an injected `TimeProvider`
+  (`DateTime.UtcNow`/`Now` are banned too). `SourceScanTests` scans `src/` for both.
 
-- Nullable reference types are on: no `== null`/`!= null`, no `!`; use `??`, pattern matching,
-  `IsNullOrWhiteSpace`.
-- No bare `catch (Exception)`: only `when`-filtered catches naming the types the call can throw
-  (`OrchestratorInvokeStarter` filters transport failures and leaves the caller's cancellation alone).
-- One `<summary>` line per public type, no per-member XML docs; non-obvious mechanisms get a plain
-  comment in place.
-- Tests: xUnit + FluentAssertions, present-tense names (`Rejects…`, `Maps…`), no mocking library.
-  Seams are faked with small hand-written stand-ins (a recording `HttpMessageHandler` for the starter).
-- `Environment.` is read only in `Program.cs`; `SourceRulesTests` scans `src/` for it. Pass values
-  into classes instead.
+## Architecture: every Dapr/Kubernetes touch is behind a seam
+
+| Seam | Production | Test stand-in |
+|---|---|---|
+| `IJobRegistry` | `DaprJobRegistry` (`DaprJobsClient`: get, list, schedule, delete) | `RecordingJobRegistry` |
+| `IVersionedStore` (claims + `after` state; first-write ETags) | `DaprVersionedStore` | `InMemoryVersionedStore` |
+| `IWorkflowStarter` | `OrchestratorInvokeStarter` (`HttpClient` from `DaprClient.CreateInvokeHttpClient()`; tested with a recording `HttpMessageHandler`) | `RecordingStarter` |
+| `IClusterState` | `ClusterSnapshot`, fed by `ClusterWatcher` (`KubernetesClient` list + watch) | `StaticClusterState` |
+
+`Reconciler` (job set vs active triggers) and `AfterLifecycle` (activate/poll/one-shot) take these seams;
+`ScheduledJobHandler` handles `dws-sched-*`; `JobDispatcher` routes `POST /job/{name}` by name prefix.
+`ReconcileLoop` reconciles on every `ChangeSignal` and every 60 s. `CrossAppWorkflowStarter` is deliberately
+absent (ADR 0013 Amendment 1 rejected cross-app `DaprWorkflowClient` starts). `Program.cs` wiring has no unit
+test; the live paths (`Dapr*`, `ClusterWatcher`) need a sidecar or cluster.
+
+Job callbacks are mapped by hand (`app.MapPost("/job/{name}")`), not with the SDK's
+`MapDaprScheduledJobHandler`, so the handler decides explicitly between 200 (done or dropped) and 500
+(Dapr retries: 3 times, 10 s apart). Dapr does not retry 400/404.
 
 ## Cross-package contracts this package consumes
 
-Changing one side without the other is not a compile error; it fails at runtime.
+Change both sides together; none is a compile error.
 
-- **Orchestrator start endpoint** (`dws-orchestrator` `WorkflowController`):
-  `POST workflows/{name}/instances?instanceId=<id>` with `Content-Type: application/json` (the
-  orchestrator answers `400` without it). `202` = started, `200` = an instance with that ID already
-  exists (any status), `400` = invalid ID. `GET workflows/instances/{id}` returns
-  `{instanceId, runtimeStatus, output}` or `404`. Pinned here by `OrchestratorInvokeStarterTests` and
-  there by `WorkflowControllerTest`.
-- **Instance ID shape**: `<source>:<workflow>:<fire-key>`, 1-256 characters of `[A-Za-z0-9:._-]`,
-  the orchestrator's validation. `InstanceIds.IsValid` mirrors that regex; keep them identical.
-  Sources: `dws-sched`, `dws-after`, `dws-event` (reserved for Phase 6b `dws-schedule-event`, which
-  reuses the contract unchanged).
-- **Dapr service invocation**: `DaprClient.CreateInvokeHttpClient()` routes `http://<app-id>/<path>`
-  to the sidecar's `/v1.0/invoke/<app-id>/method/<path>` with the query intact and adds
-  `DAPR_API_TOKEN` when set. A test composes the SDK's `InvocationHandler` to pin that rewrite.
-- **`DWS_LOG_FORMAT`** ([`docs/log-format.md`](../docs/log-format.md)): `DwsJsonConsoleFormatter` is a
-  port of `dws-flow`'s; `DwsJsonConsoleFormatterTests` runs the 12 golden cases. Change keys in all
-  packages together.
+- **Trigger ConfigMap** from `dws-controller`: label `dws.io/trigger=time`, key `trigger.json` =
+  `{workflow, version, appId, kind, schedule}`. Fixtures in `test/fixtures/` must match controller output.
+- **Drain marker**: Deployment ANNOTATION `dws.io/drain: "true"` (`StackApplier.markForDrain`/`isDraining`),
+  not a label. Pinned by `ActiveTriggersTests.PinsTheDrainMarkerAsAnAnnotationWithValueTrue`. Managed
+  orchestrator Deployments carry `dws.io/workflow`, `dws.io/version`, `dws.io/managed-by=dws-controller`.
+- **Orchestrator start/status** (`dws-orchestrator` `WorkflowController`): `POST workflows/{name}/instances?instanceId=<id>`
+  with body `{}` and `Content-Type: application/json` (400 without it); `202` = started, `200` = an instance with
+  that ID already exists (any status), `400` = invalid ID. `GET workflows/instances/{id}` returns the
+  `InstanceStatusResponse` `{instanceId, runtimeStatus, output}` (Java SDK enum names) or `404`. Pinned here by
+  `OrchestratorInvokeStarterTests` and there by `WorkflowControllerTest`.
+- **Instance IDs**: `<source>:<workflow>:<fire-key>` — `dws-sched:<w>:<yyyyMMddTHHmmssZ>` (key from `FireKeys`,
+  which absorbs a little early delivery) and `dws-after:<w>:<seq>`; `dws-event` is reserved for Phase 6b
+  `dws-schedule-event`. 1-256 characters of `[A-Za-z0-9:._-]`: `InstanceIds.IsValid` mirrors the orchestrator's
+  regex, keep them identical.
+- **Dapr service invocation**: `DaprClient.CreateInvokeHttpClient()` routes `http://<app-id>/<path>` to the
+  sidecar's `/v1.0/invoke/<app-id>/method/<path>` with the query intact and adds `DAPR_API_TOKEN` when set. A test
+  composes the SDK's `InvocationHandler` to pin that rewrite.
+- **`DAPR_API_TOKEN`**: stamped by the chart, read by the Dapr SDK (`DaprClientBuilder`,
+  `CreateInvokeHttpClient`); never read it here.
+- **`DWS_LOG_FORMAT`**: `DwsJsonConsoleFormatter` is a copy of `dws-flow`'s, pinned by the same 12 golden cases
+  in `DwsJsonConsoleFormatterTests`; it is one of the packages listed in `docs/log-format.md`.

@@ -58,16 +58,16 @@
 
 ## 5. dws-schedule-time: trigger model, active version and job reconciliation
 
-- [ ] 5.1 Write failing tests, then implement `TriggerConfig` parsing of `trigger.json` against the controller fixtures (task 3.9). Reject unknown kinds and invalid durations or cron as configuration errors.
-- [ ] 5.2 Write failing tests, then implement `ActiveTriggers`: from a set of trigger ConfigMaps and orchestrator Deployments, pick each workflow's trigger from its non-`dws.io/drain` version. Cover the takeover, schedule-dropped and deleted cases.
-- [ ] 5.3 Write failing tests, then implement `JobSpecs`:
+- [x] 5.1 Write failing tests, then implement `TriggerConfig` parsing of `trigger.json` against the controller fixtures (task 3.9). Reject unknown kinds and invalid durations or cron as configuration errors.
+- [x] 5.2 Write failing tests, then implement `ActiveTriggers`: from a set of trigger ConfigMaps and orchestrator Deployments, pick each workflow's trigger from its non-`dws.io/drain` version. Cover the takeover, schedule-dropped and deleted cases.
+- [x] 5.3 Write failing tests, then implement `JobSpecs`:
   - `every` ISO → `@every` Go-duration;
   - cron 5-field → `0 <fields>`;
   - job name `dws-sched-<workflow>`;
   - job data including the anchor;
   - failure policy: constant, 3 retries, 10 s.
-- [ ] 5.4 Define an `IJobRegistry` seam (get, schedule-with-overwrite, delete) with a `DaprJobRegistry` implementation. Write failing tests, then implement the `Reconciler`, which overwrites only when version, kind or schedule differ and deletes jobs for workflows that are gone. Use a recording registry stand-in.
-- [ ] 5.5 Implement the Kubernetes watch (`KubernetesClient` informers on labeled ConfigMaps and managed Deployments in the pod namespace). Run an initial list, then reconcile on every change.
+- [x] 5.4 Define an `IJobRegistry` seam (get, schedule-with-overwrite, delete) with a `DaprJobRegistry` implementation. Write failing tests, then implement the `Reconciler`, which overwrites only when version, kind or schedule differ and deletes jobs for workflows that are gone. Use a recording registry stand-in.
+- [x] 5.5 Implement the Kubernetes watch (`KubernetesClient` informers on labeled ConfigMaps and managed Deployments in the pod namespace). Run an initial list, then reconcile on every change.
 
 ## 6. dws-schedule-time: firing and the start contract
 
@@ -76,25 +76,25 @@
   - `dws-after:<w>:<seq>`.
   Use the due time from the job event instead if the spike (1.3) found it.
 - [x] 6.2 Define `IWorkflowStarter` (`StartAsync`, `GetStatusAsync`). Write failing tests, then implement `OrchestratorInvokeStarter` (Dapr service invocation; `202`/`200` mean success; 5xx/429/transport mean retryable; other 4xx are non-retryable). Implement `CrossAppWorkflowStarter` only if task 1.4 confirmed option (a).
-- [ ] 6.2a Write failing tests, then implement `StartClaim` (design Decision 6) over the state store, with ETag first-write and a TTL (`DWS_SCHEDULE_TIME_CLAIM_TTL`, default 24 h):
+- [x] 6.2a Write failing tests, then implement `StartClaim` (design Decision 6) over the state store, with ETag first-write and a TTL (`DWS_SCHEDULE_TIME_CLAIM_TTL`, default 24 h):
   - won claim → start → `started`;
   - lost to `started` → success without starting;
   - lost to a fresh `claiming` → retryable failure;
   - lost to a `claiming` older than 30 s → take over and start;
   - two concurrent callers with the same instance ID start exactly once.
-- [ ] 6.3 Write failing tests, then implement the `every`/`cron` job handler (starts go through `StartClaim`):
+- [x] 6.3 Write failing tests, then implement the `every`/`cron` job handler (starts go through `StartClaim`):
   - resolve the active trigger at fire time;
   - with no active trigger, delete the job and start nothing;
   - start with input `{}`;
   - return failure on retryable errors;
   - log and succeed on non-retryable errors.
-- [ ] 6.4 Write failing tests, then implement the `after` lifecycle with ETag-guarded state in `DWS_SCHEDULE_TIME_STATE_STORE`:
+- [x] 6.4 Write failing tests, then implement the `after` lifecycle with ETag-guarded state in `DWS_SCHEDULE_TIME_STATE_STORE`:
   - first activation starts seq 1;
   - the poll job checks status;
   - a terminal status (including failed) schedules the one-shot start at now + delay;
   - the one-shot starts seq+1 on the currently active version;
   - a restart resumes from the stored seq.
-- [ ] 6.5 Map the job handlers (`/job/<name>`) and `/healthz` in `Program.cs`. Read `DWS_SCHEDULE_TIME_STATE_STORE` and `DWS_SCHEDULE_TIME_AFTER_POLL_INTERVAL` there only.
+- [x] 6.5 Map the job handlers (`/job/<name>`) and `/healthz` in `Program.cs`. Read `DWS_SCHEDULE_TIME_STATE_STORE` and `DWS_SCHEDULE_TIME_AFTER_POLL_INTERVAL` there only.
 - [ ] 6.6 Gate: `cd dws-schedule-time && dotnet test test/dws-schedule-time.Tests.csproj`, plus `docker build` and a `/healthz` smoke test.
 
 ## 7. charts/dws: scheduler in the Core layer
