@@ -100,12 +100,18 @@
 
 ## 7. charts/dws: scheduler in the Core layer
 
-- [ ] 7.1 Add `scheduleTime.*` values (`enabled: true`, `image`, `replicas`, `afterPollInterval: PT15S`, `resources`) and matching `values.schema.json` entries.
-- [ ] 7.2 Add `templates/schedule-time/` with ServiceAccount, Role (`get`/`list`/`watch` on configmaps and apps/deployments only), RoleBinding and Deployment. The Deployment gets the Dapr annotations (app-id `dws-schedule-time`, app port), `DWS_SCHEDULE_TIME_STATE_STORE` and `DWS_SCHEDULE_TIME_AFTER_POLL_INTERVAL`, and `DWS_LOG_FORMAT` through `dws.observability.logFormatEnv`.
-- [ ] 7.3 Add the `<release>-schedule-time-dapr-api-token` Secret to `templates/auth/api-token-secrets.yaml`. Add the `dapr.io/api-token-secret` annotation and the `DAPR_API_TOKEN` `secretKeyRef` (key `token`) under `auth.enabled=true`. Extend `charts/dws/tests/api-tokens-render-test.sh` to cover the scheduler.
-- [ ] 7.4 Add `charts/dws/tests/schedule-time-render-test.sh`: default render, disabled render, Role rules, and the env entries. Add it to `.github/workflows/helm.yml` and to the root `CLAUDE.md` chart gate list.
-- [ ] 7.5 Add the scheduler image key to the release process (`charts/dws/values.yaml` pin) per `docs/release-process.md`.
-- [ ] 7.6 Gate (from the repo root, Helm 4.3.0): `helm lint charts/dws`, `helm template dws charts/dws`, then every `charts/dws/tests/*.sh` listed in the root `CLAUDE.md`, plus the new scheduler test.
+- [x] 7.1 Add `scheduleTime.*` values (`enabled: true`, `image`, `replicas`, `afterPollInterval: PT15S`, `resources`) and matching `values.schema.json` entries.
+  - `replicaCount` rather than `replicas`, matching every other component in `values.yaml`; `claimTtl` (`DWS_SCHEDULE_TIME_CLAIM_TTL`) added as well. The chart had no `values.schema.json`: the new one closes only `scheduleTime` and leaves every other key open (ADR 0007, question 8).
+- [x] 7.2 Add `templates/schedule-time/` with ServiceAccount, Role (`get`/`list`/`watch` on configmaps and apps/deployments only), RoleBinding and Deployment. The Deployment gets the Dapr annotations (app-id `dws-schedule-time`, app port), `DWS_SCHEDULE_TIME_STATE_STORE` and `DWS_SCHEDULE_TIME_AFTER_POLL_INTERVAL`, and `DWS_LOG_FORMAT` through `dws.observability.logFormatEnv`.
+  - App-id is `dws.scheduleTime.fullname` (`dws-schedule-time` for release `dws`). Also sets `POD_NAMESPACE` (downward API) and `DWS_SCHEDULE_TIME_CLAIM_TTL`; `DWS_SCHEDULE_TIME_STATE_STORE` names `<fullname>-actor-statestore` through the new `dws.actorStateStore.name` helper. Reuses the controller's `wait-for-redis` init container; no Service, no OTel injection (the observability test forbids .NET injection in Phase 1).
+- [x] 7.3 Add the `<release>-schedule-time-dapr-api-token` Secret to `templates/auth/api-token-secrets.yaml`. Add the `dapr.io/api-token-secret` annotation and the `DAPR_API_TOKEN` `secretKeyRef` (key `token`) under `auth.enabled=true`. Extend `charts/dws/tests/api-tokens-render-test.sh` to cover the scheduler.
+  - Override key `auth.apiTokens.scheduleTime.daprApi.existingSecret`. The preflight distinct-Secret guard now covers all three sidecar tokens; NOTES and the chart README list the scheduler Secret and restart target.
+- [x] 7.4 Add `charts/dws/tests/schedule-time-render-test.sh`: default render, disabled render, Role rules, and the env entries. Add it to `.github/workflows/helm.yml` and to the root `CLAUDE.md` chart gate list.
+  - `values-schema-test.sh` also asserts `scheduleTime.bogus=true` fails the schema, and now counts 4 chart Deployments. Both real-install jobs in `helm.yml` set `scheduleTime.enabled=false` (its image is unpublished until task 8.2 / the first component-release). `api-tokens-render-test.sh` was missing from the root `CLAUDE.md` list and is added too.
+- [x] 7.5 Add the scheduler image key to the release process (`charts/dws/values.yaml` pin) per `docs/release-process.md`.
+  - `dws-schedule-time` added to `VALUES_ANCHORS` in `.github/scripts/chart_release.py`; `docs/release-process.md` explains the anchor list.
+- [x] 7.6 Gate (from the repo root, Helm 4.3.0): `helm lint charts/dws`, `helm template dws charts/dws`, then every `charts/dws/tests/*.sh` listed in the root `CLAUDE.md`, plus the new scheduler test.
+  - All green on Helm 4.3.0. The default render changed deliberately (the scheduler is Core), so `tests/fixtures/default-render-baseline.yaml` was regenerated: 156 added lines, all from `templates/schedule-time/`, none removed. The server-side dry-run against kind could not run in the agent sandbox; CI's `helm-chart` job runs it.
 
 ## 8. CI and release packaging
 
