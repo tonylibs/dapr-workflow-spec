@@ -191,7 +191,8 @@ Not-found must be detected as empty name or epoch `createdAt`. The scheduler's s
    Core state store too (design Decision 6, task 6.2a).
 2. **Decided:** the spec no longer says "Missed fires SHALL NOT be replayed". It says the scheduler
    does no catch-up of its own and that replayed ticks collapse onto one instance.
-3. Not verified: `429` handling, the `auth.enabled=true` path (task 9.5), Dapr 1.18.7.
+3. Not verified by the spike: `429` handling, the `auth.enabled=true` path (task 9.5), Dapr 1.18.7.
+   The auth path was subsequently verified in the follow-up live run below.
 
 ## Phase 6a live verification (2026-11-14)
 
@@ -201,6 +202,17 @@ restart checks passed. Downtime replay failed during initial cluster synchroniza
 auth-enabled workflow starts failed with 401 because the invocation client did not supply
 the sidecar API token. Tasks 9.4 and 9.5 remain open; this change is not ready to archive.
 The run also needed a controller jsii cache workaround. It does not verify Dapr 1.18.7.
-Follow-up fixes (no rerun yet): starts now pass the sidecar API token explicitly, job callbacks
+Follow-up fixes: starts now pass the sidecar API token explicitly, job callbacks
 wait for the first cluster list instead of answering retry, and the controller image disables the
-jsii package cache. 9.4 and 9.5 must be rerun before archive.
+jsii package cache.
+
+**Follow-up rerun (2026-11-14, source `e7d2904`): tasks 9.4 and 9.5 passed.**
+The [rerun evidence](../roadmaps/scheduling-phase6a-evidence.md#follow-up-rerun--94-and-95-passed)
+records a rebuilt scheduler on `docker-desktop`, with two replicas and `auth.enabled=true`.
+Every, cron and after workflows completed with no 401s in the scheduler or target sidecar logs.
+After both replicas were stopped for several intervals, four replayed every ticks produced one
+completed instance, and two replayed cron ticks produced one completed instance; claims and
+individual target-sidecar start logs confirmed one start per ID. Three callbacks were canceled
+with 499 before synchronization, but subsequent deliveries succeeded. Thus the replay assertion
+passed, while cancellation-free startup was not established. The cached controller still needed
+the jsii cache workaround; its image fix and Dapr 1.18.7 remain unverified by this rerun.

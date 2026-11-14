@@ -1,9 +1,9 @@
 # Scheduling Phase 6a — live evidence
 
-**Status: partial; machine-auth verification failed.** Tasks 9.1–9.3 passed on
-2026-11-14. Task 9.4 failed the replay assertion. Task 9.5 also remains open:
-with `auth.enabled=true`, job registration and callbacks work but workflow starts return 401.
-This change is not ready to archive.
+**Status: tasks 9.1–9.5 passed on `docker-desktop` (2026-11-14).** The initial run below
+found replay and machine-auth failures. After the follow-up fixes, a rebuilt scheduler passed
+9.4 and 9.5; see [the rerun](#follow-up-rerun--94-and-95-passed). Dapr 1.18.7 remains unverified;
+the live cluster runs 1.18.2. This evidence does not replace the implementation merge/archive gates.
 
 Change: `scheduling-phase-6a-time-triggers` · Source: `f4ed1bce72bc6b4ed2eb2078a9f4a01e62f1f8c8`
 (branch `DuongVu98/scheduler-verification`).
@@ -158,10 +158,11 @@ regression test covering the actual invocation-client token wiring, rebuild the 
 and repeat all three auth-enabled schedules. Current unit tests pass while this live path fails.
 The apply skill requires pausing on blockers; no scheduler source fix was made in this verification run.
 
-## Follow-up fixes (after this run; rerun pending)
+## Follow-up fixes (after the initial run)
 
-The three blockers above are fixed on `feat/time-scheduler`; 9.4 and 9.5 must be rerun with images
-rebuilt from that branch before the change is archived.
+The three blockers above were fixed on `feat/time-scheduler`. The rerun below verifies the
+scheduler fixes with a rebuilt image; it reuses the cached controller image with the same cache
+workaround, so it does not verify the controller Dockerfile fix.
 
 | Finding | Fix | Covered offline by |
 |---|---|---|
@@ -172,6 +173,92 @@ rebuilt from that branch before the change is archived.
 The replay fix assumes Dapr's job callback waits at least as long as the first cluster list takes
 (1–2 s in this run). The rerun should confirm one instance for the replayed slot and no `499`
 (callback cancelled by the sidecar) while the scheduler holds a callback.
+
+## Follow-up rerun — 9.4 and 9.5 passed
+
+Source: `e7d2904d507161dc05b6a135830394ab22a15695`, branch `test/phase-6-verification`.
+Cluster: `docker-desktop`, Kubernetes 1.34.3, Dapr 1.18.2. Installed release `dws-rerun` in
+isolated namespace `dws-scheduling-rerun`, with the same external-Dapr/Redis setup and cached
+controller/orchestrator images as the initial run. The controller again used
+`JSII_RUNTIME_PACKAGE_CACHE=disabled`. No application source was changed during verification.
+
+Built the scheduler from this checkout using its repository Dockerfile:
+`dws-schedule-time:rerun`, image ID
+`sha256:cb08c7c29f4ef013b84c10997c0914815efdded9e81a8076c2a3489a94ba58b3`.
+The named test-project gate passed **219/219**, zero failures or skips, in the .NET 10 SDK container.
+The chart used `auth.enabled=true`, bundled Dex with cluster-reachable issuer
+`http://dws-rerun-dex.dws-scheduling-rerun.svc.cluster.local:5556/dex`, and
+`scheduleTime.replicaCount=2`. Workflow submissions used the controller app port via
+port-forwarding; JWT/browser access was outside this check.
+
+### 9.5 — all three authenticated schedules passed
+
+Submitted `rerun-every` (`every: PT1M`), `rerun-cron` (`cron: "*/2 * * * *"`) and
+`rerun-after` (`after: PT30S`, with a ten-second wait before the stamp task). All completed
+with input `{}` and output `{"version":"rerun","ticked":true}`.
+
+| Instance ID | Created UTC | Completed UTC |
+|---|---|---|
+| `dws-sched:rerun-every:20261114T195224Z` | 19:52:24.635909299 | 19:52:25.065808880 |
+| `dws-sched:rerun-cron:20261114T195200Z` | 19:52:02.904923896 | 19:52:03.449909064 |
+| `dws-after:rerun-after:1` | 19:51:24.009720172 | 19:51:37.399200008 |
+| `dws-after:rerun-after:2` | 19:52:21.112037598 | 19:53:15.401348799 |
+
+The every job anchor was `19:51:24.512Z`, so its first key is anchor + 60 s. Cron's key
+matches the even UTC minute. The second after instance started **43.713 seconds** after the first
+completed, exceeding the 30-second delay. Completion was checked through Dapr workflow metadata;
+the second after instance completed during scheduler downtime.
+
+Both scheduler replicas referenced `dws-rerun-schedule-time-dapr-api-token` in their annotation
+and received `DAPR_API_TOKEN` through the chart's Secret reference. Sidecar startup logs confirmed
+HTTP/gRPC token authentication enabled. The scheduler and all three target sidecars' logs showed
+no 401/invalid-token/Unauthorized errors in the inspected windows. Actual completed instances
+and successful callbacks establish that starts worked; this conclusion is not based only on log
+absence. Compiled orchestrator pods have no API-token annotation in this chart configuration;
+this verifies the scheduler's authenticated local-sidecar invocation path, not an extra target
+API-token requirement. No token value was recorded.
+
+### 9.4 — two replicas and downtime replay passed
+
+Before downtime, both replicas were Ready, every/cron each had one instance, and all four sampled
+instance claims were `started` with Redis version 2 (claim creation followed by successful start).
+The target sidecars each logged exactly one `starting new` entry per sampled instance ID.
+
+Scaled the scheduler to zero at 19:53:04 UTC; both pods were gone by 19:53:07. After a 190-second
+sleep with no scheduler pods, the restore-to-two operation was recorded at **19:56:28 UTC**.
+Four every ticks (19:53:24 through 19:56:24) and two cron ticks (19:54 and 19:56) were due while
+the scheduler was unavailable. The next ordinary every tick was not due until 19:57:24.
+
+On recovery, four successful every callbacks reached both replicas, and two successful cron
+callbacks reached one replica. They produced exactly these two completed instances:
+
+| Replayed instance ID | Created UTC | Completed UTC | New starts / claim version |
+|---|---|---|---|
+| `dws-sched:rerun-every:20261114T195624Z` | 19:56:30.500940871 | 19:56:30.814392187 | 1 / 2 |
+| `dws-sched:rerun-cron:20261114T195600Z` | 19:56:30.512536456 | 19:56:30.855975028 | 1 / 2 |
+
+The recovery snapshot at 19:56:46–48, before the next ordinary every tick, contained only one
+new every claim and one new cron claim. Both were `started`. Full target-sidecar logs contained
+exactly one `starting new` entry for each ID, including the earlier instances, so completed
+instances were not restarted by duplicate deliveries. This verifies the replay burst rather than
+only the next ordinary tick.
+
+**Cancellation caveat:** the stronger follow-up expectation of *no* 499 did not hold. One every,
+one cron and one after-poll callback were canceled at 19:56:29.818, before initial lists completed
+at 19:56:30.265 and 19:56:30.360. Subsequent deliveries succeeded: 21 callback responses were 200
+and none were 500 in the recovery snapshot. The successful every/cron callbacks held across
+initial synchronization took about 770 ms. No replay instance was lost or duplicated in this run,
+but it does not prove cancellation-free admission under every startup timing.
+
+Selected metadata, claims, pod/image identities, callback responses, initial-list timestamps and
+individual start log entries are retained in
+[scheduling-phase6a-rerun-observations.json](scheduling-phase6a-rerun-observations.json).
+To reproduce, install the chart settings above, submit the initial-run fixture with the rerun
+names/marker, inspect all three schedules, scale the scheduler `2 → 0`, wait for both pods to
+disappear and several intervals to elapse, then restore `0 → 2`. Capture claims and target
+start logs before the next ordinary tick. Use port-forwarding to sidecar `:3500` for workflow
+metadata: these sidecars' HTTP APIs listen on localhost, so the Kubernetes pod proxy cannot
+reach them at the pod IP. Use the SDK Jobs list probe for registration/cleanup as in the first run.
 
 ## Reproduction and retained evidence
 
@@ -205,3 +292,8 @@ Deleted all verification workflows through their controller APIs (HTTP 204). Bot
 SDK Jobs lists were then empty (`[]`), so no verification jobs were left behind. The temporary
 Helm releases were uninstalled and their namespaces were submitted for deletion. Node-local
 build-image cache entries were retained.
+
+The follow-up rerun also deleted all three workflows through the controller (HTTP 204 each).
+The SDK Jobs list was empty at 19:57:35 UTC. Uninstalled `dws-rerun` and deleted the isolated
+`dws-scheduling-rerun` namespace, including its Redis, builder, registry and node-image helpers.
+Existing Dapr/Knative installations were left in place; node image caches were retained.
