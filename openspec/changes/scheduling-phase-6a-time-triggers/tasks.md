@@ -115,8 +115,10 @@
 
 ## 8. CI and release packaging
 
-- [ ] 8.1 Add `.github/workflows/dws-schedule-time.yml`, modelled on `dws-flow.yml`: test, image build, `/healthz` smoke test, push on main.
-- [ ] 8.2 Add `dws-schedule-time` to `release-please-config.json` and `.release-please-manifest.json`. Extend `component-release.yml` if it lists components explicitly.
+- [x] 8.1 Add `.github/workflows/dws-schedule-time.yml`, modelled on `dws-flow.yml`: test, image build, `/healthz` smoke test, push on main.
+  - Smoke test needs no definition or sidecar: `GET /healthz` must answer `{"status":"ok"}`. The tag pattern `dws-schedule-time-v*` matches what `component-release` dispatches.
+- [x] 8.2 Add `dws-schedule-time` to `release-please-config.json` and `.release-please-manifest.json`. Extend `component-release.yml` if it lists components explicitly.
+  - Manifest `0.0.0` + `"initial-version": "0.1.0"` (the `dws-mid-*` path, not `dws-flow`'s seed-and-force): the package arrives with its feature commits, so the first release-please PR is an ordinary `0.1.0`. `component-release` lists components explicitly and now includes it. Runbook in `docs/release-process.md`.
 
 ## 9. Live verification
 
