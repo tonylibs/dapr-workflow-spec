@@ -9,6 +9,7 @@ public sealed class ClusterSnapshot : IClusterState
     private bool triggersListed;
     private bool deploymentsListed;
     private ActiveTriggerSet resolved = new(new Dictionary<string, TriggerConfig>(), []);
+    private readonly TaskCompletionSource synced = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public bool Synced
     {
@@ -18,6 +19,19 @@ public sealed class ClusterSnapshot : IClusterState
             {
                 return triggersListed && deploymentsListed;
             }
+        }
+    }
+
+    public async Task<bool> WaitForSyncAsync(TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await synced.Task.WaitAsync(timeout, cancellationToken);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
         }
     }
 
@@ -74,6 +88,10 @@ public sealed class ClusterSnapshot : IClusterState
         {
             change();
             resolved = Resolve();
+            if (triggersListed && deploymentsListed)
+            {
+                synced.TrySetResult();
+            }
         }
     }
 

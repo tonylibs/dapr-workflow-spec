@@ -6,7 +6,11 @@ namespace Dws.ScheduleTime;
 public sealed class ScheduledJobHandler(
     IClusterState cluster, IJobRegistry registry, StartClaim claim, TimeProvider time, ILogger<ScheduledJobHandler> logger)
 {
-    public async Task<JobOutcome> HandleAsync(string workflow, string payloadText, CancellationToken cancellationToken)
+    public Task<JobOutcome> HandleAsync(string workflow, string payloadText, CancellationToken cancellationToken) =>
+        HandleAsync(workflow, payloadText, time.GetUtcNow(), cancellationToken);
+
+    /// <summary>Handles a fire whose callback arrived at <paramref name="deliveredAt"/>; the fire key derives from that time.</summary>
+    public async Task<JobOutcome> HandleAsync(string workflow, string payloadText, DateTimeOffset deliveredAt, CancellationToken cancellationToken)
     {
         string jobName = JobSpecs.ScheduledName(workflow);
         JobPayload? payload = JobPayload.TryParse(payloadText);
@@ -29,7 +33,7 @@ public sealed class ScheduledJobHandler(
             return JobOutcome.Success;
         }
 
-        DateTimeOffset delivered = time.GetUtcNow();
+        DateTimeOffset delivered = deliveredAt;
         string? instanceId = FireKey(payload, workflow, delivered);
         if (instanceId is null)
         {

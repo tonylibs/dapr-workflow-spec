@@ -13,6 +13,8 @@ internal sealed class StaticClusterState(bool synced, params TriggerConfig[] tri
 {
     public bool Synced => synced;
 
+    public Task<bool> WaitForSyncAsync(TimeSpan timeout, CancellationToken cancellationToken) => Task.FromResult(synced);
+
     public IReadOnlyDictionary<string, TriggerConfig> ActiveTriggers { get; set; } = triggers.ToDictionary(trigger => trigger.Workflow);
 }
 

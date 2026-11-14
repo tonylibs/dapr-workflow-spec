@@ -23,7 +23,7 @@ if (DwsJsonConsoleFormatter.IsJsonMode(Environment.GetEnvironmentVariable("DWS_L
     builder.Logging.AddConsoleFormatter<DwsJsonConsoleFormatter, ConsoleFormatterOptions>();
 }
 
-// DaprClientBuilder reads DAPR_API_TOKEN and the sidecar endpoints itself (job, state store).
+// DaprClientBuilder reads DAPR_API_TOKEN and the sidecar endpoints itself (jobs, state store).
 builder.Services.AddSingleton(_ => new DaprClientBuilder().Build());
 builder.Services.AddDaprJobsClient();
 builder.Services.AddSingleton(TimeProvider.System);
@@ -44,7 +44,7 @@ builder.Services.AddSingleton(services => ActivatorUtilities.CreateInstance<Star
 builder.Services.AddSingleton(services => ActivatorUtilities.CreateInstance<AfterLifecycle>(services, options.AfterPollInterval));
 builder.Services.AddSingleton(services => ActivatorUtilities.CreateInstance<Reconciler>(services, options.AfterPollInterval));
 builder.Services.AddSingleton<ScheduledJobHandler>();
-builder.Services.AddSingleton<JobDispatcher>();
+builder.Services.AddSingleton(services => ActivatorUtilities.CreateInstance<JobDispatcher>(services, ScheduleTimeOptions.InitialSyncWait));
 builder.Services.AddHostedService(services => ActivatorUtilities.CreateInstance<ClusterWatcher>(services, options.Namespace ?? string.Empty));
 builder.Services.AddHostedService<ReconcileLoop>();
 
