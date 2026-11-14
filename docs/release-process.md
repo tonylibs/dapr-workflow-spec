@@ -85,6 +85,12 @@ first-parent commit that touches `<component>/` (not bare `HEAD`, which would le
   component (no CHANGELOG yet) or a hotfix tag.
 - **② before ③.** `chart_release.py` pins the highest existing `<component>-v*` tag.
   If you run chart-release before the component tag exists, it pins nothing new.
+- **Which images the chart pins.** `VALUES_ANCHORS` in `.github/scripts/chart_release.py` lists
+  every component whose image `charts/dws/values.yaml` pins, keyed by the `repository:` string that
+  precedes its `tag:`. A new chart-deployed component needs an entry there, or chart-release never
+  moves its tag. `dws-schedule-time` (`scheduleTime.image`) is pinned this way; its `0.1.0` default
+  only resolves once its first `dws-schedule-time-v0.1.0` image exists (bootstrap, see
+  "First release of a new component").
 
 ## Common flows
 
@@ -106,6 +112,7 @@ first-parent commit that touches `<component>/` (not bare `HEAD`, which would le
 | per-component build | `.github/workflows/dws-*.yml` | push to path / `<component>-v*` tag |
 | dws-step | `.github/workflows/dws-step.yml` | PR / push to `dws-step/**` on main / `dws-step-v*` tag / manual. Gate: `spotless:check` then `./mvnw verify`; image job builds (PR) or publishes `:latest` + `:<sha>` (+ `:<X.Y.Z>` on a tag). No image smoke test yet, see the workflow comment |
 | dws-flow | `.github/workflows/dws-flow.yml` | same triggers on `dws-flow/**` / `dws-flow-v*`. Gate: `dotnet test test/dws-flow.Tests.csproj`; image job smoke-tests `GET /healthz` before pushing |
+| dws-schedule-time | `.github/workflows/dws-schedule-time.yml` | same triggers on `dws-schedule-time/**` / `dws-schedule-time-v*`. Gate: `dotnet test test/dws-schedule-time.Tests.csproj`; image job smoke-tests `GET /healthz` (`{"status":"ok"}`, no sidecar or cluster needed) before pushing. Pinned by the chart as `scheduleTime.image` |
 | dws-mid-bearer | `.github/workflows/dws-mid-bearer.yml` | same triggers on `dws-mid-bearer/**` / `dws-mid-bearer-v*`. Gate: `go vet`, `gofmt`, `go test -race`; image job builds `/bearer.wasm` with TinyGo 0.34.0, checks the Wasm magic bytes and a non-root `cp`, then pushes. Not pinned by the chart: the controller pins its digest (OWS 4.1d) |
 
 ## First release of a new component
@@ -154,6 +161,16 @@ the first `feat` opens an ordinary `0.1.0` release PR (`dws-mid-basic` 0.1.0 cam
 merge it (cut ①), then run `component-release` for `dws-mid-bearer` without `force` (cut ②). That
 publishes `ghcr.io/tonylibs/dws-mid-bearer:0.1.0`. The first push creates a **private** GHCR package;
 make it public once in the package settings (no pull secret is planned for the init container).
+
+`dws-schedule-time` (scheduling Phase 6a) follows the `dws-mid-*` path too, not the seed-and-force
+one: it arrives with its whole feature history (`feat(schedule-time)` commits), so a manifest of
+`0.1.0` would make release-please propose `0.2.0` on top of an unreleased `0.1.0`. Its manifest
+entry is `0.0.0` with `"initial-version": "0.1.0"`; after the branch merges, release-please opens
+the `chore(release): dws-schedule-time 0.1.0` PR listing those commits. Merge it (cut ①), run
+`component-release` for `dws-schedule-time` without `force` (cut ②, publishes
+`ghcr.io/tonylibs/dws-schedule-time:0.1.0`, the tag `charts/dws/values.yaml` already pins), and
+make the new GHCR package public once, as for `dws-mid-bearer`. Until then a default chart install
+cannot pull the scheduler image.
 
 `bootstrap-sha` is inert after step 2 and can be deleted in a later cleanup; leaving it is harmless.
 

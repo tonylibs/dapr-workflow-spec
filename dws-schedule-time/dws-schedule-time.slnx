@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/test/">
+    <Project Path="test/dws-schedule-time.Tests.csproj" />
+  </Folder>
+  <Project Path="dws-schedule-time.csproj" />
+</Solution>

@@ -102,6 +102,12 @@ EXPOSE 8080
 USER 185
 ENV JAVA_OPTS_APPEND="-Dquarkus.http.host=0.0.0.0 -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
 ENV JAVA_APP_JAR="/deployments/quarkus-run.jar"
+# jsii (cdk8s synthesis) refuses a package cache whose directory is group-writable, and this
+# image's home directory is mode 0770 for OpenShift's arbitrary-UID model, so every workflow
+# submission failed with HTTP 500 ("Cannot use the jsii package cache ...") until the cache was
+# disabled (scheduling Phase 6a live run, docs/roadmaps/scheduling-phase6a-evidence.md). Disabling
+# it only means jsii unpacks its bundled packages once per controller process.
+ENV JSII_RUNTIME_PACKAGE_CACHE=disabled
 
 ENTRYPOINT [ "/opt/jboss/container/java/run/run-java.sh" ]
 

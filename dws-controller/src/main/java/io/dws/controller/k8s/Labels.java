@@ -18,8 +18,25 @@ public class Labels {
   public static final String VERSION = "dws.io/version";
   public static final String MANAGED_BY = "dws.io/managed-by";
   public static final String MANAGED_BY_VALUE = "dws-controller";
+
+  /**
+   * Stamped as an <em>annotation</em> (value {@code "true"}) on a superseded orchestrator
+   * Deployment. Cross-package contract: {@code dws-schedule-time} treats the version whose
+   * Deployment lacks it as the active one, exactly like {@link StackReader}. Pinned by {@code
+   * SchedulerContractTest}.
+   */
   public static final String DRAIN = "dws.io/drain";
+
   public static final String STEP_TYPE = "dws.io/step-type";
+
+  /**
+   * Label on a scheduled version's trigger ConfigMap; {@code dws-schedule-time} watches ConfigMaps
+   * selected by {@code dws.io/trigger=time}. Cross-package contract, pinned by {@code
+   * SchedulerContractTest}.
+   */
+  public static final String TRIGGER = "dws.io/trigger";
+
+  public static final String TRIGGER_TIME = "time";
 
   public static Map<String, String> forPlan(DeploymentPlan plan) {
     return of(plan.workflow(), plan.versionId());

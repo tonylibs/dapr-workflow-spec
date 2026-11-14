@@ -100,6 +100,33 @@ app.kubernetes.io/component: admin
 {{- end }}
 
 {{/*
+dws-schedule-time fully qualified name. Also the scheduler's Dapr app-id ("dws-schedule-time" for a
+release named "dws"): Dapr jobs are owned by the app-id that scheduled them, so it must stay stable
+across upgrades or every registered job is orphaned.
+*/}}
+{{- define "dws.scheduleTime.fullname" -}}
+{{- printf "%s-schedule-time" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+dws-schedule-time selector labels — the common selector labels plus a component marker so the
+scheduler Deployment cannot match sibling components.
+*/}}
+{{- define "dws.scheduleTime.selectorLabels" -}}
+{{ include "dws.selectorLabels" . }}
+app.kubernetes.io/component: schedule-time
+{{- end }}
+
+{{/*
+Name of the shared Dapr state store Component (templates/actor-statestore-component.yaml). The
+workflow actor runtime uses it, and dws-schedule-time keeps its start claims and `after`
+bookkeeping in it (DWS_SCHEDULE_TIME_STATE_STORE); one definition keeps the two from drifting.
+*/}}
+{{- define "dws.actorStateStore.name" -}}
+{{- printf "%s-actor-statestore" (include "dws.fullname" .) }}
+{{- end }}
+
+{{/*
 Console fully qualified name.
 */}}
 {{- define "dws.console.fullname" -}}
@@ -692,15 +719,18 @@ Dapr machine-auth tokens (auth roadmap Phase 10, openspec change auth-phase-10-a
 Everything below is only used when auth.enabled=true; callers gate on that, nothing here
 re-checks it.
 
-One token per (component, kind), three Secrets in total:
-  <release>-admin-dapr-api-token       admin sidecar's `dapr-api-token` (also sent by APISIX)
-  <release>-admin-app-api-token        token Dapr attaches when the admin sidecar calls the admin app
-  <release>-controller-dapr-api-token  controller sidecar's `dapr-api-token`
+One token per (component, kind), four Secrets in total:
+  <release>-admin-dapr-api-token          admin sidecar's `dapr-api-token` (also sent by APISIX)
+  <release>-admin-app-api-token           token Dapr attaches when the admin sidecar calls the admin app
+  <release>-controller-dapr-api-token     controller sidecar's `dapr-api-token`
+  <release>-schedule-time-dapr-api-token  dws-schedule-time sidecar's `dapr-api-token`
 Each holds the token under key `token` -- Dapr's contract for dapr.io/api-token-secret and
 dapr.io/app-token-secret, not ours to rename. The controller's app API token (kind appApi) is
 reserved for a follow-up change and is deliberately not rendered.
 
-Helpers take a dict `{root: $, component: "admin"|"controller", kind: "daprApi"|"appApi"}`.
+Helpers take a dict `{root: $, component: "admin"|"controller"|"schedule-time", kind: "daprApi"|"appApi"}`.
+`component` is the Secret-name segment; its values key under auth.apiTokens is the same except
+`schedule-time`, whose key is the camelCase `scheduleTime` (dws.apiTokens.valuesKey).
 
 Names derive from .Release.Name, NOT dws.fullname, and are NOT truncated: the bundled APISIX
 subchart renders its extraEnvVars through `tpl` in its own context, where .Release.Name is the
@@ -721,7 +751,15 @@ field access so a values file from before this feature (e.g. `helm upgrade --reu
 cannot nil-pointer the render.
 */}}
 {{- define "dws.apiTokens.existingSecret" -}}
-{{- dig "auth" "apiTokens" .component .kind "existingSecret" "" .root.Values.AsMap -}}
+{{- dig "auth" "apiTokens" (include "dws.apiTokens.valuesKey" .) .kind "existingSecret" "" .root.Values.AsMap -}}
+{{- end }}
+
+{{/*
+Values key under auth.apiTokens for one component: the component name, camelCased where the
+Secret-name segment is hyphenated (schedule-time -> scheduleTime).
+*/}}
+{{- define "dws.apiTokens.valuesKey" -}}
+{{- get (dict "schedule-time" "scheduleTime") .component | default .component -}}
 {{- end }}
 
 {{/*

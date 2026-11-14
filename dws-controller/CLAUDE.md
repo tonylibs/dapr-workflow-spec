@@ -82,6 +82,12 @@ Windows: use `mvnw.cmd`; POSIX shells (Git Bash): use `./mvnw`.
 - **Task names are unique across the whole definition**, at every depth — the app-id/Knative Service
   name derives from the task name alone, so a duplicate is a deployed-object collision. Rejected at
   compile time.
+- **Time triggers** (scheduling Phase 6a): `TimeSchedule` validates `schedule` on the *raw* tree
+  before the typed parse (the SDK `Schedule` has no `read` field), and a scheduled version gets one
+  immutable, create-only ConfigMap `dws-trigger-W-vN` (`dws.io/trigger=time`, key `trigger.json`)
+  for `dws-schedule-time`. Its shape, the label and the drain annotation are a cross-package
+  contract pinned by `SchedulerContractTest` against `../dws-schedule-time/test/fixtures/`. The v2
+  strategy rejects `schedule`.
 - **Rollout**: the controller only annotates the superseded orchestrator `dws.io/drain=true`. Draining is
   the orchestrator's concern; the controller collects that version once its Deployment reports
   `status.replicas == 0` (a null status means "not reported yet", never "drained").
@@ -95,6 +101,10 @@ Windows: use `mvnw.cmd`; POSIX shells (Git Bash): use `./mvnw`.
 - **cdk8s needs Node.js at runtime**: jsii executes its bundled JavaScript in a Node child process, so
   synthesis fails without `node` on PATH. `src/main/docker/Dockerfile.jvm` installs it for that reason —
   don't drop that layer.
+  The same Dockerfile sets `JSII_RUNTIME_PACKAGE_CACHE=disabled`: jsii refuses a package cache in a
+  group-writable directory, and the UBI image's home is 0770, so without it every `POST /workflows`
+  returned 500 ("Cannot use the jsii package cache"). Keep it unless the cache root moves to a private
+  directory (`JSII_RUNTIME_PACKAGE_CACHE_ROOT`).
 - **Web layer**: `quarkus-rest` + `quarkus-rest-jackson` (JAX-RS style resources, e.g. `@Path`/`@GET` in `GreetingResource.java`; Jackson for JSON).
 - **DI**: `quarkus-arc` (CDI-based dependency injection) — use constructor injection per this repo's Java coding conventions.
 - **Kubernetes**: `quarkus-kubernetes-client` is on the classpath — expect this project to interact with a Kubernetes API (likely in service of Dapr workflow orchestration, per the repo name) rather than being a plain REST CRUD app.

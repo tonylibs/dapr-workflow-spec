@@ -14,6 +14,7 @@ import io.dws.controller.model.OAuthEndpoint;
 import io.dws.controller.model.OrchestratorSpec;
 import io.dws.controller.model.StepService;
 import io.dws.controller.model.TaskKind;
+import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.EnvVar;
 import io.fabric8.kubernetes.api.model.EnvVarBuilder;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
@@ -1250,5 +1251,61 @@ class StackSynthesizerTest {
   private static List<String> activityNames(Map<String, Object> rule) {
     return ((List<Map<String, Object>>) rule.get("activities"))
         .stream().map(activity -> String.valueOf(activity.get("name"))).toList();
+  }
+
+  // ---- trigger ConfigMap (scheduling Phase 6a) ------------------------------
+
+  private static String orderSync(String schedule) {
+    return """
+        document:
+          dsl: '1.0.0'
+          namespace: test
+          name: order-sync
+          version: '1.0.0'
+        %s
+        do:
+          - noop:
+              set:
+                done: true
+        """
+        .formatted(schedule);
+  }
+
+  @Test
+  @DisplayName("a scheduled plan renders one labeled, immutable trigger ConfigMap")
+  void scheduledPlanRendersTriggerConfigMap() {
+    DeploymentPlan plan =
+        compiler.compile(orderSync("schedule: { every: { hours: 1, minutes: 30 } }"));
+
+    ConfigMap trigger = synthesizer.triggerConfigMap(plan, NAMESPACE).orElseThrow();
+
+    assertThat(trigger.getMetadata().getName())
+        .isEqualTo("dws-trigger-order-sync-" + plan.versionId());
+    assertThat(trigger.getMetadata().getNamespace()).isEqualTo(NAMESPACE);
+    assertThat(trigger.getMetadata().getLabels())
+        .containsExactlyInAnyOrderEntriesOf(
+            Map.of(
+                "dws.io/workflow", "order-sync",
+                "dws.io/version", plan.versionId(),
+                "dws.io/managed-by", "dws-controller",
+                "dws.io/trigger", "time"));
+    assertThat(trigger.getImmutable()).isTrue();
+    assertThat(trigger.getData())
+        .containsOnlyKeys("trigger.json")
+        .containsEntry(
+            "trigger.json",
+            "{\"workflow\":\"order-sync\",\"version\":\""
+                + plan.versionId()
+                + "\",\"appId\":\""
+                + plan.orchestrator().appId()
+                + "\",\"kind\":\"every\",\"schedule\":\"PT1H30M\"}");
+  }
+
+  @Test
+  @DisplayName("an unscheduled plan renders no trigger ConfigMap")
+  void unscheduledPlanRendersNoTriggerConfigMap() {
+    DeploymentPlan plan = compiler.compile(orderSync(""));
+
+    assertThat(synthesizer.triggerConfigMap(plan, NAMESPACE)).isEmpty();
   }
 }

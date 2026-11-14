@@ -15,6 +15,7 @@ import io.dws.controller.model.OrchestratorSpec;
 import io.dws.controller.model.StepService;
 import io.dws.controller.model.TaskKind;
 import io.dws.controller.model.TopicBinding;
+import io.dws.controller.model.TriggerSpec;
 import io.serverlessworkflow.api.WorkflowFormat;
 import io.serverlessworkflow.api.types.A2AArguments;
 import io.serverlessworkflow.api.types.AsyncApiArguments;
@@ -118,6 +119,9 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
   public DeploymentPlan compile(String specText) {
     SpecParser.requireNonBlank(specText);
     WorkflowFormat format = SpecParser.detectFormat(specText);
+    // Before the typed parse: the SDK model rejects 'schedule.read' with a generic parse error.
+    Optional<TimeSchedule> schedule =
+        SpecParser.readRaw(specText, format).flatMap(TimeSchedule::read);
     Workflow workflow = SpecParser.parseOrThrow(specText, format);
 
     List<String> errors = semanticErrors(workflow);
@@ -145,6 +149,10 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
             ORCHESTRATOR_PORT,
             1,
             orchestratorEnv(defResource, context.secrets()));
+    TriggerSpec trigger =
+        schedule
+            .map(s -> new TriggerSpec(w, versionId, orchestrator.appId(), s.kind(), s.schedule()))
+            .orElse(null);
 
     return new DeploymentPlan(
         w,
@@ -156,7 +164,9 @@ public class V1OrchestratorCompiler implements WorkflowCompiler {
         bindings,
         orchestrator,
         context.oauthEndpoints(),
-        context.bindingComponents());
+        context.bindingComponents(),
+        List.of(),
+        trigger);
   }
 
   private static Map<String, EnvValue> orchestratorEnv(

@@ -1,6 +1,7 @@
 # DRAFT: split Phase 6 triggers into separate `dws-*` components
 
-Status: **draft idea, nothing decided.** Written 2026-11-04. Nothing here is in the Phase 6 prompt yet.
+Status: **superseded for time triggers (Phase 6a) by [ADR 0013](adr/0013-time-triggers-in-dws-schedule-time.md)** and OpenSpec change `scheduling-phase-6a-time-triggers`, which adopted the separate-component split for `every`/`cron`/`after` (`dws-schedule-time`). The event-trigger part (`schedule.on`, Phase 6b) is still open and this draft remains input for it.
+Original status: draft idea, nothing decided. Written 2026-11-04.
 Related: Phase 6 page on Notion (current prompt covers a controller-only design), `claude/handoff-6-scheduling-should-add.md` (project doc).
 
 ## 1. Idea

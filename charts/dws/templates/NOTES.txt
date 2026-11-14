@@ -24,10 +24,13 @@ under the key `token`:
 {{- if .Values.controller.enabled }}
   - {{ include "dws.apiTokens.secretName" (dict "root" . "component" "controller" "kind" "daprApi") }}  (controller sidecar API token)
 {{- end }}
+{{- if .Values.scheduleTime.enabled }}
+  - {{ include "dws.apiTokens.secretName" (dict "root" . "component" "schedule-time" "kind" "daprApi") }}  (dws-schedule-time sidecar API token)
+{{- end }}
 This chart never prints a token. daprd reads its token only at startup, so after every install,
 upgrade or token rotation restart the pods that use them and wait for the rollout:
 
-  kubectl rollout restart -n {{ include "dws.namespace" . }}{{ if .Values.admin.enabled }} deployment/{{ include "dws.admin.fullname" . }}{{ end }}{{ if .Values.controller.enabled }} deployment/{{ include "dws.controller.fullname" . }}{{ end }}{{ if and .Values.apiGateway.enabled .Values.apisix.enabled }} {{ ternary "daemonset" "deployment" (.Values.apisix.useDaemonSet | default false) }}/{{ include "dws.apisix.fullname" . }}{{ end }}
+  kubectl rollout restart -n {{ include "dws.namespace" . }}{{ if .Values.admin.enabled }} deployment/{{ include "dws.admin.fullname" . }}{{ end }}{{ if .Values.controller.enabled }} deployment/{{ include "dws.controller.fullname" . }}{{ end }}{{ if .Values.scheduleTime.enabled }} deployment/{{ include "dws.scheduleTime.fullname" . }}{{ end }}{{ if and .Values.apiGateway.enabled .Values.apisix.enabled }} {{ ternary "daemonset" "deployment" (.Values.apisix.useDaemonSet | default false) }}/{{ include "dws.apisix.fullname" . }}{{ end }}
 
 A chart-generated token is also stored in the Helm release Secret; supply
 auth.apiTokens.<component>.<kind>.existingSecret to keep it out of Helm. See
@@ -50,4 +53,13 @@ Retrieve the bootstrap admin login:
   kubectl get secret {{ include "dws.dex.adminCredentials.fullname" . }} -n {{ include "dws.namespace" . }} -o jsonpath='{.data.email}' | base64 -d; echo
   kubectl get secret {{ include "dws.dex.adminCredentials.fullname" . }} -n {{ include "dws.namespace" . }} -o jsonpath='{.data.password}' | base64 -d; echo
 {{- end }}
+{{- end }}
+{{- if .Values.scheduleTime.enabled }}
+
+Workflow time triggers are enabled: deployment/{{ include "dws.scheduleTime.fullname" . }} fires the
+`schedule` block (`every`, `cron`, `after`) of v1 workflows. Definitions that already carry
+`schedule` change nothing until they are redeployed; on their next deploy they start firing, or
+are rejected if their `schedule` is invalid (more than one trigger, sub-second or runtime-expression
+durations, a non-5-field cron) or uses `schedule.on`, which is not supported yet. See
+charts/dws/README.md, "Upgrading to scheduling Phase 6a".
 {{- end }}

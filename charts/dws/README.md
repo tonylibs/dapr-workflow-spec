@@ -5,6 +5,27 @@ supporting Dapr/PostgreSQL/Redis/Dex/APISIX dependencies. See the repository roo
 [`AGENTS.md`](../../AGENTS.md) for the overall project and [`docs/roadmaps/dws-auth.md`](../../docs/roadmaps/dws-auth.md)
 for the auth/Gateway design history.
 
+## Upgrading to scheduling Phase 6a (time triggers)
+
+This chart version adds `dws-schedule-time` (`scheduleTime.enabled`, default `true`; see
+[Time-trigger scheduler](#time-trigger-scheduler-dws-schedule-time)), and `dws-controller` starts
+validating the DSL `schedule` block. Nothing changes for a workflow until it is redeployed
+(`POST /workflows` again); on its next deploy:
+
+- a v1 definition with a valid `schedule.every`, `schedule.cron` or `schedule.after` **starts
+  firing**: the controller writes its trigger ConfigMap and the scheduler registers a Dapr job;
+- a definition whose `schedule` was silently ignored until now **may be rejected**: exactly one of
+  `every`, `cron`, `after` is allowed; durations must be literal and at least 1 s; `cron` must be a
+  standard 5-field expression; `schedule.on` (event triggers, Phase 6b) and `schedule.read` without
+  `on` are rejected as not yet supported;
+- under the runtime v2 compiler strategy, any `schedule` is rejected (not yet supported on v2).
+
+The scheduler image is pinned at `scheduleTime.image.tag`; until that tag is published (its first
+`component-release`, see `docs/release-process.md`), install with `scheduleTime.enabled=false` or
+override the tag. Every trigger start takes a claim in the chart's Redis state store
+(`<fullname>-actor-statestore`, already rendered), and `after` keeps its sequence there, so a Redis
+outage pauses scheduled starts until it recovers (fires are retried briefly, then dropped).
+
 ## Upgrading from a pre-Gateway release
 
 If an existing release still has `console.ingress.enabled=true` set (the plain
@@ -373,6 +394,32 @@ header-name-to-secret-key mapping that the single-string contract above cannot e
 deployment that needs authenticated Dapr export should point `observability.otlp.endpoint` at an
 in-cluster collector and let that collector authenticate upstream.
 
+## Time-trigger scheduler (`dws-schedule-time`)
+
+`scheduleTime.enabled` (default `true`, Core layer) renders `dws-schedule-time`, which fires the
+DSL `schedule` time triggers (`every`, `cron`, `after`) of v1 workflows (scheduling Phase 6a,
+`docs/adr/0013-time-triggers-in-dws-schedule-time.md`). Without it a scheduled workflow deploys but
+never fires. It renders a ServiceAccount, a read-only Role (`get`/`list`/`watch` on `configmaps` and
+`apps/deployments` only), a RoleBinding and a Dapr-enabled Deployment with app-id
+`<fullname>-schedule-time` (`dws-schedule-time` for a release named `dws`). Keep that app-id
+stable: Dapr jobs belong to the app-id that registered them. There is no Service; the scheduler
+only answers its own sidecar's job callbacks and `/healthz`.
+
+| Value | Default | Rendered as |
+|---|---|---|
+| `scheduleTime.image.{repository,tag,pullPolicy}` | `ghcr.io/tonylibs/dws-schedule-time`, pinned tag | container image |
+| `scheduleTime.replicaCount` | `1` | replicas; more is safe (one job delivery per fire, starts claimed per instance ID) |
+| `scheduleTime.afterPollInterval` | `PT15S` | `DWS_SCHEDULE_TIME_AFTER_POLL_INTERVAL` |
+| `scheduleTime.claimTtl` | `PT24H` | `DWS_SCHEDULE_TIME_CLAIM_TTL` |
+| `scheduleTime.{resources,nodeSelector,tolerations,affinity}` | `defaults.*` | merged like the other components |
+
+`DWS_SCHEDULE_TIME_STATE_STORE` is always the chart's shared state store Component
+(`<fullname>-actor-statestore`, Redis with ETags and TTLs), `POD_NAMESPACE` the release namespace,
+and `DWS_LOG_FORMAT` follows `observability.logs.*` through the same helper as the controller and
+admin. With `auth.enabled=true` the pod gets its own Dapr API token (next section).
+`values.schema.json` closes the `scheduleTime` block: an unknown or ill-typed key fails the render.
+It is deliberately the only block the schema constrains (ADR 0007, question 8).
+
 ## Machine-auth tokens
 
 With `auth.enabled=true` the chart also turns on Dapr's two machine-auth tokens for the
@@ -386,6 +433,7 @@ below exist. There is no separate switch; `auth.enabled=false` is the kill switc
 | admin Dapr API token | `<release>-admin-dapr-api-token` | A caller of the `dws-admin` sidecar's HTTP API must send it as the `dapr-api-token` header. The `dws-admin` app sends it on its own calls to its sidecar (`DAPR_API_TOKEN`), and the Gateway injects it on the `/dws-admin` route. |
 | admin app API token | `<release>-admin-app-api-token` | Dapr attaches it to every call from the `dws-admin` sidecar into the app port; `dws-admin` (`APP_API_TOKEN`) rejects any other caller, which closes the `<pod-ip>:3000` bypass. `GET /health` stays open for kubelet probes. |
 | controller Dapr API token | `<release>-controller-dapr-api-token` | Same as the admin Dapr API token, for the `dws-controller` sidecar. The controller container receives it as `DAPR_API_TOKEN` so its own event publishing keeps working. |
+| scheduler Dapr API token | `<release>-schedule-time-dapr-api-token` | Same, for the `dws-schedule-time` sidecar (rendered while `scheduleTime.enabled=true`). The scheduler receives it as `DAPR_API_TOKEN` and sends it on its jobs, state-store and service-invocation calls (it passes it explicitly to the invocation client, which does not read the variable itself). No app token: its only inbound caller is its own sidecar delivering job callbacks. |
 
 Each component gets its own token, so a leak from one pod does not unlock another sidecar. Names
 come from the bare release name (`.Release.Name`), not the chart fullname, and every Secret holds
@@ -418,20 +466,23 @@ helm upgrade --install dws charts/dws --namespace dws-system \
   --set auth.apiTokens.admin.daprApi.existingSecret=my-admin-dapr-token
 ```
 
-The three values are `auth.apiTokens.admin.daprApi.existingSecret`,
-`auth.apiTokens.admin.appApi.existingSecret` and
-`auth.apiTokens.controller.daprApi.existingSecret`. Each Secret must live in the release namespace
+The four values are `auth.apiTokens.admin.daprApi.existingSecret`,
+`auth.apiTokens.admin.appApi.existingSecret`,
+`auth.apiTokens.controller.daprApi.existingSecret` and
+`auth.apiTokens.scheduleTime.daprApi.existingSecret`. The three sidecar API tokens must name
+three different Secrets; rendering fails otherwise. Each Secret must live in the release namespace
 and carry the key `token`; a named Secret is never created, modified or deleted by the chart.
 
 ### Restart after every change (daprd reads the token at startup)
 
 daprd reads its token environment once, at start. After the first install with auth on, any
 `helm upgrade` that changes a token or a pod template, and any rotation, restart the affected
-workloads and wait for them — admin, controller **and** (if the Gateway is on) APISIX:
+workloads and wait for them — admin, controller, the scheduler **and** (if the Gateway is on) APISIX:
 
 ```bash
 kubectl rollout restart --namespace dws-system \
-  deployment/<release>-dws-admin deployment/<release>-dws-controller deployment/<release>-apisix
+  deployment/<release>-dws-admin deployment/<release>-dws-controller \
+  deployment/<release>-dws-schedule-time deployment/<release>-apisix
 kubectl rollout status --namespace dws-system deployment/<release>-dws-admin
 ```
 
@@ -526,6 +577,7 @@ bash tests/auth-pipeline-placement-test.sh .
 bash tests/observability-render-test.sh .
 bash tests/orchestrator-wiring-render-test.sh .
 bash tests/api-tokens-render-test.sh .
+bash tests/schedule-time-render-test.sh .
 ```
 
 `scripts/verify-console-ingress-migration.sh` (repo root) additionally rehearses the pre-Gateway

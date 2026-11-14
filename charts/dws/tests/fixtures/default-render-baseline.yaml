@@ -226,6 +226,21 @@ metadata:
     app.kubernetes.io/component: controller
 
 ---
+# Source: dws/templates/schedule-time/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dws-schedule-time
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.1
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: schedule-time
+
+---
 # Source: dws/charts/dapr/charts/dapr_sentry/templates/dapr_sentry_deployment.yaml
 apiVersion: v1
 kind: Secret
@@ -886,6 +901,33 @@ rules:
     verbs: ["get", "list", "create", "delete", "deletecollection", "update", "patch"]
 
 ---
+# Source: dws/templates/schedule-time/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dws-schedule-time
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.1
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: schedule-time
+rules:
+  # Read-only by design (helm-schedule-time-deployment spec): the scheduler only lists and watches
+  # what dws-controller writes, and keeps its own state in Dapr jobs and the state store.
+  # Trigger ConfigMaps (dws.io/trigger=time, key trigger.json).
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  # Orchestrator Deployments (dws.io/managed-by=dws-controller); the dws.io/drain annotation
+  # marks the superseded version, so a workflow's active trigger is its non-draining version's.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+
+---
 # Source: dws/charts/dapr/charts/dapr_rbac/templates/injector.yaml
 kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -1016,6 +1058,29 @@ subjects:
 roleRef:
   kind: Role
   name: dws-controller
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Source: dws/templates/schedule-time/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dws-schedule-time
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.1
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: schedule-time
+subjects:
+  - kind: ServiceAccount
+    name: dws-schedule-time
+    namespace: default
+roleRef:
+  kind: Role
+  name: dws-schedule-time
   apiGroup: rbac.authorization.k8s.io
 
 ---
@@ -1984,6 +2049,97 @@ spec:
               path: /q/health/ready
               port: http
             initialDelaySeconds: 5
+          resources:
+            limits:
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+
+---
+# Source: dws/templates/schedule-time/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dws-schedule-time
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.1
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: schedule-time
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dws
+      app.kubernetes.io/instance: dws
+      app.kubernetes.io/component: schedule-time
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: dws-1.1.1
+        app.kubernetes.io/name: dws
+        app.kubernetes.io/instance: dws
+        app.kubernetes.io/version: "1.18.0"
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/component: schedule-time
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "dws-schedule-time"
+        dapr.io/app-port: "8080"
+    spec:
+      serviceAccountName: dws-schedule-time
+      
+      initContainers:
+        # The sidecar initialises the chart's unscoped Redis Components (state store, pub/sub) and
+        # fatally exits on a first connection-refused, so wait for the in-chart Redis first (see
+        # controller/deployment.yaml and admin/deployment.yaml).
+        - name: wait-for-redis
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              host_port='dws-redis-master.default.svc.cluster.local:6379'
+              host=${host_port%:*}
+              port=${host_port##*:}
+              until nc -z "$host" "$port"; do
+                echo "waiting for redis $host:$port" >&2
+                sleep 2
+              done
+      containers:
+        - name: schedule-time
+          image: "ghcr.io/tonylibs/dws-schedule-time:0.1.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # Namespace the trigger ConfigMap / orchestrator Deployment watch runs in.
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            # Start claims and `after` bookkeeping; the store must support ETags and TTLs.
+            - name: DWS_SCHEDULE_TIME_STATE_STORE
+              value: "dws-actor-statestore"
+            - name: DWS_SCHEDULE_TIME_AFTER_POLL_INTERVAL
+              value: "PT15S"
+            - name: DWS_SCHEDULE_TIME_CLAIM_TTL
+              value: "PT24H"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
           resources:
             limits:
               memory: 512Mi

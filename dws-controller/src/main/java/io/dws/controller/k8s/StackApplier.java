@@ -5,6 +5,7 @@ import io.dws.controller.events.EventPublisher;
 import io.dws.controller.model.ApplyResult;
 import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.StepService;
+import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder;
@@ -111,6 +112,9 @@ public class StackApplier {
                   config.log().format()))
           .inNamespace(namespace)
           .createOr(NonDeletingOperation::update);
+      // Checked on its own rather than under !alreadyDeployed: a version deployed before
+      // scheduling existed gets its trigger on the next POST of the same text.
+      synthesizer.triggerConfigMap(plan, namespace).ifPresent(this::createIfAbsent);
 
       rollOut(plan);
 
@@ -130,6 +134,14 @@ public class StackApplier {
           plan.orchestrator().appId(),
           e.getMessage());
       throw e;
+    }
+  }
+
+  /** Immutable ConfigMaps are never updated (nor may the controller's Role update them). */
+  private void createIfAbsent(ConfigMap configMap) {
+    if (client.configMaps().inNamespace(namespace).withName(configMap.getMetadata().getName()).get()
+        == null) {
+      client.resource(configMap).inNamespace(namespace).create();
     }
   }
 

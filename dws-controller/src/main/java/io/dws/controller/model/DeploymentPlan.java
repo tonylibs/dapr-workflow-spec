@@ -20,6 +20,9 @@ import java.util.List;
  *     steps
  * @param flowStepGraph the compiled Flow/Step graph (ADR 0002). Populated only by the v2 structural
  *     compiler; the v1 compiler leaves it empty. Append-only for the migration's duration.
+ * @param trigger the version's normalized time trigger ({@code schedule}), or {@code null} when the
+ *     definition has none. Rendered as the version's trigger ConfigMap for {@code
+ *     dws-schedule-time}. Only the v1 compiler sets it; v2 rejects {@code schedule}.
  */
 public record DeploymentPlan(
     String workflow,
@@ -32,7 +35,8 @@ public record DeploymentPlan(
     OrchestratorSpec orchestrator,
     List<OAuthEndpoint> oauthEndpoints,
     List<BindingComponent> bindingComponents,
-    List<CompiledNode> flowStepGraph) {
+    List<CompiledNode> flowStepGraph,
+    TriggerSpec trigger) {
 
   public DeploymentPlan {
     steps = List.copyOf(steps);
@@ -66,7 +70,36 @@ public record DeploymentPlan(
         null,
         List.of(),
         List.of(),
-        List.of(root));
+        List.of(root),
+        null);
+  }
+
+  /** Compatibility constructor for plans without a time trigger. */
+  public DeploymentPlan(
+      String workflow,
+      String versionId,
+      String version,
+      String definitionResource,
+      String specText,
+      List<StepService> steps,
+      List<TopicBinding> bindings,
+      OrchestratorSpec orchestrator,
+      List<OAuthEndpoint> oauthEndpoints,
+      List<BindingComponent> bindingComponents,
+      List<CompiledNode> flowStepGraph) {
+    this(
+        workflow,
+        versionId,
+        version,
+        definitionResource,
+        specText,
+        steps,
+        bindings,
+        orchestrator,
+        oauthEndpoints,
+        bindingComponents,
+        flowStepGraph,
+        null);
   }
 
   /**

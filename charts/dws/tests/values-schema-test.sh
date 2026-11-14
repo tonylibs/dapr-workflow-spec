@@ -6,7 +6,7 @@ rendered="$(mktemp)"
 trap 'rm -f "$rendered"' EXIT
 
 # --- Scheduling defaults deep-merge across every chart-owned Deployment -----------------------
-# (controller, admin, console — admin-gateway was removed by the API Gateway change).
+# (controller, admin, console, schedule-time — admin-gateway was removed by the API Gateway change).
 helm template dws "$chart_dir" \
   --api-versions dapr.io/v1alpha1 \
   --set dapr.enabled=false \
@@ -25,11 +25,29 @@ helm template dws "$chart_dir" \
   > "$rendered"
 
 deployments="$(grep -c '^kind: Deployment$' "$rendered")"
-test "$deployments" -eq 3
+test "$deployments" -eq 4
 
 for value in 'cpu: 125m' 'memory: 192Mi' 'memory: 384Mi' 'workload: dws' '- key: reserved' 'operator: In'; do
-  test "$(grep -Ec "^[[:space:]]*$value$" "$rendered")" -eq 3
+  test "$(grep -Ec "^[[:space:]]*$value$" "$rendered")" -eq 4
 done
+
+# --- values.schema.json: scheduleTime is a closed block (helm-schedule-time-deployment) ------
+# An unknown key under scheduleTime fails schema validation; the rest of the values tree is left
+# open on purpose (ADR 0007, question 8), so an unrelated key still renders.
+schema_args=(
+  --api-versions dapr.io/v1alpha1
+  --set dapr.enabled=false
+  --set postgresql.enabled=false
+  --set admin.database.url=postgres://dws:dws@postgres.example.test:5432/dws
+)
+schema_err="$(mktemp)"
+trap 'rm -f "$rendered" "$schema_err"' EXIT
+if helm template dws "$chart_dir" "${schema_args[@]}" --set scheduleTime.bogus=true >/dev/null 2>"$schema_err"; then
+  echo "FAIL: scheduleTime.bogus=true passed values.schema.json" >&2
+  exit 1
+fi
+grep -q "additional properties 'bogus' not allowed" "$schema_err"
+helm template dws "$chart_dir" "${schema_args[@]}" --set someOtherBlock.anything=true >/dev/null
 
 # --- APISIX is a pinned, explicitly versioned dependency ------------------------------------
 grep -A3 -- '- name: apisix' "$chart_dir/Chart.yaml" | grep -q 'version: 2.16.0'

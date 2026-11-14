@@ -25,6 +25,11 @@ public class V2StructuralCompiler implements WorkflowCompiler {
   public DeploymentPlan compile(String specText) {
     SpecParser.requireNonBlank(specText);
     WorkflowFormat format = SpecParser.detectFormat(specText);
+    // Before the typed parse, so a schedule the SDK model cannot represent gets this error too.
+    // Runtime v2 has no trigger wiring yet; deploying would leave a schedule that never fires.
+    if (SpecParser.readRaw(specText, format).filter(raw -> raw.has("schedule")).isPresent()) {
+      throw new CompilationException("'schedule' is not yet supported on runtime v2");
+    }
     Workflow workflow = SpecParser.parseOrThrow(specText, format);
     JsonNode rawSpec = SpecParser.readRawOrThrow(specText, format);
 

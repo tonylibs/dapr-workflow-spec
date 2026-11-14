@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Dws.ScheduleTime</RootNamespace>
+    <!-- version.txt is the single version source: release-please bumps it, the build reads it. -->
+    <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)version.txt').Trim())</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Pinned with dws-flow's Dapr .NET SDK. -->
+    <PackageReference Include="Dapr.Client" Version="1.18.10" />
+    <PackageReference Include="Dapr.Jobs" Version="1.18.10" />
+    <PackageReference Include="KubernetesClient" Version="21.0.8" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- Keep the test project and its bin/obj out of every default glob (Compile, and the Web SDK's
+         **/*.json Content, which otherwise copies the test build's json files into this output). -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);test/**</DefaultItemExcludes>
+  </PropertyGroup>
+</Project>

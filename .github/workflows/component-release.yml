@@ -25,6 +25,7 @@ on:
           - dws-orchestrator
           - dws-step
           - dws-flow
+          - dws-schedule-time
           - dws-call-http
           - dws-call-grpc
           - dws-call-openapi

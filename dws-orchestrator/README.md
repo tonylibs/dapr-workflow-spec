@@ -100,8 +100,8 @@ This pod serves **one** workflow; the start endpoint accepts only that name.
 
 | Method & path | Purpose |
 |---------------|---------|
-| `POST /workflows/{name}/instances` | Start an instance (body = initial data JSON). `404` if `{name}` is not this pod's workflow. Returns `202` with `{ instanceId, workflowName }`. |
-| `GET /workflows/instances/{id}` | Instance status: `{ instanceId, runtimeStatus, output }`. |
+| `POST /workflows/{name}/instances[?instanceId=<id>]` | Start an instance (body = initial data JSON; send `Content-Type: application/json`). `404` if `{name}` is not this pod's workflow. Returns `202` with `{ instanceId, workflowName }`. With `instanceId`, see [Idempotent start](#idempotent-start-with-instanceid). |
+| `GET /workflows/instances/{id}` | Instance status: `{ instanceId, runtimeStatus, output }`. `404` if no instance has that ID. |
 | `POST /workflows/instances/{id}/events/{event}` | Raise an external event for `listen` tasks (body = payload). Returns `202`. |
 
 Health probes: `GET /actuator/health/readiness`, `GET /actuator/health/liveness`.
@@ -111,6 +111,35 @@ curl -s -XPOST localhost:8080/workflows/order-workflow/instances \
   -H 'content-type: application/json' -d '{"item":"widget","inStock":true}'
 # -> {"instanceId":"<id>","workflowName":"order-workflow"}
 curl -s localhost:8080/workflows/instances/<id>
+```
+
+### Idempotent start with `instanceId`
+
+The optional `instanceId` query parameter lets the caller name the instance. Trigger components
+(`dws-schedule-time`) use it with a deterministic `<source>:<workflow>:<fire-key>` ID so a fire that
+is delivered twice starts one instance (`workflow-start-contract` spec,
+[ADR 0013](../docs/adr/0013-time-triggers-in-dws-schedule-time.md)).
+
+| Request | Result |
+|---------|--------|
+| No `instanceId` | Unchanged: generated ID, `202`. |
+| Valid `instanceId`, no instance with that ID | Started under that ID, `202`. |
+| Valid `instanceId`, an instance with that ID exists in **any** status (running, completed, failed, terminated, ...) | Nothing is started or restarted; `200` with the same body, naming the existing instance. Also `200` if a concurrent start wins the race (Dapr `ALREADY_EXISTS`). |
+| `instanceId` empty, longer than 256 characters, or with a character outside `[A-Za-z0-9:._-]` | `400`, nothing is started. |
+
+Dapr on its own only refuses a duplicate ID while the instance is running; a completed, failed or
+terminated one would be replaced and run again. The orchestrator therefore checks for an existing
+instance first. The Java SDK reports an unknown ID as a state with an empty name and an epoch
+`createdAt` rather than `null`, so that shape is what "not found" means here (and why the status
+endpoint returns `404` for it). Check-then-start is not atomic: a racing instance that completes
+within milliseconds can still be started twice, which callers close with their own claim (the
+scheduler's state-store start claim).
+
+```bash
+curl -s -XPOST 'localhost:8080/workflows/order-workflow/instances?instanceId=dws-sched:order-workflow:20261105T000000Z' \
+  -H 'content-type: application/json' -d '{}'
+# first call  -> 202 {"instanceId":"dws-sched:order-workflow:20261105T000000Z","workflowName":"order-workflow"}
+# repeat call -> 200 with the same body
 ```
 
 ---

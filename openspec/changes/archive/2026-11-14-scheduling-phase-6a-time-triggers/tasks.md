@@ -1,0 +1,148 @@
+## 1. Spike: cross-app start and Jobs API (blocks groups 4–5)
+
+- [x] 1.1 On a local cluster with Dapr 1.18.7, run a throwaway .NET app (`Dapr.Workflow` 1.18.10). Using `DaprWorkflowClient`, try to schedule a workflow hosted by a v1 orchestrator app-id. Record whether it works, how the target app-id is addressed, and whether `WorkflowAccessPolicy` is involved.
+- [x] 1.2 In the same spike, check duplicate-ID semantics. Call `scheduleNewWorkflow` with an existing ID while the instance is running and again after it has completed. Record whether each call errors or replaces the instance, for both the Java SDK (orchestrator) and the .NET SDK.
+- [x] 1.3 Check the Jobs API with `Dapr.Jobs`:
+  - the callback route and payload, and whether it carries the scheduled due time;
+  - the `@every` and 6-field cron formats;
+  - `GetJob`/overwrite behaviour;
+  - delivery to exactly one of 2 replicas;
+  - the failure-policy retry.
+- [x] 1.4 Write the findings into `docs/adr/0013-time-triggers-in-dws-schedule-time.md` as an `Amended:` line: either the start mechanism (a) is confirmed, or fallback (b) is kept. Adjust the design's fire-key derivation if the due time is available.
+
+## 2. dws-orchestrator: idempotent start with caller-supplied instance ID
+
+- [x] 2.1 Write failing tests in `WorkflowController` tests:
+  - no `instanceId` → `202` with a generated ID (unchanged);
+  - new `instanceId` → `202` with that ID;
+  - existing `instanceId` → `200` with the existing instance, and no second start;
+  - invalid `instanceId` (empty, more than 256 chars, `/`, space) → `400`;
+  - a concurrent already-exists error from Dapr → `200`;
+  - an unknown `instanceId` is not mistaken for an existing one (the Java SDK returns a non-null state with empty name and epoch `createdAt` for it; spike 1.2);
+  - a completed, terminated or failed instance with that ID is reported as existing, not restarted (Dapr would replace it).
+- [x] 2.2 Implement the optional `instanceId` query parameter in `WorkflowController.start`: validate it, check existence with `getWorkflowState(id, false)` (not-found is empty name / epoch `createdAt`, never `null`), call `scheduleNewWorkflow(name, input, instanceId)`, and map already-exists to `200`.
+- [x] 2.3 Update `dws-orchestrator/README.md` to document the start API.
+- [x] 2.4 Gate: `cd dws-orchestrator && ./mvnw verify` (`mvnw.cmd` on Windows).
+
+## 3. dws-controller: schedule validation and trigger ConfigMap
+
+- [x] 3.1 Add the `com.cronutils:cron-utils` dependency (Unix 5-field definition) and verify the license is compatible.
+- [x] 3.2 Write failing compiler tests for every `workflow-schedule-compilation` validation scenario:
+  - valid cron accepted; duration object accepted;
+  - malformed, 4-field and 6-field cron rejected;
+  - duration below 1 s rejected;
+  - runtime expression rejected;
+  - more than one trigger rejected;
+  - `on` rejected; `read` without `on` rejected; `{}` rejected.
+- [x] 3.3 Implement the `schedule` checks in `V1OrchestratorCompiler.semanticErrors`. Add duration normalization to canonical ISO-8601 (object → string).
+- [x] 3.4 Write a failing test, then make `V2StructuralCompiler` reject any `schedule` with the "not yet supported on runtime v2" error.
+- [x] 3.5 Add a `TriggerSpec` (workflow, version, appId, kind, schedule) to `DeploymentPlan` (nullable when there is no schedule) and `Names.triggerResource(w, versionId)`.
+- [x] 3.6 Write failing `StackSynthesizer` tests:
+  - a scheduled plan renders one ConfigMap with the standard labels plus `dws.io/trigger=time` and the exact `trigger.json`;
+  - an unscheduled plan renders none.
+- [x] 3.7 Implement the trigger ConfigMap synthesis and apply. Verify that `StackApplier` teardown deletes it with the stack, and add a test for that.
+- [x] 3.8 Add a test asserting the version ID for an unscheduled definition is unchanged. Add a test pinning `Labels.DRAIN` = `dws.io/drain` and `dws.io/trigger`, because the scheduler depends on both. *Done in `SchedulerContractTest`, which also pins that drain is an annotation, not a label.*
+- [x] 3.9 Export a sample `trigger.json` per kind as a shared fixture for the scheduler's parser test (`dws-schedule-time/test/fixtures/`).
+- [x] 3.10 Update `dws-controller/k8s/controller-rbac.yaml` and the chart controller Role only if ConfigMap create/delete is not already granted (check first). *Checked: both already grant configmaps `create`/`delete`/`deletecollection`; the trigger ConfigMap is immutable and create-only, so no change.*
+- [x] 3.11 Gate: `cd dws-controller && ./mvnw spotless:check && ./mvnw verify`.
+
+## 4. dws-schedule-time: package scaffold
+
+- [x] 4.1 Create `dws-schedule-time/` in the `dws-flow` layout:
+  - `dws-schedule-time.csproj` (net10.0, Nullable enable) that reads `version.txt`;
+  - `test/dws-schedule-time.Tests.csproj` (xUnit, FluentAssertions);
+  - `.slnx`, `Dockerfile` (non-root, `/healthz`), `README.md`, `CHANGELOG.md`.
+- [x] 4.2 Write `dws-schedule-time/CLAUDE.md`: commands (always name the test project), the style rules inherited from `dws-flow`, the cross-package contracts it consumes, and "Environment. only in Program.cs".
+- [x] 4.3 Port `DwsJsonConsoleFormatter` from `dws-flow` and its 12 golden-case tests (`docs/log-format.md`). Wire `DWS_LOG_FORMAT` in `Program.cs`.
+- [x] 4.4 Gate: `cd dws-schedule-time && dotnet test test/dws-schedule-time.Tests.csproj`.
+
+## 5. dws-schedule-time: trigger model, active version and job reconciliation
+
+- [x] 5.1 Write failing tests, then implement `TriggerConfig` parsing of `trigger.json` against the controller fixtures (task 3.9). Reject unknown kinds and invalid durations or cron as configuration errors.
+- [x] 5.2 Write failing tests, then implement `ActiveTriggers`: from a set of trigger ConfigMaps and orchestrator Deployments, pick each workflow's trigger from its non-`dws.io/drain` version. Cover the takeover, schedule-dropped and deleted cases.
+- [x] 5.3 Write failing tests, then implement `JobSpecs`:
+  - `every` ISO → `@every` Go-duration;
+  - cron 5-field → `0 <fields>`;
+  - job name `dws-sched-<workflow>`;
+  - job data including the anchor;
+  - failure policy: constant, 3 retries, 10 s.
+- [x] 5.4 Define an `IJobRegistry` seam (get, schedule-with-overwrite, delete) with a `DaprJobRegistry` implementation. Write failing tests, then implement the `Reconciler`, which overwrites only when version, kind or schedule differ and deletes jobs for workflows that are gone. Use a recording registry stand-in.
+- [x] 5.5 Implement the Kubernetes watch (`KubernetesClient` informers on labeled ConfigMaps and managed Deployments in the pod namespace). Run an initial list, then reconcile on every change.
+
+## 6. dws-schedule-time: firing and the start contract
+
+- [x] 6.1 Write failing tests, then implement `InstanceIds`:
+  - `dws-sched:<w>:<yyyyMMddTHHmmssZ>` (cron: truncate to the minute; every: anchor tick);
+  - `dws-after:<w>:<seq>`.
+  Use the due time from the job event instead if the spike (1.3) found it.
+- [x] 6.2 Define `IWorkflowStarter` (`StartAsync`, `GetStatusAsync`). Write failing tests, then implement `OrchestratorInvokeStarter` (Dapr service invocation; `202`/`200` mean success; 5xx/429/transport mean retryable; other 4xx are non-retryable). Implement `CrossAppWorkflowStarter` only if task 1.4 confirmed option (a).
+- [x] 6.2a Write failing tests, then implement `StartClaim` (design Decision 6) over the state store, with ETag first-write and a TTL (`DWS_SCHEDULE_TIME_CLAIM_TTL`, default 24 h):
+  - won claim → start → `started`;
+  - lost to `started` → success without starting;
+  - lost to a fresh `claiming` → retryable failure;
+  - lost to a `claiming` older than 30 s → take over and start;
+  - two concurrent callers with the same instance ID start exactly once.
+- [x] 6.3 Write failing tests, then implement the `every`/`cron` job handler (starts go through `StartClaim`):
+  - resolve the active trigger at fire time;
+  - with no active trigger, delete the job and start nothing;
+  - start with input `{}`;
+  - return failure on retryable errors;
+  - log and succeed on non-retryable errors.
+- [x] 6.4 Write failing tests, then implement the `after` lifecycle with ETag-guarded state in `DWS_SCHEDULE_TIME_STATE_STORE`:
+  - first activation starts seq 1;
+  - the poll job checks status;
+  - a terminal status (including failed) schedules the one-shot start at now + delay;
+  - the one-shot starts seq+1 on the currently active version;
+  - a restart resumes from the stored seq.
+- [x] 6.5 Map the job handlers (`/job/<name>`) and `/healthz` in `Program.cs`. Read `DWS_SCHEDULE_TIME_STATE_STORE` and `DWS_SCHEDULE_TIME_AFTER_POLL_INTERVAL` there only.
+- [x] 6.6 Gate: `cd dws-schedule-time && dotnet test test/dws-schedule-time.Tests.csproj`, plus `docker build` and a `/healthz` smoke test.
+  - Done after merging the two scheduler branches: 208 tests pass; the image builds and `GET /healthz` answers `200 {"status":"ok"}` with no sidecar or cluster. (In the agent sandbox, `dotnet restore` inside `docker build` needed the egress proxy CA injected; the committed Dockerfile is unchanged.)
+
+## 7. charts/dws: scheduler in the Core layer
+
+- [x] 7.1 Add `scheduleTime.*` values (`enabled: true`, `image`, `replicas`, `afterPollInterval: PT15S`, `resources`) and matching `values.schema.json` entries.
+  - `replicaCount` rather than `replicas`, matching every other component in `values.yaml`; `claimTtl` (`DWS_SCHEDULE_TIME_CLAIM_TTL`) added as well. The chart had no `values.schema.json`: the new one closes only `scheduleTime` and leaves every other key open (ADR 0007, question 8).
+- [x] 7.2 Add `templates/schedule-time/` with ServiceAccount, Role (`get`/`list`/`watch` on configmaps and apps/deployments only), RoleBinding and Deployment. The Deployment gets the Dapr annotations (app-id `dws-schedule-time`, app port), `DWS_SCHEDULE_TIME_STATE_STORE` and `DWS_SCHEDULE_TIME_AFTER_POLL_INTERVAL`, and `DWS_LOG_FORMAT` through `dws.observability.logFormatEnv`.
+  - App-id is `dws.scheduleTime.fullname` (`dws-schedule-time` for release `dws`). Also sets `POD_NAMESPACE` (downward API) and `DWS_SCHEDULE_TIME_CLAIM_TTL`; `DWS_SCHEDULE_TIME_STATE_STORE` names `<fullname>-actor-statestore` through the new `dws.actorStateStore.name` helper. Reuses the controller's `wait-for-redis` init container; no Service, no OTel injection (the observability test forbids .NET injection in Phase 1).
+- [x] 7.3 Add the `<release>-schedule-time-dapr-api-token` Secret to `templates/auth/api-token-secrets.yaml`. Add the `dapr.io/api-token-secret` annotation and the `DAPR_API_TOKEN` `secretKeyRef` (key `token`) under `auth.enabled=true`. Extend `charts/dws/tests/api-tokens-render-test.sh` to cover the scheduler.
+  - Override key `auth.apiTokens.scheduleTime.daprApi.existingSecret`. The preflight distinct-Secret guard now covers all three sidecar tokens; NOTES and the chart README list the scheduler Secret and restart target.
+- [x] 7.4 Add `charts/dws/tests/schedule-time-render-test.sh`: default render, disabled render, Role rules, and the env entries. Add it to `.github/workflows/helm.yml` and to the root `CLAUDE.md` chart gate list.
+  - `values-schema-test.sh` also asserts `scheduleTime.bogus=true` fails the schema, and now counts 4 chart Deployments. Both real-install jobs in `helm.yml` set `scheduleTime.enabled=false` (its image is unpublished until task 8.2 / the first component-release). `api-tokens-render-test.sh` was missing from the root `CLAUDE.md` list and is added too.
+- [x] 7.5 Add the scheduler image key to the release process (`charts/dws/values.yaml` pin) per `docs/release-process.md`.
+  - `dws-schedule-time` added to `VALUES_ANCHORS` in `.github/scripts/chart_release.py`; `docs/release-process.md` explains the anchor list.
+- [x] 7.6 Gate (from the repo root, Helm 4.3.0): `helm lint charts/dws`, `helm template dws charts/dws`, then every `charts/dws/tests/*.sh` listed in the root `CLAUDE.md`, plus the new scheduler test.
+  - All green on Helm 4.3.0. The default render changed deliberately (the scheduler is Core), so `tests/fixtures/default-render-baseline.yaml` was regenerated: 156 added lines, all from `templates/schedule-time/`, none removed. The server-side dry-run against kind could not run in the agent sandbox; CI's `helm-chart` job runs it.
+
+## 8. CI and release packaging
+
+- [x] 8.1 Add `.github/workflows/dws-schedule-time.yml`, modelled on `dws-flow.yml`: test, image build, `/healthz` smoke test, push on main.
+  - Smoke test needs no definition or sidecar: `GET /healthz` must answer `{"status":"ok"}`. The tag pattern `dws-schedule-time-v*` matches what `component-release` dispatches.
+- [x] 8.2 Add `dws-schedule-time` to `release-please-config.json` and `.release-please-manifest.json`. Extend `component-release.yml` if it lists components explicitly.
+  - Manifest `0.0.0` + `"initial-version": "0.1.0"` (the `dws-mid-*` path, not `dws-flow`'s seed-and-force): the package arrives with its feature commits, so the first release-please PR is an ordinary `0.1.0`. `component-release` lists components explicitly and now includes it. Runbook in `docs/release-process.md`.
+
+## 9. Live verification
+
+- [x] 9.1 On a local cluster with the chart installed, deploy workflows with `every: PT1M`, `cron: "*/2 * * * *"` and `after: PT30S`. Check that instances start with the expected IDs and that `after` waits for completion plus the delay.
+- [x] 9.2 Takeover: deploy a new version with a different cron and check that the next fire starts on the new version. Delete the workflow and check that its job is gone.
+- [x] 9.3 Restart the `dws-schedule-time` pod. Check that no unchanged job was re-anchored and that the `after` sequence continued.
+- [x] 9.4 Scale `dws-schedule-time` to 2 replicas and check that there are no duplicate instances per fire key. Also stop both pods for several intervals, restart them, and check that the replayed burst starts exactly one instance.
+  - Live run 2026-11-14: two replicas passed; the downtime replay failed (all 16 replayed attempts were answered retry before the first cluster list). Fixed in `fix(schedule-time): hold job callbacks until the first cluster list` (callbacks wait up to 30 s for the list and keep their delivery-time fire key; unit tests cover a held 16-callback burst collapsing onto one start). Rerun of `e7d2904` (2026-11-14): passed; four replayed every ticks and two cron ticks each collapsed onto one completed instance. Three callbacks were cancelled with 499 before the first list, and later deliveries of the same ticks succeeded.
+- [x] 9.5 Repeat 9.1 with `auth.enabled=true` and check that there are no 401s in either sidecar (draft D11).
+  - Live run 2026-11-14: every start got 401 because `CreateInvokeHttpClient()` does not read `DAPR_API_TOKEN`. Fixed in `fix(schedule-time): send the Dapr API token on service-invocation starts` (a socket-level test checks the header the real SDK client sends). Rerun of `e7d2904` (2026-11-14): passed; all three auth-enabled schedules completed with no 401s. The controller image now sets `JSII_RUNTIME_PACKAGE_CACHE=disabled` itself (`fix(controller): ...`), but the rerun reused the cached controller image with the Deployment workaround, so that image fix is not live-verified.
+- [x] 9.6 Record the evidence under `docs/roadmaps/` (as `observability-phase*-evidence.md` does) and link it from the ADR.
+  - Live run 2026-11-14 on `docker-desktop` (Kubernetes 1.34.3, Dapr 1.18.2): 9.1–9.3 passed initially. The follow-up rerun of source `e7d2904` passed 9.4 and 9.5: two auth-enabled replicas collapsed four replayed every ticks onto one completed instance and two cron ticks onto one completed instance; all three auth-enabled schedules completed without 401s in the scheduler or target sidecar logs. Three canceled callbacks (499) preceded successful replay deliveries. Evidence: [`docs/roadmaps/scheduling-phase6a-evidence.md`](../../../docs/roadmaps/scheduling-phase6a-evidence.md), linked from ADR 0013. The cached controller image still required `JSII_RUNTIME_PACKAGE_CACHE=disabled`; Dapr 1.18.7 remains unverified. No application source was changed during verification.
+
+## 10. Docs and close-out
+
+- [x] 10.1 Update the root `CLAUDE.md`:
+  - package map row for `dws-schedule-time` and its gate command;
+  - cross-package contracts (trigger ConfigMap, drain label, start `instanceId`, instance-ID format, scheduler `DAPR_API_TOKEN`);
+  - a sixth package in the `DWS_LOG_FORMAT` contract.
+  Update `docs/log-format.md` for the new package.
+  - The drain marker is recorded as an annotation, not a label. The new "Trigger ConfigMap and drain marker" contract also covers the scheduler Role; the start-contract entry now says any future orchestrator access control must allow app-id `dws-schedule-time`.
+- [x] 10.2 Update `docs/roadmaps/openworkflow-features.md`: the Phase 6 row is split into 6a/6b, and the scheduling coverage row is updated. Mark `docs/draft-scheduler-event-trigger-split.md` as superseded by ADR 0013 for 6a.
+  - Phase 6 split into 6a (implemented, live verification pending) and 6b (`schedule.on`, not started); the draft is marked superseded for 6a only and stays input for 6b.
+- [x] 10.3 Add a release note and a chart `NOTES.txt` line: definitions with `schedule` start firing, or may newly fail validation, on their next deploy.
+  - There is no release-notes file in the repo, so the note is the chart README section "Upgrading to scheduling Phase 6a (time triggers)". `NOTES.txt` prints the same warning while `scheduleTime.enabled`.
+- [x] 10.4 Run `openspec validate scheduling-phase-6a-time-triggers --type change --strict` and fix any findings before archive.
+  - Strict validation flagged one requirement over 500 characters; split into "Fire failures are retried briefly, then dropped" and "Missed fires are not caught up, and replayed ticks collapse" with the scenarios unchanged. `design.md` Decisions 5 and 6 now match the code (hand-mapped job callback; actual starter signatures). Valid with `--strict`.

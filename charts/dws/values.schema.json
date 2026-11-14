@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$comment": "Deliberately partial (ADR 0007, question 8): only scheduleTime is described and closed. Every other top-level key is left unconstrained, so existing values files and --reuse-values upgrades keep rendering; guards for the rest stay as fail calls in _preflight.tpl/_helpers.tpl. Close another block only in its own change.",
+  "type": "object",
+  "properties": {
+    "scheduleTime": {
+      "description": "dws-schedule-time, the time-trigger scheduler (scheduling Phase 6a, ADR 0013). Core layer, on by default.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Render the scheduler's ServiceAccount, Role, RoleBinding and Deployment.",
+          "type": "boolean"
+        },
+        "replicaCount": {
+          "description": "Scheduler replicas. More than one is safe: Dapr delivers each job to one replica and starts are claimed per instance ID.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository", "tag"],
+          "properties": {
+            "repository": { "type": "string", "minLength": 1 },
+            "tag": { "type": "string", "minLength": 1 },
+            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+          }
+        },
+        "afterPollInterval": {
+          "description": "DWS_SCHEDULE_TIME_AFTER_POLL_INTERVAL: ISO-8601 duration (at least 1 s, checked by the scheduler at boot) between status polls of an `after` workflow's current instance.",
+          "$ref": "#/definitions/isoDuration"
+        },
+        "claimTtl": {
+          "description": "DWS_SCHEDULE_TIME_CLAIM_TTL: ISO-8601 duration the per-instance start claims are kept in the state store.",
+          "$ref": "#/definitions/isoDuration"
+        },
+        "resources": {
+          "description": "Deep-merged over defaults.resources.",
+          "type": "object"
+        },
+        "nodeSelector": {
+          "description": "Deep-merged over defaults.nodeSelector.",
+          "type": "object"
+        },
+        "tolerations": {
+          "description": "Replaces defaults.tolerations when non-empty.",
+          "type": "array"
+        },
+        "affinity": {
+          "description": "Deep-merged over defaults.affinity.",
+          "type": "object"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "isoDuration": {
+      "description": "ISO-8601 day-time duration such as PT15S, PT1H30M or P1D.",
+      "type": "string",
+      "pattern": "^P([0-9]+D)?(T([0-9]+H)?([0-9]+M)?([0-9]+([.][0-9]+)?S)?)?$",
+      "minLength": 3
+    }
+  }
+}

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Render matrix for the Dapr machine-auth tokens (auth roadmap Phase 10, openspec change
 # auth-phase-10-api-tokens, capability helm-dapr-api-tokens). Covers every render scenario in
-# that spec: auth off renders nothing; auth on renders three Secrets and wires annotations and
-# secretKeyRef env; an operator-supplied Secret replaces the chart's; the controller has no app
+# that spec: auth off renders nothing; auth on renders four Secrets (admin x2, controller,
+# dws-schedule-time) and wires annotations and secretKeyRef env; an operator-supplied Secret replaces the chart's; the controller has no app
 # token; the admin route (and only it) sets the dapr-api-token header from an $env:// reference;
 # the bundled APISIX receives the variable; and the three bundled-gateway wiring guards fail
 # render with actionable messages.
@@ -135,17 +135,18 @@ for pattern in '-dapr-api-token' '-app-api-token' 'dapr\.io/api-token-secret' 'd
 done
 ok
 
-# --- 2. Auth on, defaults: exactly three Secrets, strong, distinct ----------------------------
+# --- 2. Auth on, defaults: exactly four Secrets, strong, distinct -----------------------------
 render auth_on "${auth_args[@]}"
 names="$(token_secret_names auth_on | tr '\n' ' ')"
-expected="$release-admin-app-api-token $release-admin-dapr-api-token $release-controller-dapr-api-token "
+expected="$release-admin-app-api-token $release-admin-dapr-api-token $release-controller-dapr-api-token $release-schedule-time-dapr-api-token "
 [ "$names" = "$expected" ] || die "auth.enabled=true rendered token Secrets [$names], expected [$expected]"
 ok
 
 secret_admin_dapr="$(require_doc auth_on Secret "$release-admin-dapr-api-token")"
 secret_admin_app="$(require_doc auth_on Secret "$release-admin-app-api-token")"
 secret_ctrl_dapr="$(require_doc auth_on Secret "$release-controller-dapr-api-token")"
-for s in "$secret_admin_dapr" "$secret_admin_app" "$secret_ctrl_dapr"; do
+secret_sched_dapr="$(require_doc auth_on Secret "$release-schedule-time-dapr-api-token")"
+for s in "$secret_admin_dapr" "$secret_admin_app" "$secret_ctrl_dapr" "$secret_sched_dapr"; do
   grep -Eq '^  token: "[A-Za-z0-9]{48}"$' "$s" || die "a token Secret does not hold a 48-character alphanumeric value under key 'token'"
   # >= 32 characters is the spec floor; 48 is the chart's choice.
   [ "$(token_value "$s" | tr -d '\n' | wc -c)" -ge 32 ] || die "a generated token is shorter than 32 characters"
@@ -153,12 +154,13 @@ done
 t_admin_dapr="$(token_value "$secret_admin_dapr")"
 t_admin_app="$(token_value "$secret_admin_app")"
 t_ctrl_dapr="$(token_value "$secret_ctrl_dapr")"
-{ [ "$t_admin_dapr" != "$t_admin_app" ] && [ "$t_admin_dapr" != "$t_ctrl_dapr" ] && [ "$t_admin_app" != "$t_ctrl_dapr" ]; } \
+t_sched_dapr="$(token_value "$secret_sched_dapr")"
+[ "$(printf '%s\n' "$t_admin_dapr" "$t_admin_app" "$t_ctrl_dapr" "$t_sched_dapr" | sort -u | wc -l)" = 4 ] \
   || die "two token Secrets share the same value (each component/kind MUST have its own token)"
 ok
 # Each token value must appear exactly once in the whole render: only in its own Secret, never
 # inlined into a Deployment env, annotation or route.
-for t in "$t_admin_dapr" "$t_admin_app" "$t_ctrl_dapr"; do
+for t in "$t_admin_dapr" "$t_admin_app" "$t_ctrl_dapr" "$t_sched_dapr"; do
   [ "$(grep -cF -- "$t" "$work/auth_on.yaml")" = 1 ] || die "a token value appears outside its own Secret in the auth-on render"
 done
 ok
@@ -169,9 +171,10 @@ if ! { grep -q 'lookup "v1" "Secret"' "$chart_dir/templates/_helpers.tpl" \
 fi
 ok
 
-# --- 3. Annotations and env wiring (admin and controller) -------------------------------------
+# --- 3. Annotations and env wiring (admin, controller, dws-schedule-time) ---------------------
 admin_dep="$(require_doc auth_on Deployment "$fullname-admin")"
 ctrl_dep="$(require_doc auth_on Deployment "$fullname-controller")"
+sched_dep="$(require_doc auth_on Deployment "$fullname-schedule-time")"
 
 grep -qx "        dapr.io/api-token-secret: \"$release-admin-dapr-api-token\"" "$admin_dep" \
   || die "admin pod lacks dapr.io/api-token-secret naming $release-admin-dapr-api-token"
@@ -179,6 +182,8 @@ grep -qx "        dapr.io/app-token-secret: \"$release-admin-app-api-token\"" "$
   || die "admin pod lacks dapr.io/app-token-secret naming $release-admin-app-api-token"
 grep -qx "        dapr.io/api-token-secret: \"$release-controller-dapr-api-token\"" "$ctrl_dep" \
   || die "controller pod lacks dapr.io/api-token-secret naming $release-controller-dapr-api-token"
+grep -qx "        dapr.io/api-token-secret: \"$release-schedule-time-dapr-api-token\"" "$sched_dep" \
+  || die "dws-schedule-time pod lacks dapr.io/api-token-secret naming $release-schedule-time-dapr-api-token"
 ok
 
 # env: DAPR_API_TOKEN / APP_API_TOKEN are secretKeyRefs, with no literal value.
@@ -197,6 +202,18 @@ entry="$(env_entry "$ctrl_dep" DAPR_API_TOKEN)"
 grep -q 'secretKeyRef:' <<<"$entry" || die "controller DAPR_API_TOKEN is not a secretKeyRef"
 grep -qF "name: \"$release-controller-dapr-api-token\"" <<<"$entry" || die "controller DAPR_API_TOKEN does not reference its own Secret"
 if grep -Eq '^ +value:' <<<"$entry"; then die "controller DAPR_API_TOKEN carries a literal value"; fi
+ok
+# dws-schedule-time: DAPR_API_TOKEN from its own Secret (key token), read by the Dapr .NET SDK; no
+# app token (its only inbound caller is its own sidecar delivering job callbacks).
+entry="$(env_entry "$sched_dep" DAPR_API_TOKEN)"
+[ -n "$entry" ] || die "dws-schedule-time container has no DAPR_API_TOKEN env entry"
+grep -q 'secretKeyRef:' <<<"$entry" || die "dws-schedule-time DAPR_API_TOKEN is not a secretKeyRef"
+grep -qF "name: \"$release-schedule-time-dapr-api-token\"" <<<"$entry" || die "dws-schedule-time DAPR_API_TOKEN does not reference its own Secret"
+grep -qx '.*key: token' <<<"$entry" || die "dws-schedule-time DAPR_API_TOKEN does not read key 'token'"
+if grep -Eq '^ +value:' <<<"$entry"; then die "dws-schedule-time DAPR_API_TOKEN carries a literal value"; fi
+if grep -Eq 'app-token|APP_API_TOKEN|app-api-token' "$sched_dep"; then
+  die "dws-schedule-time Deployment references an app token"
+fi
 ok
 # The Secret the APP_API_TOKEN env reads is the one Dapr is told to attach (annotation).
 app_ann="$(sed -n 's/^ *dapr.io\/app-token-secret: "\(.*\)"$/\1/p' "$admin_dep")"
@@ -222,9 +239,9 @@ if grep -q 'api-token-secret' "$negative_job"; then
 fi
 ok
 
-# The two components use two different Secrets.
-[ "$(sed -n 's/^ *dapr.io\/api-token-secret: "\(.*\)"$/\1/p' "$admin_dep")" != "$(sed -n 's/^ *dapr.io\/api-token-secret: "\(.*\)"$/\1/p' "$ctrl_dep")" ] \
-  || die "admin and controller share one dapr.io/api-token-secret"
+# The three components use three different Secrets.
+[ "$(for d in "$admin_dep" "$ctrl_dep" "$sched_dep"; do sed -n 's/^ *dapr.io\/api-token-secret: "\(.*\)"$/\1/p' "$d"; done | sort -u | wc -l)" = 3 ] \
+  || die "admin, controller and dws-schedule-time do not each have their own dapr.io/api-token-secret"
 ok
 
 # Controller: no app-token anything (follow-up change).
@@ -240,7 +257,7 @@ ok
 # --- 4. Operator-supplied Secrets replace the chart's ------------------------------------------
 render existing_one "${auth_args[@]}" --set auth.apiTokens.admin.daprApi.existingSecret=my-admin-dapr
 names="$(token_secret_names existing_one | tr '\n' ' ')"
-[ "$names" = "$release-admin-app-api-token $release-controller-dapr-api-token " ] \
+[ "$names" = "$release-admin-app-api-token $release-controller-dapr-api-token $release-schedule-time-dapr-api-token " ] \
   || die "with an admin Dapr API existingSecret the chart still renders [$names]"
 admin_dep="$(require_doc existing_one Deployment "$fullname-admin")"
 grep -qx '        dapr.io/api-token-secret: "my-admin-dapr"' "$admin_dep" || die "annotation does not name the supplied Secret"
@@ -250,27 +267,37 @@ ok
 render existing_all "${auth_args[@]}" \
   --set auth.apiTokens.admin.daprApi.existingSecret=s-admin-dapr \
   --set auth.apiTokens.admin.appApi.existingSecret=s-admin-app \
-  --set auth.apiTokens.controller.daprApi.existingSecret=s-ctrl-dapr
-[ -z "$(token_secret_names existing_all)" ] || die "chart still renders a token Secret although all three were supplied"
+  --set auth.apiTokens.controller.daprApi.existingSecret=s-ctrl-dapr \
+  --set auth.apiTokens.scheduleTime.daprApi.existingSecret=s-sched-dapr
+[ -z "$(token_secret_names existing_all)" ] || die "chart still renders a token Secret although all four were supplied"
 admin_dep="$(require_doc existing_all Deployment "$fullname-admin")"
 ctrl_dep="$(require_doc existing_all Deployment "$fullname-controller")"
 grep -qx '        dapr.io/app-token-secret: "s-admin-app"' "$admin_dep" || die "app-token annotation does not name the supplied Secret"
 env_entry "$admin_dep" APP_API_TOKEN | grep -qF 'name: "s-admin-app"' || die "APP_API_TOKEN does not read the supplied Secret"
 grep -qx '        dapr.io/api-token-secret: "s-ctrl-dapr"' "$ctrl_dep" || die "controller annotation does not name the supplied Secret"
 env_entry "$ctrl_dep" DAPR_API_TOKEN | grep -qF 'name: "s-ctrl-dapr"' || die "controller DAPR_API_TOKEN does not read the supplied Secret"
+sched_dep="$(require_doc existing_all Deployment "$fullname-schedule-time")"
+grep -qx '        dapr.io/api-token-secret: "s-sched-dapr"' "$sched_dep" || die "dws-schedule-time annotation does not name the supplied Secret"
+env_entry "$sched_dep" DAPR_API_TOKEN | grep -qF 'name: "s-sched-dapr"' || die "dws-schedule-time DAPR_API_TOKEN does not read the supplied Secret"
 ok
 
 # A disabled component gets no orphan Secret.
 render_fails shared_dapr_secret "must use different Secrets" "${auth_args[@]}" \
   --set auth.apiTokens.admin.daprApi.existingSecret=shared-token \
   --set auth.apiTokens.controller.daprApi.existingSecret=shared-token
+render_fails shared_sched_secret "auth.apiTokens.scheduleTime.daprApi.existingSecret" "${auth_args[@]}" \
+  --set auth.apiTokens.controller.daprApi.existingSecret=shared-token \
+  --set auth.apiTokens.scheduleTime.daprApi.existingSecret=shared-token
 
 render admin_off "${auth_args[@]}" --set admin.enabled=false
-[ "$(token_secret_names admin_off | tr '\n' ' ')" = "$release-controller-dapr-api-token " ] \
+[ "$(token_secret_names admin_off | tr '\n' ' ')" = "$release-controller-dapr-api-token $release-schedule-time-dapr-api-token " ] \
   || die "admin.enabled=false still renders admin token Secrets"
 render controller_off "${auth_args[@]}" --set controller.enabled=false
-[ "$(token_secret_names controller_off | tr '\n' ' ')" = "$release-admin-app-api-token $release-admin-dapr-api-token " ] \
+[ "$(token_secret_names controller_off | tr '\n' ' ')" = "$release-admin-app-api-token $release-admin-dapr-api-token $release-schedule-time-dapr-api-token " ] \
   || die "controller.enabled=false still renders the controller token Secret"
+render sched_off "${auth_args[@]}" --set scheduleTime.enabled=false
+[ "$(token_secret_names sched_off | tr '\n' ' ')" = "$release-admin-app-api-token $release-admin-dapr-api-token $release-controller-dapr-api-token " ] \
+  || die "scheduleTime.enabled=false still renders the dws-schedule-time token Secret"
 ok
 
 # --- 5. Gateway: header injected on the admin route only, from an $env:// reference -----------
@@ -288,7 +315,7 @@ fi
 ok
 
 # The token is never a cleartext value anywhere but its Secret (route, APISIX env, annotations).
-for s_name in admin-dapr-api-token admin-app-api-token controller-dapr-api-token; do
+for s_name in admin-dapr-api-token admin-app-api-token controller-dapr-api-token schedule-time-dapr-api-token; do
   t="$(token_value "$(require_doc gw_bundled Secret "$release-$s_name")")"
   [ "$(grep -cF -- "$t" "$work/gw_bundled.yaml")" = 1 ] || die "a token value appears outside its own Secret in the gateway render"
 done
@@ -379,12 +406,12 @@ notes_args=(--api-versions dapr.io/v1alpha1 --set dapr.enabled=false --set postg
   --set auth.audience=dws-admin --set apiGateway.enabled=true --set apisix.enabled=true)
 notes_of notes_on "${notes_args[@]}"
 [ -s "$work/notes_on.notes" ] || die "could not extract NOTES text from the scratch render"
-[ "$(wc -l <"$work/notes_on.tokens")" -ge 3 ] || die "NOTES scenario rendered fewer than three token Secrets"
-for secret in admin-dapr-api-token admin-app-api-token controller-dapr-api-token; do
+[ "$(wc -l <"$work/notes_on.tokens")" -ge 4 ] || die "NOTES scenario rendered fewer than four token Secrets"
+for secret in admin-dapr-api-token admin-app-api-token controller-dapr-api-token schedule-time-dapr-api-token; do
   grep -qF -- "$release-$secret" "$work/notes_on.notes" || die "NOTES does not name Secret $release-$secret"
 done
 grep -qF 'kubectl rollout restart' "$work/notes_on.notes" || die "NOTES has no kubectl rollout restart command"
-for target in "deployment/$fullname-admin" "deployment/$fullname-controller" "deployment/$release-apisix"; do
+for target in "deployment/$fullname-admin" "deployment/$fullname-controller" "deployment/$fullname-schedule-time" "deployment/$release-apisix"; do
   grep -qF -- "$target" "$work/notes_on.notes" || die "NOTES restart command does not cover $target"
 done
 # No token value in NOTES, and no command that could print a Secret (dex is off in this

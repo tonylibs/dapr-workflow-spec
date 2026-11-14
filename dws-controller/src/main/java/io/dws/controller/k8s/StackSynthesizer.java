@@ -1,5 +1,7 @@
 package io.dws.controller.k8s;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import imports.dev.knative.serving.Service;
 import imports.dev.knative.serving.ServiceProps;
 import imports.dev.knative.serving.ServiceSpec;
@@ -30,6 +32,7 @@ import imports.io.dapr.WorkflowAccessPolicySpec;
 import imports.io.dapr.WorkflowAccessPolicySpecRules;
 import imports.io.dapr.WorkflowAccessPolicySpecRulesActivities;
 import imports.io.dapr.WorkflowAccessPolicySpecRulesCallers;
+import io.dws.controller.compile.Names;
 import io.dws.controller.logging.StructuredLogging;
 import io.dws.controller.model.BindingComponent;
 import io.dws.controller.model.DeploymentPlan;
@@ -39,6 +42,7 @@ import io.dws.controller.model.OAuthMiddleware;
 import io.dws.controller.model.OrchestratorSpec;
 import io.dws.controller.model.StepService;
 import io.dws.controller.model.TaskKind;
+import io.dws.controller.model.TriggerSpec;
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
 import io.fabric8.kubernetes.api.model.EnvVar;
@@ -69,6 +73,11 @@ import org.cdk8s.Testing;
 public class StackSynthesizer {
 
   static final String DEFINITION_KEY = "definition";
+
+  /** Key of a trigger ConfigMap's normalized trigger; a contract with {@code dws-schedule-time}. */
+  public static final String TRIGGER_KEY = "trigger.json";
+
+  private static final ObjectMapper TRIGGER_JSON = new ObjectMapper();
   private static final String DAPR_CONFIG = "dapr.io/config";
   private static final String INJECT_JAVA = "instrumentation.opentelemetry.io/inject-java";
   private static final String INJECT_CONTAINER_NAMES =
@@ -107,6 +116,44 @@ public class StackSynthesizer {
         .withImmutable(Boolean.TRUE)
         .addToData(DEFINITION_KEY, plan.specText())
         .build();
+  }
+
+  /**
+   * The version's trigger ConfigMap, or empty when the definition has no {@code schedule}. Holds
+   * {@code trigger.json} ({@code workflow}, {@code version}, {@code appId}, {@code kind}, {@code
+   * schedule}, in that order) for {@code dws-schedule-time}, which parses no DSL. Immutable: its
+   * content is a function of the version alone, like the definition ConfigMap's.
+   */
+  public Optional<ConfigMap> triggerConfigMap(DeploymentPlan plan, String namespace) {
+    return Optional.ofNullable(plan.trigger())
+        .map(
+            trigger -> {
+              Map<String, String> labels = Labels.forPlan(plan);
+              labels.put(Labels.TRIGGER, Labels.TRIGGER_TIME);
+              return new ConfigMapBuilder()
+                  .withNewMetadata()
+                  .withName(Names.triggerResource(plan.workflow(), plan.versionId()))
+                  .withNamespace(namespace)
+                  .withLabels(labels)
+                  .endMetadata()
+                  .withImmutable(Boolean.TRUE)
+                  .addToData(TRIGGER_KEY, triggerJson(trigger))
+                  .build();
+            });
+  }
+
+  static String triggerJson(TriggerSpec trigger) {
+    Map<String, String> fields = new LinkedHashMap<>();
+    fields.put("workflow", trigger.workflow());
+    fields.put("version", trigger.version());
+    fields.put("appId", trigger.appId());
+    fields.put("kind", trigger.kind().wireName());
+    fields.put("schedule", trigger.schedule());
+    try {
+      return TRIGGER_JSON.writeValueAsString(fields);
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException("cannot serialize trigger for " + trigger.workflow(), e);
+    }
   }
 
   /**

@@ -1,0 +1,759 @@
+{
+  "sourceCommit": "e7d2904d507161dc05b6a135830394ab22a15695",
+  "cluster": "docker-desktop",
+  "kubernetes": "v1.34.3",
+  "dapr": "1.18.2",
+  "observations": [
+    {
+      "at": "2026-11-14T19:49:32.903568+00:00",
+      "name": "deploy-rerun-every",
+      "data": {
+        "workflow": "rerun-every",
+        "versionId": "v83ce0e98",
+        "version": "rerun-every@v83ce0e98",
+        "created": true
+      }
+    },
+    {
+      "at": "2026-11-14T19:49:33.288769+00:00",
+      "name": "deploy-rerun-cron",
+      "data": {
+        "workflow": "rerun-cron",
+        "versionId": "v7f5a5afe",
+        "version": "rerun-cron@v7f5a5afe",
+        "created": true
+      }
+    },
+    {
+      "at": "2026-11-14T19:49:33.712606+00:00",
+      "name": "deploy-rerun-after",
+      "data": {
+        "workflow": "rerun-after",
+        "versionId": "vede77b80",
+        "version": "rerun-after@vede77b80",
+        "created": true
+      }
+    },
+    {
+      "at": "2026-11-14T19:51:52.877641+00:00",
+      "name": "source",
+      "data": {
+        "commit": "e7d2904d507161dc05b6a135830394ab22a15695",
+        "cluster": "docker-desktop",
+        "schedulerImageId": "sha256:cb08c7c29f4ef013b84c10997c0914815efdded9e81a8076c2a3489a94ba58b3",
+        "tests": {
+          "passed": 219,
+          "failed": 0
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T19:51:53.274539+00:00",
+      "name": "pods",
+      "data": [
+        {
+          "name": "dws-rerun-schedule-time-69c6f4c9f-crxj4",
+          "annotations": {
+            "dapr.io/api-token-secret": "dws-rerun-schedule-time-dapr-api-token",
+            "dapr.io/app-id": "dws-rerun-schedule-time",
+            "dapr.io/app-port": "8080",
+            "dapr.io/enabled": "true"
+          },
+          "images": [
+            {
+              "image": "ghcr.io/dapr/daprd:1.18.2",
+              "imageID": "ghcr.io/dapr/daprd@sha256:f236626164cd7434ac90ea82fa14456fec7f36a488a912fbae0c6f7876b5919b",
+              "name": "daprd",
+              "ready": true,
+              "restartCount": 0
+            },
+            {
+              "image": "10.244.1.28:5000/dws-schedule-time:rerun",
+              "imageID": "sha256:cb08c7c29f4ef013b84c10997c0914815efdded9e81a8076c2a3489a94ba58b3",
+              "name": "schedule-time",
+              "ready": true,
+              "restartCount": 0
+            }
+          ]
+        },
+        {
+          "name": "dws-rerun-schedule-time-69c6f4c9f-rdsj2",
+          "annotations": {
+            "dapr.io/api-token-secret": "dws-rerun-schedule-time-dapr-api-token",
+            "dapr.io/app-id": "dws-rerun-schedule-time",
+            "dapr.io/app-port": "8080",
+            "dapr.io/enabled": "true"
+          },
+          "images": [
+            {
+              "image": "ghcr.io/dapr/daprd:1.18.2",
+              "imageID": "ghcr.io/dapr/daprd@sha256:f236626164cd7434ac90ea82fa14456fec7f36a488a912fbae0c6f7876b5919b",
+              "name": "daprd",
+              "ready": true,
+              "restartCount": 0
+            },
+            {
+              "image": "10.244.1.28:5000/dws-schedule-time:rerun",
+              "imageID": "sha256:cb08c7c29f4ef013b84c10997c0914815efdded9e81a8076c2a3489a94ba58b3",
+              "name": "schedule-time",
+              "ready": true,
+              "restartCount": 0
+            }
+          ]
+        },
+        {
+          "name": "rerun-after-vede77b80-6f5f59bdd6-jqn7z",
+          "annotations": {
+            "dapr.io/app-id": "rerun-after",
+            "dapr.io/app-port": "8080",
+            "dapr.io/enabled": "true"
+          },
+          "images": [
+            {
+              "image": "ghcr.io/dapr/daprd:1.18.2",
+              "imageID": "ghcr.io/dapr/daprd@sha256:f236626164cd7434ac90ea82fa14456fec7f36a488a912fbae0c6f7876b5919b",
+              "name": "daprd",
+              "ready": true,
+              "restartCount": 0
+            },
+            {
+              "image": "10.244.1.10:5000/dws-orchestrator:scheduling-6a",
+              "imageID": "sha256:7a6eca187f4c9b8a9c4f81cec288cc621b0c577362dee83cee93781a6f8891cc",
+              "name": "orchestrator",
+              "ready": true,
+              "restartCount": 0
+            }
+          ]
+        },
+        {
+          "name": "rerun-cron-v7f5a5afe-7dff6fdcf8-mhdpk",
+          "annotations": {
+            "dapr.io/app-id": "rerun-cron",
+            "dapr.io/app-port": "8080",
+            "dapr.io/enabled": "true"
+          },
+          "images": [
+            {
+              "image": "ghcr.io/dapr/daprd:1.18.2",
+              "imageID": "ghcr.io/dapr/daprd@sha256:f236626164cd7434ac90ea82fa14456fec7f36a488a912fbae0c6f7876b5919b",
+              "name": "daprd",
+              "ready": true,
+              "restartCount": 0
+            },
+            {
+              "image": "10.244.1.10:5000/dws-orchestrator:scheduling-6a",
+              "imageID": "sha256:7a6eca187f4c9b8a9c4f81cec288cc621b0c577362dee83cee93781a6f8891cc",
+              "name": "orchestrator",
+              "ready": true,
+              "restartCount": 0
+            }
+          ]
+        },
+        {
+          "name": "rerun-every-v83ce0e98-6d65f64bd7-pg9b4",
+          "annotations": {
+            "dapr.io/app-id": "rerun-every",
+            "dapr.io/app-port": "8080",
+            "dapr.io/enabled": "true"
+          },
+          "images": [
+            {
+              "image": "ghcr.io/dapr/daprd:1.18.2",
+              "imageID": "ghcr.io/dapr/daprd@sha256:f236626164cd7434ac90ea82fa14456fec7f36a488a912fbae0c6f7876b5919b",
+              "name": "daprd",
+              "ready": true,
+              "restartCount": 0
+            },
+            {
+              "image": "10.244.1.10:5000/dws-orchestrator:scheduling-6a",
+              "imageID": "sha256:7a6eca187f4c9b8a9c4f81cec288cc621b0c577362dee83cee93781a6f8891cc",
+              "name": "orchestrator",
+              "ready": true,
+              "restartCount": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "at": "2026-11-14T19:51:53.275173+00:00",
+      "name": "initial-jobs",
+      "data": [
+        {
+          "Name": "dws-after-poll-rerun-after",
+          "Schedule": "@every 15s",
+          "Payload": "{\"workflow\":\"rerun-after\",\"version\":\"\",\"appId\":\"rerun-after\",\"kind\":\"after\",\"schedule\":\"15s\",\"anchor\":\"2026-11-14T19:51:20.975Z\"}"
+        },
+        {
+          "Name": "dws-sched-rerun-cron",
+          "Schedule": "0 */2 * * * *",
+          "Payload": "{\"workflow\":\"rerun-cron\",\"version\":\"v7f5a5afe\",\"appId\":\"rerun-cron\",\"kind\":\"cron\",\"schedule\":\"*/2 * * * *\",\"anchor\":\"2026-11-14T19:51:24.287Z\"}"
+        },
+        {
+          "Name": "dws-sched-rerun-every",
+          "Schedule": "@every 1m",
+          "Payload": "{\"workflow\":\"rerun-every\",\"version\":\"v83ce0e98\",\"appId\":\"rerun-every\",\"kind\":\"every\",\"schedule\":\"PT1M\",\"anchor\":\"2026-11-14T19:51:24.512Z\"}"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-14T19:52:28.436682+00:00",
+      "name": "auth-two-replicas-claims",
+      "data": {
+        "dws-rerun-schedule-time||claim:dws-sched:rerun-every:20261114T195224Z": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:52:24.814Z\\u0022}\"\nversion\n2",
+        "dws-rerun-schedule-time||claim:dws-sched:rerun-cron:20261114T195200Z": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:52:03.139Z\\u0022}\"\nversion\n2",
+        "dws-rerun-schedule-time||claim:dws-after:rerun-after:1": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:51:24.275Z\\u0022}\"\nversion\n2",
+        "dws-rerun-schedule-time||claim:dws-after:rerun-after:2": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:52:21.144Z\\u0022}\"\nversion\n2"
+      }
+    },
+    {
+      "at": "2026-11-14T19:52:57.842537+00:00",
+      "name": "auth-two-replicas-claims",
+      "data": {
+        "dws-rerun-schedule-time||claim:dws-sched:rerun-every:20261114T195224Z": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:52:24.814Z\\u0022}\"\nversion\n2",
+        "dws-rerun-schedule-time||claim:dws-sched:rerun-cron:20261114T195200Z": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:52:03.139Z\\u0022}\"\nversion\n2",
+        "dws-rerun-schedule-time||claim:dws-after:rerun-after:1": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:51:24.275Z\\u0022}\"\nversion\n2",
+        "dws-rerun-schedule-time||claim:dws-after:rerun-after:2": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:52:21.144Z\\u0022}\"\nversion\n2"
+      }
+    },
+    {
+      "at": "2026-11-14T19:52:57.920337+00:00",
+      "name": "auth-two-replicas-metadata",
+      "data": {
+        "instanceID": "dws-sched:rerun-every:20261114T195224Z",
+        "workflowName": "rerun-every",
+        "createdAt": "2026-11-14T19:52:24.635909299Z",
+        "lastUpdatedAt": "2026-11-14T19:52:25.065808880Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"rerun\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T19:52:57.952541+00:00",
+      "name": "auth-two-replicas-metadata",
+      "data": {
+        "instanceID": "dws-sched:rerun-cron:20261114T195200Z",
+        "workflowName": "rerun-cron",
+        "createdAt": "2026-11-14T19:52:02.904923896Z",
+        "lastUpdatedAt": "2026-11-14T19:52:03.449909064Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"rerun\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T19:52:57.986633+00:00",
+      "name": "auth-two-replicas-metadata",
+      "data": {
+        "instanceID": "dws-after:rerun-after:1",
+        "workflowName": "rerun-after",
+        "createdAt": "2026-11-14T19:51:24.009720172Z",
+        "lastUpdatedAt": "2026-11-14T19:51:37.399200008Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"rerun\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T19:52:58.012727+00:00",
+      "name": "auth-two-replicas-metadata",
+      "data": {
+        "instanceID": "dws-after:rerun-after:2",
+        "workflowName": "rerun-after",
+        "createdAt": "2026-11-14T19:52:21.112037598Z",
+        "lastUpdatedAt": "2026-11-14T19:51:48.960571852Z",
+        "runtimeStatus": "RUNNING",
+        "properties": {
+          "dapr.workflow.input": "{}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T19:52:19.735490+00:00",
+      "name": "before-downtime-claims",
+      "data": {
+        "dws-rerun-schedule-time||claim:dws-sched:rerun-every:20261114T195224Z": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:52:24.814Z\\u0022}\"\nversion\n2",
+        "dws-rerun-schedule-time||claim:dws-sched:rerun-cron:20261114T195200Z": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:52:03.139Z\\u0022}\"\nversion\n2",
+        "dws-rerun-schedule-time||claim:dws-after:rerun-after:1": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:51:24.275Z\\u0022}\"\nversion\n2",
+        "dws-rerun-schedule-time||claim:dws-after:rerun-after:2": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:52:21.144Z\\u0022}\"\nversion\n2"
+      }
+    },
+    {
+      "at": "2026-11-14T19:52:19.767751+00:00",
+      "name": "before-downtime-metadata",
+      "data": {
+        "instanceID": "dws-sched:rerun-every:20261114T195224Z",
+        "workflowName": "rerun-every",
+        "createdAt": "2026-11-14T19:52:24.635909299Z",
+        "lastUpdatedAt": "2026-11-14T19:52:25.065808880Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"rerun\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T19:53:03.015650+00:00",
+      "name": "before-downtime-metadata",
+      "data": {
+        "instanceID": "dws-sched:rerun-cron:20261114T195200Z",
+        "workflowName": "rerun-cron",
+        "createdAt": "2026-11-14T19:52:02.904923896Z",
+        "lastUpdatedAt": "2026-11-14T19:52:03.449909064Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"rerun\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T19:53:03.051080+00:00",
+      "name": "before-downtime-metadata",
+      "data": {
+        "instanceID": "dws-after:rerun-after:1",
+        "workflowName": "rerun-after",
+        "createdAt": "2026-11-14T19:51:24.009720172Z",
+        "lastUpdatedAt": "2026-11-14T19:51:37.399200008Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"rerun\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T19:53:03.095436+00:00",
+      "name": "before-downtime-metadata",
+      "data": {
+        "instanceID": "dws-after:rerun-after:2",
+        "workflowName": "rerun-after",
+        "createdAt": "2026-11-14T19:52:21.112037598Z",
+        "lastUpdatedAt": "2026-11-14T19:51:48.960571852Z",
+        "runtimeStatus": "RUNNING",
+        "properties": {
+          "dapr.workflow.input": "{}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T19:53:04.786491+00:00",
+      "name": "scale-zero",
+      "data": "deployment.apps/dws-rerun-schedule-time scaled\n"
+    },
+    {
+      "at": "2026-11-14T19:53:07.209019+00:00",
+      "name": "all-schedulers-stopped",
+      "data": {
+        "secondsToWait": 190
+      }
+    },
+    {
+      "at": "2026-11-14T19:53:25.418407+00:00",
+      "name": "after-second-during-downtime",
+      "data": {
+        "instanceID": "dws-after:rerun-after:2",
+        "workflowName": "rerun-after",
+        "createdAt": "2026-11-14T19:52:21.112037598Z",
+        "lastUpdatedAt": "2026-11-14T19:53:15.401348799Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"rerun\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T19:56:28.269063+00:00",
+      "name": "restore-two",
+      "data": "deployment.apps/dws-rerun-schedule-time scaled\n"
+    },
+    {
+      "at": "2026-11-14T19:56:46.525344+00:00",
+      "name": "recovery-burst-claims",
+      "data": {
+        "dws-rerun-schedule-time||claim:dws-sched:rerun-every:20261114T195224Z": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:52:24.814Z\\u0022}\"\nversion\n2",
+        "dws-rerun-schedule-time||claim:dws-sched:rerun-cron:20261114T195200Z": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:52:03.139Z\\u0022}\"\nversion\n2",
+        "dws-rerun-schedule-time||claim:dws-after:rerun-after:1": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:51:24.275Z\\u0022}\"\nversion\n2",
+        "dws-rerun-schedule-time||claim:dws-after:rerun-after:2": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:52:21.144Z\\u0022}\"\nversion\n2",
+        "dws-rerun-schedule-time||claim:dws-sched:rerun-every:20261114T195624Z": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:56:30.539Z\\u0022}\"\nversion\n2",
+        "dws-rerun-schedule-time||claim:dws-sched:rerun-cron:20261114T195600Z": "first-write\n0\ndata\n\"{\\u0022state\\u0022:\\u0022started\\u0022,\\u0022at\\u0022:\\u00222026-11-14T19:56:30.557Z\\u0022}\"\nversion\n2"
+      }
+    },
+    {
+      "at": "2026-11-14T19:56:46.558534+00:00",
+      "name": "recovery-burst-metadata",
+      "data": {
+        "instanceID": "dws-sched:rerun-every:20261114T195224Z",
+        "workflowName": "rerun-every",
+        "createdAt": "2026-11-14T19:52:24.635909299Z",
+        "lastUpdatedAt": "2026-11-14T19:52:25.065808880Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"rerun\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T19:56:46.586782+00:00",
+      "name": "recovery-burst-metadata",
+      "data": {
+        "instanceID": "dws-sched:rerun-cron:20261114T195200Z",
+        "workflowName": "rerun-cron",
+        "createdAt": "2026-11-14T19:52:02.904923896Z",
+        "lastUpdatedAt": "2026-11-14T19:52:03.449909064Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"rerun\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T19:56:46.616753+00:00",
+      "name": "recovery-burst-metadata",
+      "data": {
+        "instanceID": "dws-after:rerun-after:1",
+        "workflowName": "rerun-after",
+        "createdAt": "2026-11-14T19:51:24.009720172Z",
+        "lastUpdatedAt": "2026-11-14T19:51:37.399200008Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"rerun\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T19:56:46.644494+00:00",
+      "name": "recovery-burst-metadata",
+      "data": {
+        "instanceID": "dws-after:rerun-after:2",
+        "workflowName": "rerun-after",
+        "createdAt": "2026-11-14T19:52:21.112037598Z",
+        "lastUpdatedAt": "2026-11-14T19:53:15.401348799Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"rerun\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T19:56:46.673020+00:00",
+      "name": "recovery-burst-metadata",
+      "data": {
+        "instanceID": "dws-sched:rerun-every:20261114T195624Z",
+        "workflowName": "rerun-every",
+        "createdAt": "2026-11-14T19:56:30.500940871Z",
+        "lastUpdatedAt": "2026-11-14T19:56:30.814392187Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"rerun\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T19:56:46.705979+00:00",
+      "name": "recovery-burst-metadata",
+      "data": {
+        "instanceID": "dws-sched:rerun-cron:20261114T195600Z",
+        "workflowName": "rerun-cron",
+        "createdAt": "2026-11-14T19:56:30.512536456Z",
+        "lastUpdatedAt": "2026-11-14T19:56:30.855975028Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"rerun\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T19:56:48.332330+00:00",
+      "name": "recovery-finished",
+      "data": {}
+    },
+    {
+      "at": "2026-11-14T19:57:30.015835+00:00",
+      "name": "delete-rerun-every",
+      "data": {
+        "http": 204
+      }
+    },
+    {
+      "at": "2026-11-14T19:57:30.246439+00:00",
+      "name": "delete-rerun-cron",
+      "data": {
+        "http": 204
+      }
+    },
+    {
+      "at": "2026-11-14T19:57:30.521763+00:00",
+      "name": "delete-rerun-after",
+      "data": {
+        "http": 204
+      }
+    },
+    {
+      "at": "2026-11-14T19:57:35.809032+00:00",
+      "name": "cleanup-jobs",
+      "data": []
+    }
+  ],
+  "logSummary": {
+    "before": {
+      "startCounts": {
+        "dws-after:rerun-after:1": 1,
+        "dws-after:rerun-after:2": 1,
+        "dws-sched:rerun-cron:20261114T195200Z": 1,
+        "dws-sched:rerun-every:20261114T195224Z": 1
+      },
+      "starts": [
+        {
+          "file": "before-rerun-after-vede77b80-6f5f59bdd6-jqn7z-daprd.log",
+          "line": "2026-11-14T19:51:24.035606116Z time=\"2026-11-14T19:51:24.035181581Z\" level=info msg=\"dws-after:rerun-after:1: starting new 'rerun-after' instance with ID = 'dws-after:rerun-after:1'.\" app_id=rerun-after instance=rerun-after-vede77b80-6f5f59bdd6-jqn7z scope=dapr.wfengine.durabletask.backend type=log ver=1.18.2"
+        },
+        {
+          "file": "before-rerun-after-vede77b80-6f5f59bdd6-jqn7z-daprd.log",
+          "line": "2026-11-14T19:52:21.123461805Z time=\"2026-11-14T19:52:21.123077823Z\" level=info msg=\"dws-after:rerun-after:2: starting new 'rerun-after' instance with ID = 'dws-after:rerun-after:2'.\" app_id=rerun-after instance=rerun-after-vede77b80-6f5f59bdd6-jqn7z scope=dapr.wfengine.durabletask.backend type=log ver=1.18.2"
+        },
+        {
+          "file": "before-rerun-cron-v7f5a5afe-7dff6fdcf8-mhdpk-daprd.log",
+          "line": "2026-11-14T19:52:02.919367256Z time=\"2026-11-14T19:52:02.918939799Z\" level=info msg=\"dws-sched:rerun-cron:20261114T195200Z: starting new 'rerun-cron' instance with ID = 'dws-sched:rerun-cron:20261114T195200Z'.\" app_id=rerun-cron instance=rerun-cron-v7f5a5afe-7dff6fdcf8-mhdpk scope=dapr.wfengine.durabletask.backend type=log ver=1.18.2"
+        },
+        {
+          "file": "before-rerun-every-v83ce0e98-6d65f64bd7-pg9b4-daprd.log",
+          "line": "2026-11-14T19:52:24.646295978Z time=\"2026-11-14T19:52:24.645984062Z\" level=info msg=\"dws-sched:rerun-every:20261114T195224Z: starting new 'rerun-every' instance with ID = 'dws-sched:rerun-every:20261114T195224Z'.\" app_id=rerun-every instance=rerun-every-v83ce0e98-6d65f64bd7-pg9b4 scope=dapr.wfengine.durabletask.backend type=log ver=1.18.2"
+        }
+      ],
+      "callbacks": [
+        {
+          "file": "before-dws-rerun-schedule-time-69c6f4c9f-rdsj2-schedule-time.log",
+          "line": "2026-11-14T19:52:03.152560379Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-rerun-cron - 200 0 - 436.9142ms"
+        },
+        {
+          "file": "before-dws-rerun-schedule-time-69c6f4c9f-rdsj2-schedule-time.log",
+          "line": "2026-11-14T19:52:21.152538971Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-start-rerun-after - 200 0 - 76.2621ms"
+        },
+        {
+          "file": "before-dws-rerun-schedule-time-69c6f4c9f-rdsj2-schedule-time.log",
+          "line": "2026-11-14T19:52:24.821521280Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-rerun-every - 200 0 - 299.8984ms"
+        },
+        {
+          "file": "before-dws-rerun-schedule-time-69c6f4c9f-rdsj2-schedule-time.log",
+          "line": "2026-11-14T19:52:51.070767988Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 31.2927ms"
+        },
+        {
+          "file": "before-dws-rerun-schedule-time-69c6f4c9f-crxj4-schedule-time.log",
+          "line": "2026-11-14T19:51:37.298411761Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 145.2339ms"
+        },
+        {
+          "file": "before-dws-rerun-schedule-time-69c6f4c9f-crxj4-schedule-time.log",
+          "line": "2026-11-14T19:51:51.117088805Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 78.1318ms"
+        },
+        {
+          "file": "before-dws-rerun-schedule-time-69c6f4c9f-crxj4-schedule-time.log",
+          "line": "2026-11-14T19:52:06.043990359Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 4.1129ms"
+        },
+        {
+          "file": "before-dws-rerun-schedule-time-69c6f4c9f-crxj4-schedule-time.log",
+          "line": "2026-11-14T19:52:21.044139730Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 4.1670ms"
+        },
+        {
+          "file": "before-dws-rerun-schedule-time-69c6f4c9f-crxj4-schedule-time.log",
+          "line": "2026-11-14T19:52:37.005570002Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 26.6566ms"
+        }
+      ],
+      "sync": [
+        {
+          "file": "before-dws-rerun-schedule-time-69c6f4c9f-rdsj2-schedule-time.log",
+          "line": "2026-11-14T19:51:23.417437052Z       Initial cluster list: 3 trigger ConfigMaps, 3 Deployments"
+        },
+        {
+          "file": "before-dws-rerun-schedule-time-69c6f4c9f-crxj4-schedule-time.log",
+          "line": "2026-11-14T19:51:24.544339070Z       Initial cluster list: 3 trigger ConfigMaps, 3 Deployments"
+        }
+      ],
+      "authErrors": [],
+      "logFilesInspected": [
+        "before-dws-rerun-schedule-time-69c6f4c9f-rdsj2-daprd.log",
+        "before-dws-rerun-schedule-time-69c6f4c9f-crxj4-daprd.log",
+        "before-rerun-cron-v7f5a5afe-7dff6fdcf8-mhdpk-orchestrator.log",
+        "before-rerun-after-vede77b80-6f5f59bdd6-jqn7z-daprd.log",
+        "before-rerun-cron-v7f5a5afe-7dff6fdcf8-mhdpk-daprd.log",
+        "before-dws-rerun-schedule-time-69c6f4c9f-rdsj2-schedule-time.log",
+        "before-rerun-every-v83ce0e98-6d65f64bd7-pg9b4-orchestrator.log",
+        "before-rerun-after-vede77b80-6f5f59bdd6-jqn7z-orchestrator.log",
+        "before-dws-rerun-schedule-time-69c6f4c9f-crxj4-schedule-time.log",
+        "before-rerun-every-v83ce0e98-6d65f64bd7-pg9b4-daprd.log"
+      ]
+    },
+    "recovery": {
+      "startCounts": {
+        "dws-sched:rerun-every:20261114T195224Z": 1,
+        "dws-sched:rerun-every:20261114T195624Z": 1,
+        "dws-sched:rerun-cron:20261114T195200Z": 1,
+        "dws-sched:rerun-cron:20261114T195600Z": 1,
+        "dws-after:rerun-after:1": 1,
+        "dws-after:rerun-after:2": 1
+      },
+      "starts": [
+        {
+          "file": "recovery-rerun-every-v83ce0e98-6d65f64bd7-pg9b4-daprd.log",
+          "line": "2026-11-14T19:52:24.646295978Z time=\"2026-11-14T19:52:24.645984062Z\" level=info msg=\"dws-sched:rerun-every:20261114T195224Z: starting new 'rerun-every' instance with ID = 'dws-sched:rerun-every:20261114T195224Z'.\" app_id=rerun-every instance=rerun-every-v83ce0e98-6d65f64bd7-pg9b4 scope=dapr.wfengine.durabletask.backend type=log ver=1.18.2"
+        },
+        {
+          "file": "recovery-rerun-every-v83ce0e98-6d65f64bd7-pg9b4-daprd.log",
+          "line": "2026-11-14T19:56:30.511759610Z time=\"2026-11-14T19:56:30.511184414Z\" level=info msg=\"dws-sched:rerun-every:20261114T195624Z: starting new 'rerun-every' instance with ID = 'dws-sched:rerun-every:20261114T195624Z'.\" app_id=rerun-every instance=rerun-every-v83ce0e98-6d65f64bd7-pg9b4 scope=dapr.wfengine.durabletask.backend type=log ver=1.18.2"
+        },
+        {
+          "file": "recovery-rerun-cron-v7f5a5afe-7dff6fdcf8-mhdpk-daprd.log",
+          "line": "2026-11-14T19:52:02.919367256Z time=\"2026-11-14T19:52:02.918939799Z\" level=info msg=\"dws-sched:rerun-cron:20261114T195200Z: starting new 'rerun-cron' instance with ID = 'dws-sched:rerun-cron:20261114T195200Z'.\" app_id=rerun-cron instance=rerun-cron-v7f5a5afe-7dff6fdcf8-mhdpk scope=dapr.wfengine.durabletask.backend type=log ver=1.18.2"
+        },
+        {
+          "file": "recovery-rerun-cron-v7f5a5afe-7dff6fdcf8-mhdpk-daprd.log",
+          "line": "2026-11-14T19:56:30.531854178Z time=\"2026-11-14T19:56:30.531104777Z\" level=info msg=\"dws-sched:rerun-cron:20261114T195600Z: starting new 'rerun-cron' instance with ID = 'dws-sched:rerun-cron:20261114T195600Z'.\" app_id=rerun-cron instance=rerun-cron-v7f5a5afe-7dff6fdcf8-mhdpk scope=dapr.wfengine.durabletask.backend type=log ver=1.18.2"
+        },
+        {
+          "file": "recovery-rerun-after-vede77b80-6f5f59bdd6-jqn7z-daprd.log",
+          "line": "2026-11-14T19:51:24.035606116Z time=\"2026-11-14T19:51:24.035181581Z\" level=info msg=\"dws-after:rerun-after:1: starting new 'rerun-after' instance with ID = 'dws-after:rerun-after:1'.\" app_id=rerun-after instance=rerun-after-vede77b80-6f5f59bdd6-jqn7z scope=dapr.wfengine.durabletask.backend type=log ver=1.18.2"
+        },
+        {
+          "file": "recovery-rerun-after-vede77b80-6f5f59bdd6-jqn7z-daprd.log",
+          "line": "2026-11-14T19:52:21.123461805Z time=\"2026-11-14T19:52:21.123077823Z\" level=info msg=\"dws-after:rerun-after:2: starting new 'rerun-after' instance with ID = 'dws-after:rerun-after:2'.\" app_id=rerun-after instance=rerun-after-vede77b80-6f5f59bdd6-jqn7z scope=dapr.wfengine.durabletask.backend type=log ver=1.18.2"
+        }
+      ],
+      "callbacks": [
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-schedule-time.log",
+          "line": "2026-11-14T19:56:29.818418189Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-rerun-every - 499 - - 32.0422ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-schedule-time.log",
+          "line": "2026-11-14T19:56:29.818422037Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 499 - - 31.6778ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-schedule-time.log",
+          "line": "2026-11-14T19:56:29.818425924Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-rerun-cron - 499 - - 30.6454ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-schedule-time.log",
+          "line": "2026-11-14T19:56:30.567617399Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-rerun-every - 200 0 - 769.6600ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-schedule-time.log",
+          "line": "2026-11-14T19:56:30.570377336Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-rerun-cron - 200 0 - 772.1978ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-schedule-time.log",
+          "line": "2026-11-14T19:56:30.582136011Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 783.9860ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-schedule-time.log",
+          "line": "2026-11-14T19:56:30.584941404Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-rerun-every - 200 0 - 4.8004ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-schedule-time.log",
+          "line": "2026-11-14T19:56:30.587298271Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-rerun-cron - 200 0 - 9.2469ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-schedule-time.log",
+          "line": "2026-11-14T19:56:30.608534448Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-rerun-every - 200 0 - 4.6886ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-schedule-time.log",
+          "line": "2026-11-14T19:56:30.771052973Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 4.0365ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-schedule-time.log",
+          "line": "2026-11-14T19:56:30.783733252Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 5.0205ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-schedule-time.log",
+          "line": "2026-11-14T19:56:30.795959516Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 4.7136ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-schedule-time.log",
+          "line": "2026-11-14T19:56:30.841966293Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 4.2612ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-schedule-time.log",
+          "line": "2026-11-14T19:56:30.852189405Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 4.0732ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-schedule-time.log",
+          "line": "2026-11-14T19:56:30.863985238Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 4.4283ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-bscjj-schedule-time.log",
+          "line": "2026-11-14T19:56:30.716862399Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 117.1431ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-bscjj-schedule-time.log",
+          "line": "2026-11-14T19:56:30.716866757Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-rerun-every - 200 0 - 96.1516ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-bscjj-schedule-time.log",
+          "line": "2026-11-14T19:56:30.731894022Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 6.8922ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-bscjj-schedule-time.log",
+          "line": "2026-11-14T19:56:30.751217858Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 8.3442ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-bscjj-schedule-time.log",
+          "line": "2026-11-14T19:56:30.807052971Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 3.4845ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-bscjj-schedule-time.log",
+          "line": "2026-11-14T19:56:30.818178794Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 4.8425ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-bscjj-schedule-time.log",
+          "line": "2026-11-14T19:56:30.829512411Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 4.2707ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-bscjj-schedule-time.log",
+          "line": "2026-11-14T19:56:30.872050804Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 3.1121ms"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-bscjj-schedule-time.log",
+          "line": "2026-11-14T19:56:36.041507635Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-after-poll-rerun-after - 200 0 - 2.9114ms"
+        }
+      ],
+      "sync": [
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-schedule-time.log",
+          "line": "2026-11-14T19:56:30.264817774Z       Initial cluster list: 3 trigger ConfigMaps, 3 Deployments"
+        },
+        {
+          "file": "recovery-dws-rerun-schedule-time-69c6f4c9f-bscjj-schedule-time.log",
+          "line": "2026-11-14T19:56:30.360328094Z       Initial cluster list: 3 trigger ConfigMaps, 3 Deployments"
+        }
+      ],
+      "authErrors": [],
+      "logFilesInspected": [
+        "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-schedule-time.log",
+        "recovery-dws-rerun-schedule-time-69c6f4c9f-bscjj-daprd.log",
+        "recovery-rerun-every-v83ce0e98-6d65f64bd7-pg9b4-daprd.log",
+        "recovery-rerun-every-v83ce0e98-6d65f64bd7-pg9b4-orchestrator.log",
+        "recovery-rerun-cron-v7f5a5afe-7dff6fdcf8-mhdpk-orchestrator.log",
+        "recovery-rerun-cron-v7f5a5afe-7dff6fdcf8-mhdpk-daprd.log",
+        "recovery-dws-rerun-schedule-time-69c6f4c9f-bscjj-schedule-time.log",
+        "recovery-rerun-after-vede77b80-6f5f59bdd6-jqn7z-daprd.log",
+        "recovery-rerun-after-vede77b80-6f5f59bdd6-jqn7z-orchestrator.log",
+        "recovery-dws-rerun-schedule-time-69c6f4c9f-gzwnz-daprd.log"
+      ]
+    }
+  }
+}
