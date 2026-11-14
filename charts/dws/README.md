@@ -5,6 +5,27 @@ supporting Dapr/PostgreSQL/Redis/Dex/APISIX dependencies. See the repository roo
 [`AGENTS.md`](../../AGENTS.md) for the overall project and [`docs/roadmaps/dws-auth.md`](../../docs/roadmaps/dws-auth.md)
 for the auth/Gateway design history.
 
+## Upgrading to scheduling Phase 6a (time triggers)
+
+This chart version adds `dws-schedule-time` (`scheduleTime.enabled`, default `true`; see
+[Time-trigger scheduler](#time-trigger-scheduler-dws-schedule-time)), and `dws-controller` starts
+validating the DSL `schedule` block. Nothing changes for a workflow until it is redeployed
+(`POST /workflows` again); on its next deploy:
+
+- a v1 definition with a valid `schedule.every`, `schedule.cron` or `schedule.after` **starts
+  firing**: the controller writes its trigger ConfigMap and the scheduler registers a Dapr job;
+- a definition whose `schedule` was silently ignored until now **may be rejected**: exactly one of
+  `every`, `cron`, `after` is allowed; durations must be literal and at least 1 s; `cron` must be a
+  standard 5-field expression; `schedule.on` (event triggers, Phase 6b) and `schedule.read` without
+  `on` are rejected as not yet supported;
+- under the runtime v2 compiler strategy, any `schedule` is rejected (not yet supported on v2).
+
+The scheduler image is pinned at `scheduleTime.image.tag`; until that tag is published (its first
+`component-release`, see `docs/release-process.md`), install with `scheduleTime.enabled=false` or
+override the tag. Every trigger start takes a claim in the chart's Redis state store
+(`<fullname>-actor-statestore`, already rendered), and `after` keeps its sequence there, so a Redis
+outage pauses scheduled starts until it recovers (fires are retried briefly, then dropped).
+
 ## Upgrading from a pre-Gateway release
 
 If an existing release still has `console.ingress.enabled=true` set (the plain

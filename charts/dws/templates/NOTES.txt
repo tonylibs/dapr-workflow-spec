@@ -54,3 +54,12 @@ Retrieve the bootstrap admin login:
   kubectl get secret {{ include "dws.dex.adminCredentials.fullname" . }} -n {{ include "dws.namespace" . }} -o jsonpath='{.data.password}' | base64 -d; echo
 {{- end }}
 {{- end }}
+{{- if .Values.scheduleTime.enabled }}
+
+Workflow time triggers are enabled: deployment/{{ include "dws.scheduleTime.fullname" . }} fires the
+`schedule` block (`every`, `cron`, `after`) of v1 workflows. Definitions that already carry
+`schedule` change nothing until they are redeployed; on their next deploy they start firing, or
+are rejected if their `schedule` is invalid (more than one trigger, sub-second or runtime-expression
+durations, a non-5-field cron) or uses `schedule.on`, which is not supported yet. See
+charts/dws/README.md, "Upgrading to scheduling Phase 6a".
+{{- end }}
