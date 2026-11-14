@@ -4,7 +4,7 @@
 for v1 workflows. It watches the cluster for trigger ConfigMaps, keeps one Dapr job per scheduled
 workflow, and starts workflow instances on the matching orchestrator through Dapr service
 invocation. It keeps no database: the cluster, its Dapr jobs, the `after` bookkeeping and the
-per-instance start claims are the only state. Design: `openspec/changes/scheduling-phase-6a-time-triggers`
+per-instance start claims are the only state. Design: `openspec/changes/archive/2026-11-14-scheduling-phase-6a-time-triggers`
 and `docs/adr/0013-time-triggers-in-dws-schedule-time.md`.
 
 ## Environment

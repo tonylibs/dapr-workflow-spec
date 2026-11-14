@@ -7,7 +7,7 @@
   invocation of the orchestrator confirmed; Jobs API behaviour recorded. See Amendment 1.
 - **Context:** [`docs/draft-scheduler-event-trigger-split.md`](../draft-scheduler-event-trigger-split.md),
   [`docs/roadmaps/openworkflow-features.md`](../roadmaps/openworkflow-features.md) Phase 6,
-  `openspec/changes/scheduling-phase-6a-time-triggers`
+  `openspec/changes/archive/2026-11-14-scheduling-phase-6a-time-triggers`
 - **Related:** [ADR 0002](0002-workflow-compiler-strategy-split.md) (compiler strategies),
   [ADR 0006](0006-wait-and-listen-as-flow-controllers.md) (`listen` is not a trigger;
   `schedule.on` is an event source), [ADR 0007](0007-chart-feature-layers.md) (in progress:

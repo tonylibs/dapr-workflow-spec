@@ -155,7 +155,7 @@ the toggles; an individual toggle always overrides its preset.
 7. **Dapr API token vs gateway.** The token applies to all callers, so the console gateway must
    inject it. Record as a soft dependency between L1 and L2?
 8. **Guards.** Keep `fail` calls only, or also add `values.schema.json`? *Partly answered by
-   scheduling Phase 6a (`openspec/changes/scheduling-phase-6a-time-triggers`): the chart ships a
+   scheduling Phase 6a (`openspec/changes/archive/2026-11-14-scheduling-phase-6a-time-triggers`): the chart ships a
    `values.schema.json` that closes only `scheduleTime` (unknown or ill-typed keys fail the
    render) and constrains nothing else, so existing values files and `--reuse-values` upgrades are
    unaffected. Extending it to the other blocks is still open.*

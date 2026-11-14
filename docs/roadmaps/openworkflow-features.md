@@ -42,7 +42,7 @@ Two different readiness axes get conflated below — worth separating:
 | Catalogs (`use.catalogs`, `call: <name>:<version>@<catalog>`) | ❌ — Phase 7b |
 | Extensions (`use.extensions`, `before`/`after` hooks) | ❌ — Phase 7c |
 | External resources | ⚠️ partial — only `call: openapi` `document` is fetched today; generalized in Phase 7b |
-| Scheduling (`every`/`cron`/`after`/`on`) | ⚠️ partial — `every`/`cron`/`after` for v1 workflows implemented in Phase 6a (`dws-schedule-time`, [ADR 0013](../adr/0013-time-triggers-in-dws-schedule-time.md); live verification pending); `on` event triggers are Phase 6b; runtime v2 rejects `schedule` |
+| Scheduling (`every`/`cron`/`after`/`on`) | ⚠️ partial — `every`/`cron`/`after` for v1 workflows implemented in Phase 6a (`dws-schedule-time`, [ADR 0013](../adr/0013-time-triggers-in-dws-schedule-time.md); live-verified, [evidence](scheduling-phase6a-evidence.md)); `on` event triggers are Phase 6b; runtime v2 rejects `schedule` |
 | Lifecycle events (CloudEvents) | ✅ done — controller + orchestrator publish to `dws.events` (Epic 1, merged) |
 
 ## 3. Phase dependency graph
@@ -61,7 +61,7 @@ flowchart TD
   P4 --> P41[Phase 4.1: Credentials via sidecar<br/>ADR 0010 — in progress, 4.1a/4.1b ✅]
   P4 --> P5[Phase 5: Protocol Expansion<br/>gRPC ✅, AsyncAPI ✅]
   P5 --> P55[Phase 5.5: A2A protocol<br/>next — design settled, ADR 0011]
-  P1 --> P6a[Phase 6a: Time triggers<br/>every/cron/after — dws-schedule-time<br/>implemented, live verification pending]
+  P1 --> P6a[Phase 6a: Time triggers<br/>every/cron/after — dws-schedule-time<br/>done ✅]
   P6a --> P6b[Phase 6b: Event triggers<br/>schedule.on — dws-schedule-event]
   P2d --> P7a[Phase 7a: Custom functions<br/>use.functions]
   P7a --> P7b[Phase 7b: Catalogs +<br/>external resources]
@@ -85,7 +85,7 @@ Data flow is the foundation: retry/catch, extensions, and error handling all rea
 | **4.1** | `basic`/`bearer` injected by a Wasm sidecar middleware; one merged Dapr Configuration per workload ([ADR 0010](../adr/0010-use-components-as-a-shared-store.md)) | controller, `charts/dws`, call-http, call-openapi, call-a2a, two new Wasm images (`dws-mid-bearer`, `dws-mid-basic`) | in progress — 4.1a, 4.1b done (`dws-controller` 1.2.0/1.2.1); 4.1c-basic and 4.1c-bearer implemented (live probes passed; image publish on merge); 4.1f, 4.1g next; see §4h |
 | **5** ✅ | gRPC, AsyncAPI call protocols | new `dws-call-grpc`, `dws-call-asyncapi` images | done — both slices archived (`2026-08-25-dws-call-grpc`, `2026-08-26-dws-call-asyncapi`); live-cluster integration test deferred, see §4e |
 | **5.5** (next) | A2A (Agent2Agent) call protocol | new `dws-call-a2a` image | design settled — [ADR 0011](../adr/0011-call-a2a-runner-design.md), §4f; not yet implemented |
-| **6a** | `schedule.every/cron/after` time triggers for v1 workflows | controller (validation + trigger ConfigMap), orchestrator (idempotent start by `instanceId`), new `dws-schedule-time` (Dapr Jobs API), `charts/dws` | implemented — OpenSpec `scheduling-phase-6a-time-triggers`, [ADR 0013](../adr/0013-time-triggers-in-dws-schedule-time.md); live-cluster verification (tasks 9.x) and archive pending |
+| **6a** ✅ | `schedule.every/cron/after` time triggers for v1 workflows | controller (validation + trigger ConfigMap), orchestrator (idempotent start by `instanceId`), new `dws-schedule-time` (Dapr Jobs API), `charts/dws` | done — archived as `2026-11-14-scheduling-phase-6a-time-triggers` (live-verified on Kubernetes 1.34 / Dapr 1.18.2, [evidence](scheduling-phase6a-evidence.md)), [ADR 0013](../adr/0013-time-triggers-in-dws-schedule-time.md) |
 | **6b** | `schedule.on` event triggers (and `schedule.read`) | new `dws-schedule-event`, reusing the 6a start contract (`dws-event` instance-ID source) | not started — the controller rejects `schedule.on` until then |
 | **7a** | Custom functions: `use.functions` and `call: <name>` with `with` arguments | controller (+ orchestrator if resolved at runtime) | not started — opsx, new capability; see §4g |
 | **7b** | Catalogs: `use.catalogs` and `call: <name>:<version>@<catalog>`; generalized external-resource fetching | controller | not started — opsx, new capability; needs 7a + Phase 4 auth; see §4g |
