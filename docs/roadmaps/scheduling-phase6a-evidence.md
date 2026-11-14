@@ -1,118 +1,192 @@
 # Scheduling Phase 6a — live evidence
 
-**Status: NOT YET RUN.** This file is the procedure for tasks 9.1–9.5 of OpenSpec change
-`scheduling-phase-6a-time-triggers`, with the expected result of every check. Fill in the
-"Observed" column and the header below from a real run, then link this file from
-[ADR 0013](../adr/0013-time-triggers-in-dws-schedule-time.md) (task 9.6).
+**Status: partial; machine-auth verification failed.** Tasks 9.1–9.3 passed on
+2026-11-14. Task 9.4 failed the replay assertion. Task 9.5 also remains open:
+with `auth.enabled=true`, job registration and callbacks work but workflow starts return 401.
+This change is not ready to archive.
 
-Why it is not run yet: the agent sandbox that implemented the change cannot run any Kubernetes
-node. Its kernel refuses to lower `oom_score_adj` even for root
-(`echo -500 > /proc/self/oom_score_adj` → I/O error), and kubelet sets it for every pod, so kind
-(also with `failCgroupV1: false` for the host's cgroup v1) fails with
-`runc init: failed to update /proc/self/oom_score_adj: Permission denied`. Every unit, contract and
-render gate passed there; only these cluster behaviours are unproven.
+Change: `scheduling-phase-6a-time-triggers` · Source: `f4ed1bce72bc6b4ed2eb2078a9f4a01e62f1f8c8`
+(branch `DuongVu98/scheduler-verification`).
+Cluster: `docker-desktop`, three Ready kind nodes, Kubernetes v1.34.3, containerd 2.2.0.
+Dapr control plane and injected sidecars: **1.18.2**, externally managed, not the chart's
+1.18.7 pin. Helm: 4.3.0. SDK: Dapr .NET 1.18.10, .NET 10.
 
-Run date: _TBD_  
-Cluster: _TBD_ (kind on cgroup v2, Kubernetes ≥ 1.31)  
-Dapr: _TBD_ (1.18.x, the chart's default)  
-Images: _TBD_ (`dws-controller`, `dws-orchestrator`, `dws-schedule-time` from this branch)
+## Setup and boundaries
 
-## 0. Setup
+Installed the repository chart in namespace `dws-scheduling-6a`, release `dws`, with
+`dapr.enabled=false`, `admin.enabled=false`, `postgresql.enabled=false`, the branch-built
+images below, and an isolated Redis 7.4 pod. The chart's Redis-backed state Component reports
+ETag, transactional and TTL support. No existing platform installation was upgraded.
+The scheduler served `/healthz` with HTTP 200; its named test-project gate passed **208/208**.
 
-Until the images are published, build them from the branch and load them into kind:
+| Image tag | Image ID |
+|---|---|
+| `dws-controller:scheduling-6a` | `sha256:9d97c7043a34d37049989ad41135db5fe955950379c731cc17101597de7575cb` |
+| `dws-orchestrator:scheduling-6a` | `sha256:7a6eca187f4c9b8a9c4f81cec288cc621b0c577362dee83cee93781a6f8891cc` |
+| `dws-schedule-time:scheduling-6a` | `sha256:eba6449d309798599a3bcc77bc89719489a4abe250fffa4fa2fc1199ff16ba19` |
 
-```bash
-docker build -t dws-schedule-time:e2e dws-schedule-time
-docker build -t dws-orchestrator:e2e dws-orchestrator          # per its README / Dockerfile
-(cd dws-controller && ./mvnw -q package -DskipTests) && docker build -f dws-controller/src/main/docker/Dockerfile.jvm -t dws-controller:e2e dws-controller
-kind load docker-image dws-schedule-time:e2e dws-orchestrator:e2e dws-controller:e2e
+The environment had no Docker or Helm executable initially. Helm was downloaded to `/tmp`;
+a temporary Docker-in-Docker builder and registry in the test namespace built the images.
+Temporary node-local helpers pulled and tagged them into each node's containerd image store.
+Orchestrator and scheduler used their repository Dockerfiles. Controller compilation used a
+temporary multistage Dockerfile with JDK 25, Maven 3.9.16 and Node 24, then the repository's UBI
+25 runtime recipe. The Maven ZIP matched its pinned SHA-256; the wrapper had incorrectly checked
+the tarball against that ZIP checksum when `unzip` was absent. No checksum check was disabled.
+
+**Controller prerequisite:** the unmodified runtime rejected submissions with HTTP 500 because
+jsii's package cache security check rejects the UBI home directory's group-writable mode 0770.
+The test controller Deployment was given `JSII_RUNTIME_PACKAGE_CACHE=disabled`. Therefore these
+results verify scheduling with that workaround; they do not prove the default controller image
+can submit workflows. No application source was changed for this run.
+
+The auth run used release `dws-6a-auth` in namespace `dws-scheduling-6a-auth`, the same images,
+`auth.enabled=true`, bundled Dex with a cluster-reachable issuer, and the test Redis through its
+namespace-qualified Service. Its scheduler has its own app-id and token Secret. Fixture
+submissions used the controller app port through port-forwarding; browser/JWT access was not tested.
+A unique release name avoided an existing `dws-dex` ClusterRole owned by a different release.
+
+## 9.1 — fires, IDs and completion-relative delay: passed
+
+Deployed three definitions at 18:40:34 UTC: `verify-every` (`every: PT1M`), `verify-cron`
+(`cron: "*/2 * * * *"`), and `verify-after` (`after: PT30S`). The first two contain a `set`
+task; `verify-after` waits ten seconds before `set`. The output marker uses the jq expression
+`'"A"'`, not bare `A`. Earlier disposable `tick-*` fixtures had an invalid marker; those failed
+runs were deleted and are not used as passing evidence.
+
+All three immutable trigger ConfigMaps had the expected workflow/version/app-id/kind/schedule
+fields. All sampled completed instances had input `{}` and output `{"version":"A","ticked":true}`.
+Timestamps below come from Dapr's workflow metadata API, not the local observation clock.
+
+| Instance ID | Created UTC | Completed UTC |
+|---|---|---|
+| `dws-sched:verify-every:20261114T184134Z` | 18:41:35.136807662 | 18:41:35.569163701 |
+| `dws-sched:verify-cron:20261114T184200Z` | 18:42:00.200317786 | 18:42:00.695272704 |
+| `dws-after:verify-after:1` | 18:40:52.328009868 | 18:41:02.834090178 |
+| `dws-after:verify-after:2` | 18:41:35.388058819 | 18:41:46.308885163 |
+
+The `every` anchor was `2026-11-14T18:40:34.180Z`; its first instance key is anchor + 60 s,
+with delivery about one second later. Cron fired at an even UTC minute. The gap between
+`after:1` completion and `after:2` creation was **32.554 seconds**, exceeding the requested 30 s.
+The immediate activation start initially saw a target-not-ready HTTP 500; the poll recovered it.
+
+## 9.2 — takeover and deletion: passed for the observed fire
+
+At 18:42:39 UTC redeployed `verify-cron` from `v93fb64b1` to `v09baa58f`, changing the cron to
+`1-59/2 * * * *` and the output marker to `B`. The old Deployment acquired the **annotation**
+`dws.io/drain: "true"`; the Dapr job changed to `0 1-59/2 * * * *`, version `v09baa58f`.
+
+`dws-sched:verify-cron:20261114T184300Z` started at 18:43:00.124048983 and completed at
+18:43:00.458128743 with `{"version":"B","ticked":true}`. Both old and new Deployments still
+existed when inspected at 18:43:24. The observed next fire therefore executed the new definition.
+This single observation does not establish version affinity for every possible rollout: versions
+still share a Dapr app-id.
+
+Deleted the workflow through `DELETE /workflows/verify-cron`. At 18:43:36 the SDK Jobs list
+contained only the every and after jobs; `dws-sched-verify-cron` was absent. No ConfigMap with
+`dws.io/workflow=verify-cron` remained.
+
+## 9.3 — scheduler restart: passed
+
+Restarted the scheduler at approximately 18:41:56. SDK Jobs snapshots taken before and after
+compared equal for both recurring jobs, including their payload anchors:
+
+- every: `2026-11-14T18:40:34.180Z`;
+- cron: `2026-11-14T18:40:34.322Z`.
+
+The replacement pod logged no registration of unchanged jobs. The next every instance retained
+key `20261114T184234Z` (created 18:42:34.214225206). The durable after state progressed to
+sequence 3, which started at 18:42:20.734828104 and completed at 18:42:31.012326712; it did not
+reset to sequence 1.
+
+## 9.4 — two replicas passed; downtime replay failed
+
+Both scheduler replicas were Ready by 18:43:23. Instance
+`dws-sched:verify-every:20261114T184334Z` started at 18:43:35.049768173 and completed at
+18:43:35.268771069. Its Redis start claim was `started`, version 2 (claim creation followed by
+completion), with one instance recorded for that fire key. The after sequence continued to 5.
+
+Scaled the scheduler to zero at 18:44:01 and waited for both pods to disappear. Restored two
+replicas at **18:48:01**, after four missed ticks (18:44:34 through 18:47:34).
+The timestamped app logs show one canceled callback (499) and **16 callback responses of 500**
+at 18:48:04, all in the pod `dws-schedule-time-86f4679795-hbzsm`. Initial cluster lists completed
+at 18:48:05.293481041 and 18:48:05.578830023. No missed-tick instance was created; querying the
+expected recovery-slot ID `dws-sched:verify-every:20261114T184734Z` returned 404.
+
+The next ordinary tick, `dws-sched:verify-every:20261114T184834Z`, started at
+18:48:35.394292398 and completed at 18:48:35.779869443. This was the only new every claim in the
+recovery snapshot (claim version 2), but it was **not** the required replayed-burst instance.
+The after sequence resumed at 6. Thus no duplicates were observed, but the exactly-one replay
+assertion did not pass and **9.4 remains open**.
+
+`ScheduledJobHandler` returns retry while `cluster.Synced` is false. In this run the entire
+replayed retry burst finished before synchronization, despite the configured retry policy.
+Before rerunning, address callback admission during initial synchronization (or wait for the
+initial snapshot before processing callbacks), and verify the actual Dapr replay/retry timing.
+The evidence does not establish that a synchronized replay race is deduplicated correctly.
+
+## 9.5 — machine auth: failed, task remains open
+
+Deployed `auth-every` (`PT1M`), `auth-cron` (`*/2 * * * *`) and `auth-after` (`PT30S`) at
+18:44:47–48 UTC in the auth-enabled release. The scheduler's pod annotation named
+`dws-6a-auth-schedule-time-dapr-api-token`; `DAPR_API_TOKEN` used a `secretKeyRef` to that
+Secret's `token` key. The Secret held a 48-character token (its value was never recorded).
+Sidecar logs confirmed HTTP and gRPC token authentication enabled. Jobs registered successfully
+and real callbacks reached `/job/*`.
+
+All three workflow starts failed:
+
+```text
+First after start failed for workflow auth-after instance dws-after:auth-after:1: HTTP 401
+Fire refused for workflow auth-every fire key dws-sched:auth-every:20261114T184547Z: HTTP 401
+Fire refused for workflow auth-cron fire key dws-sched:auth-cron:20261114T184600Z: HTTP 401
 ```
 
-```bash
-helm install dws charts/dws --namespace dws-e2e --create-namespace \
-  --set controller.image.repository=dws-controller --set controller.image.tag=e2e \
-  --set controller.images.orchestrator.repository=dws-orchestrator --set controller.images.orchestrator.tag=e2e \
-  --set scheduleTime.image.repository=dws-schedule-time --set scheduleTime.image.tag=e2e \
-  --set scheduleTime.image.pullPolicy=Never
-kubectl -n dws-e2e rollout status deploy/dws-controller deploy/dws-schedule-time
-kubectl -n dws-e2e port-forward svc/dws-controller 8081:80 &
-```
+At 18:45:39 an explicit status request through that scheduler's sidecar returned 401 with
+`invalid api token` without the header, and reached the orchestrator (404, instance never started)
+with the correct header. These deliberate diagnostic requests followed the real failures above.
+The source sidecar's default log level did not emit a per-request 401 line; absence of such a log
+line is not evidence that the start succeeded.
 
-Three definitions, each a single `set` task (no step service needed):
+**Cause:** `Program.cs` creates the invocation client with `DaprClient.CreateInvokeHttpClient()`.
+In [Dapr .NET SDK 1.18.10's factory](https://github.com/dapr/dotnet-sdk/blob/v1.18.10/src/Dapr.Client/DaprClient.cs#L76),
+the optional `daprApiToken` argument defaults to null and is assigned to the invocation handler.
+The live token-free request reproduces the observed failure. Jobs and state calls use different
+SDK clients and do receive the configured token.
 
-```bash
-for spec in "tick-every|every: PT1M" "tick-cron|cron: \"*/2 * * * *\"" "tick-after|after: PT30S"; do
-  name=${spec%%|*}; sched=${spec#*|}
-  cat > /tmp/$name.yaml <<EOF
-document: { dsl: '1.0.0', namespace: e2e, name: $name, version: '1.0.0' }
-schedule: { $sched }
+**Required follow-up:** explicitly supply the token at the `Program.cs` composition root, add a
+regression test covering the actual invocation-client token wiring, rebuild the scheduler image,
+and repeat all three auth-enabled schedules. Current unit tests pass while this live path fails.
+The apply skill requires pausing on blockers; no scheduler source fix was made in this verification run.
+
+## Reproduction and retained evidence
+
+Use the image build and chart configuration above, then submit this definition with the appropriate
+name and schedule (add `wait: PT10S` before `stamp` for the after workflow):
+
+```yaml
+document: { dsl: '1.0.0', namespace: e2e, name: verify-every, version: '1.0.0' }
+schedule: { every: PT1M }
 do:
   - stamp:
-      set: { ticked: true }
-EOF
-  curl -fsS -X POST -H 'Content-Type: application/yaml' --data-binary @/tmp/$name.yaml http://127.0.0.1:8081/workflows
-done
+      set: { version: '"A"', ticked: true }
 ```
 
-Useful probes (orchestrator Deployment `<workflow>-<version>`, app port 8080):
+Query instance metadata through the orchestrator sidecar at
+`GET /v1.0/workflows/dapr/<instance-id>`; it includes input, output, creation and completion times.
+The app's `GET /workflows/instances/<id>` omits those timestamps. Inspect jobs using the SDK's
+`ListJobsAsync`: Dapr 1.18.2's HTTP GetJob endpoint cannot JSON-encode the SDK's custom protobuf
+payload type (`dapr.io/schedule/jobpayload`) and returns 500, although the stored job is valid.
+The read-only SDK probe was executed in the scheduler container with its existing environment.
 
-```bash
-kubectl -n dws-e2e get cm -l dws.io/trigger=time -o custom-columns=NAME:.metadata.name,JSON:.data.trigger\\.json
-kubectl -n dws-e2e logs deploy/dws-schedule-time -c schedule-time | grep -E 'dws-sched|dws-after|Fire'
-# status <orchestrator-deployment> <instance-id>: through the API server's pod proxy (no tools needed in the image)
-status() {
-  pod=$(kubectl -n dws-e2e get pod -l "dws.io/workflow=${1%-v*}" -o jsonpath='{.items[0].metadata.name}')
-  kubectl get --raw "/api/v1/namespaces/dws-e2e/pods/$pod:8080/proxy/workflows/instances/$2"
-}
-```
+Selected metadata and job observations are retained in
+[scheduling-phase6a-observations.json](scheduling-phase6a-observations.json). Temporary build logs,
+full observations and helper scripts were kept under `/tmp/scheduling-6a` during the session;
+they are not durable repository evidence. Dapr 1.18.7 and all-rollout version affinity remain
+unverified, independently of the auth blocker.
 
-## 9.1 Fires and instance IDs
+## Cleanup
 
-| Check | Expected | Observed |
-|---|---|---|
-| Trigger ConfigMaps | three `dws-trigger-<w>-<v>` with `kind` every/cron/after and `schedule` `PT1M` / `*/2 * * * *` / `PT30S` | |
-| `every: PT1M` | one instance per minute, IDs `dws-sched:tick-every:<anchor + n·60s, yyyyMMddTHHmmssZ>`, first one ~1 min after registration | |
-| `cron: */2` | instances at even minutes only, IDs `dws-sched:tick-cron:<yyyyMMddTHHmm00Z>` | |
-| `after: PT30S` | `dws-after:tick-after:1` starts at activation; `:2` starts ≥ 30 s after `:1` completed (compare `status` timestamps), never while `:1` runs | |
-| Input | every instance's input is `{}` | |
-
-## 9.2 Takeover and deletion
-
-| Check | Expected | Observed |
-|---|---|---|
-| Redeploy `tick-cron` with `cron: "1-59/2 * * * *"` | old Deployment annotated `dws.io/drain: "true"`; job `dws-sched-tick-cron` overwritten (scheduler log); next fire at an odd minute | |
-| Next fire's version | runs on the **new** version's orchestrator. Both versions share Dapr app-id `tick-cron`, so check which pod logged the start; if the draining pod served it, record that here (open question from verification, see below) | |
-| `DELETE /workflows/tick-cron` | trigger ConfigMap gone; job `dws-sched-tick-cron` deleted; no further `dws-sched:tick-cron:*` instances | |
-
-## 9.3 Restart
-
-| Check | Expected | Observed |
-|---|---|---|
-| `kubectl rollout restart deploy/dws-schedule-time` | no "overwrite" of unchanged jobs in the new pod's log; `tick-every` keeps its anchor (IDs stay on the same second-of-minute) | |
-| `after` sequence | the new pod polls `dws-after:tick-after:<n>` and continues at `n+1`; never restarts at `:1` | |
-
-## 9.4 Replicas and replayed bursts
-
-| Check | Expected | Observed |
-|---|---|---|
-| `kubectl scale deploy/dws-schedule-time --replicas=2` | one instance per fire key (no duplicate IDs; the orchestrator answers `200` to a duplicate) | |
-| Scale to 0 for ≥ 3 `every` intervals, then back to 2 | Dapr replays the missed ticks as a burst; exactly one new instance, on one fire key | |
-
-## 9.5 Machine auth on
-
-Repeat 9.1 after `helm upgrade ... --set auth.enabled=true --set auth.issuer=... --set auth.audience=...`
-and the `kubectl rollout restart` that `NOTES.txt` prints (it now includes `dws-schedule-time`).
-
-| Check | Expected | Observed |
-|---|---|---|
-| Scheduler pod | `dapr.io/api-token-secret: dws-schedule-time-dapr-api-token`, `DAPR_API_TOKEN` from that Secret | |
-| Job callbacks | `POST /job/<name>` reaches the app (scheduler log shows fires) | |
-| Starts | instances start; no `401` in the `daprd` logs of `dws-schedule-time` or any orchestrator | |
-
-## Open question carried into this run
-
-Orchestrator versions of one workflow share the Dapr app-id (the workflow name), and the trigger's
-`appId` is that name. Service invocation during a rollout may therefore reach the draining version.
-9.2 must record which pod served the first post-takeover fire; if it is the draining one, the spec
-scenario "the next fire starts an instance on version B's orchestrator app-id" needs either a
-controller change (per-version app-ids) or a relaxed scenario before archive.
+Deleted all verification workflows through their controller APIs (HTTP 204). Both namespaces'
+SDK Jobs lists were then empty (`[]`), so no verification jobs were left behind. The temporary
+Helm releases were uninstalled and their namespaces were submitted for deletion. Node-local
+build-image cache entries were retained.

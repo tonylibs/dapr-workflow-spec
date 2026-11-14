@@ -192,3 +192,12 @@ Not-found must be detected as empty name or epoch `createdAt`. The scheduler's s
 2. **Decided:** the spec no longer says "Missed fires SHALL NOT be replayed". It says the scheduler
    does no catch-up of its own and that replayed ticks collapse onto one instance.
 3. Not verified: `429` handling, the `auth.enabled=true` path (task 9.5), Dapr 1.18.7.
+
+## Phase 6a live verification (2026-11-14)
+
+[Live evidence and follow-ups](../roadmaps/scheduling-phase6a-evidence.md) record group 9 on
+Kubernetes 1.34.3 / Dapr 1.18.2 with branch-built images. Initial fires, takeover/deletion and
+restart checks passed. Downtime replay failed during initial cluster synchronization;
+auth-enabled workflow starts failed with 401 because the invocation client did not supply
+the sidecar API token. Tasks 9.4 and 9.5 remain open; this change is not ready to archive.
+The run also needed a controller jsii cache workaround. It does not verify Dapr 1.18.7.

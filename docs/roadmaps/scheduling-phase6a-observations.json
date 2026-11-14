@@ -1,0 +1,866 @@
+{
+  "sourceCommit": "f4ed1bce72bc6b4ed2eb2078a9f4a01e62f1f8c8",
+  "cluster": "docker-desktop",
+  "kubernetes": "v1.34.3",
+  "dapr": "1.18.2",
+  "observations": [
+    {
+      "at": "2026-11-14T18:39:29.888696+00:00",
+      "name": "triggers",
+      "data": [
+        {
+          "workflow": "tick-after",
+          "version": "vcea8d762",
+          "appId": "tick-after",
+          "kind": "after",
+          "schedule": "PT30S"
+        },
+        {
+          "workflow": "tick-cron",
+          "version": "vb1d69e3d",
+          "appId": "tick-cron",
+          "kind": "cron",
+          "schedule": "*/2 * * * *"
+        },
+        {
+          "workflow": "tick-every",
+          "version": "veeb82e0d",
+          "appId": "tick-every",
+          "kind": "every",
+          "schedule": "PT1M"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-14T18:40:34.199378+00:00",
+      "name": "deploy-verify-every",
+      "data": {
+        "workflow": "verify-every",
+        "versionId": "v28575cd0",
+        "version": "verify-every@v28575cd0",
+        "created": true
+      }
+    },
+    {
+      "at": "2026-11-14T18:40:34.349795+00:00",
+      "name": "deploy-verify-cron",
+      "data": {
+        "workflow": "verify-cron",
+        "versionId": "v93fb64b1",
+        "version": "verify-cron@v93fb64b1",
+        "created": true
+      }
+    },
+    {
+      "at": "2026-11-14T18:40:34.501919+00:00",
+      "name": "deploy-verify-after",
+      "data": {
+        "workflow": "verify-after",
+        "versionId": "vdbd6a04e",
+        "version": "verify-after@vdbd6a04e",
+        "created": true
+      }
+    },
+    {
+      "at": "2026-11-14T18:40:34.634653+00:00",
+      "name": "triggers",
+      "data": [
+        {
+          "workflow": "verify-after",
+          "version": "vdbd6a04e",
+          "appId": "verify-after",
+          "kind": "after",
+          "schedule": "PT30S"
+        },
+        {
+          "workflow": "verify-cron",
+          "version": "v93fb64b1",
+          "appId": "verify-cron",
+          "kind": "cron",
+          "schedule": "*/2 * * * *"
+        },
+        {
+          "workflow": "verify-every",
+          "version": "v28575cd0",
+          "appId": "verify-every",
+          "kind": "every",
+          "schedule": "PT1M"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-14T18:41:37.056754+00:00",
+      "name": "after-1",
+      "data": {
+        "instanceID": "dws-after:verify-after:1",
+        "workflowName": "verify-after",
+        "createdAt": "2026-11-14T18:40:52.328009868Z",
+        "lastUpdatedAt": "2026-11-14T18:41:02.834090178Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"A\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T18:41:39.502481+00:00",
+      "name": "initial-live-state",
+      "data": {
+        "dws-schedule-time||after:verify-after": {
+          "version": "3",
+          "value": {
+            "version": "vdbd6a04e",
+            "appId": "verify-after",
+            "seq": 2,
+            "phase": "running"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-every:20261114T184134Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:41:35.302Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-after:verify-after:2": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:41:35.432Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-after:verify-after:1": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:40:52.477Z"
+          }
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T18:41:46.976571+00:00",
+      "name": "every-1",
+      "data": {
+        "instanceID": "dws-sched:verify-every:20261114T184134Z",
+        "workflowName": "verify-every",
+        "createdAt": "2026-11-14T18:41:35.136807662Z",
+        "lastUpdatedAt": "2026-11-14T18:41:35.569163701Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"A\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T18:41:47.004887+00:00",
+      "name": "after-2",
+      "data": {
+        "instanceID": "dws-after:verify-after:2",
+        "workflowName": "verify-after",
+        "createdAt": "2026-11-14T18:41:35.388058819Z",
+        "lastUpdatedAt": "2026-11-14T18:41:46.308885163Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"A\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T18:42:23.745158+00:00",
+      "name": "cron-first",
+      "data": {
+        "instanceID": "dws-sched:verify-cron:20261114T184200Z",
+        "workflowName": "verify-cron",
+        "createdAt": "2026-11-14T18:42:00.200317786Z",
+        "lastUpdatedAt": "2026-11-14T18:42:00.695272704Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"A\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T18:42:37.120718+00:00",
+      "name": "restart-anchors-unchanged",
+      "data": [
+        {
+          "Name": "dws-after-poll-verify-after",
+          "Schedule": "@every 15s",
+          "Payload": "{\"workflow\":\"verify-after\",\"version\":\"\",\"appId\":\"verify-after\",\"kind\":\"after\",\"schedule\":\"15s\",\"anchor\":\"2026-11-14T18:40:34.481Z\"}"
+        },
+        {
+          "Name": "dws-after-start-verify-after",
+          "Schedule": "2026-11-14T18:43:04.5064612+00:00",
+          "Payload": "{\"workflow\":\"verify-after\",\"version\":\"vdbd6a04e\",\"appId\":\"verify-after\",\"kind\":\"after\",\"schedule\":\"PT30S\",\"anchor\":\"2026-11-14T18:42:34.512Z\"}"
+        },
+        {
+          "Name": "dws-sched-verify-cron",
+          "Schedule": "0 */2 * * * *",
+          "Payload": "{\"workflow\":\"verify-cron\",\"version\":\"v93fb64b1\",\"appId\":\"verify-cron\",\"kind\":\"cron\",\"schedule\":\"*/2 * * * *\",\"anchor\":\"2026-11-14T18:40:34.322Z\"}"
+        },
+        {
+          "Name": "dws-sched-verify-every",
+          "Schedule": "@every 1m",
+          "Payload": "{\"workflow\":\"verify-every\",\"version\":\"v28575cd0\",\"appId\":\"verify-every\",\"kind\":\"every\",\"schedule\":\"PT1M\",\"anchor\":\"2026-11-14T18:40:34.180Z\"}"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-14T18:42:39.572373+00:00",
+      "name": "restart-after-sequence",
+      "data": {
+        "dws-schedule-time||claim:dws-after:verify-after:3": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:42:20.763Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-every:20261114T184234Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:42:34.238Z"
+          }
+        },
+        "dws-schedule-time||after:verify-after": {
+          "version": "6",
+          "value": {
+            "version": "vdbd6a04e",
+            "appId": "verify-after",
+            "seq": 3,
+            "phase": "waiting",
+            "readyAt": "2026-11-14T18:43:04.506Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-every:20261114T184134Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:41:35.302Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-after:verify-after:2": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:41:35.432Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-after:verify-after:1": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:40:52.477Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-cron:20261114T184200Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:42:00.431Z"
+          }
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T18:42:39.835404+00:00",
+      "name": "deploy-verify-cron",
+      "data": {
+        "workflow": "verify-cron",
+        "versionId": "v09baa58f",
+        "version": "verify-cron@v09baa58f",
+        "created": true
+      }
+    },
+    {
+      "at": "2026-11-14T18:42:39.959435+00:00",
+      "name": "takeover-deployments",
+      "data": [
+        [
+          "verify-cron-v09baa58f",
+          {
+            "deployment.kubernetes.io/revision": "1"
+          }
+        ],
+        [
+          "verify-cron-v93fb64b1",
+          {
+            "deployment.kubernetes.io/revision": "1",
+            "dws.io/drain": "true"
+          }
+        ]
+      ]
+    },
+    {
+      "at": "2026-11-14T18:42:52.707044+00:00",
+      "name": "restart-after-3",
+      "data": {
+        "instanceID": "dws-after:verify-after:3",
+        "workflowName": "verify-after",
+        "createdAt": "2026-11-14T18:42:20.734828104Z",
+        "lastUpdatedAt": "2026-11-14T18:42:31.012326712Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"A\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T18:42:52.745483+00:00",
+      "name": "restart-every-2",
+      "data": {
+        "instanceID": "dws-sched:verify-every:20261114T184234Z",
+        "workflowName": "verify-every",
+        "createdAt": "2026-11-14T18:42:34.214225206Z",
+        "lastUpdatedAt": "2026-11-14T18:42:34.402496660Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"A\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T18:43:23.720473+00:00",
+      "name": "takeover-fire",
+      "data": {
+        "instanceID": "dws-sched:verify-cron:20261114T184300Z",
+        "workflowName": "verify-cron",
+        "createdAt": "2026-11-14T18:43:00.124048983Z",
+        "lastUpdatedAt": "2026-11-14T18:43:00.458128743Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"B\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T18:43:24.384597+00:00",
+      "name": "takeover-jobs",
+      "data": [
+        {
+          "Name": "dws-after-poll-verify-after",
+          "Schedule": "@every 15s",
+          "Payload": "{\"workflow\":\"verify-after\",\"version\":\"\",\"appId\":\"verify-after\",\"kind\":\"after\",\"schedule\":\"15s\",\"anchor\":\"2026-11-14T18:40:34.481Z\"}"
+        },
+        {
+          "Name": "dws-after-start-verify-after",
+          "Schedule": "2026-11-14T18:43:50.3524416+00:00",
+          "Payload": "{\"workflow\":\"verify-after\",\"version\":\"vdbd6a04e\",\"appId\":\"verify-after\",\"kind\":\"after\",\"schedule\":\"PT30S\",\"anchor\":\"2026-11-14T18:43:20.360Z\"}"
+        },
+        {
+          "Name": "dws-sched-verify-cron",
+          "Schedule": "0 1-59/2 * * * *",
+          "Payload": "{\"workflow\":\"verify-cron\",\"version\":\"v09baa58f\",\"appId\":\"verify-cron\",\"kind\":\"cron\",\"schedule\":\"1-59/2 * * * *\",\"anchor\":\"2026-11-14T18:42:39.854Z\"}"
+        },
+        {
+          "Name": "dws-sched-verify-every",
+          "Schedule": "@every 1m",
+          "Payload": "{\"workflow\":\"verify-every\",\"version\":\"v28575cd0\",\"appId\":\"verify-every\",\"kind\":\"every\",\"schedule\":\"PT1M\",\"anchor\":\"2026-11-14T18:40:34.180Z\"}"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-14T18:43:24.474208+00:00",
+      "name": "takeover-deployments-after-fire",
+      "data": [
+        [
+          "verify-cron-v09baa58f",
+          {
+            "deployment.kubernetes.io/revision": "1"
+          }
+        ],
+        [
+          "verify-cron-v93fb64b1",
+          {
+            "deployment.kubernetes.io/revision": "1",
+            "dws.io/drain": "true"
+          }
+        ]
+      ]
+    },
+    {
+      "at": "2026-11-14T18:43:36.912835+00:00",
+      "name": "deleted-cron-jobs",
+      "data": [
+        {
+          "Name": "dws-after-poll-verify-after",
+          "Schedule": "@every 15s",
+          "Payload": "{\"workflow\":\"verify-after\",\"version\":\"\",\"appId\":\"verify-after\",\"kind\":\"after\",\"schedule\":\"15s\",\"anchor\":\"2026-11-14T18:40:34.481Z\"}"
+        },
+        {
+          "Name": "dws-after-start-verify-after",
+          "Schedule": "2026-11-14T18:43:50.3524416+00:00",
+          "Payload": "{\"workflow\":\"verify-after\",\"version\":\"vdbd6a04e\",\"appId\":\"verify-after\",\"kind\":\"after\",\"schedule\":\"PT30S\",\"anchor\":\"2026-11-14T18:43:20.360Z\"}"
+        },
+        {
+          "Name": "dws-sched-verify-every",
+          "Schedule": "@every 1m",
+          "Payload": "{\"workflow\":\"verify-every\",\"version\":\"v28575cd0\",\"appId\":\"verify-every\",\"kind\":\"every\",\"schedule\":\"PT1M\",\"anchor\":\"2026-11-14T18:40:34.180Z\"}"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-14T18:43:37.019152+00:00",
+      "name": "deleted-cron-configmaps",
+      "data": []
+    },
+    {
+      "at": "2026-11-14T18:43:57.727916+00:00",
+      "name": "two-replica-every",
+      "data": {
+        "instanceID": "dws-sched:verify-every:20261114T184334Z",
+        "workflowName": "verify-every",
+        "createdAt": "2026-11-14T18:43:35.049768173Z",
+        "lastUpdatedAt": "2026-11-14T18:43:35.268771069Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"A\",\"ticked\":true}"
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T18:44:01.116926+00:00",
+      "name": "before-downtime-state",
+      "data": {
+        "dws-schedule-time||claim:dws-after:verify-after:3": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:42:20.763Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-every:20261114T184234Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:42:34.238Z"
+          }
+        },
+        "dws-schedule-time||after:verify-after": {
+          "version": "9",
+          "value": {
+            "version": "vdbd6a04e",
+            "appId": "verify-after",
+            "seq": 5,
+            "phase": "running"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-every:20261114T184134Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:41:35.302Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-cron:20261114T184300Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:43:00.221Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-after:verify-after:5": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:43:51.067Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-after:verify-after:2": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:41:35.432Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-after:verify-after:1": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:40:52.477Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-every:20261114T184334Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:43:35.077Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-after:verify-after:4": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:43:04.629Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-cron:20261114T184200Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:42:00.431Z"
+          }
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T18:44:01.239940+00:00",
+      "name": "before-downtime-pods",
+      "data": [
+        "dws-schedule-time-86f4679795-b7m8n",
+        "dws-schedule-time-86f4679795-hvf8z"
+      ]
+    },
+    {
+      "at": "2026-11-14T18:44:47.749470+00:00",
+      "name": "deploy-auth-every",
+      "data": {
+        "workflow": "auth-every",
+        "versionId": "ve4b21f0e",
+        "version": "auth-every@ve4b21f0e",
+        "created": true
+      }
+    },
+    {
+      "at": "2026-11-14T18:44:47.899499+00:00",
+      "name": "deploy-auth-cron",
+      "data": {
+        "workflow": "auth-cron",
+        "versionId": "va6fe844c",
+        "version": "auth-cron@va6fe844c",
+        "created": true
+      }
+    },
+    {
+      "at": "2026-11-14T18:44:48.094831+00:00",
+      "name": "deploy-auth-after",
+      "data": {
+        "workflow": "auth-after",
+        "versionId": "vcb26baa2",
+        "version": "auth-after@vcb26baa2",
+        "created": true
+      }
+    },
+    {
+      "at": "2026-11-14T18:44:48.196437+00:00",
+      "name": "triggers",
+      "data": [
+        {
+          "workflow": "auth-after",
+          "version": "vcb26baa2",
+          "appId": "auth-after",
+          "kind": "after",
+          "schedule": "PT30S"
+        },
+        {
+          "workflow": "auth-cron",
+          "version": "va6fe844c",
+          "appId": "auth-cron",
+          "kind": "cron",
+          "schedule": "*/2 * * * *"
+        },
+        {
+          "workflow": "auth-every",
+          "version": "ve4b21f0e",
+          "appId": "auth-every",
+          "kind": "every",
+          "schedule": "PT1M"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-14T18:45:39.651656+00:00",
+      "name": "auth-status-without-token",
+      "data": {
+        "http": 401,
+        "body": "invalid api token\n"
+      }
+    },
+    {
+      "at": "2026-11-14T18:45:39.784414+00:00",
+      "name": "auth-status-with-token",
+      "data": {
+        "http": 404,
+        "body": "{\"timestamp\":\"2026-11-14T18:45:39.766Z\",\"status\":404,\"error\":\"Not Found\",\"path\":\"/workflows/instances/dws-after:auth-after:1\"}"
+      }
+    },
+    {
+      "at": "2026-11-14T18:45:39.987279+00:00",
+      "name": "auth-token-wiring",
+      "data": {
+        "annotation": "dws-6a-auth-schedule-time-dapr-api-token",
+        "env": {
+          "name": "DAPR_API_TOKEN",
+          "valueFrom": {
+            "secretKeyRef": {
+              "key": "token",
+              "name": "dws-6a-auth-schedule-time-dapr-api-token"
+            }
+          }
+        },
+        "tokenLength": 48
+      }
+    },
+    {
+      "at": "2026-11-14T18:48:08.549787+00:00",
+      "name": "before-recovery-state",
+      "data": {
+        "dws-schedule-time||claim:dws-after:verify-after:3": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:42:20.763Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-every:20261114T184234Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:42:34.238Z"
+          }
+        },
+        "dws-schedule-time||after:verify-after": {
+          "version": "9",
+          "value": {
+            "version": "vdbd6a04e",
+            "appId": "verify-after",
+            "seq": 5,
+            "phase": "running"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-every:20261114T184134Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:41:35.302Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-cron:20261114T184300Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:43:00.221Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-after:verify-after:5": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:43:51.067Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-after:verify-after:2": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:41:35.432Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-after:verify-after:1": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:40:52.477Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-every:20261114T184334Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:43:35.077Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-after:verify-after:4": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:43:04.629Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-cron:20261114T184200Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:42:00.431Z"
+          }
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T18:49:02.298453+00:00",
+      "name": "after-recovery-state",
+      "data": {
+        "dws-schedule-time||claim:dws-after:verify-after:3": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:42:20.763Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-every:20261114T184234Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:42:34.238Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-every:20261114T184834Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:48:35.432Z"
+          }
+        },
+        "dws-schedule-time||after:verify-after": {
+          "version": "11",
+          "value": {
+            "version": "vdbd6a04e",
+            "appId": "verify-after",
+            "seq": 6,
+            "phase": "running"
+          }
+        },
+        "dws-schedule-time||claim:dws-after:verify-after:6": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:48:39.638Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-every:20261114T184134Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:41:35.302Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-cron:20261114T184300Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:43:00.221Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-after:verify-after:5": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:43:51.067Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-after:verify-after:2": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:41:35.432Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-after:verify-after:1": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:40:52.477Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-every:20261114T184334Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:43:35.077Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-after:verify-after:4": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:43:04.629Z"
+          }
+        },
+        "dws-schedule-time||claim:dws-sched:verify-cron:20261114T184200Z": {
+          "version": "2",
+          "value": {
+            "state": "started",
+            "at": "2026-11-14T18:42:00.431Z"
+          }
+        }
+      }
+    },
+    {
+      "at": "2026-11-14T18:49:02.356435+00:00",
+      "name": "recovery-every-20261114T184734Z",
+      "data": {
+        "http": 404,
+        "body": "{\"errorCode\":\"ERR_INSTANCE_ID_NOT_FOUND\",\"message\":\"unable to find workflow with the provided instance ID: dws-sched:verify-every:20261114T184734Z\"}"
+      }
+    },
+    {
+      "at": "2026-11-14T18:49:02.389272+00:00",
+      "name": "recovery-every-20261114T184834Z",
+      "data": {
+        "instanceID": "dws-sched:verify-every:20261114T184834Z",
+        "workflowName": "verify-every",
+        "createdAt": "2026-11-14T18:48:35.394292398Z",
+        "lastUpdatedAt": "2026-11-14T18:48:35.779869443Z",
+        "runtimeStatus": "COMPLETED",
+        "properties": {
+          "dapr.workflow.input": "{}",
+          "dapr.workflow.output": "{\"version\":\"A\",\"ticked\":true}"
+        }
+      }
+    }
+  ],
+  "recoveryCallbacks": {
+    "everyCallbacks": [
+      "[pod/dws-schedule-time-86f4679795-2ggvv/schedule-time] 2026-11-14T18:48:35.443275075Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 200 0 - 104.0541ms",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:04.033513368Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 499 - - 23.3199ms",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:04.090881547Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 500 0 - 61.8216ms",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:04.099558571Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 500 0 - 1.0642ms",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:04.118576023Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 500 0 - 0.7916ms",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:04.135307011Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 500 0 - 0.6165ms",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:04.170575074Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 500 0 - 0.7206ms",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:04.184184226Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 500 0 - 3.1327ms",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:04.192720189Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 500 0 - 0.5163ms",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:04.207821099Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 500 0 - 0.6311ms",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:04.223213723Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 500 0 - 0.6992ms",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:04.234626172Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 500 0 - 0.7041ms",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:04.248559737Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 500 0 - 1.1365ms",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:04.277342524Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 500 0 - 1.6444ms",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:04.287294505Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 500 0 - 0.5640ms",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:04.303353814Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 500 0 - 0.8469ms",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:04.332039062Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 500 0 - 0.9637ms",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:04.344410222Z       Request finished HTTP/1.1 POST http://127.0.0.1:8080/job/dws-sched-verify-every - 500 0 - 0.9560ms"
+    ],
+    "clusterLists": [
+      "[pod/dws-schedule-time-86f4679795-2ggvv/schedule-time] 2026-11-14T18:48:05.578830023Z       Initial cluster list: 2 trigger ConfigMaps, 2 Deployments",
+      "[pod/dws-schedule-time-86f4679795-hbzsm/schedule-time] 2026-11-14T18:48:05.293481041Z       Initial cluster list: 2 trigger ConfigMaps, 2 Deployments"
+    ]
+  },
+  "authFailures": [
+    "      First after start failed for workflow auth-after instance dws-after:auth-after:1: HTTP 401; the poll job retries it",
+    "      Fire refused for workflow auth-every fire key dws-sched:auth-every:20261114T184547Z: HTTP 401",
+    "      Fire refused for workflow auth-cron fire key dws-sched:auth-cron:20261114T184600Z: HTTP 401"
+  ],
+  "cleanup": {
+    "workflowDeleteStatuses": {
+      "verify-every": 204,
+      "verify-after": 204,
+      "auth-every": 204,
+      "auth-cron": 204,
+      "auth-after": 204
+    },
+    "remainingJobs": {
+      "dws-scheduling-6a": [],
+      "dws-scheduling-6a-auth": []
+    }
+  }
+}
