@@ -4,7 +4,8 @@
   orchestrator's `POST /workflows/{name}/instances` (`WorkflowController.start`), which always
   generates the instance ID. The cluster is the controller's only store: every resource carries
   `dws.io/workflow`, `dws.io/version` and `dws.io/managed-by`. An old version's orchestrator
-  Deployment is labeled `dws.io/drain` when a new version takes over, and
+  Deployment is annotated `dws.io/drain: "true"` (an annotation, not a label;
+  `StackApplier.isDraining`) when a new version takes over, and
   `StackReader.current` defines the current version as the non-draining one.
 - **Source idea.** `docs/draft-scheduler-event-trigger-split.md` splits Phase 6 into separate
   trigger components. This change is Phase 6a. Decisions taken for this change:
@@ -96,7 +97,9 @@ The version ID is still the content digest of the definition text. Nothing chang
 
 The scheduler runs two informers in its namespace: trigger ConfigMaps and managed orchestrator
 Deployments. It applies the same rule as `StackReader.current`: the active version is the one whose
-Deployment is not labeled `dws.io/drain`. This makes the drain label part of a cross-package
+Deployment does not carry the `dws.io/drain: "true"` annotation (it is an annotation, not a
+label, so the scheduler cannot select on it; it filters informer results instead). This makes the
+drain annotation part of a cross-package
 contract. The root `CLAUDE.md` contract section and a controller-side test pin it, as was done for
 `OrchestratorEnvContractTest`.
 
@@ -110,7 +113,9 @@ The scheduler registers job `dws-sched-<workflow>`. Its data is
 
 Reconcile reads the existing job (`GetJob`) and overwrites only when version, kind or schedule
 differ. This keeps an `every` anchor stable across restarts and across replicas that reconcile
-concurrently. Handlers are mapped with the SDK's job-handler endpoint (`/job/<name>`).
+concurrently. The job callback `POST /job/<name>` is mapped by hand rather than with the SDK's
+`MapDaprScheduledJobHandler`, so the handler decides explicitly between `200` (done or dropped) and
+`500` (Dapr retries per the job's failure policy).
 
 Why not a cron binding (draft D2): a binding fires in every replica, and with N replicas it would
 start N instances. Jobs deliver each trigger to one replica of the app-id, and the Scheduler service
@@ -133,17 +138,24 @@ Fire keys:
 - `every`: the tick index from the anchor stored in the job data,
   `anchor + floor((now − anchor) / interval) × interval`, rendered as UTC `yyyyMMddTHHmmssZ`.
 - `after`: a sequence number (Decision 7).
+- Early-delivery tolerance (implementation refinement, `FireKeys`): `now` is first moved forward by
+  2 s, capped at a quarter of an `every` interval. Without it, a scheduler clock slightly behind the
+  Dapr Scheduler's puts an on-time delivery just before its due time and onto the previous key, while
+  the retry lands on the right one, so one fire starts two instances.
 
 The spike showed the job callback carries only the raw payload, with no due time, so the key is
 always computed as above. Because it derives from the delivery time, ticks that Dapr replays after
 downtime (see Decision 8) map to one key and collapse onto one instance.
 
-The start seam is an `IWorkflowStarter` with `StartAsync(target, instanceId, input)` and
-`GetStatusAsync(target, instanceId)`:
+The start seam is an `IWorkflowStarter` with `StartAsync(appId, workflow, instanceId, inputJson)`
+(outcome `Started`, `Retryable` or `NonRetryable`) and `GetStatusAsync(appId, instanceId)` (`Running`,
+`Terminal`, `NotFound` or `Error`, read from the orchestrator's `runtimeStatus`):
 - **(a) `CrossAppWorkflowStarter`.** `DaprWorkflowClient` against the orchestrator's app-id.
   **Rejected by the spike (ADR 0013, Amendment 1):** the client has no target app-id and always
   schedules into its own app-id's engine, and a duplicate ID replaces a completed instance. Not built.
-- **(b) `OrchestratorInvokeStarter`** (the mechanism). `DaprClient` service invocation, with
+- **(b) `OrchestratorInvokeStarter`** (the mechanism). Dapr service invocation through the
+  `HttpClient` from `DaprClient.CreateInvokeHttpClient(daprApiToken: …)`; the token must be passed
+  explicitly, because that factory does not read `DAPR_API_TOKEN` (live run, task 9.5), with
   `Content-Type: application/json` (the orchestrator answers `400` without it):
   - start: `POST workflows/{name}/instances?instanceId=…` on the orchestrator's app-id; `202` and
     `200` both mean success;
@@ -200,6 +212,10 @@ These close draft D12 and D13, and the ADR records them:
 - The minimum interval is 1 s.
 - Job failure policy: constant, 3 retries, 10 s apart. The handler returns failure for
   transport/5xx/429 and success after logging for any other 4xx (non-retryable).
+- Live finding (task 9.4): the 10 s spacing applies to on-time fires only. Ticks Dapr replays after
+  downtime are overdue, and their retries arrive immediately, all before the scheduler's first full
+  cluster list. Job callbacks therefore wait for that list (up to 30 s, `InitialSyncWait`) instead of
+  answering retry, and keep the fire key of their delivery time.
 - Fires missed beyond retries are dropped and logged at error level. The scheduler does no catch-up
   of its own, but Dapr replays ticks missed while the app was down as a burst on recovery (spike:
   4 callbacks in 25 ms). They collapse onto one instance through the delivery-time fire key.

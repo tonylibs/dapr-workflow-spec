@@ -1,14 +1,22 @@
-## ADDED Requirements
+# time-trigger-scheduling
+
+## Purpose
+How `dws-schedule-time` fires the DSL `schedule` time triggers (`every`, `cron`, `after`) of v1
+workflows: resolving each workflow's active trigger from the cluster, keeping one Dapr job per
+workflow, timing and fire keys per trigger kind, the durable `after` sequence, retry and replay
+behaviour, and operation with machine auth on. Introduced by scheduling Phase 6a (ADR 0013).
+
+## Requirements
 
 ### Requirement: Scheduler resolves each workflow's active trigger from the cluster
 
 Owner: `dws-schedule-time`. The scheduler SHALL watch, in its namespace, ConfigMaps labeled
 `dws.io/trigger=time` and orchestrator Deployments labeled `dws.io/managed-by=dws-controller`. A
 workflow's active trigger SHALL be the trigger config of its version whose orchestrator Deployment
-exists and is not labeled `dws.io/drain`.
+exists and is not annotated `dws.io/drain: "true"`.
 
 #### Scenario: Draining version's trigger is ignored
-- **GIVEN** versions A (labeled `dws.io/drain`) and B of `order-sync` both have trigger ConfigMaps
+- **GIVEN** versions A (annotated `dws.io/drain: "true"`) and B of `order-sync` both have trigger ConfigMaps
 - **WHEN** the scheduler resolves active triggers
 - **THEN** only version B's trigger is active for `order-sync`
 
@@ -48,7 +56,7 @@ be deleted.
 
 #### Scenario: New version takes over the schedule
 - **GIVEN** version A of `order-sync` is active with `cron: "0 * * * *"`
-- **WHEN** version B with `cron: "30 * * * *"` is deployed and version A is labeled `dws.io/drain`
+- **WHEN** version B with `cron: "30 * * * *"` is deployed and version A is annotated `dws.io/drain: "true"`
 - **THEN** job `dws-sched-order-sync` is overwritten with version B's schedule
 - **AND** the next fire starts an instance on version B's orchestrator app-id
 
@@ -141,14 +149,7 @@ the instance being awaited.
 Owner: `dws-schedule-time`. When a start fails with a transport error, 5xx or 429, the job handler SHALL
 report failure so Dapr retries the fire up to 3 times, 10 seconds apart. A fire that still fails
 SHALL be dropped and logged at error level with the workflow, fire key and cause. Other 4xx SHALL
-be logged and dropped without retry. The scheduler SHALL NOT catch up missed fires itself. Ticks
-that Dapr replays after scheduler downtime SHALL collapse onto one instance, because they share one
-fire key and the start is idempotent per instance ID.
-
-#### Scenario: Replayed burst after downtime starts one instance
-- **GIVEN** `dws-schedule-time` was down for several `every` intervals
-- **WHEN** Dapr delivers the missed ticks in a burst to two replicas
-- **THEN** exactly one instance is started, even if the workflow completes within milliseconds
+be logged and dropped without retry.
 
 #### Scenario: Target recovers within the retry window
 - **GIVEN** the orchestrator returns 503 for the first start attempt and 202 for the second
@@ -159,6 +160,17 @@ fire key and the start is idempotent per instance ID.
 - **GIVEN** the orchestrator is unreachable for longer than the retry window
 - **WHEN** a fire is handled
 - **THEN** no instance is started for that fire key, an error log names the workflow and fire key, and the next scheduled fire is attempted normally
+
+### Requirement: Missed fires are not caught up, and replayed ticks collapse
+
+Owner: `dws-schedule-time`. The scheduler SHALL NOT catch up missed fires itself. Ticks that Dapr
+replays after scheduler downtime SHALL collapse onto one instance, because they share one fire key
+and the start is idempotent per instance ID.
+
+#### Scenario: Replayed burst after downtime starts one instance
+- **GIVEN** `dws-schedule-time` was down for several `every` intervals
+- **WHEN** Dapr delivers the missed ticks in a burst to two replicas
+- **THEN** exactly one instance is started, even if the workflow completes within milliseconds
 
 ### Requirement: Job callbacks and starts work with machine auth on
 

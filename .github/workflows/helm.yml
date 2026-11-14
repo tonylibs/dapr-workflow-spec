@@ -77,6 +77,9 @@ jobs:
       - name: Verify Dapr API and app token wiring (never prints Secret data)
         run: bash ${{ env.CHART_DIR }}/tests/api-tokens-render-test.sh ${{ env.CHART_DIR }}
 
+      - name: Verify dws-schedule-time rendering (RBAC, Dapr annotations, env, schema)
+        run: bash ${{ env.CHART_DIR }}/tests/schedule-time-render-test.sh ${{ env.CHART_DIR }}
+
       - name: Template (default values)
         run: helm template dws ${{ env.CHART_DIR }} > /tmp/render-default.yaml
 
@@ -171,7 +174,9 @@ jobs:
         # Scoped off controller: controller.image.tag has no published "1.0" image
         # (dws-controller.yml only pushes latest/sha/branch tags), so leave it disabled
         # here rather than have its pod ImagePullBackOff and blow the wait timeout.
-        # admin.image.tag is overridden to "latest" for the same reason. No --wait here —
+        # admin.image.tag is overridden to "latest" for the same reason. dws-schedule-time is
+        # scoped off too: its pinned tag has no published image until its first component-release,
+        # and this job exercises admin/postgres/pubsub, not scheduling. No --wait here —
         # the explicit rollout-status steps below do the waiting (post-install hooks
         # block the `helm install` call itself until they complete, so the hook has
         # already run by the time this command returns) and, on failure, the debug
@@ -180,6 +185,7 @@ jobs:
           helm install dws ${{ env.CHART_DIR }} \
             --namespace dws-system --create-namespace \
             --set controller.enabled=false \
+            --set scheduleTime.enabled=false \
             --set postgresql.enabled=true \
             --set dapr.enabled=true \
             --set admin.image.tag=latest \
@@ -378,6 +384,7 @@ jobs:
             --namespace dws-system --create-namespace \
             --set controller.enabled=false \
             --set admin.enabled=false \
+            --set scheduleTime.enabled=false \
             --set postgresql.enabled=false \
             --set dapr.enabled=false \
             --timeout 2m

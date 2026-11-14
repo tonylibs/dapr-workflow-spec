@@ -668,6 +668,120 @@ class StackApplierTest {
     return (Map<String, Object>) resource.getAdditionalProperties().get("spec");
   }
 
+  /** {@code order.yaml} with a {@code schedule} block inserted before {@code do}. */
+  private static String scheduledOrder(String schedule) {
+    return fixture("order.yaml").replace("\ndo:\n", "\nschedule: " + schedule + "\ndo:\n");
+  }
+
+  private List<ConfigMap> triggerConfigMaps(String workflow) {
+    Map<String, String> selector = new java.util.HashMap<>(Labels.workflow(workflow));
+    selector.put(Labels.TRIGGER, Labels.TRIGGER_TIME);
+    return client.configMaps().inNamespace(NAMESPACE).withLabels(selector).list().getItems();
+  }
+
+  @Test
+  @DisplayName("apply creates the immutable trigger ConfigMap of a scheduled version")
+  void createsTriggerConfigMapForScheduledVersion() {
+    DeploymentPlan plan = compiler.compile(scheduledOrder("{ cron: \"0 0 * * *\" }"));
+
+    applier.apply(plan);
+
+    ConfigMap trigger =
+        client
+            .configMaps()
+            .inNamespace(NAMESPACE)
+            .withName(Names.triggerResource("order", plan.versionId()))
+            .get();
+    assertThat(trigger).isNotNull();
+    assertThat(trigger.getImmutable()).isTrue();
+    assertThat(trigger.getMetadata().getLabels())
+        .containsEntry(Labels.TRIGGER, Labels.TRIGGER_TIME)
+        .containsEntry(Labels.VERSION, plan.versionId());
+    assertThat(trigger.getData())
+        .containsEntry(
+            StackSynthesizer.TRIGGER_KEY,
+            "{\"workflow\":\"order\",\"version\":\""
+                + plan.versionId()
+                + "\",\"appId\":\"order\",\"kind\":\"cron\",\"schedule\":\"0 0 * * *\"}");
+  }
+
+  @Test
+  @DisplayName("apply creates no trigger ConfigMap for an unscheduled version")
+  void createsNoTriggerConfigMapForUnscheduledVersion() {
+    applier.apply(compiler.compile(fixture("order.yaml")));
+
+    assertThat(triggerConfigMaps("order")).isEmpty();
+  }
+
+  @Test
+  @DisplayName("re-applying a scheduled version is a no-op for its trigger ConfigMap")
+  void reapplyKeepsTriggerConfigMap() {
+    DeploymentPlan plan = compiler.compile(scheduledOrder("{ every: PT1H }"));
+    applier.apply(plan);
+
+    applier.apply(plan);
+
+    assertThat(triggerConfigMaps("order")).hasSize(1);
+  }
+
+  @Test
+  @DisplayName("re-applying a version deployed without its trigger ConfigMap creates it")
+  void reapplyBackfillsMissingTriggerConfigMap() {
+    DeploymentPlan plan = compiler.compile(scheduledOrder("{ every: PT1H }"));
+    applier.apply(plan);
+    client
+        .configMaps()
+        .inNamespace(NAMESPACE)
+        .withName(Names.triggerResource("order", plan.versionId()))
+        .delete();
+
+    applier.apply(plan);
+
+    assertThat(triggerConfigMaps("order")).hasSize(1);
+  }
+
+  @Test
+  @DisplayName("delete removes the trigger ConfigMap with the rest of the stack")
+  void deleteRemovesTriggerConfigMap() {
+    applier.apply(compiler.compile(scheduledOrder("{ every: PT1H }")));
+    assertThat(triggerConfigMaps("order")).hasSize(1);
+
+    applier.deleteWorkflow("order");
+
+    assertThat(triggerConfigMaps("order")).isEmpty();
+  }
+
+  @Test
+  @DisplayName("a new unscheduled version gets no trigger; the draining one keeps its own until GC")
+  void droppingTheScheduleLeavesOnlyTheDrainingVersionsTrigger() {
+    DeploymentPlan scheduled = compiler.compile(scheduledOrder("{ cron: \"0 0 * * *\" }"));
+    applier.apply(scheduled);
+    DeploymentPlan unscheduled = compiler.compile(fixture("order.yaml"));
+
+    applier.apply(unscheduled);
+
+    assertThat(triggerConfigMaps("order"))
+        .extracting(cm -> cm.getMetadata().getLabels().get(Labels.VERSION))
+        .containsExactly(scheduled.versionId());
+
+    // The drained version reports zero replicas: the reconcile GC collects it, trigger included.
+    client
+        .apps()
+        .deployments()
+        .inNamespace(NAMESPACE)
+        .withName(scheduled.orchestrator().name())
+        .editStatus(
+            d ->
+                new io.fabric8.kubernetes.api.model.apps.DeploymentBuilder(d)
+                    .withNewStatus()
+                    .withReplicas(0)
+                    .endStatus()
+                    .build());
+    applier.reconcile();
+
+    assertThat(triggerConfigMaps("order")).isEmpty();
+  }
+
   private static String fixture(String name) {
     try (var in = StackApplierTest.class.getResourceAsStream("/fixtures/" + name)) {
       if (in == null) {

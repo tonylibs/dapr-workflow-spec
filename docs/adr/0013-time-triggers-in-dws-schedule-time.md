@@ -7,7 +7,7 @@
   invocation of the orchestrator confirmed; Jobs API behaviour recorded. See Amendment 1.
 - **Context:** [`docs/draft-scheduler-event-trigger-split.md`](../draft-scheduler-event-trigger-split.md),
   [`docs/roadmaps/openworkflow-features.md`](../roadmaps/openworkflow-features.md) Phase 6,
-  `openspec/changes/scheduling-phase-6a-time-triggers`
+  `openspec/changes/archive/2026-11-14-scheduling-phase-6a-time-triggers`
 - **Related:** [ADR 0002](0002-workflow-compiler-strategy-split.md) (compiler strategies),
   [ADR 0006](0006-wait-and-listen-as-flow-controllers.md) (`listen` is not a trigger;
   `schedule.on` is an event source), [ADR 0007](0007-chart-feature-layers.md) (in progress:
@@ -191,4 +191,28 @@ Not-found must be detected as empty name or epoch `createdAt`. The scheduler's s
    Core state store too (design Decision 6, task 6.2a).
 2. **Decided:** the spec no longer says "Missed fires SHALL NOT be replayed". It says the scheduler
    does no catch-up of its own and that replayed ticks collapse onto one instance.
-3. Not verified: `429` handling, the `auth.enabled=true` path (task 9.5), Dapr 1.18.7.
+3. Not verified by the spike: `429` handling, the `auth.enabled=true` path (task 9.5), Dapr 1.18.7.
+   The auth path was subsequently verified in the follow-up live run below.
+
+## Phase 6a live verification (2026-11-14)
+
+[Live evidence and follow-ups](../roadmaps/scheduling-phase6a-evidence.md) record group 9 on
+Kubernetes 1.34.3 / Dapr 1.18.2 with branch-built images. Initial fires, takeover/deletion and
+restart checks passed. Downtime replay failed during initial cluster synchronization;
+auth-enabled workflow starts failed with 401 because the invocation client did not supply
+the sidecar API token. Tasks 9.4 and 9.5 remain open; this change is not ready to archive.
+The run also needed a controller jsii cache workaround. It does not verify Dapr 1.18.7.
+Follow-up fixes: starts now pass the sidecar API token explicitly, job callbacks
+wait for the first cluster list instead of answering retry, and the controller image disables the
+jsii package cache.
+
+**Follow-up rerun (2026-11-14, source `e7d2904`): tasks 9.4 and 9.5 passed.**
+The [rerun evidence](../roadmaps/scheduling-phase6a-evidence.md#follow-up-rerun--94-and-95-passed)
+records a rebuilt scheduler on `docker-desktop`, with two replicas and `auth.enabled=true`.
+Every, cron and after workflows completed with no 401s in the scheduler or target sidecar logs.
+After both replicas were stopped for several intervals, four replayed every ticks produced one
+completed instance, and two replayed cron ticks produced one completed instance; claims and
+individual target-sidecar start logs confirmed one start per ID. Three callbacks were canceled
+with 499 before synchronization, but subsequent deliveries succeeded. Thus the replay assertion
+passed, while cancellation-free startup was not established. The cached controller still needed
+the jsii cache workaround; its image fix and Dapr 1.18.7 remain unverified by this rerun.

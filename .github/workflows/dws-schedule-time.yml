@@ -1,0 +1,121 @@
+name: dws-schedule-time
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'dws-schedule-time-v*'
+    paths:
+      - 'dws-schedule-time/**'
+      - '.github/workflows/dws-schedule-time.yml'
+  pull_request:
+    paths:
+      - 'dws-schedule-time/**'
+      - '.github/workflows/dws-schedule-time.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: dws-schedule-time-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/dws-schedule-time
+
+jobs:
+  test:
+    name: build & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dws-schedule-time
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # The test project is named explicitly on purpose. A bare `dotnet test` in
+      # dws-schedule-time/ only sees dws-schedule-time.csproj (the app), which has no
+      # tests and excludes test/** from compilation, so it restores, runs nothing and
+      # exits 0. The controller-generated trigger fixtures live under test/fixtures/.
+      - name: Test
+        run: dotnet test test/dws-schedule-time.Tests.csproj --configuration Release
+
+  build-image:
+    name: build & push image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        # Skip on PRs: the image is built for validation but not pushed.
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=match,pattern=^dws-schedule-time-v(.*)$,group=1
+            type=sha,prefix=,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # Loaded into the local daemon rather than pushed, so the next step can
+      # run the very image that would ship.
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: dws-schedule-time
+          load: true
+          tags: dws-schedule-time:smoke
+          cache-from: type=gha,scope=dws-schedule-time
+          cache-to: type=gha,mode=max,scope=dws-schedule-time
+
+      # The scheduler boots with no Dapr sidecar and no cluster: the Kubernetes watch
+      # and reconcile loops log their failures and retry in the background while
+      # Kestrel serves /healthz. Require that answer and its body.
+      - name: Smoke-test the image
+        run: |
+          docker run -d --name dws-schedule-time-smoke -p 8080:8080 dws-schedule-time:smoke
+          for i in $(seq 1 30); do
+            if body=$(curl -fsS http://127.0.0.1:8080/healthz); then
+              echo "$body"
+              [ "$body" = '{"status":"ok"}' ] || { echo "unexpected /healthz body"; docker logs dws-schedule-time-smoke; exit 1; }
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "container did not become healthy"; docker logs dws-schedule-time-smoke; exit 1
+            fi
+            sleep 2
+          done
+          docker rm -f dws-schedule-time-smoke
+
+      # Fully cached by the build above, so this re-tags and uploads rather
+      # than rebuilding. Skipped on PRs — validated there, published on merge.
+      - name: Push
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: dws-schedule-time
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=dws-schedule-time

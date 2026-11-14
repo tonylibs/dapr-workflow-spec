@@ -6,6 +6,7 @@ import io.serverlessworkflow.api.WorkflowReader;
 import io.serverlessworkflow.api.types.Workflow;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import lombok.experimental.UtilityClass;
 
 /** Format detection and parse-or-throw, shared by the v1 and v2 compile strategies. */
@@ -47,6 +48,19 @@ public class SpecParser {
       return format.mapper().readTree(specText);
     } catch (Exception e) {
       throw new CompilationException(collectMessages(e));
+    }
+  }
+
+  /**
+   * The raw tree, or empty when the text does not parse at all. For checks that must run before the
+   * typed parse (whose SDK model cannot represent every field) without changing the error a
+   * malformed definition reports: on a failure here, the typed parse reports it as before.
+   */
+  public static Optional<JsonNode> readRaw(String specText, WorkflowFormat format) {
+    try {
+      return Optional.ofNullable(format.mapper().readTree(specText));
+    } catch (Exception e) {
+      return Optional.empty();
     }
   }
 

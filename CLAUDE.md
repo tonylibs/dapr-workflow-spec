@@ -20,12 +20,13 @@ index: a package map plus rules that apply across every package. Each package al
 | [`dws-admin`](dws-admin) | Node, TypeScript, NestJS, Drizzle | Admin/query API + lifecycle-event projection. |
 | [`dws-console`](dws-console) | TypeScript, React, TanStack Start/Router, Vite | Admin console frontend. |
 | [`dws-flow`](dws-flow) | .NET 10 | Generic `kind: flow` single-node host (early phase). |
+| [`dws-schedule-time`](dws-schedule-time) | .NET 10 | Time-trigger scheduler for `schedule.every`/`cron`/`after` of v1 workflows (scheduling Phase 6a, ADR 0013): watches trigger ConfigMaps, keeps one Dapr job per workflow, starts instances through the orchestrator. Deployed by the chart (`scheduleTime.*`, Core layer). |
 | [`dws-mid-basic`](dws-mid-basic) | Go 1.23, TinyGo 0.34.0 (pinned) | Wasm guest for daprd's `middleware.http.wasm`: adds `Authorization: Basic` on a step's sidecar (ADR 0010 Decision 4a). Image only delivers `basic.wasm` to an init container. |
 | [`dws-mid-bearer`](dws-mid-bearer) | Go 1.23 language level, TinyGo 0.34.0 | Wasm HTTP middleware guest + delivery image: adds `Authorization: Bearer` on a step's Dapr sidecar (OWS 4.1c). |
 | [`charts/dws`](charts/dws) | Helm | Chart packaging the control plane (`dws-controller`, `dws-admin` + Postgres, optional console/Dapr/Redis/Dex/APISIX). Not a code package — see its own [`README.md`](charts/dws/README.md). |
 
 `dws-call-grpc`, `dws-call-asyncapi`, `dws-call-a2a`, `dws-admin`, `dws-console`, `dws-flow`,
-`dws-mid-basic`, and `dws-mid-bearer` are not yet listed in `AGENTS.md`'s component table — that table predates them. Don't treat its absence
+`dws-schedule-time`, `dws-mid-basic`, and `dws-mid-bearer` are not yet listed in `AGENTS.md`'s component table — that table predates them. Don't treat its absence
 as "this package doesn't exist."
 
 ## Cross-cutting style rules
@@ -84,18 +85,53 @@ Types in use: `feat`, `fix`, `refactor`, `docs`, `chore`, `perf`, `ci`, `test`.
   machine-auth tokens"). Change both together. The bundled APISIX reads the admin Dapr API token
   as `DWS_ADMIN_DAPR_API_TOKEN` (`$env://` in the admin HTTPRoute); `dws.apiGateway.validate`
   fails the render if that wiring drifts.
+  `dws-schedule-time` gets its own `DAPR_API_TOKEN` the same way
+  (`<release>-schedule-time-dapr-api-token`, override `auth.apiTokens.scheduleTime.daprApi`),
+  read by `DaprClientBuilder` for jobs/state, and passed explicitly by `Program.cs` to the
+  service-invocation client, because `DaprClient.CreateInvokeHttpClient` does **not** read it from the
+  environment (Dapr .NET SDK 1.18.10; without it every trigger start gets 401, live run 9.5); no
+  app token, since its only inbound caller is its own sidecar delivering job callbacks. The chart
+  fails the render if two sidecars would share one token Secret.
 - **Structured log format** ([`docs/log-format.md`](docs/log-format.md)): `dws-controller`,
-  `dws-admin`, `dws-orchestrator`, `dws-flow` and `dws-step` each read `DWS_LOG_FORMAT` (`json`,
+  `dws-admin`, `dws-orchestrator`, `dws-flow`, `dws-step` and `dws-schedule-time` each read `DWS_LOG_FORMAT` (`json`,
   trimmed and case-insensitive; anything else means today's text) and, in JSON mode, write one
   object per line with the six keys `timestamp`, `severity`, `logger`, `message`, `trace_id`,
   `span_id` (the last two omitted outside a valid span) plus `exception.type`/`.message`/
   `.stacktrace`. Each package has its own formatter and its own golden-case test — there is no
   shared library, so a key renamed in one package and not the others is not a build error; change
-  all five and `docs/log-format.md` together. The chart renders `DWS_LOG_FORMAT` on controller and
-  admin from `observability.logs.format`; the controller stamps it on instrumented orchestrators
+  all six and `docs/log-format.md` together. The chart renders `DWS_LOG_FORMAT` on controller,
+  admin and `dws-schedule-time` from `observability.logs.format`; the controller stamps it on instrumented orchestrators
   (`OrchestratorEnvContractTest` asserts the sibling `application.yaml` reads it). Runtime-v2
   Phase 4 synthesis must stamp it on `dws-flow`/`dws-step` too. A package that reads a different
   name silently stays on text.
+- **Workflow start contract** (`dws-schedule-time` → `dws-orchestrator`; OpenSpec
+  `scheduling-phase-6a-time-triggers`, spec `workflow-start-contract`). Triggers start an instance
+  through Dapr service invocation of `POST /workflows/{name}/instances?instanceId=<id>` with
+  `Content-Type: application/json`: `202` started, `200` an instance with that ID already exists in any
+  status (nothing is restarted; Dapr alone would replace a completed one), `400` an ID outside
+  `[A-Za-z0-9:._-]{1,256}`. Instance IDs are `<source>:<workflow>:<fire-key>` with sources `dws-sched`
+  (`every`/`cron`), `dws-after` (`after`) and `dws-event` (reserved for Phase 6b). The regex lives in
+  both `WorkflowController` and `InstanceIds`; pinned by `WorkflowControllerTest` and
+  `OrchestratorInvokeStarterTests`. Change both sides together. The orchestrator's status endpoint
+  returns `404` for an unknown ID (the Java SDK's "not found" is an empty name / epoch `createdAt`,
+  never `null`); `after` polling depends on it. The scheduler reaches the orchestrator as Dapr app-id
+  `dws-schedule-time` (chart `dws.scheduleTime.fullname`): any future Dapr access-control policy on
+  orchestrator sidecars must allow that app-id, or every trigger start fails with 403.
+- **Trigger ConfigMap and drain marker** (`dws-controller` → `dws-schedule-time`; OpenSpec
+  `scheduling-phase-6a-time-triggers`, spec `workflow-schedule-compilation`). A scheduled v1
+  version gets one immutable ConfigMap `dws-trigger-<workflow>-<version>` with the standard
+  `dws.io/workflow`/`dws.io/version`/`dws.io/managed-by` labels plus `dws.io/trigger=time`, and key
+  `trigger.json` = `{workflow, version, appId, kind, schedule}` (`kind` `every`/`cron`/`after`;
+  `schedule` a canonical ISO-8601 duration or a single-spaced 5-field cron). The superseded
+  orchestrator Deployment carries the **annotation** (not a label) `dws.io/drain: "true"`; the
+  scheduler treats the non-draining version's trigger as active. `SchedulerContractTest` in
+  `dws-controller` compares `dws-schedule-time/test/fixtures/trigger-*.json` with what it renders,
+  the scheduler's `TriggerConfigTests` parse those fixtures, and `ActiveTriggersTests` pins the
+  annotation. Neither side fails to compile when the other changes: a drifted key makes the
+  scheduler skip the trigger (logged) and the workflow silently never fires. Regenerate the
+  fixtures with `./mvnw test -Dtest=SchedulerContractTest -Ddws.writeTriggerFixtures=true` and
+  update the parser in the same change. The chart's read-only scheduler Role (configmaps and
+  apps/deployments, `get`/`list`/`watch`) is part of the same contract.
 - **Step-service request/response shape** (`dws-call-http`, `dws-call-grpc`, `dws-call-openapi`,
   `dws-call-asyncapi`, `dws-run`) is consumed by `dws-orchestrator`'s retry/error-classification
   logic (`WorkflowErrors.classify`). If you change a step-service's error/response contract,
@@ -132,6 +168,7 @@ each package's own config:
 | `dws-console` | `pnpm check && pnpm typecheck && pnpm test && pnpm build` (`check` = Biome lint+format) |
 | `dws-mid-bearer` | `make lint && make test` (TinyGo only runs inside `make docker`) |
 | `dws-flow` | `dotnet test test/dws-flow.Tests.csproj` (name the test project: a bare `dotnet test` in `dws-flow/` only finds the app project, runs no tests and exits 0). No lint/format gate configured yet — no `.editorconfig`, no analyzers |
+| `dws-schedule-time` | `dotnet test test/dws-schedule-time.Tests.csproj` (name the test project, as for `dws-flow`). No lint/format gate configured yet |
 | `dws-mid-basic` | `make lint && make test && make wasm && make test-wasm`, with `GOTOOLCHAIN=go1.23.12` exported (TinyGo 0.34.0 rejects newer Go). `make wasm` needs Docker, or `TINYGO=/path/to/tinygo` pointing at TinyGo 0.34.0 exactly; see its `CLAUDE.md` |
 
 Windows: Java packages use `mvnw.cmd` instead of `./mvnw`.
@@ -150,6 +187,8 @@ bash charts/dws/tests/api-gateway-render-test.sh charts/dws
 bash charts/dws/tests/auth-pipeline-placement-test.sh charts/dws
 bash charts/dws/tests/observability-render-test.sh charts/dws
 bash charts/dws/tests/orchestrator-wiring-render-test.sh charts/dws
+bash charts/dws/tests/api-tokens-render-test.sh charts/dws
+bash charts/dws/tests/schedule-time-render-test.sh charts/dws
 ```
 
 `helm lint`/`helm template` do not run Kubernetes' apimachinery validation, so a manifest that
