@@ -16,7 +16,7 @@ and `docs/adr/0013-time-triggers-in-dws-schedule-time.md`.
 | `DWS_SCHEDULE_TIME_CLAIM_TTL` | `PT24H` | TTL of `claim:<instanceId>` state entries (ISO-8601). |
 | `POD_NAMESPACE` | service account namespace file | Namespace to watch. Without either the watch is disabled (logged at error level). |
 | `DWS_LOG_FORMAT` | text | `json` selects the contract formatter (`docs/log-format.md`). |
-| `DAPR_API_TOKEN` | unset | Read by the Dapr SDK itself (sidecar authentication), not by this app. |
+| `DAPR_API_TOKEN` | unset | Sidecar API token (chart: `dapr.io/api-token-secret`). `DaprClientBuilder` reads it for jobs and state; `Program.cs` passes it explicitly to the service-invocation client, which does not read it itself. |
 
 An invalid duration stops the host at boot. The app serves `GET /healthz` (`{"status":"ok"}`) even with
 no sidecar and no cluster; watch and reconcile failures are logged and retried in the background.
@@ -41,7 +41,7 @@ no sidecar and no cluster; watch and reconcile failures are logged and retried i
 | `dws-after-poll-<workflow>` | `@every <poll interval>` | Polls the current `after` instance. |
 | `dws-after-start-<workflow>` | one-shot, due time = terminal time + delay | Starts the next `after` instance. |
 
-Every job uses a constant failure policy: 3 retries, 10 s apart. Durations are written in Go syntax
+Every job uses a constant failure policy: 3 retries, 10 s apart. That spacing holds for an on-time fire only: ticks Dapr replays after the app was down are already overdue, and their retries arrive at once (live run, task 9.4: 4 ticks x 4 attempts within 0.2 s). So a callback that arrives before the first full cluster list is held, for up to 30 s, until the list completes instead of being answered with a retry; its fire key still comes from the delivery time. Durations are written in Go syntax
 (`PT1H30M` -> `1h30m`, `PT90S` -> `1m30s`, `PT1.5S` -> `1s500ms`). The Jobs callback is `POST /job/<name>`
 with the raw payload and no due time, so the fire key is computed from the delivery time.
 
@@ -49,8 +49,8 @@ Reconcile lists the app's jobs (`ListJobs` exists in `Dapr.Jobs` 1.18.10) and de
 `dws-sched-*`, `dws-after-poll-*` or `dws-after-start-*` job with no matching active trigger. A job is
 created if absent and overwritten only when the registered payload's version, kind or schedule differs
 (so an `every` anchor survives restarts and concurrent replicas). A fire for a workflow with no active
-trigger deletes its job and starts nothing. Before the first full cluster list, fires answer 500 (retry)
-instead of acting on an empty view.
+trigger deletes its job and starts nothing. Before the first full cluster list, a callback is held until the list completes (up to 30 s), then
+answers 500 (retry) only if it still has not, instead of acting on an empty view.
 
 ## Instance IDs and timing
 

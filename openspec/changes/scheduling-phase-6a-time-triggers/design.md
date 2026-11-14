@@ -154,7 +154,8 @@ The start seam is an `IWorkflowStarter` with `StartAsync(appId, workflow, instan
   **Rejected by the spike (ADR 0013, Amendment 1):** the client has no target app-id and always
   schedules into its own app-id's engine, and a duplicate ID replaces a completed instance. Not built.
 - **(b) `OrchestratorInvokeStarter`** (the mechanism). Dapr service invocation through the
-  `HttpClient` from `DaprClient.CreateInvokeHttpClient()`, which carries `DAPR_API_TOKEN`, with
+  `HttpClient` from `DaprClient.CreateInvokeHttpClient(daprApiToken: …)`; the token must be passed
+  explicitly, because that factory does not read `DAPR_API_TOKEN` (live run, task 9.5), with
   `Content-Type: application/json` (the orchestrator answers `400` without it):
   - start: `POST workflows/{name}/instances?instanceId=…` on the orchestrator's app-id; `202` and
     `200` both mean success;
@@ -211,6 +212,10 @@ These close draft D12 and D13, and the ADR records them:
 - The minimum interval is 1 s.
 - Job failure policy: constant, 3 retries, 10 s apart. The handler returns failure for
   transport/5xx/429 and success after logging for any other 4xx (non-retryable).
+- Live finding (task 9.4): the 10 s spacing applies to on-time fires only. Ticks Dapr replays after
+  downtime are overdue, and their retries arrive immediately, all before the scheduler's first full
+  cluster list. Job callbacks therefore wait for that list (up to 30 s, `InitialSyncWait`) instead of
+  answering retry, and keep the fire key of their delivery time.
 - Fires missed beyond retries are dropped and logged at error level. The scheduler does no catch-up
   of its own, but Dapr replays ticks missed while the app was down as a burst on recovery (spike:
   4 callbacks in 25 ms). They collapse onto one instance through the delivery-time fire key.

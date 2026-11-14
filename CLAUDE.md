@@ -87,7 +87,9 @@ Types in use: `feat`, `fix`, `refactor`, `docs`, `chore`, `perf`, `ci`, `test`.
   fails the render if that wiring drifts.
   `dws-schedule-time` gets its own `DAPR_API_TOKEN` the same way
   (`<release>-schedule-time-dapr-api-token`, override `auth.apiTokens.scheduleTime.daprApi`),
-  read by the Dapr .NET SDK (`DaprClientBuilder`, `CreateInvokeHttpClient`), never by the app; no
+  read by `DaprClientBuilder` for jobs/state, and passed explicitly by `Program.cs` to the
+  service-invocation client, because `DaprClient.CreateInvokeHttpClient` does **not** read it from the
+  environment (Dapr .NET SDK 1.18.10; without it every trigger start gets 401, live run 9.5); no
   app token, since its only inbound caller is its own sidecar delivering job callbacks. The chart
   fails the render if two sidecars would share one token Secret.
 - **Structured log format** ([`docs/log-format.md`](docs/log-format.md)): `dws-controller`,

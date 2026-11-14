@@ -31,8 +31,8 @@ spec:
         {{- if .Values.auth.enabled }}
         {{- /*
           Dapr API token for the scheduler's sidecar (auth roadmap Phase 10 pattern). The app sends
-          it on every sidecar call (jobs, state, service invocation) through the Dapr .NET SDK,
-          which reads DAPR_API_TOKEN below. No app token: the only inbound caller is its own sidecar
+          it on every sidecar call (jobs, state, service invocation): DaprClientBuilder reads
+          DAPR_API_TOKEN below, and Program.cs passes it to the invocation client, which does not. No app token: the only inbound caller is its own sidecar
           delivering job callbacks.
         */}}
         dapr.io/api-token-secret: {{ include "dws.apiTokens.secretName" (dict "root" . "component" "schedule-time" "kind" "daprApi") | quote }}
@@ -80,7 +80,7 @@ spec:
             - name: DWS_SCHEDULE_TIME_CLAIM_TTL
               value: {{ .Values.scheduleTime.claimTtl | quote }}
             {{- if .Values.auth.enabled }}
-            {{- /* Read by the Dapr .NET SDK, never by the app; always a secretKeyRef. */}}
+            {{- /* Sent on every sidecar call; Program.cs hands it to the invocation client explicitly. Always a secretKeyRef. */}}
             - name: DAPR_API_TOKEN
               {{- include "dws.apiTokens.secretKeyRef" (dict "root" . "component" "schedule-time" "kind" "daprApi") | nindent 14 }}
             {{- end }}

@@ -38,18 +38,19 @@ no tests, so it exits 0 without running anything. No lint/format gate is configu
 |---|---|---|
 | `IJobRegistry` | `DaprJobRegistry` (`DaprJobsClient`: get, list, schedule, delete) | `RecordingJobRegistry` |
 | `IVersionedStore` (claims + `after` state; first-write ETags) | `DaprVersionedStore` | `InMemoryVersionedStore` |
-| `IWorkflowStarter` | `OrchestratorInvokeStarter` (`HttpClient` from `DaprClient.CreateInvokeHttpClient()`; tested with a recording `HttpMessageHandler`) | `RecordingStarter` |
+| `IWorkflowStarter` | `OrchestratorInvokeStarter` (`HttpClient` from `CreateInvokeClient(token)`; tested with a recording `HttpMessageHandler` and a socket-level fake sidecar) | `RecordingStarter` |
 | `IClusterState` | `ClusterSnapshot`, fed by `ClusterWatcher` (`KubernetesClient` list + watch) | `StaticClusterState` |
 
 `Reconciler` (job set vs active triggers) and `AfterLifecycle` (activate/poll/one-shot) take these seams;
-`ScheduledJobHandler` handles `dws-sched-*`; `JobDispatcher` routes `POST /job/{name}` by name prefix.
+`ScheduledJobHandler` handles `dws-sched-*`; `JobDispatcher` routes `POST /job/{name}` by name prefix, after holding the callback (up to `ScheduleTimeOptions.InitialSyncWait`, 30 s) until the first full cluster list: Dapr delivers the ticks missed during downtime, and retries an overdue tick immediately, as soon as the app is reachable, so answering retry before the list completes loses them (live run task 9.4). The dispatcher reads the delivery time before waiting and passes it to `ScheduledJobHandler`, so the wait never moves a fire onto a later key.
 `ReconcileLoop` reconciles on every `ChangeSignal` and every 60 s. `CrossAppWorkflowStarter` is deliberately
 absent (ADR 0013 Amendment 1 rejected cross-app `DaprWorkflowClient` starts). `Program.cs` wiring has no unit
 test; the live paths (`Dapr*`, `ClusterWatcher`) need a sidecar or cluster.
 
 Job callbacks are mapped by hand (`app.MapPost("/job/{name}")`), not with the SDK's
 `MapDaprScheduledJobHandler`, so the handler decides explicitly between 200 (done or dropped) and 500
-(Dapr retries: 3 times, 10 s apart). Dapr does not retry 400/404.
+(Dapr retries: 3 times, 10 s apart for an on-time fire; a tick replayed after downtime is overdue and its
+retries arrive immediately, live run 9.4). Dapr does not retry 400/404.
 
 ## Cross-package contracts this package consumes
 
@@ -69,10 +70,15 @@ Change both sides together; none is a compile error.
   which absorbs a little early delivery) and `dws-after:<w>:<seq>`; `dws-event` is reserved for Phase 6b
   `dws-schedule-event`. 1-256 characters of `[A-Za-z0-9:._-]`: `InstanceIds.IsValid` mirrors the orchestrator's
   regex, keep them identical.
-- **Dapr service invocation**: `DaprClient.CreateInvokeHttpClient()` routes `http://<app-id>/<path>` to the
-  sidecar's `/v1.0/invoke/<app-id>/method/<path>` with the query intact and adds `DAPR_API_TOKEN` when set. A test
-  composes the SDK's `InvocationHandler` to pin that rewrite.
-- **`DAPR_API_TOKEN`**: stamped by the chart, read by the Dapr SDK (`DaprClientBuilder`,
-  `CreateInvokeHttpClient`); never read it here.
+- **Dapr service invocation**: `OrchestratorInvokeStarter.CreateInvokeClient(token)` wraps
+  `DaprClient.CreateInvokeHttpClient`, which routes `http://<app-id>/<path>` to the sidecar's
+  `/v1.0/invoke/<app-id>/method/<path>` with the query intact. A test composes the SDK's `InvocationHandler`
+  to pin that rewrite.
+- **`DAPR_API_TOKEN`**: stamped by the chart. `DaprClientBuilder` (jobs, state store) reads it from the
+  environment, but `CreateInvokeHttpClient` does **not** (Dapr .NET SDK 1.18.10; live run task 9.5: every start
+  got 401). So `Program.cs` reads it, the only `Environment.` read of a secret, and passes it to
+  `CreateInvokeClient`; it is never put in `ScheduleTimeOptions`, which could be logged.
+  `OrchestratorInvokeStarterTests.SendsTheDaprApiTokenThroughTheRealInvokeClient` checks the header on a real
+  socket and `SourceScanTests.ProgramHandsTheDaprApiTokenToTheInvokeClient` pins the `Program.cs` wiring.
 - **`DWS_LOG_FORMAT`**: `DwsJsonConsoleFormatter` is a copy of `dws-flow`'s, pinned by the same 12 golden cases
   in `DwsJsonConsoleFormatterTests`; it is one of the packages listed in `docs/log-format.md`.
