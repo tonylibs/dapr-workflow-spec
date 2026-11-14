@@ -20,12 +20,13 @@ index: a package map plus rules that apply across every package. Each package al
 | [`dws-admin`](dws-admin) | Node, TypeScript, NestJS, Drizzle | Admin/query API + lifecycle-event projection. |
 | [`dws-console`](dws-console) | TypeScript, React, TanStack Start/Router, Vite | Admin console frontend. |
 | [`dws-flow`](dws-flow) | .NET 10 | Generic `kind: flow` single-node host (early phase). |
+| [`dws-schedule-time`](dws-schedule-time) | .NET 10 | Time-trigger scheduler for `schedule.every`/`cron`/`after` (scheduling Phase 6a, ADR 0013; in progress: start contract only so far). |
 | [`dws-mid-basic`](dws-mid-basic) | Go 1.23, TinyGo 0.34.0 (pinned) | Wasm guest for daprd's `middleware.http.wasm`: adds `Authorization: Basic` on a step's sidecar (ADR 0010 Decision 4a). Image only delivers `basic.wasm` to an init container. |
 | [`dws-mid-bearer`](dws-mid-bearer) | Go 1.23 language level, TinyGo 0.34.0 | Wasm HTTP middleware guest + delivery image: adds `Authorization: Bearer` on a step's Dapr sidecar (OWS 4.1c). |
 | [`charts/dws`](charts/dws) | Helm | Chart packaging the control plane (`dws-controller`, `dws-admin` + Postgres, optional console/Dapr/Redis/Dex/APISIX). Not a code package — see its own [`README.md`](charts/dws/README.md). |
 
 `dws-call-grpc`, `dws-call-asyncapi`, `dws-call-a2a`, `dws-admin`, `dws-console`, `dws-flow`,
-`dws-mid-basic`, and `dws-mid-bearer` are not yet listed in `AGENTS.md`'s component table — that table predates them. Don't treat its absence
+`dws-schedule-time`, `dws-mid-basic`, and `dws-mid-bearer` are not yet listed in `AGENTS.md`'s component table — that table predates them. Don't treat its absence
 as "this package doesn't exist."
 
 ## Cross-cutting style rules
@@ -96,6 +97,17 @@ Types in use: `feat`, `fix`, `refactor`, `docs`, `chore`, `perf`, `ci`, `test`.
   (`OrchestratorEnvContractTest` asserts the sibling `application.yaml` reads it). Runtime-v2
   Phase 4 synthesis must stamp it on `dws-flow`/`dws-step` too. A package that reads a different
   name silently stays on text.
+- **Workflow start contract** (`dws-schedule-time` → `dws-orchestrator`; OpenSpec
+  `scheduling-phase-6a-time-triggers`, spec `workflow-start-contract`). Triggers start an instance
+  through Dapr service invocation of `POST /workflows/{name}/instances?instanceId=<id>` with
+  `Content-Type: application/json`: `202` started, `200` an instance with that ID already exists in any
+  status (nothing is restarted; Dapr alone would replace a completed one), `400` an ID outside
+  `[A-Za-z0-9:._-]{1,256}`. Instance IDs are `<source>:<workflow>:<fire-key>` with sources `dws-sched`
+  (`every`/`cron`), `dws-after` (`after`) and `dws-event` (reserved for Phase 6b). The regex lives in
+  both `WorkflowController` and `InstanceIds`; pinned by `WorkflowControllerTest` and
+  `OrchestratorInvokeStarterTests`. Change both sides together. The orchestrator's status endpoint
+  returns `404` for an unknown ID (the Java SDK's "not found" is an empty name / epoch `createdAt`,
+  never `null`); `after` polling depends on it.
 - **Step-service request/response shape** (`dws-call-http`, `dws-call-grpc`, `dws-call-openapi`,
   `dws-call-asyncapi`, `dws-run`) is consumed by `dws-orchestrator`'s retry/error-classification
   logic (`WorkflowErrors.classify`). If you change a step-service's error/response contract,
@@ -132,6 +144,7 @@ each package's own config:
 | `dws-console` | `pnpm check && pnpm typecheck && pnpm test && pnpm build` (`check` = Biome lint+format) |
 | `dws-mid-bearer` | `make lint && make test` (TinyGo only runs inside `make docker`) |
 | `dws-flow` | `dotnet test test/dws-flow.Tests.csproj` (name the test project: a bare `dotnet test` in `dws-flow/` only finds the app project, runs no tests and exits 0). No lint/format gate configured yet — no `.editorconfig`, no analyzers |
+| `dws-schedule-time` | `dotnet test test/dws-schedule-time.Tests.csproj` (name the test project, as for `dws-flow`). No lint/format gate configured yet |
 | `dws-mid-basic` | `make lint && make test && make wasm && make test-wasm`, with `GOTOOLCHAIN=go1.23.12` exported (TinyGo 0.34.0 rejects newer Go). `make wasm` needs Docker, or `TINYGO=/path/to/tinygo` pointing at TinyGo 0.34.0 exactly; see its `CLAUDE.md` |
 
 Windows: Java packages use `mvnw.cmd` instead of `./mvnw`.

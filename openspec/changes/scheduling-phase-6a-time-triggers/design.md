@@ -136,6 +136,10 @@ Fire keys:
 - `every`: the tick index from the anchor stored in the job data,
   `anchor + floor((now − anchor) / interval) × interval`, rendered as UTC `yyyyMMddTHHmmssZ`.
 - `after`: a sequence number (Decision 7).
+- Early-delivery tolerance (implementation refinement, `FireKeys`): `now` is first moved forward by
+  2 s, capped at a quarter of an `every` interval. Without it, a scheduler clock slightly behind the
+  Dapr Scheduler's puts an on-time delivery just before its due time and onto the previous key, while
+  the retry lands on the right one, so one fire starts two instances.
 
 The spike showed the job callback carries only the raw payload, with no due time, so the key is
 always computed as above. Because it derives from the delivery time, ticks that Dapr replays after
