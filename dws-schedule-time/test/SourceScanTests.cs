@@ -30,4 +30,17 @@ public class SourceScanTests
 
         offenders.Should().BeEmpty();
     }
+
+    // Task 9.5: Program.cs is the only place DAPR_API_TOKEN may be read, and it must reach the invoke
+    // client explicitly; the SDK's CreateInvokeHttpClient() does not read it from the environment.
+    [Fact]
+    public void ProgramHandsTheDaprApiTokenToTheInvokeClient()
+    {
+        string program = string.Join('\n', File.ReadAllLines(Path.Combine(SourceDirectory(), "Program.cs"))
+            .Where(line => !line.TrimStart().StartsWith("//")));
+
+        program.Should().Contain("Environment.GetEnvironmentVariable(\"DAPR_API_TOKEN\")");
+        program.Should().Contain("OrchestratorInvokeStarter.CreateInvokeClient(daprApiToken)");
+        program.Should().NotContain("DaprClient.CreateInvokeHttpClient()");
+    }
 }

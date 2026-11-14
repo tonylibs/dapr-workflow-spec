@@ -1,15 +1,28 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Dapr.Client;
 
 namespace Dws.ScheduleTime;
 
 /// <summary>Starts v1 workflows through Dapr service invocation of the orchestrator's <c>POST workflows/{name}/instances?instanceId=</c> (ADR 0013, option b).</summary>
 public sealed class OrchestratorInvokeStarter(HttpClient http) : IWorkflowStarter
 {
-    // http is DaprClient.CreateInvokeHttpClient(): a request to http://<app-id>/<method> goes to the
-    // sidecar's /v1.0/invoke/<app-id>/method/<method>, query intact, with DAPR_API_TOKEN when set.
-    // The orchestrator answers 400 without Content-Type: application/json, so the body is always sent.
+    // http comes from CreateInvokeClient: a request to http://<app-id>/<method> goes to the sidecar's
+    // /v1.0/invoke/<app-id>/method/<method>, query intact, with the dapr-api-token header when a token
+    // was given. The orchestrator answers 400 without Content-Type: application/json, so the body is
+    // always sent.
+
+    /// <summary>
+    /// The service-invocation client the starter needs. <paramref name="daprApiToken"/> must be passed
+    /// explicitly: the SDK's CreateInvokeHttpClient reads the sidecar endpoint from the environment but
+    /// not DAPR_API_TOKEN, so a client built without it gets 401 from a token-protected sidecar.
+    /// </summary>
+    public static HttpClient CreateInvokeClient(string? daprApiToken, string? daprEndpoint = null) =>
+        DaprClient.CreateInvokeHttpClient(
+            daprEndpoint: daprEndpoint,
+            daprApiToken: string.IsNullOrWhiteSpace(daprApiToken) ? null : daprApiToken.Trim());
+
     public async Task<StartResult> StartAsync(string appId, string workflow, string instanceId, string inputJson, CancellationToken cancellationToken)
     {
         RequireValid(instanceId);

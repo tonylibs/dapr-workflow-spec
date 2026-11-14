@@ -23,7 +23,7 @@ if (DwsJsonConsoleFormatter.IsJsonMode(Environment.GetEnvironmentVariable("DWS_L
     builder.Logging.AddConsoleFormatter<DwsJsonConsoleFormatter, ConsoleFormatterOptions>();
 }
 
-// DaprClientBuilder reads DAPR_API_TOKEN and the sidecar endpoints itself.
+// DaprClientBuilder reads DAPR_API_TOKEN and the sidecar endpoints itself (job, state store).
 builder.Services.AddSingleton(_ => new DaprClientBuilder().Build());
 builder.Services.AddDaprJobsClient();
 builder.Services.AddSingleton(TimeProvider.System);
@@ -33,9 +33,13 @@ builder.Services.AddSingleton<IClusterState>(services => services.GetRequiredSer
 builder.Services.AddSingleton<ChangeSignal>();
 builder.Services.AddSingleton<IJobRegistry, DaprJobRegistry>();
 builder.Services.AddSingleton<IVersionedStore>(services => new DaprVersionedStore(services.GetRequiredService<DaprClient>(), options.StateStore));
-// Starts go through Dapr service invocation of the orchestrator (ADR 0013, option b). The invoke client
-// reads the sidecar endpoint and DAPR_API_TOKEN through the Dapr SDK's own defaults.
-builder.Services.AddSingleton<IWorkflowStarter>(new OrchestratorInvokeStarter(DaprClient.CreateInvokeHttpClient()));
+// Starts go through Dapr service invocation of the orchestrator (ADR 0013, option b). Unlike
+// DaprClientBuilder, DaprClient.CreateInvokeHttpClient() does NOT read DAPR_API_TOKEN from the
+// environment (Dapr .NET SDK 1.18.10): without the explicit token every start gets 401 from the
+// sidecar once the chart sets dapr.io/api-token-secret (live run, task 9.5). Kept out of
+// ScheduleTimeOptions so the token can never be logged with the options.
+string? daprApiToken = Environment.GetEnvironmentVariable("DAPR_API_TOKEN");
+builder.Services.AddSingleton<IWorkflowStarter>(new OrchestratorInvokeStarter(OrchestratorInvokeStarter.CreateInvokeClient(daprApiToken)));
 builder.Services.AddSingleton(services => ActivatorUtilities.CreateInstance<StartClaim>(services, options.ClaimTtl));
 builder.Services.AddSingleton(services => ActivatorUtilities.CreateInstance<AfterLifecycle>(services, options.AfterPollInterval));
 builder.Services.AddSingleton(services => ActivatorUtilities.CreateInstance<Reconciler>(services, options.AfterPollInterval));

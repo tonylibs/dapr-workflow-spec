@@ -162,6 +162,89 @@ public class OrchestratorInvokeStarterTests
             new Uri($"http://127.0.0.1:3500/v1.0/invoke/{AppId}/method/workflows/order-sync/instances?instanceId={FireId}"));
     }
 
+    // Task 9.5 live run: DaprClient.CreateInvokeHttpClient() without an explicit token sends no
+    // dapr-api-token header even when DAPR_API_TOKEN is set, so every start got 401. These go through
+    // the SDK's real client and a socket, not a stub handler, because a stub would have hidden it.
+    [Fact]
+    public async Task SendsTheDaprApiTokenThroughTheRealInvokeClient()
+    {
+        await using FakeSidecar sidecar = FakeSidecar.Start();
+        OrchestratorInvokeStarter starter = new(OrchestratorInvokeStarter.CreateInvokeClient("sidecar-token", sidecar.Endpoint));
+
+        StartResult result = await starter.StartAsync(AppId, "order-sync", FireId, "{}", CancellationToken.None);
+
+        result.Outcome.Should().Be(StartOutcome.Started);
+        string request = await sidecar.Received;
+        request.Should().StartWith($"POST /v1.0/invoke/{AppId}/method/workflows/order-sync/instances?instanceId={FireId} ");
+        request.Split("\r\n").Should().Contain(line => line.Equals("dapr-api-token: sidecar-token", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public async Task SendsNoTokenHeaderWhenNoTokenIsConfigured(string? token)
+    {
+        await using FakeSidecar sidecar = FakeSidecar.Start();
+        OrchestratorInvokeStarter starter = new(OrchestratorInvokeStarter.CreateInvokeClient(token, sidecar.Endpoint));
+
+        await starter.StartAsync(AppId, "order-sync", FireId, "{}", CancellationToken.None);
+
+        (await sidecar.Received).Should().NotContainEquivalentOf("dapr-api-token");
+    }
+
+    /// <summary>A one-request HTTP/1.1 listener standing in for the Dapr sidecar; answers 202 and keeps the raw request head.</summary>
+    private sealed class FakeSidecar : IAsyncDisposable
+    {
+        private readonly System.Net.Sockets.TcpListener listener;
+        private readonly Task<string> received;
+
+        private FakeSidecar(System.Net.Sockets.TcpListener listener)
+        {
+            this.listener = listener;
+            received = AcceptOneAsync();
+        }
+
+        public string Endpoint => $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}";
+
+        public Task<string> Received => received.WaitAsync(TimeSpan.FromSeconds(10));
+
+        public static FakeSidecar Start()
+        {
+            System.Net.Sockets.TcpListener listener = new(IPAddress.Loopback, 0);
+            listener.Start();
+            return new FakeSidecar(listener);
+        }
+
+        private async Task<string> AcceptOneAsync()
+        {
+            using System.Net.Sockets.TcpClient client = await listener.AcceptTcpClientAsync();
+            System.Net.Sockets.NetworkStream stream = client.GetStream();
+            byte[] buffer = new byte[16 * 1024];
+            System.Text.StringBuilder head = new();
+            while (!head.ToString().Contains("\r\n\r\n", StringComparison.Ordinal))
+            {
+                int read = await stream.ReadAsync(buffer);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                head.Append(System.Text.Encoding.ASCII.GetString(buffer, 0, read));
+            }
+
+            byte[] response = System.Text.Encoding.ASCII.GetBytes("HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            await stream.WriteAsync(response);
+            return head.ToString();
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            listener.Stop();
+            return ValueTask.CompletedTask;
+        }
+    }
+
     private sealed record RecordedRequest(HttpMethod Method, Uri? Uri, string? ContentType, string? Body);
 
     private sealed class RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
