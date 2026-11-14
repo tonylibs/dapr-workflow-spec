@@ -128,6 +128,7 @@
 - [ ] 9.4 Scale `dws-schedule-time` to 2 replicas and check that there are no duplicate instances per fire key. Also stop both pods for several intervals, restart them, and check that the replayed burst starts exactly one instance.
 - [ ] 9.5 Repeat 9.1 with `auth.enabled=true` and check that there are no 401s in either sidecar (draft D11).
 - [ ] 9.6 Record the evidence under `docs/roadmaps/` (as `observability-phase*-evidence.md` does) and link it from the ADR.
+  - **Blocked in the agent sandbox** (9.1–9.6 all open): its kernel refuses to lower `oom_score_adj` even for root, and kubelet sets it for every pod, so no Kubernetes node can start (kind fails with `runc init: failed to update /proc/self/oom_score_adj: Permission denied`, also with `failCgroupV1: false`). `docs/roadmaps/scheduling-phase6a-evidence.md` holds the procedure and expected result for each check, marked NOT YET RUN; fill it from a real cluster, then link it from ADR 0013.
 
 ## 10. Docs and close-out
 
