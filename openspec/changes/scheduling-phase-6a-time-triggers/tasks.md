@@ -95,7 +95,8 @@
   - the one-shot starts seq+1 on the currently active version;
   - a restart resumes from the stored seq.
 - [x] 6.5 Map the job handlers (`/job/<name>`) and `/healthz` in `Program.cs`. Read `DWS_SCHEDULE_TIME_STATE_STORE` and `DWS_SCHEDULE_TIME_AFTER_POLL_INTERVAL` there only.
-- [ ] 6.6 Gate: `cd dws-schedule-time && dotnet test test/dws-schedule-time.Tests.csproj`, plus `docker build` and a `/healthz` smoke test.
+- [x] 6.6 Gate: `cd dws-schedule-time && dotnet test test/dws-schedule-time.Tests.csproj`, plus `docker build` and a `/healthz` smoke test.
+  - Done after merging the two scheduler branches: 208 tests pass; the image builds and `GET /healthz` answers `200 {"status":"ok"}` with no sidecar or cluster. (In the agent sandbox, `dotnet restore` inside `docker build` needed the egress proxy CA injected; the committed Dockerfile is unchanged.)
 
 ## 7. charts/dws: scheduler in the Core layer
 
