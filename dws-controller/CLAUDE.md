@@ -101,6 +101,10 @@ Windows: use `mvnw.cmd`; POSIX shells (Git Bash): use `./mvnw`.
 - **cdk8s needs Node.js at runtime**: jsii executes its bundled JavaScript in a Node child process, so
   synthesis fails without `node` on PATH. `src/main/docker/Dockerfile.jvm` installs it for that reason —
   don't drop that layer.
+  The same Dockerfile sets `JSII_RUNTIME_PACKAGE_CACHE=disabled`: jsii refuses a package cache in a
+  group-writable directory, and the UBI image's home is 0770, so without it every `POST /workflows`
+  returned 500 ("Cannot use the jsii package cache"). Keep it unless the cache root moves to a private
+  directory (`JSII_RUNTIME_PACKAGE_CACHE_ROOT`).
 - **Web layer**: `quarkus-rest` + `quarkus-rest-jackson` (JAX-RS style resources, e.g. `@Path`/`@GET` in `GreetingResource.java`; Jackson for JSON).
 - **DI**: `quarkus-arc` (CDI-based dependency injection) — use constructor injection per this repo's Java coding conventions.
 - **Kubernetes**: `quarkus-kubernetes-client` is on the classpath — expect this project to interact with a Kubernetes API (likely in service of Dapr workflow orchestration, per the repo name) rather than being a plain REST CRUD app.
