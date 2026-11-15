@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.4.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-controller-v1.3.0...dws-controller-v1.4.0) (2026-11-15)
+
+
+### Features
+
+* **controller:** stamp a trigger ConfigMap for scheduled versions ([7e726f7](https://github.com/tonylibs/dapr-workflow-spec/commit/7e726f746199959feffeb11fd1b4c46dc1c406fb))
+* **controller:** validate schedule time triggers at submit ([55e08b1](https://github.com/tonylibs/dapr-workflow-spec/commit/55e08b1605b260942be168349b66e52a9a6f9cda))
+* scheduling Phase 6a — time triggers (every/cron/after) via dws-schedule-time ([6046db6](https://github.com/tonylibs/dapr-workflow-spec/commit/6046db6664781aa02e5326730c8c09a038c7674b))
+
+
+### Bug Fixes
+
+* **controller:** disable the jsii package cache in the runtime image ([8df833a](https://github.com/tonylibs/dapr-workflow-spec/commit/8df833abb66d3b0182e217d78fd70c45287be851))
+
+
+### Documentation
+
+* **openspec:** complete phase-6a controller tasks, drain is an annotation ([a80f40a](https://github.com/tonylibs/dapr-workflow-spec/commit/a80f40ad9e3816bd038a69d16e7fe6d218b9356b))
+
 ## [1.3.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-controller-v1.2.1...dws-controller-v1.3.0) (2026-11-01)
 
 
