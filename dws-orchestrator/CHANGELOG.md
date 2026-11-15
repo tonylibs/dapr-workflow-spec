@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-orchestrator-v0.2.0...dws-orchestrator-v0.3.0) (2026-11-14)
+
+
+### Features
+
+* **orchestrator:** idempotent start with caller-supplied instanceId ([6dfdbaa](https://github.com/tonylibs/dapr-workflow-spec/commit/6dfdbaabc69e37e458ac07adc692976248df1062))
+* scheduling Phase 6a — time triggers (every/cron/after) via dws-schedule-time ([6046db6](https://github.com/tonylibs/dapr-workflow-spec/commit/6046db6664781aa02e5326730c8c09a038c7674b))
+
 ## [0.2.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-orchestrator-v0.1.1...dws-orchestrator-v0.2.0) (2026-11-01)
 
 
