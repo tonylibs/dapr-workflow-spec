@@ -45,7 +45,7 @@ helm test dws --namespace dws-system --logs      # optional smoke test
 
 | | Today (1.x) | Planned (2.0) |
 |---|---|---|
-| Default install | Controller, Dapr, Redis **plus** Admin API + Postgres | Core only |
+| Default install | Controller, Dapr, Redis, the **time-trigger scheduler** (`scheduleTime.enabled=true`) **plus** Admin API + Postgres | Core only |
 | Core-only install | Closest today: `--set admin.enabled=false --set postgresql.enabled=false` | The default |
 | How you reach the engine | Port-forward / Dapr invoke to `dws-controller` (no public route by design) | Same; install notes print how |
 
@@ -176,8 +176,62 @@ Full matrix: [`docs/roadmaps/openworkflow-features.md`](../../docs/roadmaps/open
 |---|---|
 | Deploy on `POST`, start via API (A/B/C above) | Today |
 | `listen` waits for an event you raise on the instance | Today |
-| `schedule` (`every`, `cron`, `after`, `on`) | Not built (OWS roadmap Phase 6) — part of Core when it lands |
-| Chaining one workflow on another's lifecycle events | Planned in Core via `listen` / `schedule.on`, fed by the [Events](events.md) layer |
+| `schedule.every`, `schedule.cron`, `schedule.after` on a v1 workflow | **Today** — the default-on `dws-schedule-time` Core component starts instances through the orchestrator API |
+| `schedule.on` and `schedule.read` | **Planned** — Phase 6b event triggers; the controller rejects them today |
+| Chaining one workflow on another's lifecycle events | **Planned** in Core via `schedule.on`, fed by the [Events](events.md) layer |
+
+#### Schedule a v1 workflow
+
+Add exactly one time trigger at the document root, then deploy it as usual. `every` and `after`
+accept a literal ISO-8601 duration (or a duration object); `cron` is a standard five-field cron
+expression. Durations must be at least one second. The controller rejects runtime expressions,
+multiple trigger kinds, invalid cron values, and `schedule.on` before it applies anything.
+
+```yaml
+document: { dsl: '1.0.0', namespace: examples, name: nightly-report, version: '1.0.0' }
+schedule:
+  cron: "0 2 * * 1-5"       # weekday at 02:00 UTC
+# Or: every: PT15M
+# Or: after: PT30S           # wait after the prior instance reaches a terminal state
+do:
+  - report:
+      set: { startedBy: '"schedule"' }
+```
+
+The controller writes an immutable trigger for the deployed version. The scheduler watches that
+trigger, registers a Dapr Job, and starts the active version with a deterministic instance ID.
+`every` first fires one interval after registration; `cron` fires at its next match; `after` starts
+once when activated and starts the next instance only after the prior one ends and its delay has
+elapsed.
+
+```mermaid
+sequenceDiagram
+  actor Author
+  participant C as dws-controller
+  participant K as Kubernetes
+  participant T as dws-schedule-time
+  participant J as Dapr Jobs
+  participant R as v1 workflow runtime
+  Author->>C: POST scheduled definition
+  C->>K: write versioned trigger ConfigMap
+  T->>K: watch active trigger
+  T->>J: register recurring or after job
+  J->>T: deliver fire callback
+  T->>R: start instance through Dapr invocation
+```
+
+This flow shows the deployed time-trigger path; it is available only to the v1 runtime today.
+
+**Watch out**
+
+- `scheduleTime.enabled=true` is the chart's current default. If you set it to `false`, a scheduled
+  workflow still deploys but never starts automatically. See the chart's [scheduler reference](../../charts/dws/README.md#time-trigger-scheduler-dws-schedule-time).
+- The scheduler needs the chart's Redis-backed Dapr state store for start claims and `after` state.
+  A state-store outage pauses scheduled starts; missed fires are retried briefly and can then be lost.
+- Scheduled starts are deduplicated by instance ID across scheduler replicas, but Dapr can replay
+  callbacks after downtime. Do not treat this as an audit-grade or exactly-once event source.
+- Runtime v2 rejects any `schedule` block. `schedule.on` is also not accepted yet; its Phase 6b
+  design is tracked in the [OWS DSL feature roadmap](../architecture/roadmap.md#cross-cutting-spec-features).
 
 ## Under the hood
 

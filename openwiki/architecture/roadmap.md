@@ -69,7 +69,7 @@ This flow shows that the shared corpus defines expectations, while the divergenc
 | Catalogs / custom functions | Not started |
 | Extensions (`before`/`after` hooks) | Not started |
 | External resources | Not started |
-| Scheduling (`every`/`cron`/`after`/`on`) | Not started — controller deploys on `POST` only |
+| Scheduling (`every`/`cron`/`after`/`on`) | Partial — Phase 6a supports `every`/`cron`/`after` for v1 workflows through `dws-schedule-time`; controller validation creates a trigger ConfigMap and the scheduler starts idempotent named instances through the orchestrator. `schedule.on`/`schedule.read` are Phase 6b, and runtime v2 rejects `schedule`. See [Core engine](../user-guide/core-engine.md#schedule-a-v1-workflow). |
 | [Lifecycle events](../integrations/lifecycle-events.md) (CloudEvents) | In flight — `openspec/changes/event-publishing` |
 
 ## Phase dependency graph
@@ -82,7 +82,8 @@ flowchart TD
   P2 --> P3
   P3 --> P4[Phase 4: Authentication and secrets done]
   P4 --> P5[Phase 5: Protocol expansion<br/>gRPC, AsyncAPI, and A2A done]
-  P1 --> P6[Phase 6: Scheduling<br/>cron/every/after/on]
+  P1 --> P6a[Phase 6a: Time triggers<br/>every, cron, after — done]
+  P6a --> P6b[Phase 6b: Event triggers<br/>schedule.on]
   P4 --> P7[Phase 7: Catalogs and extensions]
 ```
 
@@ -98,7 +99,8 @@ Data flow (Phase 1) is the foundation: retry/catch, extensions, and error handli
 | 3 | RFC 7807 error model, standard error types, and task/workflow timeouts | orchestrator | Done |
 | 4 | `basic`/`bearer`/OAuth2 client-credentials auth and scalar secret resolution | controller, orchestrator, call-http, call-openapi | Done; live OAuth path-isolation validation remains environment-blocked |
 | 5 | gRPC, AsyncAPI, A2A call protocols | `dws-call-grpc`, `dws-call-asyncapi`, `dws-call-a2a` | Done — A2A supports `message/send` and `tasks/get`; see [A2A step runner](../integrations/a2a-step-runner.md). |
-| 6 | `schedule.every/cron/after/on` triggers | controller (Dapr Jobs API / cron binding) | Not started |
+| 6a | `schedule.every/cron/after` time triggers for v1 workflows | controller validation + trigger ConfigMap, `dws-schedule-time` (Dapr Jobs API), orchestrator idempotent named start | Done — `schedule.on` remains separate Phase 6b work; see [Core engine](../user-guide/core-engine.md#schedule-a-v1-workflow) |
+| 6b | `schedule.on` event triggers and `schedule.read` | planned `dws-schedule-event`, reusing the Phase 6a start contract | Not started — controller rejects these fields today |
 | 7 | Catalogs, custom functions, extensions (`before`/`after`), external resources | controller, orchestrator | Not started |
 | 8 | `dws-admin` consumes lifecycle events into read model | dws-admin | Done |
 
@@ -109,5 +111,5 @@ Per [`CLAUDE.md`'s workflow routing](../../CLAUDE.md), each phase is a new capab
 - **1 before 2/3**: retry/catch and error handling are meaningless without a real input/output/context pipeline to operate on.
 - **2 before 3**: `try`/`raise` define the fault surface that the implemented error catalogue and timeouts use; RFC 7807 response formatting is completed in Phase 3.
 - **4 before 5/7**: new protocols and catalogs both need auth to call real external services.
-- **6 is independent**: scheduling only touches the controller's trigger path, not the interpreter — can be pulled forward if needed.
+- **6 is independent**: scheduling uses separate trigger components and starts instances through the orchestrator's start endpoint, rather than changing interpreter task semantics. Phase 6a delivered v1 time triggers; 6b will reuse its start contract for event triggers.
 - **8 is last**: the read model is a pure consumer of Phase 0's event contract; no orchestrator/controller changes are required once events exist.
