@@ -15,7 +15,7 @@ Two different readiness axes get conflated below — worth separating:
 | `call` (openapi) | ✅ | StepService via `dws-call-openapi` (built) |
 | `call` (grpc) | ✅ | StepService via `dws-call-grpc` (built); shipped in `dws-call-grpc` (Phase 5 slice 1) |
 | `call` (asyncapi) | ✅ | StepService via `dws-call-asyncapi` (Dapr output binding, `action: send` only); controller `call: asyncapi` branch + version-scoped `bindings.*` Component synthesis; shipped in `dws-call-asyncapi` (Phase 5 slice 2), archived as `openspec/changes/archive/2026-08-26-dws-call-asyncapi` — one deferred task, the live Dapr+Kafka integration test (see §4e) |
-| `call` (a2a) | ❌ | not started — its own **Phase 5.5**; AsyncAPI has shipped, so this is unblocked. Design settled in [ADR 0011](../adr/0011-call-a2a-runner-design.md), summarized in §4f |
+| `call` (a2a) | ✅ | StepService via `dws-call-a2a` (built, 0.2.0); controller compiles `call: a2a` (incl. oauth2 via Dapr middleware), orchestrator dispatches with no default retry and a deterministic `messageId`; shipped in PR #106 (Phase 5.5). Design: [ADR 0011](../adr/0011-call-a2a-runner-design.md), §4f |
 | `run` (shell/script) | ✅ | StepService via `dws-run` (`dws-run-shell`/`dws-run-script-js`/`dws-run-script-python`); shipped in `2026-07-26-dws-run` |
 | `run` (container/workflow) | ❌ | rejected at compile time — no deployable image for either |
 | `switch` | ✅ | jq eval in a local in-process activity, no image needed |
@@ -60,7 +60,7 @@ flowchart TD
   P3 --> P4[Phase 4: Authentication + Secrets ✅]
   P4 --> P41[Phase 4.1: Credentials via sidecar<br/>ADR 0010 — in progress, 4.1a/4.1b ✅]
   P4 --> P5[Phase 5: Protocol Expansion<br/>gRPC ✅, AsyncAPI ✅]
-  P5 --> P55[Phase 5.5: A2A protocol<br/>next — design settled, ADR 0011]
+  P5 --> P55[Phase 5.5: A2A protocol ✅<br/>dws-call-a2a, ADR 0011]
   P1 --> P6a[Phase 6a: Time triggers<br/>every/cron/after — dws-schedule-time<br/>done ✅]
   P6a --> P6b[Phase 6b: Event triggers<br/>schedule.on — dws-schedule-event]
   P2d --> P7a[Phase 7a: Custom functions<br/>use.functions]
@@ -84,7 +84,7 @@ Data flow is the foundation: retry/catch, extensions, and error handling all rea
 | **4** ✅ | `basic`/`bearer`/`oauth2` auth, secrets resolution | controller, orchestrator, call-http, call-openapi | done — archived as `2026-10-05-workflow-auth` (21/21 tasks; live OAuth probe passed, see §4c) |
 | **4.1** | `basic`/`bearer` injected by a Wasm sidecar middleware; one merged Dapr Configuration per workload ([ADR 0010](../adr/0010-use-components-as-a-shared-store.md)) | controller, `charts/dws`, call-http, call-openapi, call-a2a, two new Wasm images (`dws-mid-bearer`, `dws-mid-basic`) | in progress — 4.1a, 4.1b done (`dws-controller` 1.2.0/1.2.1); 4.1c-basic and 4.1c-bearer implemented (live probes passed; image publish on merge); 4.1f, 4.1g next; see §4h |
 | **5** ✅ | gRPC, AsyncAPI call protocols | new `dws-call-grpc`, `dws-call-asyncapi` images | done — both slices archived (`2026-08-25-dws-call-grpc`, `2026-08-26-dws-call-asyncapi`); live-cluster integration test deferred, see §4e |
-| **5.5** (next) | A2A (Agent2Agent) call protocol | new `dws-call-a2a` image | design settled — [ADR 0011](../adr/0011-call-a2a-runner-design.md), §4f; not yet implemented |
+| **5.5** ✅ | A2A (Agent2Agent) call protocol | controller, orchestrator, new `dws-call-a2a` image, `charts/dws` | done — PR #106 merged 2026-09-18, `dws-call-a2a` 0.2.0 (pinned in the chart); verified by unit, fake-server and official `a2a-sdk` conformance tests in CI, no live-cluster run (none needed, §4f). [ADR 0011](../adr/0011-call-a2a-runner-design.md) |
 | **6a** ✅ | `schedule.every/cron/after` time triggers for v1 workflows | controller (validation + trigger ConfigMap), orchestrator (idempotent start by `instanceId`), new `dws-schedule-time` (Dapr Jobs API), `charts/dws` | done — archived as `2026-11-14-scheduling-phase-6a-time-triggers` (live-verified on Kubernetes 1.34 / Dapr 1.18.2, [evidence](scheduling-phase6a-evidence.md)), [ADR 0013](../adr/0013-time-triggers-in-dws-schedule-time.md) |
 | **6b** | `schedule.on` event triggers (and `schedule.read`) | new `dws-schedule-event`, reusing the 6a start contract (`dws-event` instance-ID source) | not started — the controller rejects `schedule.on` until then |
 | **7a** | Custom functions: `use.functions` and `call: <name>` with `with` arguments | controller (+ orchestrator if resolved at runtime) | not started — opsx, new capability; see §4g |
@@ -199,7 +199,9 @@ Phase 4's live check (tasks 6.2/6.3) has since passed on the local cluster (§4c
 only live-cluster item still open. That cluster (Dapr 1.18.2, Strimzi operator installed; its `default/fo-cluster` Kafka is not Ready) can be reused
 for it. Phase 5.5 and Phase 6 don't depend on it.
 
-## 4f. Phase 5.5 design (A2A) — settled
+## 4f. Phase 5.5 (A2A) — done
+
+**Status (2026-11-17):** implemented and merged on 2026-09-18 (PR #106): `dws-controller` compiles `call: a2a` (oauth2 through the Dapr middleware for the `with.server` target), `dws-orchestrator` dispatches it with no default retry and a deterministic `messageId`, and the `dws-call-a2a` image (0.2.0) is pinned in `charts/dws`. CI runs unit, fake-server and official `a2a-sdk` conformance tests; there was no live-cluster run, which this phase does not need (see the end of this section). It was never tracked as its own OpenSpec change. Still open, not blocking: agent-call concurrency (below).
 
 Full rationale in [ADR 0011](../adr/0011-call-a2a-runner-design.md). Reading the actual
 specifications inverted §4d's assumption that A2A was the hardest slice: the OWS `a2a` call is a

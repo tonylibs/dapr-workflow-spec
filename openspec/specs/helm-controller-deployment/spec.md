@@ -154,19 +154,9 @@ as `serviceAccountName` on every orchestrator Deployment it creates. Owning comp
 
 ### Requirement: Controller pod carries Dapr sidecar annotations unconditionally
 
-The controller Deployment's pod template SHALL carry `dapr.io/enabled: "true"`,
-`dapr.io/app-id`, and `dapr.io/app-port: "8080"` annotations on every render — they are NOT
-gated by `.Values.dapr.enabled`. The annotations are harmless when Dapr is not installed (the
-mutating admission webhook simply is not present to act on them), so rendering them
-unconditionally keeps the controller ready for Dapr as soon as the control plane appears in the
-cluster, whether it is installed by this chart or by an external operator.
+The controller Deployment's pod template SHALL carry `dapr.io/enabled: "true"`, `dapr.io/app-id`, and `dapr.io/app-port: "8080"` annotations on every render; they SHALL NOT be gated by `.Values.dapr.enabled`. Rendering these annotations unconditionally keeps the controller ready for chart-managed or externally managed Dapr.
 
-Phase 2 (see the `helm-controller-auth-middleware` capability) makes the controller receive
-inbound Dapr-routed traffic in addition to publishing outbound events, so `dapr.io/app-port` is
-now required for the sidecar to proxy inbound HTTP to the controller container. When
-`.Values.auth.enabled` is `true`, the pod template SHALL additionally carry
-`dapr.io/config: <controller fullname>-config` so the sidecar applies the bearer-middleware
-inbound pipeline defined in the paired `Configuration`.
+When `.Values.auth.enabled` or `.Values.observability.enabled` is `true`, the pod template SHALL additionally carry exactly one `dapr.io/config: <controller fullname>-config` so the sidecar applies the shared component Configuration. When observability is enabled, the pod template SHALL also carry the Java injection annotation referencing the chart's Instrumentation resource and `instrumentation.opentelemetry.io/container-names: controller`. When observability is disabled, no OpenTelemetry injection annotation SHALL render.
 
 Owning component: `charts/dws` (`templates/controller/deployment.yaml`).
 
@@ -190,3 +180,42 @@ Owning component: `charts/dws` (`templates/controller/deployment.yaml`).
   `helm-controller-auth-middleware` values contract)
 - **THEN** the controller Deployment's pod template carries `dapr.io/enabled: "true"`,
   `dapr.io/app-id`, `dapr.io/app-port: "8080"`, AND `dapr.io/config: <controller fullname>-config`
+
+#### Scenario: Default render keeps only baseline Dapr annotations
+
+- **WHEN** the chart renders with default values
+- **THEN** the controller pod carries `dapr.io/enabled: "true"`, `dapr.io/app-id`, and `dapr.io/app-port: "8080"`
+- **AND** it has no `dapr.io/config` or OpenTelemetry injection annotation
+
+#### Scenario: Dapr disabled preserves baseline annotations
+
+- **WHEN** the chart renders with Dapr, auth, and observability disabled
+- **THEN** the controller pod STILL carries the three baseline Dapr annotations
+- **AND** it has no configuration or injection annotation
+
+#### Scenario: Auth enabled references the shared Configuration
+
+- **WHEN** auth is enabled with valid issuer/audience values and observability is disabled
+- **THEN** the controller pod carries exactly one `dapr.io/config: <controller fullname>-config`
+- **AND** it has no OpenTelemetry injection annotation
+
+#### Scenario: Observability enabled targets the controller container
+
+- **WHEN** observability is enabled
+- **THEN** the controller pod carries exactly one `dapr.io/config: <controller fullname>-config`
+- **AND** it has Java injection referencing the release Instrumentation
+- **AND** the injection container-names annotation is exactly `controller`
+
+### Requirement: Controller container carries the log format when observability logs are on
+
+The controller container SHALL have the environment variable `DWS_LOG_FORMAT` set to `observability.logs.format` when `observability.enabled` and `observability.logs.enabled` are both true, and SHALL NOT have it otherwise. The controller uses the same value for its own log output and for the orchestrator Deployments it compiles. Owning component: `charts/dws`.
+
+#### Scenario: Variable present when logs are on
+
+- **WHEN** the chart is rendered with `observability.enabled=true`
+- **THEN** the controller container has `DWS_LOG_FORMAT` = `json`
+
+#### Scenario: Variable absent by default
+
+- **WHEN** the chart is rendered with default values
+- **THEN** the controller container has no `DWS_LOG_FORMAT`
