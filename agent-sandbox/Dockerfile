@@ -1,5 +1,5 @@
 # Shared dev/agent-sandbox image for the dws monorepo: JDK 25, Go 1.26, Node 24 + pnpm,
-# git/gh/jq, uv, Omnigent, Claude Code, Codex, GitHub Copilot CLI, Antigravity CLI (agy, pinned by tarball SHA512),
+# kubectl, Helm, git/gh/jq, uv, Omnigent, Claude Code, Codex, GitHub Copilot CLI, Antigravity CLI (agy, pinned by tarball SHA512),
 # OpenSpec, OpenWiki, Superpowers, and ClawTeam. Every toolchain below is
 # copied from the exact base image the corresponding component already builds with, so
 # `docker build agent-sandbox/` matches what CI ships:
@@ -24,6 +24,9 @@ ARG OPENSPEC_NPM_VERSION=2.0.0
 ARG OPENWIKI_NPM_VERSION=0.2.3
 ARG OMNIGENT_VERSION=0.21.0
 ARG KUBECTL_VERSION=v1.36.1
+ARG HELM_VERSION=4.3.0
+ARG HELM_SHA256_AMD64=86584a54def73570558f66f5111cc53dfed56689637ae32c1201205d494f54fb
+ARG HELM_SHA256_ARM64=31c5794dd55c66a51e6b7d2e2ac7a114ae8b1de41ff1d9ba51748ac973b06a08
 
 # gcc/libc6-dev: `go test -race` (dws-call-http, dws-run CI gate) needs cgo, which needs a C
 # compiler on PATH -- Go auto-disables cgo without one.
@@ -65,6 +68,21 @@ RUN curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETA
     && echo "$(cat /tmp/kubectl.sha256)  /usr/local/bin/kubectl" | sha256sum --check --status \
     && chmod 755 /usr/local/bin/kubectl \
     && rm -f /tmp/kubectl.sha256
+
+# --- Helm ---
+# Pin the official release archive and verify it against the checksums published
+# on the Helm v4.3.0 release page. Refresh both architecture hashes when bumping.
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+      amd64) helm_sha256="${HELM_SHA256_AMD64}" ;; \
+      arm64) helm_sha256="${HELM_SHA256_ARM64}" ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://get.helm.sh/helm-v${HELM_VERSION}-linux-${TARGETARCH}.tar.gz" -o /tmp/helm.tar.gz; \
+    echo "${helm_sha256}  /tmp/helm.tar.gz" | sha256sum --check --status; \
+    tar -xzf /tmp/helm.tar.gz -C /tmp "linux-${TARGETARCH}/helm"; \
+    install -m 0755 "/tmp/linux-${TARGETARCH}/helm" /usr/local/bin/helm; \
+    rm -rf "/tmp/linux-${TARGETARCH}" /tmp/helm.tar.gz
 
 # --- JDK 25 (dws-controller, dws-orchestrator use ./mvnw, no separate Maven install needed;
 #     dws-controller's cdk8s import step also needs Node at build time, see Node section below) ---
@@ -211,6 +229,7 @@ RUN set -eux; \
     pnpm -v | grep -q '^11\.10\.0$'; \
     jq --version | grep -q '^jq-1'; \
     kubectl version --client=true --output=yaml >/dev/null; \
+    helm version --short | grep -q "^v${HELM_VERSION}"; \
     gh --version | grep -q '^gh version'; \
     git --version; \
     make --version | head -1; \
