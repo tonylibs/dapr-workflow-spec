@@ -507,8 +507,10 @@ observability:
   enabled: false
   otlp:
     # Where every signal (traces, metrics, logs) is exported. The default names an
-    # in-namespace collector that this chart does NOT install — point it at your own
-    # collector or managed OTLP endpoint.
+    # in-namespace collector Service called dws-otel-collector. It resolves only when
+    # observability.collector.enabled=true (the dev/eval bundled collector, below) or when you
+    # run a collector of that name yourself; in production point it at your own collector or
+    # managed OTLP endpoint instead.
     #
     # Must be a BASE endpoint with a scheme and no signal path: the agents append /v1/traces,
     # /v1/metrics and /v1/logs themselves. The scheme is required (it becomes the application
@@ -575,13 +577,204 @@ observability:
     # Operator out of band after this release (see templates/_preflight.tpl).
     required: true
   collector:
-    # Reserved for Phase 6's bundled opentelemetry-collector subchart. Phase 1 never installs
-    # a collector; enabling this has no effect yet.
+    # Bundled OpenTelemetry Collector (Phase 6): installs the upstream opentelemetry-collector
+    # subchart, configured under the top-level `opentelemetry-collector:` key below. DEV/EVAL
+    # ONLY: it is a DaemonSet that prints every span, metric and log record to its own stdout
+    # (the `debug` exporter) and ships them nowhere; it has no persistence, HA or sampling. Point
+    # observability.otlp.endpoint at a managed collector in production and leave this off.
+    #
+    # Requires observability.enabled=true (the render fails otherwise: nothing would send it
+    # data). The Service is named dws-otel-collector in the release namespace, which is exactly
+    # what the default observability.otlp.endpoint resolves to, so no endpoint override is
+    # needed. If you point observability.otlp.endpoint anywhere else, the bundled collector
+    # receives nothing (helm's NOTES says so). Turning this on does not change what any other
+    # resource renders; the OpenTelemetry Operator is still a prerequisite, never a dependency.
     enabled: false
   # Extra OTel resource attributes merged into the Instrumentation resource, e.g.
   # deployment.environment: production. service.namespace is always dws and cannot be
   # overridden away.
   resourceAttributes: {}
+
+# Bundled OpenTelemetry Collector (observability roadmap Phase 6): values for the upstream
+# opentelemetry-collector subchart (Chart.yaml dependency, rendered only when
+# observability.collector.enabled=true; see the comment there). DEV/EVAL ONLY: point
+# observability.otlp.endpoint at a managed collector in production.
+#
+# Anything the upstream chart supports can be overridden here. Note that Helm replaces lists
+# rather than merging them, so changing a pipeline's `exporters` means restating that pipeline's
+# whole `receivers`/`processors`/`exporters` lists. To ship somewhere real, add an exporter under
+# `config.exporters` and name it in `config.service.pipelines.<signal>.exporters`, for example:
+#   opentelemetry-collector:
+#     config:
+#       exporters:
+#         otlphttp/backend: {endpoint: https://otlp.example.test}
+#       service:
+#         pipelines:
+#           traces: {receivers: [otlp], processors: [memory_limiter, batch], exporters: [debug, otlphttp/backend]}
+#
+# The `filelog` receiver below is the same block as tests/fixtures/otel-collector-dev.yaml and
+# the chart README (tests/observability-render-test.sh asserts all three agree): change them
+# together. Compared with the fixture it adds one exclusion, for this subchart's own container,
+# which the upstream chart names `opentelemetry-collector`; the fixture adds the same line.
+opentelemetry-collector:
+  # The Service (and every other resource) is named dws-otel-collector regardless of the release
+  # name: that is what the default observability.otlp.endpoint resolves to. Two releases that
+  # enable the bundled collector in one namespace would therefore collide; set this and
+  # observability.otlp.endpoint together to run a second one.
+  fullnameOverride: dws-otel-collector
+  # daemonset, because the filelog receiver reads /var/log/pods, which is node-local.
+  mode: daemonset
+  image:
+    # The contrib distribution carries the filelog receiver; the tag defaults to the subchart's
+    # appVersion, so pinning the subchart in Chart.yaml pins the collector image too.
+    repository: otel/opentelemetry-collector-contrib
+  # A daemonset's Service is off unless enabled; it is what the default OTLP endpoint resolves
+  # to. The chart then routes it node-locally (internalTrafficPolicy: Local).
+  service:
+    enabled: true
+  # No Dapr sidecar: this is infrastructure, and a sidecar would add spans to the very traces
+  # being observed.
+  podAnnotations:
+    dapr.io/enabled: "false"
+  # OTLP only. The subchart's jaeger/zipkin ports are switched off: nothing in DWS speaks those
+  # protocols. hostPort is 0 (falsy, so not rendered) because Helm drops a `null` written in a
+  # chart's own values.yaml, and a hostPort would stop two collectors sharing a node.
+  ports:
+    otlp:
+      hostPort: 0
+    otlp-http:
+      hostPort: 0
+    jaeger-compact:
+      enabled: false
+    jaeger-thrift:
+      enabled: false
+    jaeger-grpc:
+      enabled: false
+    zipkin:
+      enabled: false
+  extraEnvs:
+    # Scopes the filelog receiver to the release namespace (${env:K8S_NAMESPACE} in the config).
+    - name: K8S_NAMESPACE
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
+  extraVolumes:
+    - name: pod-logs
+      hostPath:
+        path: /var/log/pods
+        type: Directory
+  extraVolumeMounts:
+    - name: pod-logs
+      mountPath: /var/log/pods
+      readOnly: true
+  # Pod log files on the node are root-owned and not world-readable, so this container runs as
+  # root (not as the image's default non-root user) but with everything else dropped.
+  podSecurityContext:
+    runAsUser: 0
+    runAsGroup: 0
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  config:
+    receivers:
+      # Only OTLP and filelog feed the pipelines below. The subchart's own jaeger, zipkin and
+      # prometheus receivers stay defined (a values.yaml cannot delete them) but are in no
+      # pipeline and have no container port, so they never start.
+      otlp:
+        protocols:
+          # 4318 = OTLP/HTTP, 4317 = OTLP/gRPC. Both are served so that flipping
+          # observability.otlp.protocol between http/protobuf and grpc does not require
+          # redeploying this collector. The chart does NOT rewrite the port for you: with
+          # protocol=grpc also set the endpoint to :4317.
+          http:
+            endpoint: ${env:MY_POD_IP}:4318
+          grpc:
+            endpoint: ${env:MY_POD_IP}:4317
+      filelog:
+        include:
+          - /var/log/pods/${env:K8S_NAMESPACE}_*/*/*.log
+        exclude:
+          - /var/log/pods/*/daprd/*.log
+          - /var/log/pods/*/collector/*.log
+          - /var/log/pods/*/opentelemetry-collector/*.log
+          - /var/log/pods/*/jaeger/*.log
+          - /var/log/pods/*/loki/*.log
+        start_at: end
+        include_file_path: true
+        operators:
+          # CRI/containerd line framing, plus k8s.* resource attributes from the file path.
+          - type: container
+          # Only a line that starts with "{" is a DWS JSON record; anything else keeps its raw body.
+          - type: json_parser
+            id: dws_json
+            if: 'body startsWith "{"'
+            timestamp:
+              parse_from: attributes.timestamp
+              layout_type: gotime
+              layout: '2006-01-02T15:04:05Z07:00'
+            severity:
+              parse_from: attributes.severity
+          - type: trace_parser
+            id: dws_trace
+            if: 'attributes.trace_id != nil'
+            trace_id:
+              parse_from: attributes.trace_id
+            span_id:
+              parse_from: attributes.span_id
+          - type: move
+            id: dws_message
+            if: 'attributes.message != nil'
+            from: attributes.message
+            to: body
+          - type: move
+            id: dws_logger
+            if: 'attributes.logger != nil'
+            from: attributes.logger
+            to: attributes["logger.name"]
+          - type: remove
+            id: dws_drop_timestamp
+            if: 'attributes.timestamp != nil'
+            field: attributes.timestamp
+          - type: remove
+            id: dws_drop_severity
+            if: 'attributes.severity != nil'
+            field: attributes.severity
+          - type: remove
+            id: dws_drop_trace_id
+            if: 'attributes.trace_id != nil'
+            field: attributes.trace_id
+          - type: remove
+            id: dws_drop_span_id
+            if: 'attributes.span_id != nil'
+            field: attributes.span_id
+    exporters:
+      # verbosity: detailed prints the spans/metrics/logs themselves (`kubectl logs` on the
+      # dws-otel-collector pods). Without it you get counts and no evidence. The bundled
+      # collector has no backend: replace or add exporters to send data anywhere.
+      debug:
+        verbosity: detailed
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [debug]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [debug]
+        logs:
+          receivers: [otlp, filelog]
+          processors: [memory_limiter, batch]
+          exporters: [debug]
 
 # Image pull secrets, applied to the admin (and other component) pods that reference
 # private registries. More info: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/

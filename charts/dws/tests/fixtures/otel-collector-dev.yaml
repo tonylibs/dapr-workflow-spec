@@ -1,9 +1,11 @@
 # Dev/eval OTLP receiver for verifying observability against a live cluster: traces
 # (Phase 1/2a) and trace-correlated logs (Phase 4).
 #
-# NOT part of the chart and NOT production scaffolding — the chart deliberately ships no
-# collector (`observability.collector.enabled` is reserved for Phase 6 and does nothing yet).
-# This exists so the live checks have somewhere to send telemetry.
+# NOT part of the chart and NOT production scaffolding. The chart can bundle its own dev/eval
+# collector (`observability.collector.enabled=true`, observability roadmap Phase 6), but that one
+# only prints to its stdout (`debug` exporter) and has no Jaeger or Loki. This fixture is the
+# variant with a trace UI and a queryable log store, for live checks. Do not run both in one
+# namespace: they share the Service name `dws-otel-collector`.
 #
 #   kubectl apply -n <release-namespace> -f charts/dws/tests/fixtures/otel-collector-dev.yaml
 #   kubectl port-forward -n <release-namespace> svc/jaeger 16686:16686
@@ -38,7 +40,10 @@
 #     `logger.name` attribute and the record's trace/span IDs; any other line is forwarded with
 #     the raw line as its body and no trace context (text mode, startup banners).
 # tests/observability-render-test.sh asserts the exclusions and the trace-context operators are
-# still here, and the chart README repeats this receiver block verbatim: change both together.
+# still here, and that this receiver block, the chart README's and the bundled collector's
+# (`opentelemetry-collector.config.receivers.filelog` in values.yaml) are identical: change all
+# three together. The `opentelemetry-collector` exclusion is for the bundled chart's container
+# name; this fixture's own container is `collector`, hence both lines.
 #
 # Storage is in-memory (Jaeger) or an emptyDir (Loki). Everything is lost when a pod restarts.
 # That is the intent.
@@ -71,6 +76,7 @@ data:
         exclude:
           - /var/log/pods/*/daprd/*.log
           - /var/log/pods/*/collector/*.log
+          - /var/log/pods/*/opentelemetry-collector/*.log
           - /var/log/pods/*/jaeger/*.log
           - /var/log/pods/*/loki/*.log
         start_at: end

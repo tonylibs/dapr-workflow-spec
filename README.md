@@ -251,6 +251,7 @@ chart's full schema. Annotated source of truth: [`charts/dws/values.yaml`](chart
 | `apiGateway.hostname` / `apiGateway.tls.*` | `""` / off | Public hostname and TLS Secret. |
 | `apisix.enabled` | `false` | Bundles APISIX as the gateway data plane — **fresh installs only** (see below). Otherwise set `apiGateway.external.gatewayProxyName` to your own APISIX. |
 | `observability.enabled` | `false` | OpenTelemetry traces, metrics, and logs to `observability.otlp.endpoint`. Needs the OpenTelemetry Operator installed first — see [chart README](charts/dws/README.md#opentelemetry-observability-phase-1). |
+| `observability.collector.enabled` | `false` | Bundles an OpenTelemetry Collector DaemonSet (Service `dws-otel-collector`, the default `observability.otlp.endpoint`) that prints received telemetry to its own stdout. **Dev/eval only; point at a managed collector in production.** Requires `observability.enabled`. See [chart README](charts/dws/README.md#bundled-collector-dev--eval-only). |
 | `defaults.{resources,nodeSelector,tolerations,affinity}` | 100m/256Mi req, 512Mi limit | Shared pod defaults; per-component maps deep-merge, a non-empty component `tolerations` replaces the default. |
 | `namespaceOverride` | `""` | Deploy into a namespace other than the release namespace. |
 | `imagePullSecrets` | `[]` | Pull secrets for private registries. |

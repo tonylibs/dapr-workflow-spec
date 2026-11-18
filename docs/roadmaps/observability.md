@@ -361,7 +361,7 @@ spec:
 | `observability.logs.format` | `json` | `json` or `text` |
 | **`observability.workflows.enabled`** | `true` | **Whether compiled workflow stacks get instrumented.** Separate from the master switch so an operator can observe the control plane without paying per-workflow span volume |
 | `observability.operator.required` | `true` | Preflight — fail fast if Operator CRDs absent |
-| `observability.collector.enabled` | `false` | Bundle the collector subchart |
+| `observability.collector.enabled` | `false` | Bundle the collector subchart (dev/eval only; requires `observability.enabled`) |
 | `observability.resourceAttributes` | `{}` | Extra `service.*` / `deployment.environment` attrs |
 
 Knative's own `config-observability` keys are deliberately **not** in this table — see the chart
@@ -412,7 +412,7 @@ Status legend: ✅ done · ⚠️ partial/stubbed · ❌ not started. Phase 0-A 
 | **3. Go step services** | ❌ | Deferred with 2b | In-code OTel SDK bootstrap in `dws-call-http`, `dws-call-grpc`, `dws-run` (shared internal package — one codebase produces the three `dws-run-*` images). `otel-go` + `autoexport`, reading the standard `OTEL_*` env vars Phase 2b stamps, so the config surface stays identical to the injected stacks. If Phase 0-B comes back hostile, the Node and Python images adopt this same pattern — a known path, not a re-plan |
 | **4. Logs** | ✅ | Log ↔ trace correlation | **Track A complete (code 2026-10-29, live evidence 2026-10-31, change `observability-phase4-log-trace-correlation`).** One contract, five small implementations: `dws-controller`, `dws-admin`, `dws-orchestrator`, `dws-flow` and `dws-step` each write one JSON object per line (`timestamp`, `severity`, `logger`, `message`, plus `trace_id`/`span_id` only when a valid span is active, `exception.*` inline) when `DWS_LOG_FORMAT=json`, with a scrubber for bearer tokens and credential-named keys; unset keeps today's text. Contract and golden cases: [`docs/log-format.md`](../log-format.md). Chart: `observability.logs.format` (`json` default, `text`) renders `DWS_LOG_FORMAT` on controller and admin; the controller stamps it on instrumented orchestrators. Agent OTLP log export is off; the only path is stdout → collector `filelog` (reference block in the dev collector fixture and the chart README, Loki as the queryable store). **Live run** ([Phase 4 live evidence](observability-phase4-evidence.md)): querying Loki by the Jaeger trace ID returned the orchestrator's activity-span line with the matching `span_id`, once and with no secret. stdout was JSON only; the JVM, launcher, OTel agent and netty lines are on stderr, and the collector keeps them raw. **Remaining:** `dws-flow`/`dws-step` get cluster evidence only with 2a′. **Track B remainder:** the step images (`dws-call-*`, `dws-run-*`) adopt the same contract with 2b/3 |
 | **5. Domain metrics** | ❌ | DWS-specific SLOs | `dws_workflow_duration_seconds`, `dws_task_failures_total`, `dws_task_retries_total`, `dws_definition_compile_duration_seconds`, `dws_deployment_failures_total`, dimensioned by the same `dws.workflow.*` attributes Phase 2a establishes. Naming fixed against OTel semantic conventions **and against the `kn.*` and `dapr_*` families** before first emission — renaming a metric post-release breaks operator dashboards |
-| **6. Bundled collector** | ❌ | Batteries-included install | `opentelemetry-collector` subchart under `condition: observability.collector.enabled`, following the existing Postgres/Redis optional-subchart pattern. Dev/eval-grade by default with the same "point at a managed instance for production" caveat |
+| **6. Bundled collector** | ✅ | Batteries-included install | `opentelemetry-collector` subchart under `condition: observability.collector.enabled`, following the existing Postgres/Redis optional-subchart pattern. Dev/eval-grade by default with the same "point at a managed instance for production" caveat |
 | **7. Docs + CI** | ❌ | Prove it, then document it | `docs/observability.md` operator guide; values reference; the Knative `config-observability` prerequisite; CI assertion in the existing kind integration job that a **deployed workflow** produces a connected trace across controller → orchestrator → step, mirroring the existing end-to-end pub/sub delivery check |
 
 ### Sequencing
@@ -834,3 +834,32 @@ document:
 `DWS_LOG_FORMAT` is a new cross-package environment contract (root `CLAUDE.md`). Package default is
 `text` (unset means today), chart default is `json` (only effective with observability on), and a
 format change reaches a compiled workflow only on its next deploy.
+
+### 2026-11-18 — Phase 6 bundled collector landed
+
+`charts/dws` only; no `dws-controller` code change. `observability.collector.enabled=true` installs
+the upstream `opentelemetry-collector` chart (0.179.1, collector 0.163.2; pinned in `Chart.yaml`,
+vendored in `charts/`, `Chart.lock` updated) as a DaemonSet fronted by Service `dws-otel-collector`,
+so the default `observability.otlp.endpoint` works with no override. Dev/eval only: OTLP 4317/4318 and
+the `filelog` receiver in, the `debug` exporter (`verbosity: detailed`) out, no backend.
+
+| # | Finding | Consequence |
+|---|---|---|
+| 1 | **The `filelog` block is now in three places** (the dev fixture, the chart README, `opentelemetry-collector.config.receivers.filelog` in `values.yaml`) | `observability-render-test.sh` requires all three to be byte-identical, and additionally asserts the rendered bundled config |
+| 2 | **The subchart's container is named `opentelemetry-collector`, not `collector`**, so the fixture's own-container exclusion would not have matched and the collector would read its own `debug` output back | Added `/var/log/pods/*/opentelemetry-collector/*.log` to the block in all three places; the fixture keeps `*/collector/*.log` for its own container |
+| 3 | **The upstream chart renders `filelog` as `file_log`** (`rewriteDeprecatedComponentNames`) | Harmless; the test matches either spelling. The block in `values.yaml` keeps the documented `filelog` name |
+| 4 | **Helm drops a `null` written in a chart's own `values.yaml`**, so the subchart's default jaeger/zipkin/prometheus receivers cannot be deleted from there | They stay defined but sit in no pipeline and have no container port. `hostPort` is set to `0` (falsy) instead of `null` |
+| 5 | **A DaemonSet's Service is off unless `service.enabled=true`**; it then gets `internalTrafficPolicy: Local` | The default endpoint reaches the node-local collector pod. A node with no collector pod (a tainted control plane) would drop traffic |
+| 6 | **`dws-schedule-time` has no OTLP endpoint of its own**: it only gets `DWS_LOG_FORMAT`, so its logs reach the collector through `filelog` | The render test pins that it grows no endpoint |
+| 7 | **`helm template` never prints `NOTES.txt`** | The NOTES warning for a custom endpoint is tested through `helm install --dry-run=client` |
+| 8 | **The collector runs as root** (pod log files on the node are root-owned, not world-readable) with privilege escalation and all capabilities dropped and a read-only root filesystem | Documented in the chart README |
+
+The collector without `observability.enabled` fails the render (`dws.preflight.collector`). The
+OpenTelemetry Operator stays a documented prerequisite, never a dependency.
+
+**Live check (docker-desktop, 3 kind nodes).** The collector DaemonSet ran on both workers, the
+read-only `hostPath` `/var/log/pods` mount works, and a synthetic emitter in the same namespace
+produced spans, metrics and JSON log records with `trace_id`/`span_id`/`logger.name` in the `debug`
+output, reaching it through the default endpoint. **Not shown:** the same from real DWS components.
+The first-party images (`ghcr.io/tonylibs/*`) return 401 to anonymous pulls on this cluster and there
+was no Docker to build them, so no controller, admin, orchestrator or workflow instance ran.

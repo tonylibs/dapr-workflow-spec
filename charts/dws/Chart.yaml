@@ -53,6 +53,13 @@ appVersion: "1.18.0"
 # APISIX install); set apiGateway.enabled=true with apisix.enabled=false to target an
 # externally managed APISIX/Gateway API controller instead (a preflight check then fails
 # install/upgrade if the required Gateway API/APISIX CRDs aren't already present).
+#
+# The optional bundled OpenTelemetry Collector (observability roadmap Phase 6) is provided by
+# the upstream open-telemetry/opentelemetry-helm-charts \"opentelemetry-collector\" chart, pulled
+# in as a conditional dependency the same way. It installs only when
+# observability.collector.enabled is true (default false) and is dev/eval-grade: point
+# observability.otlp.endpoint at a managed collector in production. The OpenTelemetry Operator
+# is NOT a dependency; it stays a documented prerequisite (see values.yaml, `observability`).
 dependencies:
   - name: postgresql
     version: 16.7.27
@@ -74,3 +81,7 @@ dependencies:
     version: 2.16.0
     repository: https://apache.github.io/apisix-helm-chart
     condition: apisix.enabled
+  - name: opentelemetry-collector
+    version: 0.179.1
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    condition: observability.collector.enabled

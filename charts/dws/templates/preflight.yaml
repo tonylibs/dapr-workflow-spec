@@ -8,6 +8,7 @@ resource itself.
 {{- include "dws.preflight.apiGateway" . -}}
 {{- include "dws.preflight.observability" . -}}
 {{- include "dws.observability.validate" . -}}
+{{- include "dws.preflight.collector" . -}}
 {{- include "dws.apiGateway.validate" . -}}
 {{- include "dws.console.legacyIngress.validate" . -}}
 {{- /*

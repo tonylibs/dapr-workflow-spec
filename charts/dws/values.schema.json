@@ -52,6 +52,42 @@
           "type": "object"
         }
       }
+    },
+    "observability": {
+      "description": "OpenTelemetry observability. Deliberately open: only the bundled-collector keys (Phase 6) are described here; the rest is validated by _preflight.tpl.",
+      "type": "object",
+      "properties": {
+        "collector": {
+          "description": "Bundled OpenTelemetry Collector (dev/eval only; point observability.otlp.endpoint at a managed collector in production). Requires observability.enabled=true.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "description": "Install the opentelemetry-collector subchart as a DaemonSet whose Service is dws-otel-collector (the default observability.otlp.endpoint). Prints received telemetry to its stdout; has no backend.",
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "opentelemetry-collector": {
+      "description": "Values for the bundled opentelemetry-collector subchart (rendered only when observability.collector.enabled=true). Anything the upstream chart accepts may be set; only the keys the DWS defaults depend on are described.",
+      "type": "object",
+      "properties": {
+        "fullnameOverride": {
+          "description": "Must stay dws-otel-collector so the default observability.otlp.endpoint resolves; change it only together with that endpoint.",
+          "type": "string"
+        },
+        "mode": {
+          "description": "daemonset (the filelog receiver reads node-local /var/log/pods).",
+          "type": "string",
+          "enum": ["daemonset", "deployment", "statefulset"]
+        },
+        "config": {
+          "description": "Collector configuration, deep-merged over the upstream defaults. Lists (pipelines) are replaced, not merged.",
+          "type": "object"
+        }
+      }
     }
   },
   "definitions": {
