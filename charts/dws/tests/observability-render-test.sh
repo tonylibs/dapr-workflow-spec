@@ -641,10 +641,11 @@ done
 # =============================================================================================
 # 10. Reference collector: the filelog receiver keeps its exclusions and trace-context operators
 # =============================================================================================
-# The chart ships no collector; tests/fixtures/otel-collector-dev.yaml is the one in-repo
-# configuration, and the chart README repeats its filelog receiver for operators to adapt. These
-# assertions exist so the exclusions (sidecar logs, the collector's own output) and the operators
-# that bind trace_id/span_id cannot be dropped silently: everything still renders and lints.
+# tests/fixtures/otel-collector-dev.yaml is the reference configuration; the chart README repeats
+# its filelog receiver for operators to adapt, and the bundled collector (section 11) carries the
+# same block in values.yaml. These assertions exist so the exclusions (sidecar logs, the
+# collector's own output) and the operators that bind trace_id/span_id cannot be dropped
+# silently: everything still renders and lints. Section 11 enforces that all three agree.
 fixture="$chart_dir/tests/fixtures/otel-collector-dev.yaml"
 readme="$chart_dir/README.md"
 [ -f "$fixture" ] || fail "missing collector fixture $fixture"
@@ -659,6 +660,7 @@ assert_has() { # <needle (fixed string)> <message>
 assert_has '- /var/log/pods/${env:K8S_NAMESPACE}_*/*/*.log' "must be scoped to the release namespace, not every pod on the node"
 assert_has '- /var/log/pods/*/daprd/*.log' "must exclude the daprd sidecar (a different log schema)"
 assert_has '- /var/log/pods/*/collector/*.log' "must exclude the collector's own container (feedback loop through its debug exporter)"
+assert_has '- /var/log/pods/*/opentelemetry-collector/*.log' "must exclude the bundled subchart's own container, which the upstream chart names opentelemetry-collector"
 assert_has '- type: container' "must parse the CRI line framing and k8s.* attributes"
 assert_has '- type: json_parser' "must parse DWS JSON lines"
 assert_has "if: 'body startsWith \"{\"'" "json_parser must run only on bodies that start with {, so non-JSON lines pass through raw"
@@ -686,11 +688,161 @@ grep -Fq 'exporters: [debug, otlphttp/loki]' <<<"$fixture_logs_pipeline" \
 grep -Fq 'allow_structured_metadata: true' "$fixture" \
   || fail "the fixture's Loki must allow structured metadata, or its OTLP endpoint rejects trace_id/span_id"
 
-# The README's reference block must be the fixture's receiver verbatim.
+# The README's reference block must be the fixture's receiver verbatim (and, in section 11, the
+# bundled collector's too).
 readme_filelog="$(awk '/^```yaml$/ {getline nxt; if (nxt == "filelog:") {f=1; print nxt; next}} f && /^```$/ {f=0} f' "$readme")"
 [ -n "$readme_filelog" ] || fail "$readme has no yaml block starting with 'filelog:' (the reference receiver)"
 if ! diff -u <(printf '%s\n' "$fixture_filelog") <(printf '%s\n' "$readme_filelog"); then
   fail "the README reference filelog receiver differs from tests/fixtures/otel-collector-dev.yaml (diff above); change both together"
 fi
+
+# =============================================================================================
+# 11. Bundled collector (observability roadmap Phase 6): optional, dev/eval only, default off
+# =============================================================================================
+collector_args=(--set observability.enabled=true --set observability.collector.enabled=true)
+collector_ns=(--namespace dws-collector-test)
+chart_yaml="$chart_dir/Chart.yaml"
+values_yaml="$chart_dir/values.yaml"
+
+# --- 11a. Off: nothing from the subchart, and collector.enabled=false is the same as the default
+off_render="$(render "${base_args[@]}" "${obs_args[@]}")"
+assert_absent 'charts/opentelemetry-collector/' "$off_render" \
+  "the opentelemetry-collector subchart rendered with observability.collector.enabled=false"
+assert_absent 'name: dws-otel-collector' "$off_render" \
+  "something named dws-otel-collector rendered with the bundled collector off (the default endpoint must name a collector this chart does not install)"
+assert_absent '^kind: DaemonSet$' "$off_render" "a DaemonSet rendered with the bundled collector off"
+[ "$off_render" = "$(render "${base_args[@]}" "${obs_args[@]}" --set observability.collector.enabled=false)" ] \
+  || fail "an explicit observability.collector.enabled=false differs from the default render"
+assert_absent 'opentelemetry-collector' "$default_render" "the default render mentions the opentelemetry-collector subchart"
+
+# --- 11b. On: the subchart renders at the pinned version as a DaemonSet behind Service dws-otel-collector
+pinned_version="$(awk '/^  - name: opentelemetry-collector$/ {f=1} f && /^    version:/ {print $2; exit}' "$chart_yaml")"
+[ -n "$pinned_version" ] || fail "Chart.yaml has no opentelemetry-collector dependency"
+awk '/^  - name: opentelemetry-collector$/ {f=1} f' "$chart_yaml" | grep -Fq 'condition: observability.collector.enabled' \
+  || fail "the opentelemetry-collector dependency must be conditional on observability.collector.enabled"
+awk '/^- name: opentelemetry-collector$/ {f=1} f && /^  version:/ {print $2; exit}' "$chart_dir/Chart.lock" | grep -Fxq "$pinned_version" \
+  || fail "Chart.lock does not pin opentelemetry-collector $pinned_version (run helm dependency update)"
+[ -f "$chart_dir/charts/opentelemetry-collector-$pinned_version.tgz" ] \
+  || fail "opentelemetry-collector-$pinned_version.tgz is not vendored in $chart_dir/charts"
+
+on_render="$(render "${base_args[@]}" "${collector_args[@]}" "${collector_ns[@]}")"
+assert_count "^    helm\.sh/chart: opentelemetry-collector-$pinned_version\$" "$on_render" 4 \
+  "the subchart must render ServiceAccount, ConfigMap, Service and DaemonSet at the pinned version $pinned_version"
+assert_count '^kind: DaemonSet$' "$on_render" 1 "the bundled collector must render exactly one DaemonSet (filelog reads node-local /var/log/pods)"
+assert_absent '^kind: (Deployment|StatefulSet)$' "$(doc_of "$on_render" 'charts/opentelemetry-collector/')" \
+  "the bundled collector must not render a Deployment or StatefulSet"
+
+coll_svc="$(doc_of "$on_render" 'opentelemetry-collector/templates/service[.]yaml')"
+coll_ds="$(doc_of "$on_render" 'opentelemetry-collector/templates/daemonset[.]yaml')"
+coll_cm="$(doc_of "$on_render" 'opentelemetry-collector/templates/configmap-agent[.]yaml')"
+[ -n "$coll_svc" ] && [ -n "$coll_ds" ] && [ -n "$coll_cm" ] || fail "could not isolate the bundled collector Service/DaemonSet/ConfigMap documents"
+assert_count '^  name: dws-otel-collector$' "$coll_svc" 1 \
+  "the bundled collector Service must be named exactly dws-otel-collector (the default observability.otlp.endpoint)"
+assert_count '^  namespace: dws-collector-test$' "$coll_svc" 1 "the bundled collector Service must be in the release namespace"
+assert_count '^      port: 4318$' "$coll_svc" 1 "the Service must expose OTLP/HTTP 4318"
+assert_count '^      port: 4317$' "$coll_svc" 1 "the Service must expose OTLP/gRPC 4317"
+assert_absent '14250|14268|6831|9411' "$coll_svc" "the Service exposes jaeger/zipkin ports; the bundled collector is OTLP only"
+assert_absent 'hostPort' "$coll_ds" "the DaemonSet must not claim host ports"
+assert_count '^        dapr\.io/enabled: "false"$' "$coll_ds" 1 "the collector pod must opt out of Dapr injection"
+assert_absent 'dapr\.io/enabled: "?true' "$coll_ds" "the collector pod must not request a Dapr sidecar"
+assert_count '^            path: /var/log/pods$' "$coll_ds" 1 "the DaemonSet must mount the node's /var/log/pods through a hostPath"
+assert_count '^              readOnly: true$' "$coll_ds" 1 "the /var/log/pods mount must be read-only"
+assert_count '^            - name: K8S_NAMESPACE$' "$coll_ds" 1 "the filelog receiver is namespace-scoped through K8S_NAMESPACE, which the pod must set"
+assert_count '^          image: "otel/opentelemetry-collector-contrib:' "$coll_ds" 1 "filelog needs the contrib distribution"
+assert_count '^            allowPrivilegeEscalation: false$' "$coll_ds" 1 "the collector container must not allow privilege escalation"
+
+# The rendered collector configuration. The chart rewrites some component names for the image
+# version (filelog is rendered as file_log), so match either spelling.
+assert_count '^      (filelog|file_log):$' "$coll_cm" 1 "the bundled collector must run the filelog receiver"
+assert_count '^            endpoint: \$\{env:MY_POD_IP\}:4318$' "$coll_cm" 1 "OTLP/HTTP must listen on 4318"
+assert_count '^            endpoint: \$\{env:MY_POD_IP\}:4317$' "$coll_cm" 1 "OTLP/gRPC must listen on 4317"
+assert_count '^        verbosity: detailed$' "$coll_cm" 1 "the debug exporter must be verbosity: detailed"
+for signal in traces metrics logs; do
+  sig_block="$(awk -v s="        $signal:" '$0 == s && !d {f=1; print; next} f && /^        [a-z]+:$/ {f=0; d=1} f' <<<"$coll_cm")"
+  grep -Fq -- '- debug' <<<"$sig_block" || fail "the $signal pipeline must export to the debug exporter"
+  grep -Fq -- '- otlp' <<<"$sig_block" || fail "the $signal pipeline must receive from otlp"
+  [ "$(grep -Ec '^          - ' <<<"$sig_block")" -eq 4 ] \
+    || [ "$signal" = logs ] || fail "the $signal pipeline must be otlp -> memory_limiter,batch -> debug and nothing else"
+done
+assert_absent '^          - (otlphttp|otlp)/' "$coll_cm" "the bundled collector must carry no backend exporter (debug only)"
+logs_block="$(awk '$0 == "        logs:" && !d {f=1; print; next} f && /^        [a-z]+:$/ {f=0; d=1} f' <<<"$coll_cm")"
+grep -Eq '^          - (filelog|file_log)$' <<<"$logs_block" || fail "the logs pipeline must receive from filelog as well as otlp"
+for needle in '- /var/log/pods/*/daprd/*.log' '- /var/log/pods/*/collector/*.log' '- /var/log/pods/*/opentelemetry-collector/*.log' \
+              '- /var/log/pods/${env:K8S_NAMESPACE}_*/*/*.log' 'type: json_parser' 'type: trace_parser' 'parse_from: attributes.trace_id'; do
+  grep -Fq -- "$needle" <<<"$coll_cm" || fail "the rendered bundled collector config lost: $needle"
+done
+
+# --- 11c. Three-way agreement of the filelog block: fixture == README == values.yaml ----------
+values_filelog="$(awk '/^      filelog:$/ {f=1} f && /^ {0,4}[A-Za-z]/ {f=0} f' "$values_yaml" | sed -E 's/^      //')"
+[ -n "$values_filelog" ] || fail "no filelog receiver found under opentelemetry-collector.config.receivers in $values_yaml"
+if ! diff -u <(printf '%s\n' "$fixture_filelog") <(printf '%s\n' "$values_filelog"); then
+  fail "the bundled collector's filelog receiver in values.yaml differs from tests/fixtures/otel-collector-dev.yaml (diff above); the fixture, the README block and values.yaml must stay identical"
+fi
+# (the README == fixture comparison is section 10; with it, all three are now identical.)
+
+# --- 11d. Endpoint at the default: everything DWS renders already points at the bundled Service
+assert_count '^    endpoint: "http://dws-otel-collector:4318"$' \
+  "$(render "${base_args[@]}" "${collector_args[@]}" -s templates/observability/instrumentation.yaml)" 1 \
+  "the Instrumentation (agents of the controller, admin and every instrumented orchestrator) must export to the bundled collector"
+col_cfgs="$(render "${base_args[@]}" "${collector_args[@]}" -s templates/controller/configuration.yaml -s templates/admin/configuration.yaml \
+  -s templates/observability/workflow-tracing-configuration.yaml)"
+assert_count '^      endpointAddress: "dws-otel-collector:4318"$' "$col_cfgs" 3 \
+  "the controller, admin and dws-tracing (compiled orchestrator sidecars) Dapr tracing must target the bundled collector"
+# Turning the collector on must change nothing else DWS renders: strip the subchart's documents
+# and the render equals the same render with the collector off.
+strip_collector() { awk '/^---$/ {if (keep) printf "%s", buf; buf="---\n"; keep=1; next} /^# Source: dws\/charts\/opentelemetry-collector\// {keep=0} {buf = buf $0 "\n"} END {if (keep) printf "%s", buf}' <<<"$1"; }
+[ "$(strip_collector "$(render "${base_args[@]}" "${collector_args[@]}")")" = "$(strip_collector "$(render "${base_args[@]}" "${obs_args[@]}")")" ] \
+  || fail "enabling the bundled collector changed a resource that is not part of the collector"
+# dws-schedule-time has no OTLP endpoint of its own: its logs reach the collector via filelog.
+sched="$(doc_of "$(render "${base_args[@]}" "${collector_args[@]}")" 'schedule-time/deployment[.]yaml')"
+[ -n "$sched" ] || fail "could not isolate the dws-schedule-time Deployment"
+assert_count '^            - name: DWS_LOG_FORMAT$' "$sched" 1 "dws-schedule-time must emit DWS_LOG_FORMAT so filelog can correlate its logs"
+assert_absent 'OTEL_EXPORTER|dws-otel-collector' "$sched" "dws-schedule-time grew an OTLP endpoint; update this test and the README"
+
+# --- 11e. A custom endpoint: nothing DWS renders points at the bundled collector, and NOTES says so.
+# `helm template` never prints NOTES.txt, so use a client-side dry-run install (it takes no
+# --api-versions, hence the Operator opt-out and the default Dapr/Postgres topology).
+notes_of() { helm install dws "$chart_dir" --dry-run=client --namespace dws-collector-test \
+  --set postgresql.enabled=false --set admin.database.url=postgres://dws:dws@postgres.example.test:5432/dws \
+  --set observability.operator.required=false "$@" 2>&1 | sed -n '/^NOTES:/,$p'; }
+custom="$(render "${base_args[@]}" "${collector_args[@]}" --set observability.otlp.endpoint=https://otlp.example.test:4318)"
+assert_absent '(endpoint|endpointAddress): "(https?://)?dws-otel-collector' "$custom" \
+  "a DWS resource still points at the bundled collector although observability.otlp.endpoint is custom"
+assert_count '^      endpointAddress: "otlp.example.test:4318"$' \
+  "$(render "${base_args[@]}" "${collector_args[@]}" --set observability.otlp.endpoint=https://otlp.example.test:4318 \
+    -s templates/controller/configuration.yaml -s templates/admin/configuration.yaml)" 2 \
+  "the custom endpoint did not reach the controller and admin Dapr tracing"
+notes_custom="$(notes_of "${collector_args[@]}" --set observability.otlp.endpoint=https://otlp.example.test:4318)"
+grep -Fq 'receives nothing' <<<"$notes_custom" || fail "NOTES does not warn that the bundled collector receives nothing when the endpoint is custom"
+notes_default="$(notes_of "${collector_args[@]}")"
+grep -Fq 'bundled OpenTelemetry Collector is enabled' <<<"$notes_default" || fail "NOTES does not mention the enabled bundled collector"
+grep -Fq 'DEV/EVAL ONLY' <<<"$notes_default" || fail "NOTES lost the dev/eval-only caveat"
+! grep -Fq 'receives nothing' <<<"$notes_default" || fail "NOTES warns about a custom endpoint although the endpoint is the default"
+# A gRPC endpoint on the bundled Service is still the bundled collector.
+notes_grpc="$(notes_of "${collector_args[@]}" --set observability.otlp.endpoint=http://dws-otel-collector:4317 --set observability.otlp.protocol=grpc)"
+! grep -Fq 'receives nothing' <<<"$notes_grpc" || fail "NOTES warns although the endpoint is the bundled collector's gRPC port"
+! grep -Fq 'bundled OpenTelemetry Collector' <<<"$(notes_of --set observability.enabled=true)" \
+  || fail "NOTES mentions the bundled collector although it is off"
+
+# --- 11f. The collector without observability fails the render with a clear message
+nocol_out="$(render "${base_args[@]}" --set observability.collector.enabled=true 2>&1 >/dev/null)" \
+  && fail "observability.collector.enabled=true with observability.enabled=false rendered; it must fail"
+grep -Fq 'observability.collector.enabled=true requires observability.enabled=true' <<<"$nocol_out" \
+  || fail "the collector-without-observability failure does not explain itself: $nocol_out"
+# ...even when no component is enabled (the check reads values only).
+render "${base_args[@]}" --set controller.enabled=false --set admin.enabled=false --set observability.collector.enabled=true >/dev/null 2>&1 \
+  && fail "collector-without-observability rendered with the controller and admin disabled"
+
+# --- 11g. The OpenTelemetry Operator is a prerequisite, never a dependency
+! grep -Eq '^  - name: (opentelemetry-operator|cert-manager)$' "$chart_yaml" \
+  || fail "the OpenTelemetry Operator / cert-manager must stay a documented prerequisite, not a Chart.yaml dependency"
+
+# --- 11h. Documentation carries the caveat
+grep -Fq 'Dev/eval only; point at a managed collector in production' "$readme" \
+  || fail "the chart README lost the bundled collector caveat"
+grep -Fq 'Dev/eval only; point at a managed collector in production' "$chart_dir/../../README.md" \
+  || fail "the root README values table lost the bundled collector caveat"
+grep -Fq 'observability.collector.enabled' "$chart_dir/../../README.md" \
+  || fail "the root README values table has no observability.collector.enabled row"
 
 echo "observability-render-test.sh: all checks passed"

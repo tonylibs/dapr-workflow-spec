@@ -14,5 +14,8 @@ dependencies:
 - name: apisix
   repository: https://apache.github.io/apisix-helm-chart
   version: 2.16.0
-digest: sha256:6dc274e2fde4d534902e2e82bc435edb4f6b6292cef270074b919edf9432b632
-generated: "2026-10-11T10:14:38.920760742Z"
+- name: opentelemetry-collector
+  repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+  version: 0.179.1
+digest: sha256:3bd28b3ae5507dc0ae853d707714f18a04e4d77d7c613178897ae2a36a7f6701
+generated: "2026-11-18T20:05:35.070074306Z"

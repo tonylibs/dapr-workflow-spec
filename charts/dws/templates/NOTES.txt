@@ -63,3 +63,19 @@ are rejected if their `schedule` is invalid (more than one trigger, sub-second o
 durations, a non-5-field cron) or uses `schedule.on`, which is not supported yet. See
 charts/dws/README.md, "Upgrading to scheduling Phase 6a".
 {{- end }}
+{{- if and .Values.observability.enabled .Values.observability.collector.enabled }}
+
+The bundled OpenTelemetry Collector is enabled (observability.collector.enabled=true): a DaemonSet
+behind the Service dws-otel-collector. DEV/EVAL ONLY: it only prints what it receives to its own stdout, and has
+no backend, persistence or HA. Point observability.otlp.endpoint at a managed collector in production.
+{{- if regexMatch "^https?://dws-otel-collector(\\.[^:/]+)*:(4317|4318)/?$" .Values.observability.otlp.endpoint }}
+
+  kubectl logs -n {{ include "dws.namespace" . }} -l app.kubernetes.io/name=opentelemetry-collector --tail=100
+{{- else }}
+
+WARNING: observability.otlp.endpoint is {{ .Values.observability.otlp.endpoint }}, not the bundled
+collector's Service (dws-otel-collector on port 4318, or 4317 with protocol grpc). Nothing in this
+release sends telemetry to the bundled collector, so it receives nothing. Reset the endpoint to
+http://dws-otel-collector:4318, or set observability.collector.enabled=false.
+{{- end }}
+{{- end }}

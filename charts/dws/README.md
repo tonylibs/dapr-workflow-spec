@@ -165,9 +165,11 @@ helm upgrade --install opentelemetry-operator open-telemetry/opentelemetry-opera
 `observability.operator.required=false` to bypass that check in an environment that installs the
 Operator out of band after the release.
 
-You also need a reachable OTLP receiver. This chart does not bundle a collector in Phase 1 —
-`observability.otlp.endpoint` defaults to `http://dws-otel-collector:4318`, which names a
-collector you install yourself.
+You also need a reachable OTLP receiver. `observability.otlp.endpoint` defaults to
+`http://dws-otel-collector:4318`. For a quick evaluation, `observability.collector.enabled=true`
+installs a collector under exactly that name (see [Bundled collector](#bundled-collector-dev--eval-only));
+otherwise it names a collector you install yourself, and in production it should point at your
+managed one.
 
 ### What Phase 1 covers
 
@@ -266,11 +268,14 @@ can be found from the trace ID. The line contract is [`docs/log-format.md`](../.
 `/var/log/pods` and your collector's `filelog` receiver reads them. The `Instrumentation` resource
 sets `OTEL_LOGS_EXPORTER=none` unconditionally, so the application agents never also export logs
 over OTLP and no line is delivered twice. This chart does not install a collector; yours must be able
-to read node log files (an agent or DaemonSet-style collector). The receiver below is the reference
+to read node log files (an agent or DaemonSet-style collector); the optional
+[bundled collector](#bundled-collector-dev--eval-only) is one. The receiver below is the reference
 to adapt; it is the same block as in
 [`tests/fixtures/otel-collector-dev.yaml`](tests/fixtures/otel-collector-dev.yaml), which pairs it
-with a dev-only Loki so the lines of one `trace_id` can be queried. `tests/observability-render-test.sh`
-fails if the two diverge or if the exclusions and trace-context operators disappear.
+with a dev-only Loki so the lines of one `trace_id` can be queried, and as the bundled collector's
+`opentelemetry-collector.config.receivers.filelog` in `values.yaml`.
+`tests/observability-render-test.sh` fails if the three diverge or if the exclusions and
+trace-context operators disappear.
 
 ```yaml
 filelog:
@@ -279,6 +284,7 @@ filelog:
   exclude:
     - /var/log/pods/*/daprd/*.log
     - /var/log/pods/*/collector/*.log
+    - /var/log/pods/*/opentelemetry-collector/*.log
     - /var/log/pods/*/jaeger/*.log
     - /var/log/pods/*/loki/*.log
   start_at: end
@@ -332,7 +338,8 @@ filelog:
 ```
 
 Adapt the `include` pattern to the namespace(s) your release runs in (the fixture takes it from the
-collector pod's own namespace). The `daprd` and collector exclusions are not optional: the sidecar
+collector pod's own namespace). The `daprd` and collector exclusions are not optional (the bundled
+chart's container is named `opentelemetry-collector`, the fixture's `collector`, hence both lines): the sidecar
 logs in a different schema, and the collector's `debug` exporter prints every record to its own
 stdout, which would be read back in an endless loop. A line that does not start with `{` (text mode,
 startup banners) is forwarded with the raw line as its body and no trace context.
@@ -358,6 +365,44 @@ startup banners) is forwarded with the raw line as its body and no trace context
   `observability.logs.enabled=false` to stop rendering the variable altogether.
 - **Rollback** is `observability.logs.format=text` and a `helm upgrade`; the controller and admin
   roll, and compiled workflows follow on their next deploy.
+
+### Bundled collector (dev / eval only)
+
+> **Dev/eval only; point at a managed collector in production.** The bundled collector prints
+> telemetry to its own stdout and ships it nowhere: no backend, persistence, HA or tail sampling.
+
+`observability.collector.enabled=true` (with `observability.enabled=true`; the render fails
+otherwise) installs the upstream `opentelemetry-collector` chart (pinned in `Chart.yaml`, vendored
+in `charts/`) as a **DaemonSet**, because the `filelog` receiver reads node-local `/var/log/pods`
+through a read-only `hostPath` mount. It runs as root for that reason (pod log files are not
+world-readable), with privilege escalation and all capabilities dropped. Its Service is named
+`dws-otel-collector` in the release namespace, so the default `observability.otlp.endpoint`
+(`http://dws-otel-collector:4318`) reaches it with no override; the controller, admin,
+`dws-schedule-time`, the `dws-tracing` Configuration and the compiled-orchestrator `Instrumentation`
+all follow that value. The pod carries `dapr.io/enabled: "false"`.
+
+```bash
+helm upgrade --install dws charts/dws -n dws --create-namespace \
+  --set observability.enabled=true --set observability.collector.enabled=true
+kubectl logs -n dws -l app.kubernetes.io/name=opentelemetry-collector --tail=100
+```
+
+What it does by default (everything under the top-level `opentelemetry-collector:` key in
+`values.yaml`):
+
+- **Receivers**: OTLP on 4318 (HTTP) and 4317 (gRPC), plus the `filelog` receiver above, scoped to
+  the release namespace through `K8S_NAMESPACE`. Setting `observability.otlp.protocol=grpc` means
+  also setting the endpoint to `:4317`; the chart does not rewrite the port.
+- **Exporter**: `debug` with `verbosity: detailed` for traces, metrics and logs. To send data to a
+  backend, add an exporter under `opentelemetry-collector.config.exporters` and list it in each
+  `opentelemetry-collector.config.service.pipelines.<signal>.exporters`. Helm replaces lists, so
+  restate the pipeline's whole `receivers`/`processors`/`exporters`.
+- **Name**: `fullnameOverride: dws-otel-collector`, regardless of the release name, so only one
+  release per namespace can enable it. A custom `observability.otlp.endpoint` that does not name
+  this Service means the bundled collector receives nothing; `helm install`'s NOTES says so.
+- **Operator**: the OpenTelemetry Operator stays a prerequisite (see above), never a dependency.
+  Do not combine this with `tests/fixtures/otel-collector-dev.yaml` in one namespace; both claim
+  the Service name.
 
 ### OTLP headers
 

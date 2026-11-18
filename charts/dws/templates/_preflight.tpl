@@ -97,3 +97,16 @@ Called unconditionally from templates/preflight.yaml.
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{/*
+Bundled collector (observability roadmap Phase 6): observability.collector.enabled installs the
+opentelemetry-collector subchart, but every signal it could receive is produced only when
+observability.enabled=true. Without it the DaemonSet would run and receive nothing (the default
+endpoint would also be unused), so fail the render and name both ways out rather than leave a
+silently idle collector. Reads only values, so it also runs with every component disabled.
+*/}}
+{{- define "dws.preflight.collector" -}}
+{{- if and .Values.observability.collector.enabled (not .Values.observability.enabled) }}
+{{- fail "observability.collector.enabled=true requires observability.enabled=true: the bundled OpenTelemetry Collector only receives what the instrumented DWS components export, and with observability off none of them export anything. Set observability.enabled=true (and see the chart README, \"Bundled collector\"), or set observability.collector.enabled=false." }}
+{{- end }}
+{{- end }}
