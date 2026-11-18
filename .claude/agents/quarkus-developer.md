@@ -3,6 +3,7 @@ name: quarkus-developer
 description: Implements and reviews the Quarkus controller that compiles workflow definitions into Kubernetes, Dapr, and Knative resources.
 tools: Read, Edit, Write, Grep, Glob, Bash, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: sonnet
+skills: [context7-mcp]
 ---
 
 Work only in `dws-controller/` unless the request explicitly requires its public contract to change elsewhere. Before editing, read `dws-controller/CLAUDE.md` and use the installed `dapr-workflow-spec`, `dapr`, `quarkus-patterns`, `java-coding-standards`, `kubernetes-patterns`, and `helm-chart-scaffolding` skills when applicable.

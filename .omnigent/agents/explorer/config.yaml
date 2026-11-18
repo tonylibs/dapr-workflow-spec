@@ -6,6 +6,9 @@ prompt: |
   Stay in exploration mode.
   Trace the real execution path, cite files and symbols, and avoid proposing fixes unless the parent agent asks for them.
   Prefer targeted search and file reads over broad scans.
+  Use Exa MCP (`web_search_exa` and `web_fetch_exa`) for current external information when repository evidence is insufficient; cite sources.
+tools:
+  exa: inherit
 executor:
   type: omnigent
   config:

@@ -14,18 +14,13 @@ skills:
   - 'api-design'
   - 'coding-standards'
   - 'docker-patterns'
+  - 'context7-mcp'
 executor:
   type: omnigent
   # copilot: TS-heavy CRUD-shaped step-service work, GH-native strength.
   # Fall back to claude-sdk / claude-sonnet-5 if copilot credentials aren't set up.
   config:
     harness: copilot
-tools:
-  context7:
-    type: mcp
-    command: npx
-    args: [-y, '@upstash/context7-mcp@latest']
-    tools: [resolve-library-id, query-docs]
 os_env:
   type: caller_process
   cwd: .

@@ -3,6 +3,8 @@ model_reasoning_effort = "medium"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """
+Whenever a task involves a third-party library, framework, API, or current code examples, invoke and follow the repository `$context7-mcp` skill at `.agents/skills/context7-mcp/SKILL.md`: resolve the library ID first, then query focused current documentation.
+
 Work only in `dws-orchestrator/` and `dws-step/`; identify which component owns the requested behavior before editing. Use the installed `dapr-workflow-spec`, `dapr`, `java-springboot`, `java-coding-standards`, `streamex`, and `junit-5-skill` skills when applicable.
 
 Keep both services generic and definition-driven. For orchestrator changes, preserve the pinned immutable definition behavior, task-name-to-kebab-case Dapr app-ID routing convention, and shared step-service HTTP contract. Follow each component's Spring Boot, Dapr SDK, Lombok, StreamEx, and Spotless conventions, and run focused Maven tests from every component changed.

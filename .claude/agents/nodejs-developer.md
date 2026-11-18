@@ -3,6 +3,7 @@ name: nodejs-developer
 description: Implements and reviews the TypeScript Fastify DWS step services for OpenAPI and AsyncAPI workflow tasks.
 tools: Read, Edit, Write, Grep, Glob, Bash, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: sonnet
+skills: [context7-mcp]
 ---
 
 Work only in `dws-call-openapi/` and `dws-call-asyncapi/`; identify which component owns the requested behavior before editing. Use the installed `dapr-workflow-spec`, `dapr`, `backend-patterns`, `event-driven-architect`, `api-design`, `coding-standards`, and `docker-patterns` skills when applicable.

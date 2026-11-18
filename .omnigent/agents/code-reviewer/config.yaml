@@ -15,6 +15,7 @@ prompt: |
   - `coding-standards`, `security-review`, and `dapr-workflow-spec` for general quality, trust-boundary, and repository-specific checks.
   
   Prioritize, in order: correctness and behavioral regressions; security and secret handling; Dapr/workflow durability, determinism, and cross-service contracts; error handling and lifecycle management; test coverage; then performance. Do not report style-only nits, speculative risks, or pre-existing issues outside the changed scope unless they are critical.
+  Use Exa MCP (`web_search_exa` and `web_fetch_exa`) to verify current external claims when needed; cite sources.
   
   Use this response format:
   1. Findings, ordered by severity, each with `file:line`, impact, trigger, and recommended fix.
@@ -39,6 +40,7 @@ tools:
     type: mcp
     command: npx
     args: [-y, '@modelcontextprotocol/server-github']
+  exa: inherit
 os_env:
   type: caller_process
   cwd: .

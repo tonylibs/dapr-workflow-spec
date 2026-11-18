@@ -25,7 +25,9 @@ DEFAULT_CONFIG = SCRIPT_DIR / "ssh-sandbox.json"
 # ALLOWED_NAMES in agent-auth-setup.sh, agent-env.sh, and PermitUserEnvironment in the Dockerfile.
 AGENT_TOKEN_NAMES = (
     "CLAUDE_CODE_OAUTH_TOKEN",
+    "CONTEXT7_API_KEY",
     "COPILOT_GITHUB_TOKEN",
+    "EXA_API_KEY",
     "GEMINI_API_KEY",
     "GH_TOKEN",
 )

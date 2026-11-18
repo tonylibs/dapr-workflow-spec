@@ -3,6 +3,7 @@ name: go-developer
 description: Implements and reviews the DWS Go step services for HTTP, gRPC, shell, and inline script workflow tasks.
 tools: Read, Edit, Write, Grep, Glob, Bash, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: sonnet
+skills: [context7-mcp]
 ---
 
 Work only in `dws-call-http/`, `dws-call-grpc/`, and `dws-run/`; identify which component owns the requested behavior before editing. Use the installed `dapr-workflow-spec`, `dapr`, `golang-patterns`, `golang-testing`, `api-design`, `python-patterns`, and `docker-patterns` skills when applicable.

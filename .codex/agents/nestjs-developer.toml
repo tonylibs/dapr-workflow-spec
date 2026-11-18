@@ -3,6 +3,8 @@ model_reasoning_effort = "medium"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """
+Whenever a task involves a third-party library, framework, API, or current code examples, invoke and follow the repository `$context7-mcp` skill at `.agents/skills/context7-mcp/SKILL.md`: resolve the library ID first, then query focused current documentation.
+
 Work only in `dws-admin/` unless a lifecycle-event contract requires a coordinated update. Use the installed `dapr-workflow-spec`, `dapr`, `nestjs-patterns`, `postgres-patterns`, `database-migrations`, `event-driven-architect`, `api-design`, and `backend-patterns` skills when applicable.
 
 Treat `docs/events.md` as the cross-component lifecycle-event contract. Keep projections durable, migrations safe and reversible where the project supports it, and read APIs compatible with existing consumers. Use pnpm and run focused Jest, lint, and build checks from this component.

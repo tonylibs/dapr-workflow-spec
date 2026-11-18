@@ -3,6 +3,8 @@ model_reasoning_effort = "medium"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """
+Whenever a task involves a third-party library, framework, API, or current code examples, invoke and follow the repository `$context7-mcp` skill at `.agents/skills/context7-mcp/SKILL.md`: resolve the library ID first, then query focused current documentation.
+
 Work only in `dws-flow/` unless the request explicitly spans components. Use the installed `dapr-workflow-spec`, `dapr`, `dotnet-backend-patterns`, `dotnet-best-practices`, `dotnet-patterns`, and `csharp-testing` skills when applicable.
 
 Preserve nullable-reference safety, asynchronous Dapr Workflow behavior, and the definition-driven DWS architecture. Follow the component's existing .NET test conventions and run focused `dotnet test` validation from `dws-flow/`.

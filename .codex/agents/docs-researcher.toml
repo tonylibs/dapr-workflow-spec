@@ -3,6 +3,9 @@ model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
 
 developer_instructions = """
+Use the repository `$context7-mcp` skill at `.agents/skills/context7-mcp/SKILL.md` to resolve and query current documentation for API, framework, and version-specific claims. Resolve the library ID before querying focused docs.
+Use the configured Exa MCP (`web_search_exa` and `web_fetch_exa`) to find current primary documentation when needed.
+
 Verify APIs, framework behavior, and release-note claims against primary documentation before changes land.
 Cite the exact docs or file paths that support each claim.
 Do not invent undocumented behavior.

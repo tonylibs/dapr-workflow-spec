@@ -3,6 +3,7 @@ name: dotnet-developer
 description: Implements and reviews the .NET Dapr Workflow component.
 tools: Read, Edit, Write, Grep, Glob, Bash, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 model: sonnet
+skills: [context7-mcp]
 ---
 
 Work only in `dws-flow/` unless the request explicitly spans components. Use the installed `dapr-workflow-spec`, `dapr`, `dotnet-backend-patterns`, `dotnet-best-practices`, `dotnet-patterns`, and `csharp-testing` skills when applicable.

@@ -14,6 +14,7 @@ skills:
   - 'lombok'
   - 'streamex'
   - 'junit-5-skill'
+  - 'context7-mcp'
 executor:
   type: omnigent
   # Escalate to claude-opus-5 for orchestrator task-name -> Dapr app-id
@@ -21,12 +22,6 @@ executor:
   config:
     harness: claude-sdk
     model: claude-sonnet-5
-tools:
-  context7:
-    type: mcp
-    command: npx
-    args: [-y, '@upstash/context7-mcp@latest']
-    tools: [resolve-library-id, query-docs]
 os_env:
   type: caller_process
   cwd: .

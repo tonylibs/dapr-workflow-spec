@@ -53,6 +53,28 @@ class CodexAuthTests(unittest.TestCase):
 
 
 class CredentialSetupTests(unittest.TestCase):
+    def test_forwards_context7_api_key(self):
+        result = subprocess.CompletedProcess([], 0, stdout="ok", stderr="")
+        with patch.dict(helper.os.environ, {"CONTEXT7_API_KEY": "context7-test-key"}, clear=True), patch.object(
+            helper.shutil, "which", return_value=None
+        ), patch.object(helper.subprocess, "run", return_value=result) as docker_run:
+            helper.forward_agent_tokens("sandbox-test")
+        self.assertEqual(
+            docker_run.call_args.kwargs["input"].splitlines(),
+            ["CONTEXT7_API_KEY=context7-test-key"],
+        )
+
+    def test_forwards_exa_api_key(self):
+        result = subprocess.CompletedProcess([], 0, stdout="ok", stderr="")
+        with patch.dict(helper.os.environ, {"EXA_API_KEY": "exa-test-key"}, clear=True), patch.object(
+            helper.shutil, "which", return_value=None
+        ), patch.object(helper.subprocess, "run", return_value=result) as docker_run:
+            helper.forward_agent_tokens("sandbox-test")
+        self.assertEqual(
+            docker_run.call_args.kwargs["input"].splitlines(),
+            ["EXA_API_KEY=exa-test-key"],
+        )
+
     def test_forwards_host_gh_login_and_git_identity(self):
         def host_run(command, *, check=True):
             values = {

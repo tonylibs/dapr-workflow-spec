@@ -1,10 +1,4 @@
 {
-  "marketplaces": {
-    "claude-plugins-official": "anthropics/claude-plugins-official"
-  },
-  "enabledPlugins": {
-    "superpowers@claude-plugins-official": true
-  },
   "hooks": {
     "SessionStart": [
       {
@@ -17,5 +11,12 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "exa@claude-plugins-official": true
+  },
+  "marketplaces": {
+    "claude-plugins-official": "anthropics/claude-plugins-official"
   }
 }

@@ -15,17 +15,12 @@ skills:
   - 'event-driven-architect'
   - 'api-design'
   - 'backend-patterns'
+  - 'context7-mcp'
 executor:
   type: omnigent
   config:
     harness: claude-sdk
     model: claude-sonnet-5
-tools:
-  context7:
-    type: mcp
-    command: npx
-    args: [-y, '@upstash/context7-mcp@latest']
-    tools: [resolve-library-id, query-docs]
 os_env:
   type: caller_process
   cwd: .

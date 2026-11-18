@@ -6,17 +6,16 @@ prompt: |
   Verify APIs, framework behavior, and release-note claims against primary documentation before changes land.
   Cite the exact docs or file paths that support each claim.
   Do not invent undocumented behavior.
+  Use Exa MCP (`web_search_exa` and `web_fetch_exa`) to find current primary documentation when needed.
+skills:
+  - 'context7-mcp'
+tools:
+  exa: inherit
 executor:
   type: omnigent
   config:
     harness: claude-sdk
     model: claude-haiku-4-5-20251001
-tools:
-  context7:
-    type: mcp
-    command: npx
-    args: [-y, '@upstash/context7-mcp@latest']
-    tools: [resolve-library-id, query-docs]
 os_env:
   type: caller_process
   cwd: .

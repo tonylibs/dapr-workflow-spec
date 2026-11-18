@@ -13,6 +13,7 @@ skills:
   - 'kubernetes-patterns'
   - 'docker-patterns'
   - 'deployment-patterns'
+  - 'context7-mcp'
 executor:
   type: omnigent
   # Escalate to claude-opus-5 for Gateway/auth-path/APISIX changes: helm
@@ -21,11 +22,6 @@ executor:
     harness: claude-sdk
     model: claude-sonnet-5
 tools:
-  context7:
-    type: mcp
-    command: npx
-    args: [-y, '@upstash/context7-mcp@latest']
-    tools: [resolve-library-id, query-docs]
   github:
     type: mcp
     command: npx

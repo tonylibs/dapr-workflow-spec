@@ -130,7 +130,9 @@ scope is for Copilot Requests, not repository access.
 | Variable | CLI | Notes |
 |---|---|---|
 | `CLAUDE_CODE_OAUTH_TOKEN` | Claude Code | Subscription token from `claude setup-token` on the host. |
+| `CONTEXT7_API_KEY` | Context7 tools | API key for Context7 documentation lookups from the sandbox. |
 | `COPILOT_GITHUB_TOKEN` | Copilot CLI | Fine-grained PAT with only the **Copilot Requests** account permission; classic PATs are not supported. It is not used for `gh`/Git. |
+| `EXA_API_KEY` | Exa-backed tools | API key for Exa search/API calls made from the sandbox. |
 | `GEMINI_API_KEY` | Antigravity (`agy`) | Also sets `"modelProvider": "gemini"` in `~/.gemini/antigravity-cli/settings.json`, so `agy` uses Gemini API billing instead of your Google account sign-in. |
 | `GH_TOKEN` | GitHub CLI and Git HTTPS | A GitHub token with the repository permissions needed for your intended `gh` and Git operations. Falls back to the host's `gh auth token`. |
 

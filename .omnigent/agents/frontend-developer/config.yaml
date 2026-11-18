@@ -14,17 +14,12 @@ skills:
   - 'tanstack-query'
   - 'tanstack-form'
   - 'tanstack-table'
+  - 'context7-mcp'
 executor:
   type: omnigent
   config:
     harness: antigravity
-    model: gemini-3.8-flash-high
-tools:
-  context7:
-    type: mcp
-    command: npx
-    args: [-y, '@upstash/context7-mcp@latest']
-    tools: [resolve-library-id, query-docs]
+    model: gemini-4-argon
 os_env:
   type: caller_process
   cwd: .
