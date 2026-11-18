@@ -32,8 +32,8 @@ os_env:
   sandbox:
     # An omitted sandbox uses the platform default with read-only cwd on Linux.
     type: auto
-    # Linked worktree metadata lives outside the workspace on this host.
-    write_paths: [".", "/home/dapr-workflow-spec/.git"]
+    # Linked worktree metadata can live under either checkout root.
+    write_paths: [".", "/home/dapr-workflow-spec/.git", "/workspace/.git"]
     # OpenSandbox sets KUBECONFIG to its Docker Desktop config.
     read_paths: ["~/.kube-local/config"]
     env_passthrough: ["KUBECONFIG"]

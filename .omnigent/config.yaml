@@ -93,8 +93,8 @@ os_env:
   sandbox:
     # An omitted sandbox uses the platform default with read-only cwd on Linux.
     type: auto
-    # Linked worktree metadata lives outside the workspace on this host.
-    write_paths: [".", "/home/dapr-workflow-spec/.git"]
+    # Linked worktree metadata can live under either checkout root.
+    write_paths: [".", "/home/dapr-workflow-spec/.git", "/workspace/.git"]
     # The copilot CLI authenticates from gh's hosts.yml, which
     # agent-sandbox/omnigent-copilot-bootstrap.sh provisions; omnigent strips
     # COPILOT_GITHUB_TOKEN from the agent env, so this is its only credential source.
