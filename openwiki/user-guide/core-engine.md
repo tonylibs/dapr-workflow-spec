@@ -89,12 +89,16 @@ curl -s -H 'Content-Type: application/yaml' --data-binary @order.yaml localhost:
 the controller only accepts calls through Dapr with a valid bearer token:
 
 ```sh
-curl -s -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/yaml' \
-  --data-binary @order.yaml \
+# Read the controller Dapr API token from its Secret; use your supplied Secret name instead when configured.
+DAPR_API_TOKEN=$(kubectl -n dws-system get secret dws-controller-dapr-api-token \
+  -o jsonpath='{.data.token}' | base64 --decode)
+curl -s -H "Authorization: Bearer $TOKEN" -H "dapr-api-token: $DAPR_API_TOKEN" \
+  -H 'Content-Type: application/yaml' --data-binary @order.yaml \
   localhost:8080/v1.0/invoke/dws-controller/method/workflows   # Service now fronts the Dapr sidecar
 ```
 
-Machine tokens for CI ("engine auth") are not designed yet — see [Add-ons](add-ons.md#engine-auth-planned).
+Both the bearer JWT and controller Dapr API token are required when `auth.enabled=true`. For CI
+and production-secret setup, see [Engine auth](add-ons.md#engine-auth).
 
 ## 3. Run an instance
 
