@@ -24,6 +24,7 @@ The chart defaults to one controller replica, one admin replica, an in-chart sta
 | `console.enabled` | `false` | Optional console Deployment and Service. It has no route of its own; pair it with `apiGateway.enabled`. The legacy `console.ingress.enabled` now fails rendering with migration steps. Its browser login is described in [console OIDC login](console-auth.md). |
 | `apiGateway.enabled` | `false` | Optional Gateway API front door: `/dws-admin` routes through Dapr invocation to the admin sidecar, every other path to the console. Requires `auth.enabled`, `admin.enabled`, and `console.enabled`. Data plane is bundled APISIX (`apisix.enabled=true`, fresh installs only: enabling it on `helm upgrade` deadlocks) or an external one via `apiGateway.external.gatewayProxyName`. |
 | `observability.enabled` | `false` | Opt-in OpenTelemetry agent and Dapr-sidecar tracing for the chart-managed controller and admin. It requires the cluster's OpenTelemetry Operator unless the operator preflight is explicitly disabled. |
+| `observability.collector.enabled` | `false` | Conditional upstream OpenTelemetry Collector DaemonSet and fixed-name `dws-otel-collector` Service. It is development/evaluation-only: it accepts OTLP and reads pod logs, then sends all received telemetry only to its stdout through a debug exporter. It requires `observability.enabled=true`; the Operator remains an external prerequisite. |
 | `imagePullSecrets` | `[]` | Pull credentials attached to component pods that use private registries. |
 
 ### Deployment defaults and overrides
@@ -77,6 +78,14 @@ The Service bypass is closed in the enabled path, but this is not complete pod-n
 ## Control-plane observability
 
 `observability.enabled=false` preserves the pre-observability chart render. When enabled, the OpenTelemetry Operator injects Java instrumentation into the chart-managed `controller` container and Node.js instrumentation into the chart-managed `admin` container; it does not target their Dapr sidecars. The chart also adds Dapr OTLP tracing to both pods. The controller can additionally stamp tracing onto a per-workflow orchestrator in the [deployed workflow lifecycle](deployed-workflow.md), but runtime-v2 flow/step deployments and Knative step services remain outside this delivered slice.
+
+For development and evaluation, `observability.collector.enabled=true` conditionally installs the
+vendored upstream collector as a DaemonSet behind `dws-otel-collector`, the host in the default
+`observability.otlp.endpoint`. It receives OTLP and uses `filelog` to ingest node-local container
+logs, then writes debug output only; it is not a durable or highly available backend. The collector
+runs without a Dapr sidecar and as root with a read-only pod-log mount. Its fixed Service name means
+only one enabled release fits in a namespace, and a custom endpoint leaves it unused. This optional
+receiver does not replace the OpenTelemetry Operator, which remains the injection prerequisite.
 
 The workflow path is opt-in twice: the chart must render `dws-tracing` when both `observability.enabled` and `observability.workflows.enabled` are enabled, then `dws-controller-config` must provide `observability.enabled=true`. At each workflow deployment, the controller reads that flag (and optional `observability.instrumentation`), verifies that the namespaced tracing Configuration exists, and only then adds Java injection for the `orchestrator` container. It reads `dws-tracing.spec.tracing` as the chart-owned tracing template and merges that block into the orchestrator's generated workload-specific Configuration, which is the pod's single `dapr.io/config` reference. It stamps `OTEL_SERVICE_NAME` with the orchestrator app ID and appends percent-encoded workflow name/version resource attributes. Any unavailable flag store or missing/unreadable Configuration leaves the deployment uninstrumented rather than failing it; the setting applies only on the next deployment, not retroactively. `dws-tracing` is intentionally tracing-only and pins Dapr sampling to `"1"`, so it does not inherit the controller or admin authentication pipeline and the application agent remains the sampling root.
 

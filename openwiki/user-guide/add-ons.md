@@ -19,26 +19,49 @@ Add-ons are not layers: switch them on next to whichever [layers](feature-layers
 ## Observability
 
 Off by default. On → the controller, the Admin API and (opt-in) each workflow runtime export
-OpenTelemetry data to your collector.
+OpenTelemetry data to an OTLP receiver.
 
-**You provide:** the OpenTelemetry Operator (needs cert-manager) and an OTLP receiver. The chart
-installs neither.
+**You provide:** the OpenTelemetry Operator (which needs cert-manager). The chart never installs it.
+For development or evaluation, the chart can also install a collector; in production, point DWS at
+your managed receiver instead.
 
 ```sh
+# Production: base URL only; no /v1/traces
 helm upgrade dws oci://ghcr.io/tonylibs/charts/dws -n dws-system --reuse-values \
   --set observability.enabled=true \
-  --set observability.otlp.endpoint=https://collector.example:4318   # base URL, no /v1/traces
+  --set observability.otlp.endpoint=https://collector.example:4318
+
+# Development/evaluation: install the chart's debug-only collector at the default endpoint
+helm upgrade dws oci://ghcr.io/tonylibs/charts/dws -n dws-system --reuse-values \
+  --set observability.enabled=true \
+  --set observability.collector.enabled=true
 ```
 
 | Value | Effect |
 |---|---|
-| `observability.otlp.endpoint` | Scheme + host + port, no path. Default `http://dws-otel-collector:4318` (a collector you install) |
+| `observability.otlp.endpoint` | Scheme + host + port, no path. Default `http://dws-otel-collector:4318`; enable the bundled collector or provide a collector at that address. |
 | `observability.otlp.headers` / `.existingSecret` | Auth headers for the receiver, kept in a Secret |
 | `observability.traces.samplingRate` | Sampling ratio (the app agent decides; Dapr follows) |
 | `observability.operator.required` | `false` skips the "Operator installed?" preflight |
 | `observability.workflows.enabled` | Default `true`: lets workflow runtimes be traced (step 2 below) |
 | `observability.logs.enabled` | Default `true`: with the master switch, enables structured-log delivery configuration |
 | `observability.logs.format` | Default `json`; use `text` to keep component logs in their prior text format |
+| `observability.collector.enabled` | Default `false`; installs the bundled debug-only collector for development/evaluation. Requires `observability.enabled=true`. |
+
+### Bundled collector — Today, dev/eval only
+
+Set `observability.collector.enabled=true` to install an OpenTelemetry Collector DaemonSet behind
+`dws-otel-collector` in the release namespace. The default
+`observability.otlp.endpoint=http://dws-otel-collector:4318` then works without an endpoint
+override. It accepts OTLP over HTTP (`4318`) and gRPC (`4317`), reads node-local container logs for
+the trace-correlated-log path, and prints received telemetry to its own stdout through a `debug`
+exporter. It has no backend, persistence, HA, or sampling, so use it only for development or
+evaluation.
+
+**Watch out:** it runs as root to read pod logs, and exactly one release in a namespace can use its
+fixed Service name. Do not enable it alongside the chart's collector fixture. A custom OTLP endpoint
+does not reconfigure this collector; it receives nothing. The OpenTelemetry Operator remains a
+separate prerequisite.
 
 ### Trace-correlated logs — Today
 
@@ -49,8 +72,9 @@ format to an instrumented orchestrator when you deploy or redeploy that workflow
 
 Your collector must read container stdout from node log files with a `filelog` receiver (typically
 as a DaemonSet), parse the JSON, and send it to your log backend. DWS deliberately sets
-`OTEL_LOGS_EXPORTER=none`: agent OTLP log export is not a second delivery path. The chart does not
-install a collector. See the [chart's collector receiver example](../../charts/dws/README.md#logs-and-trace-correlation)
+`OTEL_LOGS_EXPORTER=none`: agent OTLP log export is not a second delivery path. Use the optional
+bundled collector above for development/evaluation, or provide a collector that reads node logs.
+See the [chart's collector receiver example](../../charts/dws/README.md#logs-and-trace-correlation)
 and the canonical [structured log format](../../docs/log-format.md).
 
 **Watch out:** `kubectl logs` combines stdout and stderr. JVM launchers, agents, and libraries can
