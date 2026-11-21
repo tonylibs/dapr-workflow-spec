@@ -35,6 +35,20 @@ public sealed class TaskTimeoutTests
         TaskTimeout.Parse(timeout).Should().Be(TimeSpan.FromSeconds(90));
     }
 
+    [Theory]
+    [InlineData("""{"seconds":0}""")]
+    [InlineData("""{"after":{"seconds":0}}""")]
+    public void ParsesExplicitZeroAsAZeroDuration(string json)
+    {
+        TaskTimeout.Parse(JsonNode.Parse(json)).Should().Be(TimeSpan.Zero);
+    }
+
+    [Fact]
+    public void ParsesAnIso8601StringWrappedInAfter()
+    {
+        TaskTimeout.Parse(JsonNode.Parse("""{"after":"PT1M30S"}""")).Should().Be(TimeSpan.FromSeconds(90));
+    }
+
     [Fact]
     public void FormatsAsIso8601DurationLikeV1DurationToString()
     {
@@ -84,6 +98,48 @@ public sealed class TaskTimeoutTests
 
         action.Should().Throw<InvalidOperationException>()
             .WithMessage("config failure: timeout.seconds must be a number");
+    }
+
+    [Theory]
+    [InlineData("""{}""", "at least one duration component")]
+    [InlineData("""{"after":{}}""", "at least one duration component")]
+    [InlineData("""{"after":{"second":10}}""", "unexpected property 'second'")]
+    [InlineData("""{"seconds":10,"second":1}""", "unexpected property 'second'")]
+    [InlineData("""{"after":"PT10S","seconds":1}""", "unexpected property 'seconds'")]
+    [InlineData("""{"seconds":null}""", "timeout.seconds must be a number")]
+    [InlineData("""{"after":null}""", "timeout.after must be a duration")]
+    public void ThrowsAConfigFailureExplainingTheInvalidTimeoutObject(string json, string reason)
+    {
+        JsonNode? timeout = JsonNode.Parse(json);
+        Action action = () => TaskTimeout.Parse(timeout);
+
+        action.Should().Throw<InvalidOperationException>().Which.Message
+            .Should().StartWith("config failure:").And.Contain(reason);
+    }
+
+    [Theory]
+    [InlineData("""{}""", "at least one duration component")]
+    [InlineData("""{"after":{}}""", "at least one duration component")]
+    [InlineData("""{"after":{"second":10}}""", "unexpected property 'second'")]
+    public async Task RejectsAMalformedInlineTimeoutBeforeCallingTheChildOrStartingATimer(string json, string reason)
+    {
+        JsonArray tasks = JsonNode.Parse($$"""[ { "a": { "call": "http", "timeout": {{json}} } } ]""")!.AsArray();
+        JsonObject children = JsonNode.Parse("""{ "a": "child-a" }""")!.AsObject();
+        SingleNodeDefinition definition = Definition(tasks, children);
+        StubChildCaller caller = new(pending: true);
+        FlowInput input = new(JsonValue.Create("data"), null, "root", null);
+        int timerCalls = 0;
+
+        Func<Task> action = () => SequencerRunner.Run(input, definition, caller, (_, _) =>
+        {
+            timerCalls++;
+            return Task.CompletedTask;
+        });
+
+        (await action.Should().ThrowAsync<InvalidOperationException>()).Which.Message
+            .Should().StartWith("config failure:").And.Contain(reason);
+        caller.Calls.Should().Be(0);
+        timerCalls.Should().Be(0);
     }
 
     [Fact]
@@ -146,9 +202,14 @@ public sealed class TaskTimeoutTests
             this.failure = failure;
         }
 
-        public Task<JsonNode?> CallStep(string appId, FlowInput input) =>
-            failure is not null ? Task.FromException<JsonNode?>(failure)
+        public int Calls { get; private set; }
+
+        public Task<JsonNode?> CallStep(string appId, FlowInput input)
+        {
+            Calls++;
+            return failure is not null ? Task.FromException<JsonNode?>(failure)
                 : pending ? new TaskCompletionSource<JsonNode?>().Task : Task.FromResult(input.Data);
+        }
 
         public Task<JsonNode?> CallFlow(string appId, string instanceId, FlowInput input) =>
             CallStep(appId, input);

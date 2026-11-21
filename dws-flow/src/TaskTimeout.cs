@@ -16,20 +16,7 @@ namespace Dws.Flow;
 /// </summary>
 public static class TaskTimeout
 {
-    public static TimeSpan? Parse(JsonNode? timeout)
-    {
-        switch (timeout)
-        {
-            case null:
-                return null;
-            case JsonValue value when value.TryGetValue<string>(out string? iso):
-                return ParseIso(iso);
-            case JsonObject durationObject:
-                return ParseObject(durationObject);
-            default:
-                throw new InvalidOperationException("config failure: timeout must be an ISO-8601 duration string or a duration object");
-        }
-    }
+    public static TimeSpan? Parse(JsonNode? timeout) => timeout is null ? null : ParseDuration(timeout);
 
     public static string Format(TimeSpan duration)
     {
@@ -70,6 +57,13 @@ public static class TaskTimeout
         return builder.ToString();
     }
 
+    private static TimeSpan ParseDuration(JsonNode duration) => duration switch
+    {
+        JsonValue value when value.TryGetValue<string>(out string? iso) => ParseIso(iso),
+        JsonObject durationObject => ParseObject(durationObject),
+        _ => throw new InvalidOperationException("config failure: timeout must be an ISO-8601 duration string or a duration object")
+    };
+
     private static TimeSpan ParseIso(string iso)
     {
         try
@@ -84,9 +78,30 @@ public static class TaskTimeout
 
     private static TimeSpan ParseObject(JsonObject durationObject)
     {
-        if (durationObject["after"] is JsonNode after)
+        if (durationObject.TryGetPropertyValue("after", out JsonNode? after))
         {
-            return Parse(after) ?? TimeSpan.Zero;
+            foreach ((string field, JsonNode? _) in durationObject)
+            {
+                if (field is not "after")
+                {
+                    throw new InvalidOperationException($"config failure: timeout has unexpected property '{field}' beside 'after'");
+                }
+            }
+
+            return ParseDuration(after ?? throw new InvalidOperationException("config failure: timeout.after must be a duration"));
+        }
+
+        if (durationObject.Count == 0)
+        {
+            throw new InvalidOperationException("config failure: timeout must specify at least one duration component: days, hours, minutes, seconds, or milliseconds");
+        }
+
+        foreach ((string field, JsonNode? _) in durationObject)
+        {
+            if (field is not ("days" or "hours" or "minutes" or "seconds" or "milliseconds"))
+            {
+                throw new InvalidOperationException($"config failure: timeout has unexpected property '{field}'");
+            }
         }
 
         TimeSpan total = TimeSpan.Zero;
@@ -100,7 +115,7 @@ public static class TaskTimeout
 
     private static TimeSpan Component(JsonObject durationObject, string field, Func<double, TimeSpan> toTimeSpan)
     {
-        if (durationObject[field] is not JsonNode node)
+        if (!durationObject.TryGetPropertyValue(field, out JsonNode? node))
         {
             return TimeSpan.Zero;
         }
