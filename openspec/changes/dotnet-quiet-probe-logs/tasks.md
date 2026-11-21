@@ -2,17 +2,17 @@
 
 Validation: `cd dws-schedule-time && dotnet test test/dws-schedule-time.Tests.csproj`
 
-- [ ] 1.1 Add `test/LoggingSetupTests.cs` (RED). Build `ServiceCollection().AddLogging(b => LoggingSetup.Configure(b, config, format))` and assert:
+- [x] 1.1 Add `test/LoggingSetupTests.cs` (RED). Build `ServiceCollection().AddLogging(b => LoggingSetup.Configure(b, config, format))` and assert:
   - With empty config, `Microsoft.AspNetCore.Hosting.Diagnostics`, `Microsoft.AspNetCore.Routing.EndpointMiddleware` and `Microsoft.AspNetCore.Http.Result.OkObjectResult` are disabled at `Information` and enabled at `Warning`.
   - `Dws.ScheduleTime.ClusterWatcher` is enabled at `Information`.
   - With `Logging:LogLevel:Microsoft.AspNetCore=Information` in the config, the framework categories are enabled at `Information` (operator override wins).
   - With `format = "json"` the `DwsJsonConsoleFormatter` is registered as the console formatter. With `null` it is not.
-- [ ] 1.2 Add `src/LoggingSetup.cs` with `Configure(ILoggingBuilder, IConfiguration, string? logFormat)` (design D1). It moves the existing JSON-formatter block out of `Program.cs` unchanged, and adds `AddFilter("Microsoft.AspNetCore", LogLevel.Warning)` only when `Logging:LogLevel:Microsoft.AspNetCore` is unset. It does not touch `Environment.`. Make 1.1 pass.
-- [ ] 1.3 Add a `MapHealthz(this IEndpointRouteBuilder)` extension with the existing `Results.Ok(new { status = "ok" })` body. In `Program.cs`, replace the inline formatter block with `LoggingSetup.Configure(builder.Logging, builder.Configuration, Environment.GetEnvironmentVariable("DWS_LOG_FORMAT"))` and `app.MapGet("/healthz", ...)` with `app.MapHealthz()`. Confirm `SourceScanTests` still pass.
-- [ ] 1.4 Add `test/HealthzLoggingTests.cs` (design D3). Set up a minimal `WebApplication` with `LoggingSetup.Configure`, a capturing `ILoggerProvider` and `MapHealthz()`, listening on `http://127.0.0.1:0` (bound address read from `IServerAddressesFeature`, app disposed with `await using`). Assert:
+- [x] 1.2 Add `src/LoggingSetup.cs` with `Configure(ILoggingBuilder, IConfiguration, string? logFormat)` (design D1). It moves the existing JSON-formatter block out of `Program.cs` unchanged, and adds `AddFilter("Microsoft.AspNetCore", LogLevel.Warning)` only when `Logging:LogLevel:Microsoft.AspNetCore` is unset. It does not touch `Environment.`. Make 1.1 pass.
+- [x] 1.3 Add a `MapHealthz(this IEndpointRouteBuilder)` extension with the existing `Results.Ok(new { status = "ok" })` body. In `Program.cs`, replace the inline formatter block with `LoggingSetup.Configure(builder.Logging, builder.Configuration, Environment.GetEnvironmentVariable("DWS_LOG_FORMAT"))` and `app.MapGet("/healthz", ...)` with `app.MapHealthz()`. Confirm `SourceScanTests` still pass.
+- [x] 1.4 Add `test/HealthzLoggingTests.cs` (design D3). Set up a minimal `WebApplication` with `LoggingSetup.Configure`, a capturing `ILoggerProvider` and `MapHealthz()`, listening on `http://127.0.0.1:0` (bound address read from `IServerAddressesFeature`, app disposed with `await using`). Assert:
   - `GET /healthz` returns `200` and captures zero records at `Information` or below.
   - Control case: with the override config, at least one `Microsoft.AspNetCore.Hosting.Diagnostics` record is captured.
-- [ ] 1.5 Confirm no new `PackageReference` was needed, and that `dws-schedule-time.Tests.csproj` builds with Kestrel through the project reference. If a package turns out to be needed, add it pinned and note why in the PR.
+- [x] 1.5 Confirm no new `PackageReference` was needed, and that `dws-schedule-time.Tests.csproj` builds with Kestrel through the project reference. If a package turns out to be needed, add it pinned and note why in the PR.
 
 ## 2. dws-schedule-time — log successful starts
 
