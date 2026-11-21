@@ -58,10 +58,19 @@ the trace-correlated-log path, and prints received telemetry to its own stdout t
 exporter. It has no backend, persistence, HA, or sampling, so use it only for development or
 evaluation.
 
+A 2026-11-20 live run verified the complete development path: controller, Admin API, and a newly
+deployed instrumented orchestrator sent traces and metrics to the default endpoint; the collector
+also turned the orchestrator's JSON stdout into a log record with the matching trace and span IDs.
+The validation used `observability.traces.samplingRate=1`, a workflow redeployed after setting the
+controller-store `observability.enabled=true` flag, and collector `debug` output rather than a
+telemetry backend. See [`docs/roadmaps/observability-phase6-evidence.md`](../../docs/roadmaps/observability-phase6-evidence.md).
+
 **Watch out:** it runs as root to read pod logs, and exactly one release in a namespace can use its
 fixed Service name. Do not enable it alongside the chart's collector fixture. A custom OTLP endpoint
 does not reconfigure this collector; it receives nothing. The OpenTelemetry Operator remains a
-separate prerequisite.
+separate prerequisite. The live run used current `main` images and manually attached image-pull
+Secrets: several chart-pinned first-party image tags were unavailable, and `imagePullSecrets` did
+not reach controller-created workflow workloads. Check the current status of [#205](https://github.com/tonylibs/dapr-workflow-spec/issues/205) and [#207](https://github.com/tonylibs/dapr-workflow-spec/issues/207) before treating a stock private-registry installation as verified.
 
 ### Trace-correlated logs — Today
 
