@@ -16,7 +16,7 @@ and `docs/adr/0013-time-triggers-in-dws-schedule-time.md`.
 | `DWS_SCHEDULE_TIME_CLAIM_TTL` | `PT24H` | TTL of `claim:<instanceId>` state entries (ISO-8601). |
 | `POD_NAMESPACE` | service account namespace file | Namespace to watch. Without either the watch is disabled (logged at error level). |
 | `DWS_LOG_FORMAT` | text | `json` selects the contract formatter (`docs/log-format.md`). |
-| `Logging__LogLevel__Microsoft.AspNetCore` | `Warning` (in code) | ASP.NET Core request logging. At the default, `/healthz` probes and job callbacks write no line; each successful start is logged by the scheduler itself (`Fire started ...`, `After start succeeded ...`). Set `Information` to see request lines again. |
+| `Logging__LogLevel__Microsoft.AspNetCore` | `Warning` (in code) | ASP.NET Core request logging. At the default, `/healthz` probes and job callbacks write no line; each successful start is logged by the scheduler itself (`Fire started ...`, `After start succeeded ...`, `Restarted after start ...`). Set `Information` to see request lines again. |
 | `DAPR_API_TOKEN` | unset | Sidecar API token (chart: `dapr.io/api-token-secret`). `DaprClientBuilder` reads it for jobs and state; `Program.cs` passes it explicitly to the service-invocation client, which does not read it itself. |
 
 An invalid duration stops the host at boot. The app serves `GET /healthz` (`{"status":"ok"}`) even with

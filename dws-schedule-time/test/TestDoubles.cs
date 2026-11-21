@@ -224,8 +224,11 @@ internal static class Triggers
 internal sealed record CapturedLog(LogLevel Level, string Category, string Message);
 
 /// <summary>Records every log entry that passes the factory's filters, across all categories.</summary>
+[ProviderAlias(CapturingLoggerProvider.Alias)]
 internal sealed class CapturingLoggerProvider : ILoggerProvider
 {
+    public const string Alias = "Capture";
+
     private readonly object gate = new();
     private readonly List<CapturedLog> records = [];
 

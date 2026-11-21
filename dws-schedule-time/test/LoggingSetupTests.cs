@@ -11,6 +11,8 @@ namespace Dws.ScheduleTime.Tests;
 /// <summary>Pins the framework log-level default and its operator override (design D1).</summary>
 public sealed class LoggingSetupTests
 {
+    private const string ProjectFile = "dws-schedule-time.csproj";
+
     private static readonly string[] FrameworkCategories =
     [
         "Microsoft.AspNetCore.Hosting.Diagnostics",
@@ -66,6 +68,50 @@ public sealed class LoggingSetupTests
         {
             Logger(services, category).IsEnabled(LogLevel.Information).Should().BeTrue(category);
         }
+    }
+
+    // Same rule shape as Logging:Console:LogLevel:Microsoft.AspNetCore: a provider match beats the provider-less default.
+    [Fact]
+    public void ProviderSpecificConfigurationTurnsFrameworkInformationBackOn()
+    {
+        using ServiceProvider services = Build(null, ($"Logging:{CapturingLoggerProvider.Alias}:LogLevel:Microsoft.AspNetCore", "Information"));
+
+        foreach (string category in FrameworkCategories)
+        {
+            Logger(services, category).IsEnabled(LogLevel.Information).Should().BeTrue(category);
+        }
+    }
+
+    [Fact]
+    public void EmptyOverrideKeepsTheDefault()
+    {
+        using ServiceProvider services = Build(null, ("Logging:LogLevel:Microsoft.AspNetCore", ""));
+
+        foreach (string category in FrameworkCategories)
+        {
+            Logger(services, category).IsEnabled(LogLevel.Information).Should().BeFalse(category);
+        }
+    }
+
+    [Fact]
+    public void ProgramUsesTheSharedLoggingSetupAndHealthRoute()
+    {
+        string program = File.ReadAllText(ProgramPath());
+
+        program.Should().Contain("LoggingSetup.Configure(builder.Logging, builder.Configuration, Environment.GetEnvironmentVariable(\"DWS_LOG_FORMAT\"))");
+        program.Should().Contain("app.MapHealthz();");
+        program.Should().NotContain("MapGet(\"/healthz\"");
+    }
+
+    private static string ProgramPath()
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, ProjectFile)))
+        {
+            directory = directory.Parent;
+        }
+
+        return Path.Combine(directory?.FullName ?? throw new InvalidOperationException($"{ProjectFile} not found above the test output"), "src", "Program.cs");
     }
 
     [Fact]
