@@ -13,7 +13,7 @@
 # Values are never printed.
 set -eu
 
-ALLOWED_NAMES="CLAUDE_CODE_OAUTH_TOKEN CONTEXT7_API_KEY COPILOT_GITHUB_TOKEN EXA_API_KEY GEMINI_API_KEY GH_TOKEN GIT_USER_NAME GIT_USER_EMAIL"
+ALLOWED_NAMES="CLAUDE_CODE_OAUTH_TOKEN CONTEXT7_API_KEY COPILOT_GITHUB_TOKEN CR_PAT EXA_API_KEY GEMINI_API_KEY GH_TOKEN GIT_USER_NAME GIT_USER_EMAIL"
 ENV_FILE="$HOME/.config/agent-sandbox/credentials.env"
 SSH_ENV_FILE="$HOME/.ssh/environment"
 AGY_SETTINGS="$HOME/.gemini/antigravity-cli/settings.json"
@@ -102,6 +102,12 @@ if [ -n "$(token CLAUDE_CODE_OAUTH_TOKEN)" ]; then
 fi
 
 # Codex's ~/.codex/auth.json is copied separately by the host launcher.
+
+# CR_PAT is only exported into shells, for `docker login ghcr.io --password-stdin`
+# against the host daemon mounted by start-opensandbox.ps1 -MountDockerSocket.
+if [ -n "$(token CR_PAT)" ]; then
+    configured="$configured ghcr(CR_PAT)"
+fi
 
 # Copilot CLI reads COPILOT_GITHUB_TOKEN from the session environment directly, but
 # omnigent strips it from the agents it spawns; omnigent-copilot-bootstrap writes it to

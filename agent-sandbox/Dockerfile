@@ -1,5 +1,5 @@
 # Shared dev/agent-sandbox image for the dws monorepo: JDK 25, Go 1.26, Node 24 + pnpm,
-# kubectl, Helm, git/gh/jq, uv, Omnigent, Claude Code, Codex, GitHub Copilot CLI, Antigravity CLI (agy, pinned by tarball SHA512),
+# kubectl, Helm, Docker CLI, git/gh/jq, uv, Omnigent, Claude Code, Codex, GitHub Copilot CLI, Antigravity CLI (agy, pinned by tarball SHA512),
 # OpenSpec, OpenWiki, Superpowers, and ClawTeam. Every toolchain below is
 # copied from the exact base image the corresponding component already builds with, so
 # `docker build agent-sandbox/` matches what CI ships:
@@ -56,6 +56,22 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
     && apt-get update -o Dir::Etc::sourcelist="sources.list.d/github-cli.list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0" \
     && apt-get install -y --no-install-recommends gh \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- Docker CLI ---
+# Client only, no daemon: with `start-opensandbox.ps1 -MountDockerSocket` the host's Docker
+# Desktop socket is bind mounted at /var/run/docker.sock, the CLI's default endpoint. Docker's
+# apt repo keeps old releases, so pin both packages. Refresh with:
+#   curl -fsSL https://download.docker.com/linux/ubuntu/dists/noble/stable/binary-amd64/Packages
+ARG DOCKER_CLI_VERSION=29.10.0
+ARG DOCKER_BUILDX_VERSION=0.39.1
+RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc \
+    && chmod go+r /etc/apt/keyrings/docker.asc \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" > /etc/apt/sources.list.d/docker.list \
+    && apt-get update -o Dir::Etc::sourcelist="sources.list.d/docker.list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0" \
+    && apt-get install -y --no-install-recommends \
+        "docker-ce-cli=5:${DOCKER_CLI_VERSION}-1~ubuntu.24.04~noble" \
+        "docker-buildx-plugin=${DOCKER_BUILDX_VERSION}-1~ubuntu.24.04~noble" \
     && rm -rf /var/lib/apt/lists/*
 
 # --- kubectl ---
@@ -201,7 +217,7 @@ RUN mkdir -p /run/sshd /root/.ssh /etc/ssh/sshd_config.d \
         'PermitRootLogin prohibit-password' \
         'PubkeyAuthentication yes' \
         'SetEnv KUBECONFIG=/root/.kube-local/config JAVA_HOME=/opt/java/openjdk GOPATH=/root/go GOMODCACHE=/root/go/pkg/mod UV_TOOL_BIN_DIR=/root/.local/bin PATH=/root/.local/bin:/root/.local/share/pnpm/bin:/usr/local/go/bin:/root/go/bin:/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
-        'PermitUserEnvironment CLAUDE_CODE_OAUTH_TOKEN,CONTEXT7_API_KEY,COPILOT_GITHUB_TOKEN,EXA_API_KEY,GEMINI_API_KEY,GH_TOKEN' \
+        'PermitUserEnvironment CLAUDE_CODE_OAUTH_TOKEN,CONTEXT7_API_KEY,COPILOT_GITHUB_TOKEN,CR_PAT,EXA_API_KEY,GEMINI_API_KEY,GH_TOKEN' \
         'X11Forwarding no' \
         'PrintMotd no' \
         > /etc/ssh/sshd_config.d/99-agent-sandbox.conf \
@@ -231,6 +247,8 @@ RUN set -eux; \
     kubectl version --client=true --output=yaml >/dev/null; \
     helm version --short | grep -q "^v${HELM_VERSION}"; \
     gh --version | grep -q '^gh version'; \
+    docker --version | grep -q "^Docker version ${DOCKER_CLI_VERSION},"; \
+    docker buildx version | grep -q "v${DOCKER_BUILDX_VERSION}"; \
     git --version; \
     make --version | head -1; \
     tmux -V; \

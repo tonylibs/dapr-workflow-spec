@@ -16,11 +16,11 @@ runtime option: it creates containers through the local Docker daemon and does n
 
 | File | Purpose | Status |
 |---|---|---|
-| `Dockerfile` | Shared dev image: JDK 25, Go 1.26, Node 24/pnpm, kubectl, Helm, git/gh/jq, uv, bubblewrap, [Omnigent](https://github.com/omnigent-ai/omnigent), Claude Code, [Codex](https://github.com/openai/codex), [GitHub Copilot CLI](https://github.com/github/copilot-cli), [Antigravity CLI (`agy`)](https://github.com/google-antigravity/antigravity-cli), [OpenSpec](https://github.com/Fission-AI/OpenSpec), [OpenWiki](https://github.com/langchain-ai/openwiki), and [ClawTeam](https://github.com/HKUDS/ClawTeam) CLIs, with Superpowers installed for Claude and Codex | all pinned (`agy` by version plus per-arch SHA512 of its release tarball, since its installer only serves the current release), with a build-time smoke test — see `.github/workflows/agent-sandbox.yml` |
+| `Dockerfile` | Shared dev image: JDK 25, Go 1.26, Node 24/pnpm, kubectl, Helm, Docker CLI + buildx, git/gh/jq, uv, bubblewrap, [Omnigent](https://github.com/omnigent-ai/omnigent), Claude Code, [Codex](https://github.com/openai/codex), [GitHub Copilot CLI](https://github.com/github/copilot-cli), [Antigravity CLI (`agy`)](https://github.com/google-antigravity/antigravity-cli), [OpenSpec](https://github.com/Fission-AI/OpenSpec), [OpenWiki](https://github.com/langchain-ai/openwiki), and [ClawTeam](https://github.com/HKUDS/ClawTeam) CLIs, with Superpowers installed for Claude and Codex | all pinned (`agy` by version plus per-arch SHA512 of its release tarball, since its installer only serves the current release), with a build-time smoke test — see `.github/workflows/agent-sandbox.yml` |
 | `sandbox.yaml` | `Sandbox` CRD manifest for one agent session | skeleton — confirm installed CRD apiVersion first |
 | `cache-pvcs.yaml` | PVCs for `~/.m2`, Go module cache, pnpm store | skeleton — confirm storageClass |
 | `opensandbox/docker.toml` | OpenSandbox lifecycle-server profile for local Docker-backed sandboxes | local profile — Docker Desktop/Engine required |
-| `start-opensandbox.ps1` | Windows launcher that injects the host kubeconfig path into the local Docker profile | use this instead of starting the server with the TOML directly |
+| `start-opensandbox.ps1` | Windows launcher that injects the host kubeconfig path (and, with `-MountDockerSocket`, the host Docker socket) into the local Docker profile | use this instead of starting the server with the TOML directly |
 | `sshd-start.sh` | Key-only SSH daemon entrypoint for Docker-backed remote-development sandboxes | clones the DWS repository into an empty `/workspace`, reuses an existing matching checkout unchanged, and generates unique host keys at each container start |
 
 ## Local Docker runtime
@@ -72,6 +72,25 @@ The sandbox image includes `kubectl`. On startup, `sshd-start` copies the mounte
 to `/root/.kube-local/config`, rewrites Docker Desktop's `127.0.0.1`/`localhost` API endpoint
 to the host-gateway IPv4 address behind the certificate-valid hostname `kubernetes`, and sets
 `KUBECONFIG` to that copy. The host kubeconfig remains read-only and untouched.
+
+### Host Docker access (opt-in)
+
+The image includes the Docker CLI and buildx plugin (client only, no daemon). To let sandboxes
+drive the host's Docker Desktop (`docker pull`, `run`, `build`, ...), start the server with:
+
+```powershell
+./agent-sandbox/start-opensandbox.ps1 -MountDockerSocket
+```
+
+Every sandbox that server creates then gets `/var/run/docker.sock` bind mounted, the CLI's
+default endpoint, so no `DOCKER_HOST` is needed. Images and containers live on the host daemon,
+and pulls go out through the host network, not the sandbox's egress policy. Restart the server
+without the switch to turn it off; existing sandboxes keep the mount until they are deleted.
+
+> **Security:** the Docker socket is root-equivalent control of the Docker Desktop VM and of
+> any host path Docker Desktop shares. A process in the sandbox can start a privileged container
+> or mount host files, which bypasses the profile's capability drops, `no_new_privileges`, and
+> bubblewrap isolation. Enable it only for sandboxes whose agents you would trust on the host.
 
 To create a fully configured local SSH sandbox with a fresh localhost SSH port for Orca, run:
 
@@ -132,6 +151,7 @@ scope is for Copilot Requests, not repository access.
 | `CLAUDE_CODE_OAUTH_TOKEN` | Claude Code | Subscription token from `claude setup-token` on the host. |
 | `CONTEXT7_API_KEY` | Context7 tools | API key for Context7 documentation lookups from the sandbox. |
 | `COPILOT_GITHUB_TOKEN` | Copilot CLI | Fine-grained PAT with only the **Copilot Requests** account permission; classic PATs are not supported. It is not used for `gh`/Git. |
+| `CR_PAT` | Docker CLI (`ghcr.io`) | GitHub PAT with `read:packages` for pulling private GHCR images through the host Docker socket (`-MountDockerSocket`). Only exported into shells; sign in with `echo "$CR_PAT" \| docker login ghcr.io -u <github-user> --password-stdin`. |
 | `EXA_API_KEY` | Exa-backed tools | API key for Exa search/API calls made from the sandbox. |
 | `GEMINI_API_KEY` | Antigravity (`agy`) | Also sets `"modelProvider": "gemini"` in `~/.gemini/antigravity-cli/settings.json`, so `agy` uses Gemini API billing instead of your Google account sign-in. |
 | `GH_TOKEN` | GitHub CLI and Git HTTPS | A GitHub token with the repository permissions needed for your intended `gh` and Git operations. Falls back to the host's `gh auth token`. |
@@ -188,7 +208,7 @@ the sandbox is done.
 ## Not scaffolded yet
 
 - RBAC/namespace scoping for the sandbox service account
-- Image build tooling inside the sandbox itself (buildah/kaniko), if Dockerfile validation is needed in-session
+- Daemonless image build tooling inside the sandbox itself (buildah/kaniko); today `docker build` works only through the opt-in host socket
 - `dapr` CLI in the image (not needed for kubectl access to the host cluster)
 
 `.github/workflows/agent-sandbox.yml` builds the image on every push/PR touching this directory

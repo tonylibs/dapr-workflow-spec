@@ -2,6 +2,7 @@
 
 import contextlib
 import io
+import re
 import subprocess
 import tempfile
 import unittest
@@ -74,6 +75,30 @@ class CredentialSetupTests(unittest.TestCase):
             docker_run.call_args.kwargs["input"].splitlines(),
             ["EXA_API_KEY=exa-test-key"],
         )
+
+    def test_forwards_ghcr_pat(self):
+        result = subprocess.CompletedProcess([], 0, stdout="ok", stderr="")
+        with patch.dict(helper.os.environ, {"CR_PAT": "ghcr-test-pat"}, clear=True), patch.object(
+            helper.shutil, "which", return_value=None
+        ), patch.object(helper.subprocess, "run", return_value=result) as docker_run:
+            helper.forward_agent_tokens("sandbox-test")
+        self.assertEqual(
+            docker_run.call_args.kwargs["input"].splitlines(),
+            ["CR_PAT=ghcr-test-pat"],
+        )
+
+    def test_token_name_lists_match_across_sandbox_files(self):
+        # Each list is hand-maintained; a name missing from one is dropped silently at runtime.
+        expected = set(helper.AGENT_TOKEN_NAMES)
+        auth_setup = (helper.SCRIPT_DIR / "agent-auth-setup.sh").read_text(encoding="utf-8")
+        allowed = re.search(r'^ALLOWED_NAMES="([^"]*)"', auth_setup, re.MULTILINE).group(1).split()
+        agent_env = (helper.SCRIPT_DIR / "agent-env.sh").read_text(encoding="utf-8")
+        loaded = re.search(r"^\s*(CLAUDE_CODE_OAUTH_TOKEN\|[A-Z0-9_|]+)\)", agent_env, re.MULTILINE).group(1)
+        dockerfile = (helper.SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")
+        permitted = re.search(r"'PermitUserEnvironment ([A-Z0-9_,]+)'", dockerfile).group(1)
+        self.assertEqual(set(allowed) - {"GIT_USER_NAME", "GIT_USER_EMAIL"}, expected)
+        self.assertEqual(set(loaded.split("|")), expected)
+        self.assertEqual(set(permitted.split(",")), expected)
 
     def test_forwards_host_gh_login_and_git_identity(self):
         def host_run(command, *, check=True):

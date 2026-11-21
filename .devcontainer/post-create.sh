@@ -71,29 +71,6 @@ fi
 pipx ensurepath
 pipx install clawteam
 
-# dws-call-openapi (Node/TypeScript, pnpm)
-# CI=true: postCreateCommand has no TTY, and pnpm otherwise prompts before purging an
-# existing node_modules dir (e.g. one left over from a bind-mounted host workspace).
-if [ -f dws-call-openapi/package.json ]; then
-  (cd dws-call-openapi && CI=true pnpm install)
-fi
-
-# dws-admin (Node/TypeScript, pnpm)
-if [ -f dws-admin/package.json ]; then
-  (cd dws-admin && CI=true pnpm install)
-fi
-
-# dws-console (Node/TypeScript, npm)
-if [ -f dws-console/package.json ]; then
-  (cd dws-console && npm install)
-fi
-
-# Warm Maven wrapper caches
-if [ -f dws-controller/mvnw ]; then
-  (cd dws-controller && ./mvnw -q -DskipTests dependency:go-offline || true)
-fi
-if [ -f dws-orchestrator/mvnw ]; then
-  (cd dws-orchestrator && ./mvnw -q -DskipTests dependency:go-offline || true)
-fi
+# Project dependency installs and build/cache warmups are intentionally left to the developer.
 
 echo "devcontainer post-create setup complete."
