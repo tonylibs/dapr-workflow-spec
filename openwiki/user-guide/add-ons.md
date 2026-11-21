@@ -120,7 +120,7 @@ replaces that OIDC login.
 
 `auth.enabled=true` keeps the existing bearer JWT middleware and adds Dapr machine-auth tokens to
 the control-plane sidecars. A request reaching a protected sidecar must satisfy **both** checks.
-The chart creates three token Secrets by default (or lets you supply them), but never prints their
+The chart creates four token Secrets by default (or lets you supply them), but never prints their
 values:
 
 | Protected path | What the chart adds | Result |
@@ -128,6 +128,7 @@ values:
 | Gateway → Admin sidecar | Admin Dapr API token; APISIX injects it on `/dws-admin` | A client-supplied token header is replaced; the browser does not receive the secret. |
 | Admin sidecar → `dws-admin` app (`:3000`) | Admin app API token | Direct pod-IP calls, including forged lifecycle events, get `401`; `GET /health` remains open for kubelet probes. |
 | Controller sidecar | Controller Dapr API token | Calls to the controller sidecar require the token; the controller can still publish lifecycle events through its own sidecar. |
+| Time-trigger scheduler sidecar | Scheduler Dapr API token | The default-on scheduler can make its Dapr Jobs, state-store, and service-invocation calls; it does not need an app API token. |
 
 The controller **app port** is not protected by an app API token yet. Keep NetworkPolicy (or an
 equivalent CNI-enforced boundary) around the control plane: a pod that can reach the controller pod
@@ -144,15 +145,16 @@ helm upgrade --install dws oci://ghcr.io/tonylibs/charts/dws -n dws-system \
 
 For production, create a separate Kubernetes Secret per token (key: `token`) and set the matching
 `auth.apiTokens.admin.daprApi.existingSecret`,
-`auth.apiTokens.admin.appApi.existingSecret`, or
-`auth.apiTokens.controller.daprApi.existingSecret` value. The chart otherwise generates stable
+`auth.apiTokens.admin.appApi.existingSecret`,
+`auth.apiTokens.controller.daprApi.existingSecret`, or
+`auth.apiTokens.scheduleTime.daprApi.existingSecret` value. The chart otherwise generates stable
 tokens, which Helm release readers can recover from rendered manifests.
 
 **Watch out**
 
 - `daprd` reads a token only at startup. After changing or rotating one, restart the affected
-  admin/controller deployments and, when it fronts `/dws-admin`, APISIX too. A token mismatch makes
-  Admin API requests return `401`.
+  admin/controller/scheduler deployments and, when it fronts `/dws-admin`, APISIX too. A token
+  mismatch makes Admin API requests return `401` or prevents scheduled starts.
 - With an external APISIX installation, put the admin Dapr API token in its
   `DWS_ADMIN_DAPR_API_TOKEN` environment variable, allow that variable in nginx, and restart it
   after rotation. The chart cannot configure a gateway it does not own.
