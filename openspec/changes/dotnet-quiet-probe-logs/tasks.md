@@ -18,15 +18,15 @@ Validation: `cd dws-schedule-time && dotnet test test/dws-schedule-time.Tests.cs
 
 Validation: `cd dws-schedule-time && dotnet test test/dws-schedule-time.Tests.csproj`
 
-- [ ] 2.1 Add `CapturingLogger<T>` to `test/TestDoubles.cs`. It records level, category and formatted message, and is thread-safe like the other doubles.
-- [ ] 2.2 In `ScheduledJobHandlerTests` (RED), use `CapturingLogger<ScheduledJobHandler>` and assert:
+- [x] 2.1 Add `CapturingLogger<T>` to `test/TestDoubles.cs`. It records level, category and formatted message, and is thread-safe like the other doubles.
+- [x] 2.2 In `ScheduledJobHandlerTests` (RED), use `CapturingLogger<ScheduledJobHandler>` and assert:
   - A fire answered `202` writes one `Information` record containing the workflow, the fire-key instance ID and `HTTP 202`.
   - A replayed tick whose claim is already started writes one `Information` record with `already started`.
   - A `503` start writes no "started" `Information` record, and the existing error record is still written.
-- [ ] 2.3 In `ScheduledJobHandler.HandleAsync`, log `Fire started workflow {Workflow} instance {InstanceId} ({Detail})` at `Information` on `StartOutcome.Started` (design D2). Make 2.2 pass.
-- [ ] 2.4 In `AfterLifecycleTests` (RED), assert one `Information` record with the workflow and instance ID in three cases: the first `after` start (seq 1), the next start from `Waiting` (for example `dws-after:order-sync:7`), and a successful restart in the poll path. Assert none when a start fails.
-- [ ] 2.5 Add the matching `LogInformation` at the three `claim.StartAsync` call sites in `AfterLifecycle.cs` (initial start, next start, restart). Make 2.4 pass.
-- [ ] 2.6 Run the full `dotnet test test/dws-schedule-time.Tests.csproj` and confirm it is green, including `DwsJsonConsoleFormatterTests` (formatter unchanged) and `SourceScanTests`.
+- [x] 2.3 In `ScheduledJobHandler.HandleAsync`, log `Fire started workflow {Workflow} instance {InstanceId} ({Detail})` at `Information` on `StartOutcome.Started` (design D2). Make 2.2 pass.
+- [x] 2.4 In `AfterLifecycleTests` (RED), assert one `Information` record with the workflow and instance ID in three cases: the first `after` start (seq 1), the next start from `Waiting` (for example `dws-after:order-sync:7`), and a successful restart in the poll path. Assert none when a start fails.
+- [x] 2.5 Add the matching `LogInformation` at the three `claim.StartAsync` call sites in `AfterLifecycle.cs` (initial start, next start, restart). Make 2.4 pass.
+- [x] 2.6 Run the full `dotnet test test/dws-schedule-time.Tests.csproj` and confirm it is green, including `DwsJsonConsoleFormatterTests` (formatter unchanged) and `SourceScanTests`.
 
 ## 3. dws-flow — same framework log-level default
 

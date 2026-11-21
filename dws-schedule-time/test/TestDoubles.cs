@@ -273,3 +273,36 @@ internal sealed class CapturingLoggerProvider : ILoggerProvider
             owner.Add(new CapturedLog(logLevel, category, formatter(state, exception)));
     }
 }
+
+/// <summary>An <see cref="ILogger{T}"/> that records level, category and formatted message of every entry.</summary>
+internal sealed class CapturingLogger<T> : ILogger<T>
+{
+    private readonly object gate = new();
+    private readonly List<CapturedLog> records = [];
+
+    public IReadOnlyList<CapturedLog> Records
+    {
+        get
+        {
+            lock (gate)
+            {
+                return records.ToList();
+            }
+        }
+    }
+
+    public IReadOnlyList<CapturedLog> At(LogLevel level) => Records.Where(record => record.Level == level).ToList();
+
+    public IDisposable? BeginScope<TState>(TState state)
+        where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => logLevel != LogLevel.None;
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+    {
+        lock (gate)
+        {
+            records.Add(new CapturedLog(logLevel, typeof(T).FullName ?? typeof(T).Name, formatter(state, exception)));
+        }
+    }
+}
