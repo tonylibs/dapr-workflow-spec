@@ -1,6 +1,5 @@
 using Dapr.Workflow;
 using Dws.Flow;
-using Microsoft.Extensions.Logging.Console;
 
 SingleNodeDefinition definition =
     new SingleNodeDefinitionLoader(Environment.GetEnvironmentVariable(SingleNodeDefinitionLoader.DefinitionPathEnvironmentVariable)).Load();
@@ -13,14 +12,10 @@ FlowDefinitionHolder.Initialize(definition, useResolver);
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton(definition);
 builder.Services.AddSingleton(useResolver);
-if (DwsJsonConsoleFormatter.IsJsonMode(Environment.GetEnvironmentVariable("DWS_LOG_FORMAT")))
-{
-    builder.Logging.AddConsole(options => options.FormatterName = DwsJsonConsoleFormatter.FormatterName);
-    builder.Logging.AddConsoleFormatter<DwsJsonConsoleFormatter, ConsoleFormatterOptions>();
-}
+LoggingSetup.Configure(builder.Logging, builder.Configuration, Environment.GetEnvironmentVariable("DWS_LOG_FORMAT"));
 
 builder.Services.AddDaprWorkflow(options => options.RegisterWorkflow<FlowWorkflow>(FlowWorkflow.Name));
 
 WebApplication app = builder.Build();
-app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
+app.MapHealthz();
 app.Run();

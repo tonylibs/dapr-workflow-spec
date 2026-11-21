@@ -32,10 +32,10 @@ Validation: `cd dws-schedule-time && dotnet test test/dws-schedule-time.Tests.cs
 
 Validation: `cd dws-flow && dotnet test test/dws-flow.Tests.csproj`
 
-- [ ] 3.1 Add `test/LoggingSetupTests.cs` mirroring 1.1, with `Dws.Flow.FlowWorkflow` as the own-category case (RED).
-- [ ] 3.2 Add `src/LoggingSetup.cs` (a copy of the scheduler's, namespace `Dws.Flow`) and `MapHealthz`. In `Program.cs`, replace the inline formatter block and `/healthz` mapping with them. Make 3.1 pass.
-- [ ] 3.3 Add `test/HealthzLoggingTests.cs` mirroring 1.4.
-- [ ] 3.4 Run the full `dotnet test test/dws-flow.Tests.csproj` and confirm it is green.
+- [x] 3.1 Add `test/LoggingSetupTests.cs` mirroring 1.1, with `Dws.Flow.FlowWorkflow` as the own-category case (RED).
+- [x] 3.2 Add `src/LoggingSetup.cs` (a copy of the scheduler's, namespace `Dws.Flow`) and `MapHealthz`. In `Program.cs`, replace the inline formatter block and `/healthz` mapping with them. Make 3.1 pass.
+- [x] 3.3 Add `test/HealthzLoggingTests.cs` mirroring 1.4.
+- [x] 3.4 Run the full `dotnet test test/dws-flow.Tests.csproj` and confirm it is green.
 
 ## 4. Docs
 
