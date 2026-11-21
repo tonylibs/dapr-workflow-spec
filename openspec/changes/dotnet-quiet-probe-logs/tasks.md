@@ -39,11 +39,11 @@ Validation: `cd dws-flow && dotnet test test/dws-flow.Tests.csproj`
 
 ## 4. Docs
 
-- [ ] 4.1 `docs/log-format.md`: add a short note that the .NET packages default `Microsoft.AspNetCore` to `Warning`, so health probes and request lifecycle write no `INFO` lines. Say that `Logging__LogLevel__Microsoft.AspNetCore=Information` turns them back on.
-- [ ] 4.2 `docs/roadmaps/observability.md`: mark finding 11 (#206) as fixed by this change. Do not edit any ADR.
-- [ ] 4.3 Update the `dws-schedule-time` and `dws-flow` READMEs only if they describe logging behaviour or `/healthz` logging. Otherwise leave them alone.
+- [x] 4.1 `docs/log-format.md`: add a short note that the .NET packages default `Microsoft.AspNetCore` to `Warning`, so health probes and request lifecycle write no `INFO` lines. Say that `Logging__LogLevel__Microsoft.AspNetCore=Information` turns them back on.
+- [x] 4.2 `docs/roadmaps/observability.md`: mark finding 11 (#206) as fixed by this change. Do not edit any ADR.
+- [x] 4.3 Update the `dws-schedule-time` and `dws-flow` READMEs only if they describe logging behaviour or `/healthz` logging. Otherwise leave them alone.
 
 ## 5. Verification
 
-- [ ] 5.1 Run `openspec validate dotnet-quiet-probe-logs --type change --strict` and fix any findings.
+- [x] 5.1 Run `openspec validate dotnet-quiet-probe-logs --type change --strict` and fix any findings.
 - [ ] 5.2 Optional live check, if a cluster with the chart is at hand. Deploy the built `dws-schedule-time` image with `DWS_LOG_FORMAT=json`, wait at least 5 minutes, and confirm `kubectl logs` shows no `Microsoft.AspNetCore.*` lines. With an `every: PT1M` workflow deployed, confirm one `Fire started ...` line per minute. Record the result in the PR. If there is no cluster, say so in the PR rather than claiming live evidence.
