@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-flow-v0.4.0...dws-flow-v0.4.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* **flow:** default Microsoft.AspNetCore logging to Warning ([da25cbd](https://github.com/tonylibs/dapr-workflow-spec/commit/da25cbd54c6e2aa419b1b9965a5c110e7e97e647))
+
 ## [0.4.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-flow-v0.3.0...dws-flow-v0.4.0) (2026-11-01)
 
 
