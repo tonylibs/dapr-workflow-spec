@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-schedule-time-v0.1.0...dws-schedule-time-v0.2.0) (2026-11-23)
+
+
+### Features
+
+* **schedule-time:** log successful trigger starts at Information ([82b001f](https://github.com/tonylibs/dapr-workflow-spec/commit/82b001f091443aff5139f4b7270b34951dce42ab))
+
+
+### Bug Fixes
+
+* **schedule-time:** default Microsoft.AspNetCore logging to Warning ([218903c](https://github.com/tonylibs/dapr-workflow-spec/commit/218903c6dee503ee6050fa0c6f325686ef8cb4a8))
+
 ## 0.1.0 (2026-11-14)
 
 
