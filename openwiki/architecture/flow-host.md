@@ -58,7 +58,7 @@ For a `main` or `do` node, `SequencerRunner` runs task objects in source order, 
 
 `ChildClassifier` selects a Step child for `call`, `run`, `set`, and `switch` shapes. `for`, `try`, `fork`, `wait`, and `listen` shapes are classified as Flow children, using the deterministic child instance ID `<root instance>:<child app ID>:<iteration>`; absent iteration defaults to `0`. This classification describes dispatch capability, not completed support for every Flow scope: the child itself will fail fast if it is one of the currently unimplemented scopes.
 
-A task-level ISO-8601 `timeout`, inline duration object, or resolved named `use.timeouts` entry races the child call against a durable Dapr timer. If the timer wins, the host reports `task '<name>' timed out after <duration>`. Dapr child-task failures are unwrapped and propagated using their original error message, preserving the failure boundary for the caller.
+A task-level ISO-8601 `timeout`, inline duration object, or resolved named `use.timeouts` entry races the child call against a durable Dapr timer. An inline object may contain `days`, `hours`, `minutes`, `seconds`, or `milliseconds`, or wrap one ISO-8601 string/object in `after`. It must not be empty, contain an unknown or non-numeric component, or mix `after` with another field: DWS fails the configuration before it invokes a child or starts a timer. If the timer wins, the host reports `task '<name>' timed out after <duration>`. Dapr child-task failures are unwrapped and propagated using their original error message, preserving the failure boundary for the caller.
 
 ## Build and change guide
 
