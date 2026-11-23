@@ -107,6 +107,29 @@ public sealed class UseResolverLoaderTests
         (await act.Should().ThrowAsync<DefinitionLoadException>()).Which.Message.Should().Contain("timeouts").And.Contain("fastCall");
     }
 
+    [Theory]
+    [InlineData("""{}""", "at least one duration component")]
+    [InlineData("""{"after":{}}""", "at least one duration component")]
+    [InlineData("""{"after":{"second":10}}""", "unexpected property 'second'")]
+    public async Task FailsWithTheParserReasonWhenAReferencedTimeoutObjectIsInvalid(string entry, string reason)
+    {
+        FakeUseStore store = new() { ["timeouts.fastCall"] = entry };
+        Func<Task> act = () => UseResolverLoader.Load(Node(NamedTimeout), "s", store);
+
+        (await act.Should().ThrowAsync<DefinitionLoadException>()).Which.Message
+            .Should().StartWith("use.timeouts 'fastCall' is not a valid entry:").And.Contain(reason);
+    }
+
+    [Fact]
+    public async Task LoadsAndResolvesAReferencedExplicitZeroTimeout()
+    {
+        FakeUseStore store = new() { ["timeouts.fastCall"] = """{"after":{"seconds":0}}""" };
+
+        UseResolver resolver = await UseResolverLoader.Load(Node(NamedTimeout), "s", store);
+
+        resolver.Timeout(JsonValue.Create("fastCall")).Should().Be(TimeSpan.Zero);
+    }
+
     [Fact]
     public async Task FailsNamingKindAndNameWhenAnErrorEntryHasDuplicateKeys()
     {
