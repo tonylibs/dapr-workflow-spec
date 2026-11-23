@@ -212,9 +212,12 @@ Tests use a recording `IUseStore` stand-in; `DaprUseStore` needs a sidecar and h
 
 The shared structured-log contract (keys, severity map, scrubber regexes, 12 golden cases) lives in
 [`docs/log-format.md`](../docs/log-format.md); read it before touching the formatter. `Program.cs`
-reads `DWS_LOG_FORMAT` (the only place `Environment.` is allowed) and, only when
-`DwsJsonConsoleFormatter.IsJsonMode` is true (trimmed, case-insensitive `json`), registers
-`DwsJsonConsoleFormatter` (name `dws-json`) as the console formatter. Unset, empty, `text` or any other
+reads `DWS_LOG_FORMAT` (the only place `Environment.` is allowed) and passes it to
+`LoggingSetup.Configure`, which, only when `DwsJsonConsoleFormatter.IsJsonMode` is true (trimmed,
+case-insensitive `json`), registers `DwsJsonConsoleFormatter` (name `dws-json`) as the console formatter.
+`LoggingSetup` also defaults `Microsoft.AspNetCore` to `Warning` (so `/healthz` logs nothing), unless
+`Logging:LogLevel:Microsoft.AspNetCore` is configured; `LoggingSetupTests` and `HealthzLoggingTests` pin
+both, and `dws-schedule-time` keeps an identical copy. Unset, empty, `text` or any other
 value keeps the stock console output and never fails startup. In JSON mode every record is one stdout
 line with `timestamp`, `severity` (`Critical`→`FATAL`, `Warning`→`WARN`, ...), `logger`, scrubbed
 `message`, `trace_id`/`span_id` from `Activity.Current` (omitted when absent or all-zero) and, for an

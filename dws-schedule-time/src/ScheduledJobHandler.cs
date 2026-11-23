@@ -51,6 +51,8 @@ public sealed class ScheduledJobHandler(
                 logger.LogError("Fire refused for workflow {Workflow} fire key {FireKey}: {Cause}", workflow, instanceId, result.Detail);
                 return JobOutcome.Success;
             default:
+                // With framework request logging at Warning, this is the only trace a successful fire leaves.
+                logger.LogInformation("Fire started workflow {Workflow} instance {InstanceId} ({Detail})", workflow, instanceId, result.Detail);
                 return JobOutcome.Success;
         }
     }

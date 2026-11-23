@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -12,11 +13,12 @@ public class AfterLifecycleTests
     private readonly RecordingJobRegistry registry = new();
     private readonly InMemoryVersionedStore store = new();
     private readonly RecordingStarter starter = new();
+    private readonly CapturingLogger<AfterLifecycle> logger = new();
 
     private AfterLifecycle NewLifecycle(StaticClusterState cluster)
     {
         StartClaim claim = new(store, starter, time, TimeSpan.FromHours(24), NullLogger<StartClaim>.Instance);
-        return new AfterLifecycle(store, registry, starter, claim, cluster, time, Poll, NullLogger<AfterLifecycle>.Instance);
+        return new AfterLifecycle(store, registry, starter, claim, cluster, time, Poll, logger);
     }
 
     private AfterState State(string workflow = "order-sync") => AfterState.TryParse(store.Peek(AfterState.Key(workflow)) ?? "")!;
@@ -252,5 +254,54 @@ public class AfterLifecycleTests
 
         starter.Starts.Should().BeEmpty();
         State().Seq.Should().Be(7);
+    }
+
+    private IReadOnlyList<string> InformationLines() => logger.At(LogLevel.Information).Select(record => record.Message).ToList();
+
+    [Fact]
+    public async Task LogsTheFirstStart()
+    {
+        TriggerConfig trigger = Triggers.After();
+
+        await NewLifecycle(new StaticClusterState(true, trigger)).ActivateAsync(trigger, default);
+
+        InformationLines().Should().ContainSingle().Which.Should().Contain("order-sync").And.Contain("dws-after:order-sync:1").And.Contain("HTTP 202");
+    }
+
+    [Fact]
+    public async Task LogsTheNextStartFromWaiting()
+    {
+        PutState(new AfterState("v1", "order-sync-v1", 6, AfterState.Waiting, time.GetUtcNow()));
+
+        await NewLifecycle(new StaticClusterState(true, Triggers.After())).StartNextAsync("order-sync", default);
+
+        InformationLines().Should().ContainSingle().Which.Should().Contain("order-sync").And.Contain("dws-after:order-sync:7");
+        logger.Records.Should().OnlyContain(record => record.Category == "Dws.ScheduleTime.AfterLifecycle");
+    }
+
+    [Fact]
+    public async Task LogsASuccessfulRestartFromThePoll()
+    {
+        PutState(new AfterState("v1", "order-sync-v1", 3, AfterState.Running, null));
+
+        await NewLifecycle(new StaticClusterState(true, Triggers.After())).PollAsync("order-sync", default);
+
+        InformationLines().Should().ContainSingle().Which.Should().Contain("order-sync").And.Contain("dws-after:order-sync:3");
+    }
+
+    [Fact]
+    public async Task LogsNoInformationLineWhenAStartFails()
+    {
+        TriggerConfig trigger = Triggers.After();
+        starter.Enqueue(new StartResult(StartOutcome.Retryable, "HTTP 503"));
+        starter.Enqueue(new StartResult(StartOutcome.Retryable, "HTTP 503"));
+        PutState(new AfterState("v1", "order-sync-v1", 6, AfterState.Waiting, time.GetUtcNow()));
+        AfterLifecycle lifecycle = NewLifecycle(new StaticClusterState(true, trigger));
+
+        await lifecycle.StartNextAsync("order-sync", default);
+        await lifecycle.PollAsync("order-sync", default);
+
+        InformationLines().Should().BeEmpty();
+        logger.At(LogLevel.Error).Should().HaveCount(2);
     }
 }

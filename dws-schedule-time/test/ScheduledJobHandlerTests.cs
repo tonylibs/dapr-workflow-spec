@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -12,11 +13,12 @@ public class ScheduledJobHandlerTests
     private readonly RecordingJobRegistry registry = new();
     private readonly InMemoryVersionedStore store = new();
     private readonly RecordingStarter starter = new();
+    private readonly CapturingLogger<ScheduledJobHandler> logger = new();
 
     private ScheduledJobHandler NewHandler(StaticClusterState cluster)
     {
         StartClaim claim = new(store, starter, time, TimeSpan.FromHours(24), NullLogger<StartClaim>.Instance);
-        return new ScheduledJobHandler(cluster, registry, claim, time, NullLogger<ScheduledJobHandler>.Instance);
+        return new ScheduledJobHandler(cluster, registry, claim, time, logger);
     }
 
     private static string PayloadFor(TriggerConfig trigger) => JobPayload.For(trigger, Anchor).ToJson();
@@ -145,5 +147,47 @@ public class ScheduledJobHandlerTests
 
         outcome.Should().Be(JobOutcome.Success);
         starter.Starts.Should().BeEmpty();
+    }
+
+    private IReadOnlyList<string> StartedLines() =>
+        logger.At(LogLevel.Information).Select(record => record.Message).Where(message => message.StartsWith("Fire started", StringComparison.Ordinal)).ToList();
+
+    [Fact]
+    public async Task LogsOneInformationLineForAFireThatStartsAnInstance()
+    {
+        TriggerConfig every = Triggers.Every(schedule: "PT1M");
+        time.Advance(TimeSpan.FromMinutes(3));
+
+        await NewHandler(new StaticClusterState(true, every)).HandleAsync("order-sync", PayloadFor(every), default);
+
+        StartedLines().Should().ContainSingle().Which.Should()
+            .Contain("order-sync").And.Contain("dws-sched:order-sync:20261106T100300Z").And.Contain("HTTP 202");
+        logger.Records.Should().OnlyContain(record => record.Category == "Dws.ScheduleTime.ScheduledJobHandler");
+    }
+
+    [Fact]
+    public async Task LogsAReplayedTickAsAlreadyStarted()
+    {
+        TriggerConfig cron = Triggers.Cron();
+        ScheduledJobHandler handler = NewHandler(new StaticClusterState(true, cron));
+        await handler.HandleAsync("order-sync", PayloadFor(cron), default);
+
+        await handler.HandleAsync("order-sync", PayloadFor(cron), default);
+
+        starter.Starts.Should().ContainSingle();
+        StartedLines().Where(line => line.Contains("already started")).Should().ContainSingle()
+            .Which.Should().Contain("dws-sched:order-sync:20261106T100000Z");
+    }
+
+    [Fact]
+    public async Task LogsNoStartedLineWhenTheStartFails()
+    {
+        TriggerConfig cron = Triggers.Cron();
+        starter.Enqueue(new StartResult(StartOutcome.Retryable, "HTTP 503"));
+
+        await NewHandler(new StaticClusterState(true, cron)).HandleAsync("order-sync", PayloadFor(cron), default);
+
+        StartedLines().Should().BeEmpty();
+        logger.At(LogLevel.Error).Should().ContainSingle().Which.Message.Should().Contain("HTTP 503");
     }
 }

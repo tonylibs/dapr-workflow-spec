@@ -21,6 +21,15 @@ effective only when `observability.enabled` and `observability.logs.enabled` are
 `DWS_LOG_FORMAT` on the controller and admin; the controller stamps `DWS_LOG_FORMAT=json` on the
 orchestrator Deployments it compiles when that deploy is instrumented and its own value is `json`.
 
+### .NET framework log level
+
+In both modes, `dws-flow` and `dws-schedule-time` default the `Microsoft.AspNetCore` category to
+`Warning`, as the ASP.NET Core project template does. Health probes and the request lifecycle
+(`Hosting.Diagnostics`, `Routing.EndpointMiddleware`, `Http.Result.*`) therefore write no `INFO`
+lines; framework warnings and errors are still written. Set
+`Logging__LogLevel__Microsoft.AspNetCore=Information` on the container to turn the request lines back
+on without a rebuild. Each package's `LoggingSetupTests` and `HealthzLoggingTests` pin this.
+
 ## Record shape
 
 Every record is exactly one JSON object followed by `\n`. Nothing else the logging system writes

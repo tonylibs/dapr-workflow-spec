@@ -1,7 +1,6 @@
 using Dapr.Client;
 using Dapr.Jobs.Extensions;
 using Dws.ScheduleTime;
-using Microsoft.Extensions.Logging.Console;
 
 const string NamespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
 string? podNamespace = Environment.GetEnvironmentVariable("POD_NAMESPACE");
@@ -17,11 +16,7 @@ ScheduleTimeOptions options = ScheduleTimeOptions.From(
     podNamespace);
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
-if (DwsJsonConsoleFormatter.IsJsonMode(Environment.GetEnvironmentVariable("DWS_LOG_FORMAT")))
-{
-    builder.Logging.AddConsole(consoleOptions => consoleOptions.FormatterName = DwsJsonConsoleFormatter.FormatterName);
-    builder.Logging.AddConsoleFormatter<DwsJsonConsoleFormatter, ConsoleFormatterOptions>();
-}
+LoggingSetup.Configure(builder.Logging, builder.Configuration, Environment.GetEnvironmentVariable("DWS_LOG_FORMAT"));
 
 // DaprClientBuilder reads DAPR_API_TOKEN and the sidecar endpoints itself (jobs, state store).
 builder.Services.AddSingleton(_ => new DaprClientBuilder().Build());
@@ -49,7 +44,7 @@ builder.Services.AddHostedService(services => ActivatorUtilities.CreateInstance<
 builder.Services.AddHostedService<ReconcileLoop>();
 
 WebApplication app = builder.Build();
-app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
+app.MapHealthz();
 
 // The job callback is mapped by hand rather than with the SDK's MapDaprScheduledJobHandler so the 200 (done or
 // dropped) versus 500 (Dapr retries per the job's failure policy) decision is explicit here.

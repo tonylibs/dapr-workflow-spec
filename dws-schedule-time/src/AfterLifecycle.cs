@@ -28,15 +28,19 @@ public sealed class AfterLifecycle(
             return;
         }
 
-        StartResult result = await claim.StartAsync(trigger.AppId, trigger.Workflow, InstanceIds.After(trigger.Workflow, 1), cancellationToken);
-        if (result.Outcome != StartOutcome.Started)
+        string instanceId = InstanceIds.After(trigger.Workflow, 1);
+        StartResult result = await claim.StartAsync(trigger.AppId, trigger.Workflow, instanceId, cancellationToken);
+        if (result.Outcome == StartOutcome.Started)
         {
-            logger.LogError(
-                "First after start failed for workflow {Workflow} instance {InstanceId}: {Cause}; the poll job retries it",
-                trigger.Workflow,
-                InstanceIds.After(trigger.Workflow, 1),
-                result.Detail);
+            LogStarted(trigger.Workflow, instanceId, result);
+            return;
         }
+
+        logger.LogError(
+            "First after start failed for workflow {Workflow} instance {InstanceId}: {Cause}; the poll job retries it",
+            trigger.Workflow,
+            instanceId,
+            result.Detail);
     }
 
     /// <summary>Handles one tick of <c>dws-after-poll-&lt;workflow&gt;</c>.</summary>
@@ -120,6 +124,10 @@ public sealed class AfterLifecycle(
         {
             logger.LogError("After start refused for workflow {Workflow} instance {InstanceId}: {Cause}", workflow, instanceId, result.Detail);
         }
+        else if (result.Outcome == StartOutcome.Started)
+        {
+            LogStarted(workflow, instanceId, result);
+        }
 
         return JobOutcome.Success;
     }
@@ -141,7 +149,11 @@ public sealed class AfterLifecycle(
                 }
 
                 StartResult retry = await claim.StartAsync(state.AppId, workflow, instanceId, cancellationToken);
-                if (retry.Outcome != StartOutcome.Started)
+                if (retry.Outcome == StartOutcome.Started)
+                {
+                    logger.LogInformation("Restarted after start for workflow {Workflow} instance {InstanceId} ({Detail})", workflow, instanceId, retry.Detail);
+                }
+                else
                 {
                     logger.LogError("Restart of {InstanceId} failed: {Cause}; the next poll tries again", instanceId, retry.Detail);
                 }
@@ -154,6 +166,10 @@ public sealed class AfterLifecycle(
                 return JobOutcome.Success;
         }
     }
+
+    // With framework request logging at Warning, this is the only trace a successful after start leaves.
+    private void LogStarted(string workflow, string instanceId, StartResult result) =>
+        logger.LogInformation("After start succeeded for workflow {Workflow} instance {InstanceId} ({Detail})", workflow, instanceId, result.Detail);
 
     private async Task<JobOutcome> MarkWaitingAsync(
         string workflow, TriggerConfig trigger, VersionedValue stored, AfterState state, CancellationToken cancellationToken)
