@@ -121,6 +121,10 @@ public sealed class TaskTimeoutTests
     [InlineData("""{}""", "at least one duration component")]
     [InlineData("""{"after":{}}""", "at least one duration component")]
     [InlineData("""{"after":{"second":10}}""", "unexpected property 'second'")]
+    [InlineData("""{"seconds":10,"second":1}""", "unexpected property 'second'")]
+    [InlineData("""{"after":"PT10S","seconds":1}""", "unexpected property 'seconds'")]
+    [InlineData("""{"seconds":null}""", "timeout.seconds must be a number")]
+    [InlineData("""{"after":null}""", "timeout.after must be a duration")]
     public async Task RejectsAMalformedInlineTimeoutBeforeCallingTheChildOrStartingATimer(string json, string reason)
     {
         JsonArray tasks = JsonNode.Parse($$"""[ { "a": { "call": "http", "timeout": {{json}} } } ]""")!.AsArray();
