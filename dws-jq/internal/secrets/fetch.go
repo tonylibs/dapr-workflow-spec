@@ -87,10 +87,21 @@ func (f *Fetcher) Fetch(ctx context.Context, store string, names []string) (map[
 }
 
 // fetchOne retries until the secret is read, the reply is final or ctx ends.
+// When ctx ends, the error carries the reason of the last attempt that got an
+// answer (or failed on its own), not the expiry that cut the next one short.
 func (f *Fetcher) fetchOne(ctx context.Context, store, name string) (string, error) {
 	backoff := f.Backoff
 	if backoff == 0 {
 		backoff = defaultBackoff
+	}
+	var last string
+	gaveUp := func(fallback string) error {
+		reason := last
+		if reason == "" {
+			reason = fallback
+		}
+		return &FetchError{Store: store, Name: name,
+			Reason: fmt.Sprintf("%s (gave up: %v)", reason, ctx.Err())}
 	}
 	for {
 		value, retry, err := f.attempt(ctx, store, name)
@@ -100,12 +111,15 @@ func (f *Fetcher) fetchOne(ctx context.Context, store, name string) (string, err
 		if !retry {
 			return "", &FetchError{Store: store, Name: name, Reason: err.Error()}
 		}
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return "", gaveUp(err.Error()) // ctx cut this attempt short
+		}
+		last = err.Error()
 		timer := time.NewTimer(backoff)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return "", &FetchError{Store: store, Name: name,
-				Reason: fmt.Sprintf("%v (gave up: %v)", err, ctx.Err())}
+			return "", gaveUp(last)
 		case <-timer.C:
 		}
 		backoff = min(backoff*2, maxBackoff)

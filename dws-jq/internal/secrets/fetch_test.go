@@ -110,9 +110,7 @@ func TestFetch(t *testing.T) {
 	})
 
 	t.Run("persistent 404 fails at the bound without leaking the body", func(t *testing.T) {
-		var calls atomic.Int32
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			calls.Add(1)
 			http.Error(w, "do-not-leak", http.StatusNotFound)
 		}))
 		defer srv.Close()
@@ -121,10 +119,10 @@ func TestFetch(t *testing.T) {
 
 		start := time.Now()
 		_, err := f.Fetch(context.Background(), "kubernetes", []string{"api-token"})
-		if calls.Load() < 2 {
-			t.Errorf("requests = %d, want the 404 to be retried", calls.Load())
-		}
-		if elapsed := time.Since(start); elapsed > 2*time.Second {
+		// Only what holds however slow the machine is: the bound is honoured
+		// and the error names the secret without the body. Which attempt the
+		// bound cuts short is covered deterministically below.
+		if elapsed := time.Since(start); elapsed > 5*time.Second {
 			t.Errorf("took %v, Bound was 200ms", elapsed)
 		}
 		var fe *FetchError
@@ -135,13 +133,66 @@ func TestFetch(t *testing.T) {
 			t.Errorf("FetchError = %+v", fe)
 		}
 		msg := err.Error()
-		for _, want := range []string{"kubernetes", "api-token", "404"} {
+		for _, want := range []string{"kubernetes", "api-token"} {
 			if !strings.Contains(msg, want) {
 				t.Errorf("Error() = %q, missing %q", msg, want)
 			}
 		}
 		if strings.Contains(msg, "do-not-leak") {
 			t.Errorf("Error() leaks the response body: %q", msg)
+		}
+	})
+
+	t.Run("expiry reports the last real failure, retried", func(t *testing.T) {
+		// The caller's context is cancelled from inside the second request, so
+		// at least one 404 has completed by then, whatever the timing.
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		var calls atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if calls.Add(1) == 2 {
+				cancel()
+			}
+			http.Error(w, "do-not-leak", http.StatusNotFound)
+		}))
+		defer srv.Close()
+		f := fastFetcher(srv)
+		f.Bound = time.Minute
+
+		_, err := f.Fetch(ctx, "kubernetes", []string{"api-token"})
+		if calls.Load() < 2 {
+			t.Errorf("requests = %d, want the 404 to be retried", calls.Load())
+		}
+		var fe *FetchError
+		if !errors.As(err, &fe) {
+			t.Fatalf("err = %v, want *FetchError", err)
+		}
+		if !strings.Contains(fe.Reason, "status 404") {
+			t.Errorf("Reason = %q, want the last real failure (status 404)", fe.Reason)
+		}
+		if !strings.Contains(fe.Reason, "canceled") {
+			t.Errorf("Reason = %q, want it to say why it gave up", fe.Reason)
+		}
+		if strings.Contains(err.Error(), "do-not-leak") {
+			t.Errorf("Error() leaks the response body: %q", err.Error())
+		}
+	})
+
+	t.Run("expiry before any answer reports the deadline", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			<-r.Context().Done() // never answers
+		}))
+		defer srv.Close()
+		f := fastFetcher(srv)
+		f.Bound = 100 * time.Millisecond
+
+		_, err := f.Fetch(context.Background(), "s", []string{"n"})
+		var fe *FetchError
+		if !errors.As(err, &fe) {
+			t.Fatalf("err = %v, want *FetchError", err)
+		}
+		if !strings.Contains(fe.Reason, "deadline exceeded") {
+			t.Errorf("Reason = %q, want the deadline", fe.Reason)
 		}
 	})
 
