@@ -6,10 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"math/big"
 	"strconv"
 	"strings"
+
+	"github.com/itchyny/gojq"
 )
 
 // DecodeJSON parses exactly one JSON document into gojq's value model:
@@ -73,42 +74,15 @@ func normalizeNumber(n json.Number) (any, error) {
 	return f, nil
 }
 
-// Encode serializes a gojq value the way jq prints it: compact, keys sorted,
-// no HTML escaping, NaN as null and ±Infinity as ±1.7976931348623157e+308.
-func Encode(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(finite(v)); err != nil {
-		return nil, fmt.Errorf("encode JSON: %w", err)
-	}
-	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
-}
-
-// finite returns v with every non-finite float replaced; v is not modified.
-func finite(v any) any {
-	switch v := v.(type) {
-	case float64:
-		switch {
-		case math.IsNaN(v):
-			return nil
-		case math.IsInf(v, 1):
-			return math.MaxFloat64
-		case math.IsInf(v, -1):
-			return -math.MaxFloat64
+// Encode serializes a gojq value exactly as jq prints it (compact, sorted
+// keys, NaN as null, ±Infinity clamped, no HTML escaping), by delegating to
+// gojq.Marshal. gojq.Marshal panics on a value outside gojq's value model;
+// that is reported as an error instead.
+func Encode(v any) (out []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			out, err = nil, fmt.Errorf("encode JSON: %v", r)
 		}
-	case map[string]any:
-		out := make(map[string]any, len(v))
-		for key, item := range v {
-			out[key] = finite(item)
-		}
-		return out
-	case []any:
-		out := make([]any, len(v))
-		for i, item := range v {
-			out[i] = finite(item)
-		}
-		return out
-	}
-	return v
+	}()
+	return gojq.Marshal(v)
 }

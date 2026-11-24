@@ -181,7 +181,10 @@ func TestEvaluate_errors(t *testing.T) {
 		wantDetail string // exact when exact is true, substring otherwise
 		exact      bool
 	}{
-		{name: "type error", expr: `.a + 1`, in: Input{Data: map[string]any{"a": "x"}}, timeout: time.Second},
+		{
+			name: "type error", expr: `.a + 1`, in: Input{Data: map[string]any{"a": "x"}}, timeout: time.Second,
+			wantDetail: "cannot add",
+		},
 		{name: "error builtin", expr: `error("boom")`, timeout: time.Second, wantDetail: "boom"},
 		{
 			name: "timeout", expr: `last(range(1; infinite))`, timeout: 50 * time.Millisecond,
@@ -227,6 +230,9 @@ func TestEvaluate_cancelledContext(t *testing.T) {
 	var ee *EvaluationError
 	if !errors.As(err, &ee) {
 		t.Fatalf("Evaluate() error = %v, want *EvaluationError", err)
+	}
+	if want := "evaluation was cancelled"; ee.Detail != want {
+		t.Errorf("Detail = %q, want %q", ee.Detail, want)
 	}
 }
 

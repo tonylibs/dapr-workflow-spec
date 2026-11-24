@@ -115,6 +115,9 @@ func TestEncode(t *testing.T) {
 			want: `{"x":[null,1.7976931348623157e+308]}`,
 		},
 		{name: "html is not escaped", in: "<a&b>", want: `"<a&b>"`},
+		{name: "U+2028 is emitted raw", in: "a b", want: "\"a b\""},
+		{name: "DEL is escaped", in: "a\x7fb", want: `"a\u007fb"`},
+		{name: "control characters are escaped", in: "\b\f\x01", want: `"\b\f\u0001"`},
 		{name: "nil", in: nil, want: `null`},
 		{name: "float", in: 1.5, want: `1.5`},
 	}
@@ -131,12 +134,8 @@ func TestEncode(t *testing.T) {
 	}
 }
 
-func TestEncode_doesNotMutateInput(t *testing.T) {
-	in := map[string]any{"x": []any{math.NaN()}}
-	if _, err := Encode(in); err != nil {
-		t.Fatalf("Encode() error = %v", err)
-	}
-	if got := in["x"].([]any)[0].(float64); !math.IsNaN(got) {
-		t.Errorf("input mutated: %v", got)
+func TestEncode_rejectsValuesOutsideTheJQModel(t *testing.T) {
+	if _, err := Encode(struct{}{}); err == nil {
+		t.Error("Encode(struct{}{}) error = nil, want error")
 	}
 }
