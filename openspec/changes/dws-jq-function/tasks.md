@@ -1,34 +1,34 @@
 ## 1. dws-jq scaffold
 
-- [ ] 1.1 Create `dws-jq/` with these files, mirroring `dws-call-http`:
+- [x] 1.1 Create `dws-jq/` with these files, mirroring `dws-call-http`:
   - `go.mod`: module `github.com/dws/dws-jq`, `go 1.26.9`, `github.com/itchyny/gojq v0.12.20`;
   - `Makefile`: targets build, test (`-race`), vet, fmt-check, lint, docker, clean;
   - `.gitignore` (`bin/`), `.dockerignore`;
   - `version.txt` (`0.0.0`).
-- [ ] 1.2 Add a `main.go` stub that compiles. Verify with `cd dws-jq && go vet ./... && go build ./...`.
+- [x] 1.2 Add a `main.go` stub that compiles. Verify with `cd dws-jq && go vet ./... && go build ./...`.
 
 ## 2. dws-jq configuration contract (D3)
 
-- [ ] 2.1 Write failing tests in `internal/config/config_test.go` for:
+- [x] 2.1 Write failing tests in `internal/config/config_test.go` for:
   - defaults;
   - every variable-name rule (format, duplicate, `secrets`/`ENV`/`__loc__`, non-array JSON);
   - `JQ_TIMEOUT` parsing (`0s`, `-1s`, `soon`);
   - `JQ_SITE`, `PORT` and `DAPR_HTTP_PORT` defaults.
-- [ ] 2.2 Implement `config.Load()`, the `getenv` style helpers, and the exported `config.Names`
+- [x] 2.2 Implement `config.Load()`, the `getenv` style helpers, and the exported `config.Names`
   list.
-- [ ] 2.3 Add fixtures `testdata/contract/env-minimal.json`, `env-variables.json` and
+- [x] 2.3 Add fixtures `testdata/contract/env-minimal.json`, `env-variables.json` and
   `env-secrets.json`. Add `TestConfigContract`: every fixture loads, and `config.Names` equals the
   union of fixture keys. Run `go test ./internal/config/`.
 
 ## 3. dws-jq expression core (D4–D6, D8)
 
-- [ ] 3.1 Write failing tests for `expr.Unwrap`:
+- [x] 3.1 Write failing tests for `expr.Unwrap`:
   - `${ .a }`;
   - `  ${.a}  `;
   - bare `.a`;
   - `${ { a: 1 } }`;
   - text with only `${`.
-- [ ] 3.2 Write failing tests for the policy walk. They cover:
+- [x] 3.2 Write failing tests for the policy walk. They cover:
   - each blocked builtin at each arity;
   - `$ENV`;
   - `import` and `include`;
@@ -39,15 +39,15 @@
   - allowed clock functions.
 
   Each error must name the builtin.
-- [ ] 3.3 Implement the AST walker over gojq's `Query` types (pinned v0.12.20) so the 3.2 tests
+- [x] 3.3 Implement the AST walker over gojq's `Query` types (pinned v0.12.20) so the 3.2 tests
   pass.
-- [ ] 3.4 Write failing tests for the `$secrets` scan:
+- [x] 3.4 Write failing tests for the `$secrets` scan:
   - allowed: `.a`, `."a"`, `["api-token"]`, `["a"].b`;
   - rejected: bare, `as $s`, `| keys`, `[.k]`, `[$k]`, `["a" + .x]`, `[]`, `[0:1]`;
   - the scan returns the exact name set.
 
   Then implement it.
-- [ ] 3.5 Write failing tests for `expr.Compile(expression, variables)`:
+- [x] 3.5 Write failing tests for `expr.Compile(expression, variables)`:
   - an undeclared-variable failure names the variable;
   - a parse error is reported;
   - the compile installs no environ, input or module loader (`input`/`env` are already rejected,
@@ -55,7 +55,7 @@
 
   Then implement it, returning a `*Program` that holds the code, the variable order and the secret
   names.
-- [ ] 3.6 Write failing tests for `Program.Evaluate(ctx, input, vars, secrets)`:
+- [x] 3.6 Write failing tests for `Program.Evaluate(ctx, input, vars, secrets)`:
   - first output only;
   - no output → `null`;
   - an error as the first output → `*EvaluationError`;
@@ -65,11 +65,11 @@
   - NaN/±Inf encoding.
 
   Then implement it, including JSON number decoding (`UseNumber` → int, `*big.Int` or float64).
-- [ ] 3.7 Run `go test ./internal/expr/`.
+- [x] 3.7 Run `go test ./internal/expr/`.
 
 ## 4. dws-jq secrets and redaction (D7, D9)
 
-- [ ] 4.1 Write failing tests for `secrets.Fetch` against an `httptest` fake sidecar:
+- [x] 4.1 Write failing tests for `secrets.Fetch` against an `httptest` fake sidecar:
   - the path is `/v1.0/secrets/{store}/{name}`;
   - the `dapr-api-token` header is sent when set and absent otherwise;
   - the `value` key is bound;
@@ -79,19 +79,19 @@
   - success arrives after transient errors.
 
   Make the retry bound and backoff injectable so the tests run fast.
-- [ ] 4.2 Implement `secrets.Fetch` with a 60 s default bound.
-- [ ] 4.3 Write failing tests for `secrets.Redactor`:
+- [x] 4.2 Implement `secrets.Fetch` with a 60 s default bound.
+- [x] 4.3 Write failing tests for `secrets.Redactor`:
   - raw and JSON-escaped values;
   - longest first;
   - empty values ignored;
   - multiple occurrences.
 
   Then implement it.
-- [ ] 4.4 Run `go test ./internal/secrets/`.
+- [x] 4.4 Run `go test ./internal/secrets/`.
 
 ## 5. dws-jq logging (D10)
 
-- [ ] 5.1 Write `TestLogFormatContract` with the 12 golden cases from `docs/log-format.md`:
+- [x] 5.1 Write `TestLogFormatContract` with the 12 golden cases from `docs/log-format.md`:
   - parsed-object comparison;
   - the timestamp regex;
   - one line per record;
@@ -104,15 +104,15 @@
   - text-mode fallback (`yaml`, empty, unset);
   - case-insensitive `" JSON "`;
   - `***` redaction applied before the scrubber, in both modes.
-- [ ] 5.2 Implement `internal/logging`:
+- [x] 5.2 Implement `internal/logging`:
   - the handler;
   - the RE2 scrubber with `(?i)` and `${1}${2}`;
   - `traceparent` parsing (valid, non-zero) and its context helpers.
-- [ ] 5.3 Run `go test ./internal/logging/`.
+- [x] 5.3 Run `go test ./internal/logging/`.
 
 ## 6. dws-jq HTTP server and main (D4, D8)
 
-- [ ] 6.1 Write failing `httptest` tests for `internal/server`:
+- [x] 6.1 Write failing `httptest` tests for `internal/server`:
   - `/healthz` returns 503 `starting`, then 200 `ok` with the site;
   - `/run` returns 503 before ready;
   - success returns 200 `{result, truthy}`;
@@ -122,8 +122,8 @@
   - a 422 on timeout;
   - the request log record carries the `traceparent` IDs;
   - no log record for a success.
-- [ ] 6.2 Implement the server: the readiness gate, the handlers, and per-request logging.
-- [ ] 6.3 Implement `main.go`:
+- [x] 6.2 Implement the server: the readiness gate, the handlers, and per-request logging.
+- [x] 6.3 Implement `main.go`:
   1. config;
   2. logger;
   3. compile — on failure, one `ERROR` record with site, expression and reason, then exit 1 with no
@@ -134,10 +134,10 @@
   7. graceful shutdown on SIGINT/SIGTERM.
 
   Log one `WARN` when `JQ_SECRET_STORE` is set but unused.
-- [ ] 6.4 Add a `main` test that runs the built binary as a subprocess with a malformed expression, a
+- [x] 6.4 Add a `main` test that runs the built binary as a subprocess with a malformed expression, a
   blocked builtin and an undeclared variable. Each run must exit non-zero, write exactly one error
   line containing the expression and the reason, and never open the port.
-- [ ] 6.5 Run `go test ./...`.
+- [x] 6.5 Run `go test ./...`.
 
 ## 7. Expression corpus `conformance/expressions/` (D11)
 
