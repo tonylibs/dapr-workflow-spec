@@ -26,6 +26,8 @@ func TestCheck_blocked(t *testing.T) {
 		{src: `$ENV.HOME`, builtin: "$ENV"},
 		{src: `{$ENV}`, builtin: "$ENV"},
 		{src: `. as [$ENV] | 1`, builtin: "$ENV"},
+		{src: `. as {$ENV} | 1`, builtin: "$ENV"},
+		{src: `def f($ENV): 1; f(.)`, builtin: "$ENV"},
 		{src: `input`, builtin: "input"},
 		{src: `[inputs]`, builtin: "inputs"},
 		{src: `input_filename`, builtin: "input_filename"},
@@ -123,32 +125,41 @@ func TestCheck_secrets(t *testing.T) {
 		})
 	}
 
-	rejected := []string{
-		`$secrets`,
-		`$secrets | keys`,
-		`$secrets as $s | $s.a`,
-		`$secrets[.k]`,
-		`$secrets[$k]`,
-		`$secrets["a" + .x]`,
-		`$secrets."\(.x)"`,
-		`$secrets[]`,
-		`$secrets[0:1]`,
-		`{$secrets}`,
-		`. as $secrets | 1`,
-		`def f($secrets): 1; f(.)`,
+	rejected := []struct {
+		src  string
+		form string
+	}{
+		{src: `$secrets`, form: "bare $secrets"},
+		{src: `$secrets | keys`, form: "bare $secrets"},
+		{src: `$secrets as $s | $s.a`, form: "bare $secrets"},
+		{src: `$secrets[.k]`, form: "$secrets[.k]"},
+		{src: `$secrets[$k]`, form: "$secrets[$k]"},
+		{src: `$secrets["a" + .x]`, form: `$secrets["a" + .x]`},
+		{src: `$secrets."\(.x)"`, form: `$secrets."\(.x)"`},
+		{src: `$secrets[]`, form: "$secrets[]"},
+		{src: `$secrets[0:1]`, form: "$secrets[0:1]"},
+		{src: `{$secrets}`, form: "{$secrets}"},
+		// {$secrets: v} uses the whole of $secrets as the key.
+		{src: `{$secrets: 1}`, form: "{$secrets}"},
+		{src: `. as $secrets | 1`, form: "$secrets as a binding"},
+		{src: `. as {$secrets} | 1`, form: "$secrets as a binding"},
+		{src: `. as {a: $secrets} | 1`, form: "$secrets as a binding"},
+		{src: `. as [$a] ?// $secrets | 1`, form: "$secrets as a binding"},
+		{src: `reduce .[] as $secrets (0; .)`, form: "$secrets as a binding"},
+		{src: `def f($secrets): 1; f(.)`, form: "$secrets as a function parameter"},
 	}
-	for _, src := range rejected {
-		t.Run("rejected/"+src, func(t *testing.T) {
-			names, err := Check(mustParse(t, src))
+	for _, tt := range rejected {
+		t.Run("rejected/"+tt.src, func(t *testing.T) {
+			names, err := Check(mustParse(t, tt.src))
 			var secret *SecretAccessError
 			if !errors.As(err, &secret) {
-				t.Fatalf("Check(%q) error = %v, want *SecretAccessError", src, err)
+				t.Fatalf("Check(%q) error = %v, want *SecretAccessError", tt.src, err)
 			}
-			if secret.Form == "" {
-				t.Errorf("Check(%q) Form is empty, want the offending form", src)
+			if secret.Form != tt.form {
+				t.Errorf("Check(%q) Form = %q, want %q", tt.src, secret.Form, tt.form)
 			}
 			if names != nil {
-				t.Errorf("Check(%q) names = %#v, want nil", src, names)
+				t.Errorf("Check(%q) names = %#v, want nil", tt.src, names)
 			}
 		})
 	}
