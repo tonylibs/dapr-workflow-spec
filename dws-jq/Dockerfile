@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+
+# --- build stage ---
+FROM golang:1.26.9 AS build
+WORKDIR /src
+
+# Cache module downloads separately from source.
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# Static, stripped binary for a distroless runtime.
+ENV CGO_ENABLED=0 GOOS=linux
+RUN go build -trimpath -ldflags="-s -w" -o /out/dws-jq .
+
+# --- runtime stage ---
+FROM gcr.io/distroless/static:nonroot
+WORKDIR /
+COPY --from=build /out/dws-jq /dws-jq
+
+USER nonroot:nonroot
+EXPOSE 8080
+ENTRYPOINT ["/dws-jq"]

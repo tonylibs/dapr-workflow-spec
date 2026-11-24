@@ -65,6 +65,14 @@
       "changelog-path": "CHANGELOG.md",
       "skip-github-release": true
     },
+    "dws-jq": {
+      "release-type": "simple",
+      "component": "dws-jq",
+      "changelog-path": "CHANGELOG.md",
+      "version-file": "version.txt",
+      "initial-version": "0.1.0",
+      "skip-github-release": true
+    },
     "dws-run": {
       "release-type": "simple",
       "component": "dws-run",

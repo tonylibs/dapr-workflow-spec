@@ -1,0 +1,58 @@
+# Example Knative Service for a single jq expression site.
+#
+# This manifest configures the `processItems.jq.while` site: the `while`
+# condition of a `for` loop. Every expression site deploys this same image and
+# differs only in the env block and the Dapr app-id. The controller renders
+# these (roadmap row 2m.2); this file is a hand-written reference.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: processitems-jq-while
+  labels:
+    dws.io/step-type: jq
+    dws.io/task: processitems-jq-while
+spec:
+  template:
+    metadata:
+      annotations:
+        # Scale to zero when idle; scale up on invocation.
+        autoscaling.knative.dev/minScale: "0"
+        # Dapr sidecar injection. Callers reach the function through Dapr
+        # service invocation: POST /v1.0/invoke/processitems-jq-while/method/run
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "processitems-jq-while"
+        dapr.io/app-port: "8080"
+    spec:
+      containers:
+        - image: registry.io/dws/dws-jq:1.0
+          ports:
+            - name: http1
+              containerPort: 8080
+          env:
+            - name: JQ_EXPRESSION
+              value: '$item < 3'
+            - name: JQ_VARIABLES
+              value: '["context","item","index"]'
+            - name: JQ_SITE
+              value: 'processItems.jq.while'
+            # Optional knobs (defaults shown for reference):
+            # - name: JQ_TIMEOUT
+            #   value: "5s"             # per-evaluation limit, a Go duration > 0
+            # - name: JQ_SECRET_STORE
+            #   value: "kubernetes"     # required when the expression reads $secrets
+            # - name: DWS_LOG_FORMAT
+            #   value: "json"           # structured logs (docs/log-format.md)
+          # Ready only once the expression compiled and its secrets were read.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          # No livenessProbe: /healthz answers 503 while secrets are still being
+          # read (up to 60 s), and a liveness failure there would restart the pod.
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
