@@ -110,7 +110,9 @@ func TestFetch(t *testing.T) {
 	})
 
 	t.Run("persistent 404 fails at the bound without leaking the body", func(t *testing.T) {
+		var calls atomic.Int32
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls.Add(1)
 			http.Error(w, "do-not-leak", http.StatusNotFound)
 		}))
 		defer srv.Close()
@@ -119,6 +121,9 @@ func TestFetch(t *testing.T) {
 
 		start := time.Now()
 		_, err := f.Fetch(context.Background(), "kubernetes", []string{"api-token"})
+		if calls.Load() < 2 {
+			t.Errorf("requests = %d, want the 404 to be retried", calls.Load())
+		}
 		if elapsed := time.Since(start); elapsed > 2*time.Second {
 			t.Errorf("took %v, Bound was 200ms", elapsed)
 		}
@@ -222,7 +227,7 @@ func TestFetch(t *testing.T) {
 		}
 	})
 
-	t.Run("empty store or name is rejected without a request", func(t *testing.T) {
+	t.Run("empty or dot-segment store or name is rejected without a request", func(t *testing.T) {
 		var calls atomic.Int32
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			calls.Add(1)
@@ -236,6 +241,10 @@ func TestFetch(t *testing.T) {
 		}{
 			{"s", []string{""}},
 			{"s", []string{"ok", ""}},
+			{"s", []string{"."}},
+			{"s", []string{"ok", ".."}},
+			{".", []string{"n"}},
+			{"..", []string{"n"}},
 			{"", []string{"n"}},
 		} {
 			_, err := f.Fetch(context.Background(), tc.store, tc.names)

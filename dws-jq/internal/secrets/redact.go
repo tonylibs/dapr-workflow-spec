@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+
+	"github.com/itchyny/gojq"
 )
 
 const mask = "***"
@@ -14,8 +16,9 @@ type Redactor struct {
 }
 
 // NewRedactor builds a Redactor covering each non-empty value in its raw form
-// and in its JSON-escaped form without the surrounding quotes, so a value that
-// reaches a message through a JSON encoder is still recognised. Longer forms
+// and in the JSON-escaped forms of gojq and encoding/json without the
+// surrounding quotes, so a value that reaches a message through either encoder
+// is still recognised. Longer forms
 // are matched first, so a value that contains another is masked as a whole.
 func NewRedactor(values []string) *Redactor {
 	seen := make(map[string]struct{})
@@ -35,9 +38,11 @@ func NewRedactor(values []string) *Redactor {
 			continue
 		}
 		add(v)
-		if b, err := json.Marshal(v); err == nil && len(b) >= 2 {
-			add(string(b[1 : len(b)-1]))
-		}
+		// gojq writes the error messages and results, and escapes differently
+		// from encoding/json (it escapes DEL, which encoding/json leaves raw, and
+		// leaves <, > and & raw, which encoding/json escapes). Cover both.
+		add(unquote(gojq.Marshal(v)))
+		add(unquote(json.Marshal(v)))
 	}
 	if len(forms) == 0 {
 		return &Redactor{}
@@ -57,4 +62,13 @@ func (r *Redactor) Redact(s string) string {
 		return s
 	}
 	return r.replacer.Replace(s)
+}
+
+// unquote returns the body of an encoded JSON string without its quotes, or ""
+// when encoding failed.
+func unquote(b []byte, err error) string {
+	if err != nil || len(b) < 2 {
+		return ""
+	}
+	return string(b[1 : len(b)-1])
 }

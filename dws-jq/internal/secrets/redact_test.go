@@ -1,6 +1,12 @@
 package secrets
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/itchyny/gojq"
+)
 
 func TestRedactor(t *testing.T) {
 	tests := []struct {
@@ -19,7 +25,6 @@ func TestRedactor(t *testing.T) {
 		{"no values", nil, "unchanged", "unchanged"},
 		{"every occurrence", []string{"k"}, "k-k-k", "***-***-***"},
 		{"newline in json form", []string{"l1\nl2"}, `"l1\nl2"`, `"***"`},
-		{"html chars in json form", []string{"a<b"}, `"a<b"`, `"***"`},
 		{"duplicate values", []string{"k", "k"}, "k", "***"},
 		{"text without a secret", []string{"k"}, "nothing here", "nothing here"},
 	}
@@ -36,5 +41,39 @@ func TestRedactorNilReceiver(t *testing.T) {
 	var r *Redactor
 	if got := r.Redact("pass through"); got != "pass through" {
 		t.Errorf("nil Redactor changed the text: %q", got)
+	}
+}
+
+// TestRedactorEncodedForms feeds the redactor text produced by the real
+// encoders, with only the escaped form of the secret present, so the test
+// tracks what gojq and encoding/json actually write.
+func TestRedactorEncodedForms(t *testing.T) {
+	values := []string{
+		"has\x7fdel",
+		"a<b>&c",
+		"tab\tnl\nq\"bs\\",
+		"café ☃",
+		"ctl\x01\x1f",
+		"line\u2028sep",
+	}
+	encoders := map[string]func(any) ([]byte, error){
+		"gojq":          gojq.Marshal,
+		"encoding/json": json.Marshal,
+	}
+	for _, v := range values {
+		r := NewRedactor([]string{v})
+		for name, enc := range encoders {
+			t.Run(name+"/"+strings.ToValidUTF8(v, "?"), func(t *testing.T) {
+				// An error message the way a jq program would emit it.
+				b, err := enc(map[string]any{"a": v})
+				if err != nil {
+					t.Fatal(err)
+				}
+				got := r.Redact(string(b))
+				if want := `{"a":"***"}`; got != want {
+					t.Errorf("Redact(%q) = %q, want %q", b, got, want)
+				}
+			})
+		}
 	}
 }

@@ -58,11 +58,11 @@ func (f *Fetcher) Fetch(ctx context.Context, store string, names []string) (map[
 		return out, nil
 	}
 	for _, name := range names {
-		if store == "" {
-			return nil, &FetchError{Store: store, Name: name, Reason: "secret store name is empty"}
+		if reason := invalidSegment("secret store name", store); reason != "" {
+			return nil, &FetchError{Store: store, Name: name, Reason: reason}
 		}
-		if name == "" {
-			return nil, &FetchError{Store: store, Name: name, Reason: "secret name is empty"}
+		if reason := invalidSegment("secret name", name); reason != "" {
+			return nil, &FetchError{Store: store, Name: name, Reason: reason}
 		}
 	}
 
@@ -145,4 +145,17 @@ func (f *Fetcher) attempt(ctx context.Context, store, name string) (value string
 		return "", false, errNoValue
 	}
 	return *body.Value, false, nil
+}
+
+// invalidSegment explains why s cannot be a single path segment of the secrets
+// API, or returns "". url.PathEscape leaves "." and ".." unchanged, and a
+// client or proxy may resolve them to another route.
+func invalidSegment(what, s string) string {
+	switch s {
+	case "":
+		return what + " is empty"
+	case ".", "..":
+		return what + " is a dot segment"
+	}
+	return ""
 }
