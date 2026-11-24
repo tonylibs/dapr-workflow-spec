@@ -58,6 +58,10 @@ only when the task declares the section it serves (v1's "no overhead without dat
 Input phase, body, output phase and export happen in one activity call: one hop, where v1 used three
 activities. This applies to every Step kind, including `call`/`run`; the function image is untouched.
 
+*Amended 2026-11-24 by [ADR 0014](0014-dws-jq-expression-function.md) Decision 9 (O-3):* once the Step
+moves its expressions onto `dws-jq` (roadmap 2k), each expression is one extra `dws-jq` call inside that
+activity. Still one activity, but no longer one hop.
+
 ## Decision 3: Flow nodes get a companion Step node
 
 `dws-flow` does not evaluate data-flow expressions. For a structural task that declares `input`,
@@ -156,6 +160,8 @@ A golden corpus, run by v1, by the v2 Step handlers and by the Flow companion pa
 - **Flow expression evaluation.** `dws-flow` has no jq engine, yet 3b (`for` `in`/`while`) and 3g
   (`listen` `data` matching) must evaluate expressions. This ADR does not decide it (roadmap 2.0c). If a
   .NET engine is chosen, Decision 3 can be revisited.
+  **Resolved 2026-11-24 by [ADR 0014](0014-dws-jq-expression-function.md) (Accepted):** a per-expression
+  Go `dws-jq` function evaluates them; no .NET engine, so Decision 3 stands unchanged.
 - Document-level (workflow) `input`/`output` are not used by v1 and stay out of scope.
 
 ## Consequences
