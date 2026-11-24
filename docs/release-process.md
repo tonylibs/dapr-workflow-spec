@@ -113,6 +113,7 @@ first-parent commit that touches `<component>/` (not bare `HEAD`, which would le
 | dws-step | `.github/workflows/dws-step.yml` | PR / push to `dws-step/**` on main / `dws-step-v*` tag / manual. Gate: `spotless:check` then `./mvnw verify`; image job builds (PR) or publishes `:latest` + `:<sha>` (+ `:<X.Y.Z>` on a tag). No image smoke test yet, see the workflow comment |
 | dws-flow | `.github/workflows/dws-flow.yml` | same triggers on `dws-flow/**` / `dws-flow-v*`. Gate: `dotnet test test/dws-flow.Tests.csproj`; image job smoke-tests `GET /healthz` before pushing |
 | dws-schedule-time | `.github/workflows/dws-schedule-time.yml` | same triggers on `dws-schedule-time/**` / `dws-schedule-time-v*`. Gate: `dotnet test test/dws-schedule-time.Tests.csproj`; image job smoke-tests `GET /healthz` (`{"status":"ok"}`, no sidecar or cluster needed) before pushing. Pinned by the chart as `scheduleTime.image` |
+| dws-jq | `.github/workflows/dws-jq.yml` | same triggers on `dws-jq/**`, `conformance/expressions/**` / `dws-jq-v*`. Gate: `go vet`, `gofmt`, `go test -race` (includes the expression corpus); image job smoke-tests `/healthz` and `/run` before pushing. Not pinned by the chart: the controller deploys one per expression site (2m.2) |
 | dws-mid-bearer | `.github/workflows/dws-mid-bearer.yml` | same triggers on `dws-mid-bearer/**` / `dws-mid-bearer-v*`. Gate: `go vet`, `gofmt`, `go test -race`; image job builds `/bearer.wasm` with TinyGo 0.34.0, checks the Wasm magic bytes and a non-root `cp`, then pushes. Not pinned by the chart: the controller pins its digest (OWS 4.1d) |
 
 ## First release of a new component
@@ -161,6 +162,11 @@ the first `feat` opens an ordinary `0.1.0` release PR (`dws-mid-basic` 0.1.0 cam
 merge it (cut ①), then run `component-release` for `dws-mid-bearer` without `force` (cut ②). That
 publishes `ghcr.io/tonylibs/dws-mid-bearer:0.1.0`. The first push creates a **private** GHCR package;
 make it public once in the package settings (no pull secret is planned for the init container).
+
+`dws-jq` (ADR 0014, row 2j) follows the same `dws-mid-*` / `dws-schedule-time` path: manifest `0.0.0`
+with `"initial-version": "0.1.0"`, so its first `feat(jq)` opens the `chore(release): dws-jq 0.1.0` PR
+(cut ①); run `component-release` for `dws-jq` without `force` (cut ②, publishes
+`ghcr.io/tonylibs/dws-jq:0.1.0`) and make the new GHCR package public once.
 
 `dws-schedule-time` (scheduling Phase 6a) follows the `dws-mid-*` path too, not the seed-and-force
 one: it arrives with its whole feature history (`feat(schedule-time)` commits), so a manifest of
