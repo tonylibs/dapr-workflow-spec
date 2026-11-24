@@ -1,0 +1,9 @@
+name: dialect/key-order
+test: givenObjectWithUnsortedKeys_whenToJson_thenKeysAreSorted
+area: dialect
+summary: 'tojson of an object writes its keys sorted, not in insertion order.'
+source: 'ADR 0014 Decision 5 (documented dialect: gojq''s, minus the Decision 9 builtins) and the gojq README.'
+engine: 'gojq always sorts object keys; jackson-jq keeps insertion order (EX-1 to confirm).'
+expression: '{"b":1,"a":2} | tojson'
+input: null
+expect: { result: "{\"a\":2,\"b\":1}", truthy: true }

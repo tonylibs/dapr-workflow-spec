@@ -1,0 +1,9 @@
+name: catch/except-when-503
+test: givenExceptWhenForStatus503_whenCaught503_thenTruthy
+area: catch
+summary: 'A catch.exceptWhen condition for status 503 is truthy for a 503 error.'
+source: 'v1 test dws-orchestrator/src/test/java/io/dws/orchestrator/workflow/activity/CatchPolicyTest.java:128 (exceptWhenVetoesAMatch).'
+expression: '$error.status == 503'
+input: {}
+variables: {"error":{"type":"https://serverlessworkflow.io/spec/1.0.0/errors/communication","status":503,"instance":"/fetchOrder","title":"Communication error","detail":"step 'fetch-order' failed with status 503: upstream down"},"context":{}}
+expect: { result: true, truthy: true }

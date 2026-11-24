@@ -1,0 +1,8 @@
+name: builtins/lookalike-key
+test: givenObjectKeyNamedDebug_whenExpressionCompiles_thenItIsNotABlockedBuiltin
+area: builtins
+summary: 'An object key named debug is not the blocked debug builtin.'
+source: 'ADR 0014 Decision 5 and design D11 (false-positive guard for the builtin policy walk).'
+expression: '{debug: 1}'
+input: null
+expect: { result: {"debug":1}, truthy: true }

@@ -1,0 +1,9 @@
+name: catch/as-variable
+test: givenErrorBoundAsOops_whenWhenEvaluated_thenTruthy
+area: catch
+summary: 'A catch condition reads the error under its declared catch.as name.'
+source: 'v1 test dws-orchestrator/src/test/java/io/dws/orchestrator/workflow/activity/CatchPolicyTest.java:140 (conditionReadsTheErrorUnderItsDeclaredName).'
+expression: '$oops.status == 503'
+input: {}
+variables: {"oops":{"type":"https://serverlessworkflow.io/spec/1.0.0/errors/communication","status":503,"instance":"/fetchOrder","title":"Communication error","detail":"step 'fetch-order' failed with status 503: upstream down"},"context":{}}
+expect: { result: true, truthy: true }

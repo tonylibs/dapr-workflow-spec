@@ -1,0 +1,8 @@
+name: contract/truthy-false
+test: givenFalseResult_whenTruthinessIsComputed_thenItIsNotTruthy
+area: contract
+summary: 'The result false is not truthy.'
+source: 'ADR 0014 Decision 3 (everything except null and false is true).'
+expression: 'false'
+input: null
+expect: { result: false, truthy: false }

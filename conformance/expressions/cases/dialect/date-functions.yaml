@@ -1,0 +1,9 @@
+name: dialect/date-functions
+test: givenTodate_whenEvaluated_thenIsoTimestamp
+area: dialect
+summary: 'The full jq date function set is available, for example todate.'
+source: 'ADR 0014 Decision 5 (documented dialect: gojq''s, minus the Decision 9 builtins) and the gojq README. Also corpus builtins/clock-local-time.'
+engine: 'jackson-jq 1.2.0 has only now, todateiso8601 and fromdateiso8601.'
+expression: '0 | todate'
+input: null
+expect: { result: "1970-01-01T00:00:00Z", truthy: true }

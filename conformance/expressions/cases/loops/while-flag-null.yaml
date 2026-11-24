@@ -1,0 +1,8 @@
+name: loops/while-flag-null
+test: givenNullFlag_whenWhileEvaluated_thenNotTruthy
+area: loops
+summary: 'A while condition on a null flag is not truthy.'
+source: 'v1 test dws-orchestrator/src/test/java/io/dws/orchestrator/workflow/activity/EvaluateWhileActivityTest.java:76 (falsyResultsAreFalse).'
+expression: '.flag'
+input: {"flag":null}
+expect: { result: null, truthy: false }

@@ -1,0 +1,8 @@
+name: loops/while-count
+test: givenCountAboveZero_whenWhileEvaluated_thenTruthy
+area: loops
+summary: 'A while condition comparing a field is truthy while the count is positive.'
+source: 'v1 test dws-orchestrator/src/test/java/io/dws/orchestrator/workflow/activity/EvaluateWhileActivityTest.java:50 (truthyResultIsTrue).'
+expression: '.count > 0'
+input: {"count":3}
+expect: { result: true, truthy: true }

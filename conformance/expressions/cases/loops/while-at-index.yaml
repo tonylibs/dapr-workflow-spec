@@ -1,0 +1,9 @@
+name: loops/while-at-index
+test: givenIndexBelowTwo_whenWhileEvaluated_thenTruthy
+area: loops
+summary: 'A while condition reading the loop index is truthy for index 1.'
+source: 'v1 test dws-orchestrator/src/test/java/io/dws/orchestrator/workflow/InterpreterWorkflowIntegrationTest.java:1177 (for with at: i and while: ''$i < 2'').'
+expression: '$i < 2'
+input: {}
+variables: {"i":1}
+expect: { result: true, truthy: true }

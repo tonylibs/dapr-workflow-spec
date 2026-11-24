@@ -1,0 +1,8 @@
+name: loops/in-wrapped
+test: givenWrappedForIn_whenEvaluated_thenYieldsTheArray
+area: loops
+summary: 'A ${ } wrapped for.in expression selects an array from the data.'
+source: 'v1 test dws-orchestrator/src/test/java/io/dws/orchestrator/workflow/activity/EvaluateForActivityTest.java:86 (wrappedExpressionYieldsTheArray).'
+expression: '${ .pets }'
+input: {"pets":[1,2,3]}
+expect: { result: [1,2,3], truthy: true }

@@ -1,0 +1,8 @@
+name: contract/bare
+test: givenBareExpression_whenEvaluated_thenYieldsTheSameResult
+area: contract
+summary: 'A bare jq expression gives the same result as its ${ } wrapped form.'
+source: 'ADR 0014 Decision 3 (both ${ ... } and bare jq are accepted).'
+expression: '.a'
+input: {"a":1}
+expect: { result: 1, truthy: true }

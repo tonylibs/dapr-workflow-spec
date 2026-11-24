@@ -1,0 +1,9 @@
+name: dialect/integer-precision
+test: givenIntegerBeyondDoublePrecision_whenAdded_thenResultIsExact
+area: dialect
+summary: 'Integer addition beyond 2^53 is exact.'
+source: 'ADR 0014 Decision 5 (documented dialect: gojq''s, minus the Decision 9 builtins) and the gojq README.'
+engine: 'gojq uses arbitrary precision integers for + - * %.'
+expression: '9007199254740993 + 1'
+input: null
+expect: { result: 9007199254740994, truthy: true }

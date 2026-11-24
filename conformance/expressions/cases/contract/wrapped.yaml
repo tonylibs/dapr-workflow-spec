@@ -1,0 +1,8 @@
+name: contract/wrapped
+test: givenWrappedExpression_whenEvaluated_thenUnwrapsAndYieldsResult
+area: contract
+summary: 'A ${ } wrapped expression is unwrapped and evaluated.'
+source: 'ADR 0014 Decision 3 (both ${ ... } and bare jq are accepted).'
+expression: '${ .a }'
+input: {"a":1}
+expect: { result: 1, truthy: true }

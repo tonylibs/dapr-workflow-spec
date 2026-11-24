@@ -1,0 +1,9 @@
+name: dialect/string-index
+test: givenStringAndNumberIndex_whenIndexed_thenCharacterAtPosition
+area: dialect
+summary: 'Indexing a string with a number, "abcde"[2], gives the character at that position.'
+source: 'ADR 0014 Decision 5 (documented dialect: gojq''s, minus the Decision 9 builtins) and the gojq README.'
+engine: 'gojq intentionally differs from jq here, which rejects indexing a string by number.'
+expression: '"abcde"[2]'
+input: null
+expect: { result: "c", truthy: true }

@@ -1,0 +1,9 @@
+name: loops/while-item-above
+test: givenItemAboveThree_whenWhileEvaluated_thenNotTruthy
+area: loops
+summary: 'A while condition reading the loop variable is not truthy for item 5.'
+source: 'v1 test dws-orchestrator/src/test/java/io/dws/orchestrator/workflow/activity/EvaluateWhileActivityTest.java:110 (variableIsBoundIntoWhile).'
+expression: '$item < 3'
+input: {}
+variables: {"item":5}
+expect: { result: false, truthy: false }

@@ -1,0 +1,8 @@
+name: loops/in-not-array
+test: givenForInSelectingANumber_whenEvaluated_thenYieldsTheNumber
+area: loops
+summary: 'A for.in expression that selects a non-array still evaluates to it; v1''s loop rejects a non-array, and that check belongs to the caller.'
+source: 'v1 test dws-orchestrator/src/test/java/io/dws/orchestrator/workflow/activity/EvaluateForActivityTest.java:144 (nonArrayResultIsRejected).'
+expression: '.count'
+input: {"count":3}
+expect: { result: 3, truthy: true }

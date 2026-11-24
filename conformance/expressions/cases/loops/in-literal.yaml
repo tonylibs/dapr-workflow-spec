@@ -1,0 +1,8 @@
+name: loops/in-literal
+test: givenForInArrayLiteral_whenEvaluated_thenYieldsTheLiteral
+area: loops
+summary: 'A for.in expression can be an array literal.'
+source: 'v1 test dws-orchestrator/src/test/java/io/dws/orchestrator/workflow/InterpreterWorkflowIntegrationTest.java:764 (nested for loops).'
+expression: '[1, 2]'
+input: null
+expect: { result: [1,2], truthy: true }
