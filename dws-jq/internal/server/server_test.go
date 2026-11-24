@@ -200,9 +200,48 @@ func TestRun_success(t *testing.T) {
 	}
 }
 
+// stringInputBody returns the valid body {"input":"aaa…"} of exactly size bytes.
+func stringInputBody(size int) string {
+	const prefix, suffix = `{"input":"`, `"}`
+	return prefix + strings.Repeat("a", size-len(prefix)-len(suffix)) + suffix
+}
+
+func TestRun_bodyLimit(t *testing.T) {
+	t.Run("a valid body one byte over the limit is rejected", func(t *testing.T) {
+		ev := &countingEvaluator{}
+		srv, _ := newServer(ev, testTimeout)
+		srv.MarkReady(nil, nil)
+
+		rec := do(srv, http.MethodPost, "/run", stringInputBody(MaxBodyBytes+1), nil)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rec.Code)
+		}
+		if msg, _ := decodeBody(t, rec)["error"].(string); !strings.Contains(msg, fmt.Sprint(MaxBodyBytes)) {
+			t.Errorf("error = %q, want it to name the %d-byte limit", msg, MaxBodyBytes)
+		}
+		if n := ev.calls.Load(); n != 0 {
+			t.Errorf("evaluator called %d times, want 0", n)
+		}
+	})
+
+	t.Run("a body of exactly the limit is evaluated", func(t *testing.T) {
+		ev := &countingEvaluator{}
+		srv, _ := newServer(ev, testTimeout)
+		srv.MarkReady(nil, nil)
+
+		rec := do(srv, http.MethodPost, "/run", stringInputBody(MaxBodyBytes), nil)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body %s", rec.Code, rec.Body)
+		}
+		if n := ev.calls.Load(); n != 1 {
+			t.Errorf("evaluator called %d times, want 1", n)
+		}
+	})
+}
+
 func TestRun_badRequest(t *testing.T) {
-	oversized := `{"input":"` + strings.Repeat("a", MaxBodyBytes) + `"}`
-	oversized = oversized[:MaxBodyBytes+1]
 	tests := []struct {
 		name string
 		body string
@@ -216,9 +255,13 @@ func TestRun_badRequest(t *testing.T) {
 		{name: "variables is an array", body: `{"variables":[]}`},
 		{name: "variables is null", body: `{"variables":null}`},
 		{name: "unknown field", body: `{"input":1,"expression":"."}`},
+		{name: "case variant of input", body: `{"Input":1}`},
+		{name: "case variant of variables", body: `{"Variables":{"item":1}}`},
+		{name: "duplicate case variant of input", body: `{"input":1,"INPUT":2}`},
 		{name: "undeclared variable", body: `{"variables":{"other":1}}`},
+		{name: "case variant of a declared variable", body: `{"variables":{"Item":1}}`},
 		{name: "secrets cannot be injected", body: `{"variables":{"secrets":{}}}`},
-		{name: "body over the limit", body: oversized},
+		{name: "invalid body over the limit", body: strings.Repeat("{", MaxBodyBytes+1)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -239,7 +282,10 @@ func TestRun_badRequest(t *testing.T) {
 			}
 			records := logRecords(t, buf)
 			if len(records) != 1 || records[0]["severity"] != "WARN" || records[0]["site"] != testSite {
-				t.Errorf("log = %v, want one WARN record with site %q", records, testSite)
+				t.Fatalf("log = %v, want one WARN record with site %q", records, testSite)
+			}
+			if detail, _ := records[0]["detail"].(string); detail == "" {
+				t.Errorf("WARN record has no detail: %v", records[0])
 			}
 		})
 	}

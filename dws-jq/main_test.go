@@ -20,11 +20,15 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/dws/dws-jq/internal/config"
 )
 
 const (
 	startupLimit = 5 * time.Second
 	pollInterval = 10 * time.Millisecond
+
+	expressionSeparator = "; expression: "
 )
 
 var (
@@ -126,19 +130,22 @@ func withSeverity(recs []map[string]any, severity string) []map[string]any {
 
 func TestMain_startupFailure(t *testing.T) {
 	bin := binary(t)
+	// reason must appear in the part of the ERROR message before the
+	// expression, so a fragment that is also in the expression text proves
+	// nothing on its own. A configuration error has no expression part.
 	tests := []struct {
-		name       string
-		expression string
-		variables  string
-		mention    string // the ERROR message must contain it
-		reason     string
+		name        string
+		expression  string
+		variables   string
+		reason      string
+		configError bool
 	}{
-		{name: "malformed expression", expression: ".a |", mention: ".a |"},
-		{name: "blocked builtin", expression: "${ { home: env.HOME } }", mention: "${ { home: env.HOME } }", reason: "env"},
-		{name: "undeclared variable", expression: "$item < 3", mention: "$item < 3", reason: "$item"},
-		{name: "secret store unset", expression: "$secrets.a", mention: "$secrets.a", reason: "JQ_SECRET_STORE"},
-		{name: "dynamic secret access", expression: "$secrets[.k]", mention: "$secrets[.k]", reason: "static"},
-		{name: "duplicate variable", expression: ".", variables: `["item","item"]`, mention: "JQ_VARIABLES"},
+		{name: "malformed expression", expression: ".a |", reason: "unexpected EOF"},
+		{name: "blocked builtin", expression: "${ { home: env.HOME } }", reason: `"env"`},
+		{name: "undeclared variable", expression: "$item < 3", reason: "$item"},
+		{name: "secret store unset", expression: "$secrets.a", reason: "JQ_SECRET_STORE"},
+		{name: "dynamic secret access", expression: "$secrets[.k]", reason: "static"},
+		{name: "duplicate variable", expression: ".", variables: `["item","item"]`, reason: "JQ_VARIABLES", configError: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -173,10 +180,17 @@ func TestMain_startupFailure(t *testing.T) {
 				t.Fatalf("got %d ERROR records, want 1; stdout:\n%s", len(errs), stdout.String())
 			}
 			message, _ := errs[0]["message"].(string)
-			for _, want := range []string{tt.mention, tt.reason} {
-				if !strings.Contains(message, want) {
-					t.Errorf("ERROR message %q does not contain %q", message, want)
+			reasonPart := message
+			if !tt.configError {
+				var expression string
+				var found bool
+				reasonPart, expression, found = strings.Cut(message, expressionSeparator)
+				if !found || expression != tt.expression {
+					t.Errorf("ERROR message %q does not end with %q%s", message, expressionSeparator, tt.expression)
 				}
+			}
+			if !strings.Contains(reasonPart, tt.reason) {
+				t.Errorf("reason %q of ERROR message %q does not contain %q", reasonPart, message, tt.reason)
 			}
 		})
 	}
@@ -306,5 +320,83 @@ func TestMain_warnsOnUnusedSecretStore(t *testing.T) {
 	warns := withSeverity(records(t, stdout), "WARN")
 	if len(warns) != 1 || !strings.Contains(warns[0]["message"].(string), "JQ_SECRET_STORE") {
 		t.Errorf("WARN records = %v, want one naming JQ_SECRET_STORE", warns)
+	}
+}
+
+// inProcessSecrets sets the environment for an in-process run of
+// `$secrets.a` against a fake sidecar served by handler.
+func inProcessSecrets(t *testing.T, handler http.Handler) {
+	t.Helper()
+	for _, name := range config.Names {
+		t.Setenv(name, "")
+	}
+	sidecar := httptest.NewServer(handler)
+	t.Cleanup(sidecar.Close)
+	sidecarURL, err := url.Parse(sidecar.URL)
+	if err != nil {
+		t.Fatalf("parse sidecar URL: %v", err)
+	}
+	t.Setenv("JQ_EXPRESSION", "$secrets.a")
+	t.Setenv("JQ_SECRET_STORE", "kubernetes")
+	t.Setenv("DAPR_HTTP_PORT", sidecarURL.Port())
+	t.Setenv("PORT", freePort(t))
+	t.Setenv("DWS_LOG_FORMAT", "json")
+}
+
+// TestMain_cancelDuringSecretFetch runs in process because a signal cannot be
+// sent to a child process on every platform; cancelling run's context is what
+// SIGINT/SIGTERM does.
+func TestMain_cancelDuringSecretFetch(t *testing.T) {
+	inProcessSecrets(t, http.NotFoundHandler()) // never yields the secret
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	time.AfterFunc(300*time.Millisecond, cancel)
+	var stdout bytes.Buffer
+
+	code := run(ctx, &stdout)
+
+	if code != 0 {
+		t.Errorf("run() = %d, want 0", code)
+	}
+	recs := records(t, stdout.Bytes())
+	if errs := withSeverity(recs, "ERROR"); len(errs) != 0 {
+		t.Errorf("got ERROR records %v, want none", errs)
+	}
+	stopped := false
+	for _, r := range withSeverity(recs, "INFO") {
+		if r["message"] == "shutting down" {
+			stopped = true
+		}
+	}
+	if !stopped {
+		t.Errorf("no INFO shutting down record; stdout:\n%s", stdout.String())
+	}
+}
+
+// TestMain_secretFetchFailure uses a reply with no "value", which the fetcher
+// does not retry, so the run fails at once instead of after the retry bound.
+func TestMain_secretFetchFailure(t *testing.T) {
+	inProcessSecrets(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	var stdout bytes.Buffer
+
+	code := run(context.Background(), &stdout)
+
+	if code != 1 {
+		t.Errorf("run() = %d, want 1", code)
+	}
+	errs := withSeverity(records(t, stdout.Bytes()), "ERROR")
+	if len(errs) != 1 {
+		t.Fatalf("got %d ERROR records, want 1; stdout:\n%s", len(errs), stdout.String())
+	}
+	message, _ := errs[0]["message"].(string)
+	for _, want := range []string{`"kubernetes"`, `"a"`} {
+		if !strings.Contains(message, want) {
+			t.Errorf("ERROR message %q does not name %s", message, want)
+		}
+	}
+	if strings.Contains(message, "[REDACTED]") {
+		t.Errorf("ERROR message %q was altered by the log scrubber", message)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -30,17 +31,18 @@ const (
 )
 
 func main() {
-	os.Exit(run())
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	code := run(ctx, os.Stdout)
+	stop()
+	os.Exit(code)
 }
 
-// run starts the service and returns the process exit code.
-func run() int {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
+// run starts the service, logging to stdout, until ctx is cancelled (by
+// SIGINT/SIGTERM in main), and returns the process exit code.
+func run(ctx context.Context, stdout io.Writer) int {
 	cfg, err := config.Load()
 	if err != nil {
-		log := logging.New(os.Stdout, os.Getenv("DWS_LOG_FORMAT"), nil)
+		log := logging.New(stdout, os.Getenv("DWS_LOG_FORMAT"), nil)
 		log.Error("invalid configuration: " + err.Error())
 		return 1
 	}
@@ -48,7 +50,7 @@ func run() int {
 	// The redactor is only known once secrets are read; every record logged
 	// from then on is redacted with it.
 	var redactor atomic.Pointer[secrets.Redactor]
-	log := logging.New(os.Stdout, cfg.LogFormat, func(s string) string { return redactor.Load().Redact(s) })
+	log := logging.New(stdout, cfg.LogFormat, func(s string) string { return redactor.Load().Redact(s) })
 
 	program, err := expr.Compile(cfg.Expression, cfg.Variables)
 	if err != nil {
@@ -79,8 +81,15 @@ func run() int {
 	defer shutdown(log, httpSrv)
 
 	values, err := readSecrets(ctx, cfg, names)
+	if err != nil && ctx.Err() != nil {
+		// A shutdown signal arrived while the secrets were being read.
+		log.Info("shutting down", "site", cfg.Site)
+		return 0
+	}
 	if err != nil {
-		log.Error("cannot read secrets: "+err.Error(),
+		// No word containing "secret" may directly precede a colon: the JSON
+		// scrubber would take the next word for a credential and mask it.
+		log.Error("reading from the secret store failed; "+err.Error(),
 			"site", cfg.Site, "store", cfg.SecretStore, "names", strings.Join(names, ","))
 		return 1
 	}

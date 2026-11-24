@@ -56,11 +56,19 @@ type Server struct {
 	ready    atomic.Pointer[readiness]
 }
 
-// runRequest is the /run body. Variables stays raw so a non-object value can
-// be told apart from an absent one.
+// The only /run body fields, matched exactly. encoding/json matches struct
+// fields case-insensitively even with DisallowUnknownFields, so the body is
+// decoded into a map and checked against these names instead.
+const (
+	fieldInput     = "input"
+	fieldVariables = "variables"
+)
+
+// runRequest is the /run body. Both values stay raw, so an absent field is
+// empty and a non-object variables value can be told apart from an absent one.
 type runRequest struct {
-	Input     json.RawMessage `json:"input"`
-	Variables json.RawMessage `json:"variables"`
+	input     json.RawMessage
+	variables json.RawMessage
 }
 
 // New returns a Server, not yet ready, that evaluates with ev.
@@ -158,34 +166,36 @@ func (s *Server) decode(w http.ResponseWriter, r *http.Request) (expr.Input, err
 	if err != nil {
 		return expr.Input{}, err
 	}
-	variables, err := s.variables(req.Variables)
+	variables, err := s.variables(req.variables)
 	if err != nil {
 		return expr.Input{}, err
 	}
 	var data any
-	if len(req.Input) > 0 {
-		if data, err = expr.DecodeJSON(req.Input); err != nil {
+	if len(req.input) > 0 {
+		if data, err = expr.DecodeJSON(req.input); err != nil {
 			return expr.Input{}, fmt.Errorf("input: %w", err)
 		}
 	}
 	return expr.Input{Data: data, Variables: variables}, nil
 }
 
-// decodeRequest parses raw as exactly one JSON object with no unknown fields.
+// decodeRequest parses raw as exactly one JSON object whose keys are only
+// "input" and "variables", spelled exactly so.
 func decodeRequest(raw []byte) (runRequest, error) {
-	var req runRequest
+	// A null body would decode into a nil map without error.
 	if trimmed := bytes.TrimLeft(raw, " \t\r\n"); len(trimmed) == 0 || trimmed[0] != '{' {
-		return req, errors.New("request body must be a JSON object")
+		return runRequest{}, errors.New("request body must be a JSON object")
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&req); err != nil {
-		return req, fmt.Errorf("invalid request body: %w", err)
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return runRequest{}, fmt.Errorf("invalid request body: %w", err)
 	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return req, errors.New("request body must hold exactly one JSON object")
+	for key := range fields {
+		if key != fieldInput && key != fieldVariables {
+			return runRequest{}, fmt.Errorf("unknown field %q; the body accepts only %q and %q", key, fieldInput, fieldVariables)
+		}
 	}
-	return req, nil
+	return runRequest{input: fields[fieldInput], variables: fields[fieldVariables]}, nil
 }
 
 // variables decodes the request's variables object, accepting declared names
