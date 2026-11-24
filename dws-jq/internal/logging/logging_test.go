@@ -452,3 +452,56 @@ func TestJSONHandler_concurrentWritesStayWholeLines(t *testing.T) {
 		decodeLine(t, line)
 	}
 }
+
+type secretStringer struct{ value string }
+
+func (s secretStringer) String() string { return "stringer:" + s.value }
+
+type secretStruct struct {
+	User  string
+	Value string
+}
+
+// Text mode must redact every value JSON mode redacts: a caller's string
+// attribute named "level", and non-string values through their String form.
+func TestText_redactsEveryAttributeValue(t *testing.T) {
+	redact := func(s string) string { return strings.ReplaceAll(s, "hunter3", "***") }
+	tests := []struct {
+		name string
+		args []any
+		want string
+	}{
+		{"string attribute named level", []any{"level", "password=hunter3"}, `level="password=***"`},
+		{"Stringer", []any{"who", secretStringer{"hunter3"}}, "who=stringer:***"},
+		{"struct", []any{"obj", secretStruct{"dws", "hunter3"}}, `obj="{dws ***}"`},
+		{"pointer to Stringer", []any{"who", &secretStringer{"hunter3"}}, "who=stringer:***"},
+		{"error", []any{"error", errors.New("bad hunter3")}, "error=\"bad ***\""},
+		{"nested group", []any{slog.Group("g", slog.Any("o", secretStringer{"hunter3"}))}, "g.o=stringer:***"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			New(&buf, "text", redact).Info("m", tc.args...)
+
+			out := buf.String()
+			if strings.Contains(out, "hunter3") {
+				t.Errorf("line leaks the secret: %s", out)
+			}
+			if !strings.Contains(out, tc.want) {
+				t.Errorf("line %q lacks %q", out, tc.want)
+			}
+			if !strings.Contains(out, "level=INFO") {
+				t.Errorf("slog's own level attribute was lost: %s", out)
+			}
+		})
+	}
+}
+
+// Values with nothing to redact keep slog's own formatting.
+func TestText_unchangedValuesKeepFormatting(t *testing.T) {
+	var buf bytes.Buffer
+	New(&buf, "text", func(s string) string { return s }).Info("m", "n", 3, "obj", secretStruct{"a", "b"})
+	if out := buf.String(); !strings.Contains(out, "n=3") || !strings.Contains(out, `obj="{User:a Value:b}"`) {
+		t.Errorf("unexpected formatting: %s", out)
+	}
+}

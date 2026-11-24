@@ -78,28 +78,29 @@ func New(w io.Writer, format string, redact func(string) string) *slog.Logger {
 	}))
 }
 
-// textReplaceAttr redacts the message and string-like attribute values and
+// textReplaceAttr redacts the message and every string-like attribute value
+// (strings, and anything else through its String form, as JSON mode does) and
 // renames the fatal level, leaving the rest of slog's text output unchanged.
 func textReplaceAttr(redact func(string) string) func([]string, slog.Attr) slog.Attr {
 	return func(groups []string, a slog.Attr) slog.Attr {
-		if len(groups) == 0 {
-			switch a.Key {
-			case slog.MessageKey:
-				return slog.String(a.Key, redact(a.Value.String()))
-			case slog.LevelKey:
-				if level, ok := a.Value.Any().(slog.Level); ok && level >= LevelFatal {
+		if len(groups) == 0 && a.Key == slog.LevelKey {
+			// Only slog's own level attribute is exempt; a caller's string
+			// attribute named "level" is redacted like any other.
+			if level, ok := a.Value.Any().(slog.Level); ok {
+				if level >= LevelFatal {
 					return slog.String(a.Key, "FATAL")
 				}
 				return a
 			}
 		}
 		switch a.Value.Kind() {
-		case slog.KindString:
-			return slog.String(a.Key, redact(a.Value.String()))
-		case slog.KindAny:
-			if err, ok := a.Value.Any().(error); ok {
-				return slog.String(a.Key, redact(err.Error()))
+		case slog.KindString, slog.KindAny:
+			text := a.Value.String()
+			redacted := redact(text)
+			if redacted == text {
+				return a // keep slog's own formatting when nothing changed
 			}
+			return slog.String(a.Key, redacted)
 		}
 		return a
 	}
