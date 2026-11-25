@@ -100,6 +100,7 @@ jobs:
           context: dws-jq
           load: true
           tags: dws-jq:smoke
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=dws-jq
           cache-to: type=gha,mode=max,scope=dws-jq
 
@@ -107,31 +108,29 @@ jobs:
       # function is ready as soon as the expression compiles. Require /healthz
       # to report ok, then one evaluation with its exact response body.
       - name: Smoke-test the image
+        shell: bash
         run: |
           docker run -d --name dws-jq-smoke -p 8080:8080 -e JQ_EXPRESSION=. dws-jq:smoke
-          for i in $(seq 1 20); do
-            if body=$(curl -fsS http://localhost:8080/healthz) && echo "$body" | grep -q '"status":"ok"'; then
-              echo "$body"
-              break
-            fi
-            if [ "$i" -eq 20 ]; then
-              echo "container did not become healthy"; docker logs dws-jq-smoke; exit 1
-            fi
-            sleep 1
-          done
-          out=$(curl -fsS -X POST http://localhost:8080/run -d '{"input":1}')
+          trap 'docker rm -f dws-jq-smoke' EXIT
+          if ! body=$(curl -fsS --retry 20 --retry-connrefused --retry-delay 1 \
+            --retry-max-time 19 --max-time 1 http://localhost:8080/healthz) || \
+            ! grep -q '"status":"ok"' <<< "$body"; then
+            echo "container did not become healthy"
+            docker logs dws-jq-smoke
+            exit 1
+          fi
+          echo "$body"
+          out=$(curl -fsS --max-time 5 -X POST http://localhost:8080/run -d '{"input":1}')
           echo "$out"
           [ "$out" = '{"result":1,"truthy":true}' ] || { echo "unexpected /run body"; docker logs dws-jq-smoke; exit 1; }
-          docker rm -f dws-jq-smoke
 
-      # Fully cached by the build above, so this re-tags and uploads rather
-      # than rebuilding. Skipped on PRs: validated there, published on merge.
-      - name: Push
+      - name: Push the smoke-tested image
         if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v6
-        with:
-          context: dws-jq
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=dws-jq
+        shell: bash
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          while IFS= read -r tag; do
+            docker tag dws-jq:smoke "$tag"
+            docker push "$tag"
+          done <<< "$IMAGE_TAGS"

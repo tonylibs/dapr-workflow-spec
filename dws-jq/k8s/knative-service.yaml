@@ -22,6 +22,8 @@ spec:
         dapr.io/enabled: "true"
         dapr.io/app-id: "processitems-jq-while"
         dapr.io/app-port: "8080"
+        # Knative's queue-proxy uses Dapr's default metrics port (9090).
+        dapr.io/metrics-port: "9095"
     spec:
       containers:
         - image: registry.io/dws/dws-jq:1.0

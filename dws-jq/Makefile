@@ -8,8 +8,9 @@ build:
 	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/$(BINARY) .
 
 ## test: run all unit tests with the race detector
+# Go's test cache misses edits to the corpus outside this module.
 test:
-	go test -race ./...
+	go test -race -count=1 ./...
 
 ## vet: run go vet
 vet:
