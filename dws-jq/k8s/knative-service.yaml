@@ -15,8 +15,13 @@ spec:
   template:
     metadata:
       annotations:
-        # Scale to zero when idle. A request through the Knative route scales it up; a Dapr
-        # service invocation does not (ADR 0014, "2j notes").
+        # WARNING: with minScale "0", Dapr-invoked callers FAIL once the revision has scaled to
+        # zero. Dapr service invocation cannot wake it: with no pod there is no
+        # <app-id>-dapr Service address, and every call fails at once with HTTP 500
+        # ERR_DIRECT_INVOKE ("no such host"); measured 5 of 5 in EX-3 (README "EX-3 results",
+        # ADR 0014 "2j notes"). Only a request through the Knative route scales it up.
+        # "0" is kept here as a reference value, not a recommendation: the scale policy for
+        # expression functions is decided in roadmap row 2.0d / O-1, not by this file.
         autoscaling.knative.dev/minScale: "0"
         # Dapr sidecar injection. Callers reach the function through Dapr
         # service invocation: POST /v1.0/invoke/processitems-jq-while/method/run
