@@ -411,4 +411,7 @@ func TestMain_secretFetchFailure(t *testing.T) {
 	if strings.Contains(message, "[REDACTED]") {
 		t.Errorf("ERROR message %q was altered by the log scrubber", message)
 	}
+	if got := errs[0]["expression"]; got != "$secrets.a" {
+		t.Errorf("ERROR expression = %v, want $secrets.a", got)
+	}
 }

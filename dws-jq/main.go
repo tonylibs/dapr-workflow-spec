@@ -93,7 +93,8 @@ func run(ctx context.Context, stdout io.Writer) int {
 		// No word containing "secret" may directly precede a colon: the JSON
 		// scrubber would take the next word for a credential and mask it.
 		log.Error("reading from the secret store failed; "+err.Error(),
-			"site", cfg.Site, "store", cfg.SecretStore, "names", strings.Join(names, ","))
+			"site", cfg.Site, "expression", cfg.Expression, "store", cfg.SecretStore,
+			"names", strings.Join(names, ","))
 		return 1
 	}
 	plain := make([]string, 0, len(values))

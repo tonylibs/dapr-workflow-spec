@@ -71,7 +71,8 @@ In order; any failure writes one `ERROR` record and exits 1:
 
 1. Load and validate the environment (`invalid configuration: ...`). The record carries `site` and
    `expression` as configured (the expression is empty when `JQ_EXPRESSION` is unset), like the
-   expression and `JQ_SECRET_STORE` failures below; the listener and secret-read failures carry `site`
+   expression, `JQ_SECRET_STORE` and secret-read failures below (the secret-read record carries it as
+   the `expression` attribute only, beside `store` and `names`); the listener failure carries `site`
    but not the expression.
 2. Unwrap, parse and policy-check the expression, then compile it with the declared variables plus
    `$secrets` (`invalid expression: ...`, with the expression text and site on the record). An
