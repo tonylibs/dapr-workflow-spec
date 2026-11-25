@@ -15,7 +15,8 @@ spec:
   template:
     metadata:
       annotations:
-        # Scale to zero when idle; scale up on invocation.
+        # Scale to zero when idle. A request through the Knative route scales it up; a Dapr
+        # service invocation does not (ADR 0014, "2j notes").
         autoscaling.knative.dev/minScale: "0"
         # Dapr sidecar injection. Callers reach the function through Dapr
         # service invocation: POST /v1.0/invoke/processitems-jq-while/method/run

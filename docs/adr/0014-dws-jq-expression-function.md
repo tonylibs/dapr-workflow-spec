@@ -315,7 +315,7 @@ node.
    which Decision 2 prescribes for all three callers. For O-1 this means `min-scale: 1` is not only an
    optimisation for busy sites: any site whose caller cannot tolerate a failed first call needs it, or
    the caller needs a wake-up step or retry. Roadmap row 2.0d must settle this; it was not decided here.
-   One run on one cluster, but the cause is Dapr's name resolution, not this cluster.
+   The zero-pod failure (5 of 5 samples, `ERR_DIRECT_INVOKE` naming the unresolvable `<app-id>-dapr` host) is Dapr's name resolution and does not depend on this cluster. The cause of the roughly 20 s delay after the wake is **unconfirmed**: the headless Service gaining an address, or DNS negative caching (which depends on cluster DNS configuration), would both fit, and it was not isolated. It was one timed run.
 2. **Decision 4's table is wrong about gojq as a library.** It says `input_filename` "exists; returns
    `null`", and that `debug` and `stderr` "exist". Run as a library (the way `dws-jq` uses it, not the
    `gojq` command), v0.12.20 does not define `input_filename`, `debug` or `stderr` (`function not

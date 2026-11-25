@@ -3,7 +3,7 @@ test: givenLookaheadRegex_whenTested_thenEvaluateFault
 area: dialect
 summary: 'Regex look-around is not supported, so test with a look-ahead is a fault.'
 source: 'ADR 0014 Decision 5 (documented dialect: gojq''s, minus the Decision 9 builtins) and the gojq README.'
-engine: 'gojq compiles regexes at call time, so this is expected to be an evaluate fault; the phase is to confirm.'
+engine: 'gojq compiles regexes at call time, so this is expected to be an evaluate fault; confirmed on gojq v0.12.20: an evaluate fault ("invalid or unsupported Perl syntax").'
 expression: '"ab" | test("a(?=b)")'
 input: null
 expect:

@@ -172,26 +172,27 @@ Knative skips when resolving tags, so no cluster configuration was touched. The 
 `dapr.io/metrics-port: "9095"`) in a throwaway namespace, since deleted. The caller was a `curl` pod
 with its own Dapr sidecar. Every time below is curl's `time_total` inside that pod, one new
 connection per call, so it includes the caller's sidecar, the callee's sidecar and the request itself.
+Percentiles are nearest-rank over the 200 sorted samples (p50 is the 100th, p95 the 190th).
 
 | Measurement | Path | Result |
 |---|---|---|
 | Warm, 200 sequential calls (5 warm-up calls first) | Dapr service invocation (`localhost:3500/v1.0/invoke/<app-id>/method/run`) | all `200`; min 1.7 ms, **p50 2.4 ms, p95 3.5 ms**, p99 3.8 ms, max 5.1 ms |
 | Warm, 200 sequential calls | Knative route (`http://<service>.<ns>.svc.cluster.local/run`, through Kourier) | all `200`; min 3.8 ms, p50 4.7 ms, p95 6.4 ms, p99 7.2 ms, max 7.7 ms |
 | Cold, 5 samples, each after the revision had scaled to zero pods | Dapr service invocation | **5 of 5 failed**: `HTTP 500`, `ERR_DIRECT_INVOKE`, "failed to resolve address for '<app-id>-dapr.<ns>.svc.cluster.local' ... no such host", after 3.1 to 5.5 ms. No pod was started |
-| Cold, 5 samples, each after the revision had scaled to zero pods | Knative route | `200` after **0.92, 0.93, 0.97, 0.99, 1.02 s** (median 0.97 s) |
+| Cold, 5 samples, each after the revision had scaled to zero pods | Knative route | `200` after **0.923, 0.932, 0.968, 0.995, 1.020 s** (median 0.968 s) |
 
 **What the numbers say.**
 
 - A warm evaluation costs a few milliseconds end to end. The expression is not the cost; the two
   sidecar hops are.
 - A scaled-to-zero `dws-jq` revision **cannot be woken by Dapr service invocation.** Dapr resolves the
-  callee through the `<app-id>-dapr` headless Service. With zero pods that Service has no address, so
-  the call fails at once and the Knative activator never sees a request. Only a request through the
+  callee through the `<app-id>-dapr` headless Service. The error names that host as unresolvable, so with zero pods it has no address and
+  the call fails at once, and the Knative activator never sees a request. (The error is measured, 5 of 5; the Service-has-no-address reading is the likely cause.) Only a request through the
   Knative route starts a pod.
 - Once a pod exists, Dapr invocation does not work immediately. In four of the five cold samples a
   Dapr call sent right after the Knative route answered still returned the same `500` (the fifth
   call's output was lost to a `kubectl exec` stream error). In one extra run it began to succeed
-  roughly 20 s after the pod was created (the headless Service address had to appear and resolve).
+  roughly 20 s after the pod was created. The cause was not isolated: the headless Service gaining an address and DNS negative caching (cluster-DNS dependent) would both fit.
   That was one observation, not a measured distribution.
 - A cold start through the Knative route is about one second here: pod scheduling plus three
   containers (`dws-jq`, `queue-proxy`, `daprd`), with the image already on the node. A real pull and a
