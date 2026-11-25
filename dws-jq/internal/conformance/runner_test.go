@@ -110,6 +110,27 @@ func TestRun_structuralErrors(t *testing.T) {
 			wantErr: "followUp",
 		},
 		{
+			name: "ymlExtension",
+			cases: fixture{
+				"loops/x.yaml": caseYAML("loops/x", "givenA_whenB_thenC", "loops", ".", "null",
+					"expect: { result: null, truthy: false }\n"),
+				"loops/y.yml": caseYAML("loops/y", "givenD_whenE_thenF", "loops", ".", "null",
+					"expect: { result: null, truthy: false }\n"),
+			},
+			div:     noDivergences,
+			wantErr: "loops/y.yml",
+		},
+		{
+			name: "otherFileUnderCases",
+			cases: fixture{
+				"loops/x.yaml": caseYAML("loops/x", "givenA_whenB_thenC", "loops", ".", "null",
+					"expect: { result: null, truthy: false }\n"),
+				"notes.md": "not a case\n",
+			},
+			div:     noDivergences,
+			wantErr: "notes.md",
+		},
+		{
 			name:    "noCases",
 			cases:   fixture{},
 			div:     noDivergences,

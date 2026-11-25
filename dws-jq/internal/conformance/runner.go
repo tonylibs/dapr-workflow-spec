@@ -139,12 +139,17 @@ func loadCases(corpusDir string) ([]testCase, error) {
 	casesDir := filepath.Join(corpusDir, "cases")
 	var cases []testCase
 	err = filepath.WalkDir(casesDir, func(p string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil || d.IsDir() || filepath.Ext(p) != ".yaml" {
+		if walkErr != nil || d.IsDir() {
 			return walkErr
 		}
 		rel, err := filepath.Rel(casesDir, p)
 		if err != nil {
 			return err
+		}
+		// Every file under cases/ is a case: a .yml or stray file would
+		// otherwise be skipped and its case silently never run.
+		if filepath.Ext(p) != ".yaml" {
+			return fmt.Errorf("%s: every file under cases/ must be a .yaml case file", filepath.ToSlash(rel))
 		}
 		c, err := loadCase(p, filepath.ToSlash(rel), schema)
 		if err != nil {

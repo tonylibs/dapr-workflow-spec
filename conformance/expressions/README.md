@@ -85,8 +85,8 @@ expect:
 A runner, in any language:
 
 1. Loads every `cases/**/*.yaml`, validates it against `case.schema.json`, and checks that `name` and
-   `area` match the path and that every `test` is unique. A malformed case fails the run before any case
-   is evaluated.
+   `area` match the path and that every `test` is unique. A malformed case, or any file under `cases/`
+   that is not a `.yaml` case (a `.yml` included), fails the run before any case is evaluated.
 2. Evaluates the expression the way its engine serves `POST /run`: unwraps `${ }`, compiles, binds
    `input` to `.` and each `variables` entry to `$<name>`, takes the first output, and computes
    truthiness.
