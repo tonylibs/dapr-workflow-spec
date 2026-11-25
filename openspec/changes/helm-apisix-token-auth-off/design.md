@@ -148,6 +148,12 @@ are not hand-edited.
   chart-generated Secret this cannot happen at install, because Helm applies Secrets before
   Deployments within one release. For operator Secrets the README already says to create them
   first and to restart APISIX on any token change.
+- [An auth-off release with APISIX is upgraded to auth on (or admin on): APISIX's pod template and
+  `checksum/config` render the same either way, so APISIX is not restarted and keeps running
+  with the variable unset, and Gateway admin requests get 401. Before this change, kubelet retried
+  the stuck pod once the Secret appeared.] → The README, the `values.yaml` comment and the existing
+  NOTES "restart after every change" guidance tell operators to `kubectl rollout restart` APISIX.
+  The chart cannot add a checksum to the subchart's pod template from the parent's values.
 - [`helm upgrade` changes the APISIX pod template, so APISIX does a rolling restart] → This happens
   once, and the bundled APISIX Deployment already rolls on any config change. Call it out in the
   release notes via the conventional commit.
