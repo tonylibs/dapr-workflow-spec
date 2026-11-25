@@ -112,15 +112,29 @@ jobs:
         run: |
           docker run -d --name dws-jq-smoke -p 8080:8080 -e JQ_EXPRESSION=. dws-jq:smoke
           trap 'docker rm -f dws-jq-smoke' EXIT
-          if ! body=$(curl -fsS --retry 20 --retry-connrefused --retry-delay 1 \
-            --retry-max-time 19 --max-time 1 http://localhost:8080/healthz) || \
-            ! grep -q '"status":"ok"' <<< "$body"; then
+          # Poll by hand: docker-proxy publishes the port before the process
+          # listens, so an early connect can end in an empty reply or a reset,
+          # which curl's own retry options do not all cover.
+          healthy=false
+          for _ in $(seq 1 20); do
+            body=$(curl -fsS --max-time 1 http://localhost:8080/healthz 2>/dev/null) || body=""
+            if grep -q '"status":"ok"' <<< "$body"; then
+              healthy=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$healthy" != true ]; then
             echo "container did not become healthy"
             docker logs dws-jq-smoke
             exit 1
           fi
           echo "$body"
-          out=$(curl -fsS --max-time 5 -X POST http://localhost:8080/run -d '{"input":1}')
+          out=$(curl -fsS --max-time 5 -X POST http://localhost:8080/run -d '{"input":1}') || {
+            echo "POST /run failed"
+            docker logs dws-jq-smoke
+            exit 1
+          }
           echo "$out"
           [ "$out" = '{"result":1,"truthy":true}' ] || { echo "unexpected /run body"; docker logs dws-jq-smoke; exit 1; }
 
@@ -131,6 +145,7 @@ jobs:
           IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
             docker tag dws-jq:smoke "$tag"
             docker push "$tag"
           done <<< "$IMAGE_TAGS"
