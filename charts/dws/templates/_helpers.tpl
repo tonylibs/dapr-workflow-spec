@@ -75,6 +75,15 @@ DWS_ORCHESTRATOR_SERVICE_ACCOUNT and stamps it on every orchestrator Deployment 
 {{- end }}
 
 {{/*
+Dedicated ServiceAccount for controller-compiled Knative step pods. The controller is handed
+this name through DWS_STEP_SERVICE_ACCOUNT and stamps it on every step Service it creates. The
+account deliberately has no chart-granted RBAC.
+*/}}
+{{- define "dws.step.serviceAccountName" -}}
+{{- printf "%s-step" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
 Controller selector labels — the common selector labels plus a component marker so the
 controller Deployment/Service cannot match sibling components (admin, postgres).
 */}}

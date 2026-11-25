@@ -3,6 +3,21 @@
   "$comment": "Deliberately partial (ADR 0007, question 8): only scheduleTime is described and closed. Every other top-level key is left unconstrained, so existing values files and --reuse-values upgrades keep rendering; guards for the rest stay as fail calls in _preflight.tpl/_helpers.tpl. Close another block only in its own change.",
   "type": "object",
   "properties": {
+    "imagePullSecrets": {
+      "description": "References to existing image pull Secrets in the chart's effective workload namespace.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
     "scheduleTime": {
       "description": "dws-schedule-time, the time-trigger scheduler (scheduling Phase 6a, ADR 0013). Core layer, on by default.",
       "type": "object",

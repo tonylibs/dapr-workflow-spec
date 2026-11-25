@@ -47,6 +47,10 @@ spec:
         {{- end }}
     spec:
       serviceAccountName: {{ include "dws.controller.fullname" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- include "dws.component.scheduling" (dict "root" . "component" .Values.controller) | nindent 6 }}
       {{- if and .Values.dapr.enabled (not .Values.redis.external.host) }}
       initContainers:
@@ -84,6 +88,8 @@ spec:
                   fieldPath: metadata.namespace
             - name: DWS_ORCHESTRATOR_SERVICE_ACCOUNT
               value: {{ include "dws.orchestrator.serviceAccountName" . | quote }}
+            - name: DWS_STEP_SERVICE_ACCOUNT
+              value: {{ include "dws.step.serviceAccountName" . | quote }}
             - name: DWS_IMAGES_CALL_HTTP
               value: "{{ .Values.controller.images.callHttp.repository }}:{{ .Values.controller.images.callHttp.tag }}"
             - name: DWS_IMAGES_CALL_OPENAPI

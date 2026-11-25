@@ -5,6 +5,30 @@ supporting Dapr/PostgreSQL/Redis/Dex/APISIX dependencies. See the repository roo
 [`AGENTS.md`](../../AGENTS.md) for the overall project and [`docs/roadmaps/dws-auth.md`](../../docs/roadmaps/dws-auth.md)
 for the auth/Gateway design history.
 
+## Private registry credentials
+
+`imagePullSecrets` is a list of references to existing Kubernetes image pull Secrets. Create each
+Secret before installing or upgrading the chart in the effective workload namespace: the Helm
+release namespace by default, or `namespaceOverride` when that value is set. The chart validates
+the reference shape but does not create, copy, or inspect the Secret data.
+
+```bash
+kubectl create secret docker-registry regcred \
+  --namespace <workload-namespace> \
+  --docker-server <registry> \
+  --docker-username <username> \
+  --docker-password <password>
+
+helm upgrade --install dws charts/dws \
+  --namespace <workload-namespace> --create-namespace \
+  --set 'imagePullSecrets[0].name=regcred'
+```
+
+The nonempty list is applied to all first-party DWS Deployment pod templates and chart-owned
+ServiceAccounts, including the accounts used by generated orchestrators and Knative steps. An
+omitted value or explicit `[]` leaves `imagePullSecrets` absent. Dependency chart configuration
+is separate and is not changed by this value.
+
 ## Upgrading to scheduling Phase 6a (time triggers)
 
 This chart version adds `dws-schedule-time` (`scheduleTime.enabled`, default `true`; see

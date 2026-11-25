@@ -776,8 +776,9 @@ opentelemetry-collector:
           processors: [memory_limiter, batch]
           exporters: [debug]
 
-# Image pull secrets, applied to the admin (and other component) pods that reference
-# private registries. More info: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+# References to existing image pull Secrets in the effective workload namespace (the Helm release
+# namespace, or namespaceOverride when set). The chart does not create or copy these Secrets.
+# More info: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
 # Overrides for the chart name / fully-qualified name used to derive component resource names.
 nameOverride: ""

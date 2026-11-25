@@ -1,10 +1,10 @@
 ## 1. Helm chart
 
-- [ ] 1.1 Add the `imagePullSecrets` array schema and document the existing namespace-local Secret prerequisite in `charts/dws/values.yaml` and `charts/dws/README.md`.
-- [ ] 1.2 Use a shared Helm name helper for the step ServiceAccount and `DWS_STEP_SERVICE_ACCOUNT` in the controller Deployment. Gate the account on `controller.enabled` and verify that the chart grants it no RBAC.
-- [ ] 1.3 Render the nonempty list on the controller, scheduler, orchestrator, step, and Dapr readiness hook ServiceAccounts and on every first-party Deployment pod template. Confirm an empty list omits the fields.
-- [ ] 1.4 Add `charts/dws/tests/image-pull-secrets-render-test.sh` and run `bash charts/dws/tests/image-pull-secrets-render-test.sh charts/dws`. Cover all enabled first-party resources, multiple configured references, omitted and explicitly empty values, malformed values, step identity under default and custom releases and effective namespaces, and the disabled controller case.
-- [ ] 1.5 Wire the render test into `.github/workflows/helm.yml` and the root `CLAUDE.md` chart gate. Regenerate the default observability render fixture with the Helm version pinned in CI and review that the diff adds the step account and controller environment variable. Run the full root `CLAUDE.md` chart gate.
+- [x] 1.1 Add the `imagePullSecrets` array schema and document the existing namespace-local Secret prerequisite in `charts/dws/values.yaml` and `charts/dws/README.md`.
+- [x] 1.2 Use a shared Helm name helper for the step ServiceAccount and `DWS_STEP_SERVICE_ACCOUNT` in the controller Deployment. Gate the account on `controller.enabled` and verify that the chart grants it no RBAC.
+- [x] 1.3 Render the nonempty list on the controller, scheduler, orchestrator, step, and Dapr readiness hook ServiceAccounts and on every first-party Deployment pod template. Confirm an empty list omits the fields.
+- [x] 1.4 Add `charts/dws/tests/image-pull-secrets-render-test.sh` and run `bash charts/dws/tests/image-pull-secrets-render-test.sh charts/dws`. Cover all enabled first-party resources, multiple configured references, omitted and explicitly empty values, malformed values, step identity under default and custom releases and effective namespaces, and the disabled controller case.
+- [x] 1.5 Wire the render test into `.github/workflows/helm.yml` and the root `CLAUDE.md` chart gate. Regenerate the default observability render fixture with the Helm version pinned in CI and review that the diff adds the step account and controller environment variable. Run the full root `CLAUDE.md` chart gate.
 
 ## 2. Controller
 

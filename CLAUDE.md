@@ -187,6 +187,7 @@ bash charts/dws/tests/api-gateway-render-test.sh charts/dws
 bash charts/dws/tests/auth-pipeline-placement-test.sh charts/dws
 bash charts/dws/tests/observability-render-test.sh charts/dws
 bash charts/dws/tests/orchestrator-wiring-render-test.sh charts/dws
+bash charts/dws/tests/image-pull-secrets-render-test.sh charts/dws
 bash charts/dws/tests/api-tokens-render-test.sh charts/dws
 bash charts/dws/tests/schedule-time-render-test.sh charts/dws
 ```
