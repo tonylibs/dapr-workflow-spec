@@ -183,9 +183,9 @@ Stakeholders: the 2m controller work (renders this configuration), the 3b/3c/3f/
 ### D8: `/run` semantics
 - **Request**:
   - The body is `{"input": any, "variables": object}`. Both fields are optional; an absent `input`
-    is `null`.
+    is `null`, and `"variables": null` is treated as absent.
   - The body is limited to 4 MiB, Dapr's default maximum request body.
-  - These return `400 {"error":"…"}`: invalid JSON, a non-object body, a non-object `variables`,
+  - These return `400 {"error":"…"}`: invalid JSON, a non-object body, a `variables` that is neither an object nor `null`,
     unknown top-level fields, a body over the limit, and an undeclared variable name (`secrets`
     included).
 - **Binding**:

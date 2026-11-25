@@ -158,7 +158,7 @@ Owning component: `dws-jq`.
 
 ### Requirement: POST /run evaluates the configured expression
 `POST /run` SHALL accept a JSON object `{ "input": any, "variables": object }`. Both fields are
-optional, and an absent `input` is `null`.
+optional; an absent `input` is `null`, and `"variables": null` is the same as no `variables`.
 - `input` SHALL be bound to `.`.
 - Each declared variable SHALL be bound to `$name`. A declared variable absent from the request
   SHALL be `null`.
@@ -173,7 +173,7 @@ for `null` and `false`. Values JSON cannot represent SHALL follow jq's output ru
 
 Each of the following MUST be answered `400` with `{ "error": "<reason>" }`, without evaluating:
 - the body is not a JSON object;
-- `variables` is not an object;
+- `variables` is neither an object nor `null`;
 - an unknown top-level field is present;
 - the body is larger than 4 MiB;
 - `variables` names an undeclared variable, `secrets` included.
