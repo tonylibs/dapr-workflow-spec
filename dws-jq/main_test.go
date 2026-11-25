@@ -132,25 +132,32 @@ func TestMain_startupFailure(t *testing.T) {
 	bin := binary(t)
 	// reason must appear in the part of the ERROR message before the
 	// expression, so a fragment that is also in the expression text proves
-	// nothing on its own. A configuration error has no expression part.
+	// nothing on its own.
+	const site = "runCheck.jq.when"
+	const token = "dapr-token-not-for-logs"
 	tests := []struct {
-		name        string
-		expression  string
-		variables   string
-		reason      string
-		configError bool
+		name       string
+		expression string
+		variables  string
+		reason     string
 	}{
+		{name: "missing expression", reason: "JQ_EXPRESSION"},
 		{name: "malformed expression", expression: ".a |", reason: "unexpected EOF"},
 		{name: "blocked builtin", expression: "${ { home: env.HOME } }", reason: `"env"`},
 		{name: "undeclared variable", expression: "$item < 3", reason: "$item"},
 		{name: "secret store unset", expression: "$secrets.a", reason: "JQ_SECRET_STORE"},
 		{name: "dynamic secret access", expression: "$secrets[.k]", reason: "static"},
-		{name: "duplicate variable", expression: ".", variables: `["item","item"]`, reason: "JQ_VARIABLES", configError: true},
+		{name: "duplicate variable", expression: " ${ .count } ", variables: `["item","item"]`, reason: "JQ_VARIABLES"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			port := freePort(t)
-			settings := map[string]string{"JQ_EXPRESSION": tt.expression, "PORT": port}
+			settings := map[string]string{
+				"JQ_EXPRESSION":  tt.expression,
+				"JQ_SITE":        site,
+				"DAPR_API_TOKEN": token,
+				"PORT":           port,
+			}
 			if tt.variables != "" {
 				settings["JQ_VARIABLES"] = tt.variables
 			}
@@ -175,19 +182,24 @@ func TestMain_startupFailure(t *testing.T) {
 			if !errors.As(err, &exitErr) || exitErr.ExitCode() == 0 {
 				t.Fatalf("exit = %v, want a non-zero exit code", err)
 			}
-			errs := withSeverity(records(t, stdout.Bytes()), "ERROR")
-			if len(errs) != 1 {
-				t.Fatalf("got %d ERROR records, want 1; stdout:\n%s", len(errs), stdout.String())
+			if strings.Contains(stdout.String(), token) {
+				t.Fatal("stdout contains DAPR_API_TOKEN")
 			}
-			message, _ := errs[0]["message"].(string)
-			reasonPart := message
-			if !tt.configError {
-				var expression string
-				var found bool
-				reasonPart, expression, found = strings.Cut(message, expressionSeparator)
-				if !found || expression != tt.expression {
-					t.Errorf("ERROR message %q does not end with %q%s", message, expressionSeparator, tt.expression)
-				}
+			recs := records(t, stdout.Bytes())
+			if len(recs) != 1 || recs[0]["severity"] != "ERROR" {
+				t.Fatalf("want a single ERROR record; stdout:\n%s", stdout.String())
+			}
+			rec := recs[0]
+			if rec["site"] != site {
+				t.Errorf("site = %q, want %q", rec["site"], site)
+			}
+			if rec["expression"] != tt.expression {
+				t.Errorf("expression = %q, want %q", rec["expression"], tt.expression)
+			}
+			message, _ := rec["message"].(string)
+			reasonPart, expression, found := strings.Cut(message, expressionSeparator)
+			if !found || expression != tt.expression {
+				t.Errorf("ERROR message %q does not end with %q%s", message, expressionSeparator, tt.expression)
 			}
 			if !strings.Contains(reasonPart, tt.reason) {
 				t.Errorf("reason %q of ERROR message %q does not contain %q", reasonPart, message, tt.reason)

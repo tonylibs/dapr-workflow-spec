@@ -43,7 +43,10 @@ func run(ctx context.Context, stdout io.Writer) int {
 	cfg, err := config.Load()
 	if err != nil {
 		log := logging.New(stdout, os.Getenv("DWS_LOG_FORMAT"), nil)
-		log.Error("invalid configuration: " + err.Error())
+		// config.Load returned no Config, so read the two fields the record
+		// names straight from the environment.
+		startupError(log, config.Config{Site: siteFromEnv(), Expression: os.Getenv("JQ_EXPRESSION")},
+			"invalid configuration: "+err.Error())
 		return 1
 	}
 
@@ -119,6 +122,14 @@ func run(ctx context.Context, stdout io.Writer) int {
 func startupError(log *slog.Logger, cfg config.Config, reason string) {
 	log.Error(fmt.Sprintf("%s; expression: %s", reason, cfg.Expression),
 		"site", cfg.Site, "expression", cfg.Expression)
+}
+
+// siteFromEnv returns JQ_SITE, or the default when it is unset or empty.
+func siteFromEnv() string {
+	if site := os.Getenv("JQ_SITE"); site != "" {
+		return site
+	}
+	return config.DefaultSite
 }
 
 // readSecrets reads every referenced secret from the Dapr sidecar. It does not

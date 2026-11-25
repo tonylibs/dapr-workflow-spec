@@ -13,9 +13,11 @@ import (
 	"time"
 )
 
+// DefaultSite is the site name used when JQ_SITE is unset or empty.
+const DefaultSite = "dws-jq"
+
 const (
 	defaultPort         = "8080"
-	defaultSite         = "dws-jq"
 	defaultTimeout      = 5 * time.Second
 	defaultDaprHTTPPort = "3500"
 )
@@ -73,7 +75,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		Expression:   os.Getenv("JQ_EXPRESSION"),
 		SecretStore:  os.Getenv("JQ_SECRET_STORE"),
-		Site:         getenv("JQ_SITE", defaultSite),
+		Site:         getenv("JQ_SITE", DefaultSite),
 		Port:         getenv("PORT", defaultPort),
 		DaprHTTPPort: getenv("DAPR_HTTP_PORT", defaultDaprHTTPPort),
 		DaprAPIToken: os.Getenv("DAPR_API_TOKEN"),
