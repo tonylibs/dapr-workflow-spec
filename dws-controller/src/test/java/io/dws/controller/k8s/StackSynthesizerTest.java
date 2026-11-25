@@ -43,6 +43,7 @@ class StackSynthesizerTest {
 
   private static final String NAMESPACE = "default";
   private static final String SERVICE_ACCOUNT = "dws-orchestrator";
+  private static final String STEP_SERVICE_ACCOUNT = "dws-step";
   private static final ImageCatalog IMAGES =
       new ImageCatalog(
           "sw-call-http:1.0",
@@ -155,7 +156,10 @@ class StackSynthesizerTest {
         new StepService("call-api", TaskKind.CALL_HTTP, "ghcr.io/tonylibs/step:latest", env);
 
     List<Map<String, Object>> rendered =
-        containerEnv(synthesizer.knativeServices(planWith(step), NAMESPACE).getFirst());
+        containerEnv(
+            synthesizer
+                .knativeServices(planWith(step), NAMESPACE, STEP_SERVICE_ACCOUNT)
+                .getFirst());
 
     assertThat(rendered)
         .containsExactlyInAnyOrder(
@@ -341,7 +345,7 @@ class StackSynthesizerTest {
                           "middleware.http.oauth2clientcredentials"));
             });
 
-    assertThat(synthesizer.knativeServices(plan, NAMESPACE))
+    assertThat(synthesizer.knativeServices(plan, NAMESPACE, STEP_SERVICE_ACCOUNT))
         .allSatisfy(
             service ->
                 assertThat(templateAnnotations(service))
@@ -372,7 +376,7 @@ class StackSynthesizerTest {
         .containsEntry("scopes", List.of("dispatch-agent"));
     assertThat(spec(endpoints.getFirst())).containsEntry("baseUrl", "https://agent.example.test");
 
-    assertThat(synthesizer.knativeServices(plan, NAMESPACE))
+    assertThat(synthesizer.knativeServices(plan, NAMESPACE, STEP_SERVICE_ACCOUNT))
         .allSatisfy(
             service ->
                 assertThat(templateAnnotations(service))
@@ -949,7 +953,9 @@ class StackSynthesizerTest {
     assertThat(httpHandlers(configuration))
         .extracting(handler -> handler.get("name"))
         .containsExactly("wf-v1-oauth-aaaaaaaa", "wf-v1-oauth-bbbbbbbb");
-    assertThat(templateAnnotations(synthesizer.knativeServices(plan, NAMESPACE).getFirst()))
+    assertThat(
+            templateAnnotations(
+                synthesizer.knativeServices(plan, NAMESPACE, STEP_SERVICE_ACCOUNT).getFirst()))
         .containsEntry("dapr.io/config", configuration.getMetadata().getName());
   }
 
@@ -1024,7 +1030,7 @@ class StackSynthesizerTest {
     StepService step =
         new StepService("sync-inventory", kind, "ghcr.io/tonylibs/step:latest", Map.of());
     GenericKubernetesResource service =
-        synthesizer.knativeServices(planWith(step), NAMESPACE).get(0);
+        synthesizer.knativeServices(planWith(step), NAMESPACE, STEP_SERVICE_ACCOUNT).get(0);
     return templateAnnotations(service);
   }
 

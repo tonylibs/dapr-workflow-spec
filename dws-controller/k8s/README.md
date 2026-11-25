@@ -4,7 +4,7 @@
 
 | File | Purpose |
 |------|---------|
-| `controller-rbac.yaml` | ServiceAccount + Role + RoleBinding for the controller, plus the `dws-orchestrator` ServiceAccount (+ read-only ConfigMap Role/RoleBinding) that orchestrator pods run as |
+| `controller-rbac.yaml` | Controller and workload identities: controller RBAC, the read-only `dws-orchestrator` account, and the no-grant `dws-step` account |
 | `controller-deployment.yaml` | The controller's own Deployment and Service |
 | `dapr-crds.yaml` | Pinned Dapr CRD bundle (input to `cdk8s import`, not applied by the controller) |
 | `serving-crds.yaml` | Pinned Knative Serving CRD bundle (same) |
@@ -19,8 +19,8 @@
   `dws-call-openapi` and `dws-orchestrator` are published to GHCR by their own CI
   (`.github/workflows/dws-call-http.yml`, `.github/workflows/dws-call-openapi.yml`,
   `.github/workflows/dws-orchestrator.yml`); if the GHCR packages are private, the cluster
-  also needs an `imagePullSecret` for `ghcr.io` (not currently wired into the generated
-  Knative Services — either make the packages public or add pull-secret support).
+  also needs an `imagePullSecret` for `ghcr.io`. Create it in the managed workload namespace and
+  attach it to the `dws-orchestrator` and `dws-step` ServiceAccounts before submitting workflows.
 
 ## Install
 
@@ -30,14 +30,27 @@ kubectl apply -f k8s/controller-deployment.yaml
 kubectl rollout status deployment/dws-controller
 ```
 
-The Role is namespaced to `default`. To manage workflows in another namespace, change
-`dws.namespace` (env `DWS_NAMESPACE`) and move the Roles/RoleBindings accordingly.
+Apply `controller-rbac.yaml` first. It provisions both workload identities before the controller
+can create an orchestrator Deployment or Knative step Service. The dedicated `dws-step` account
+has no RoleBinding or ClusterRoleBinding from these manifests; add operator-owned grants only when
+a step explicitly needs Kubernetes API access.
+
+The resources are namespaced to `default`. To manage workflows in another namespace, update every
+`metadata.namespace` and RoleBinding subject namespace in `controller-rbac.yaml`, create any image
+pull Secrets there, and set `DWS_NAMESPACE` in `controller-deployment.yaml` to that workload
+namespace. Apply the updated account/RBAC manifest before rolling out the controller.
 
 Orchestrator pods run as the `dws-orchestrator` ServiceAccount, not `default`: the per-version
 definition Component reads its ConfigMap with the pod's service account. The controller reads the
 name from `dws.orchestrator.service-account` (env `DWS_ORCHESTRATOR_SERVICE_ACCOUNT`, default
 `dws-orchestrator`), so if you rename the account in `controller-rbac.yaml` set that env var in
 `controller-deployment.yaml` to match.
+
+Knative step pods similarly run as `dws-step`, not `default`. The controller reads the name from
+`dws.step.service-account` (env `DWS_STEP_SERVICE_ACCOUNT`, default `dws-step`). If the workload
+namespace uses a differently named step account, create it first and set
+`DWS_STEP_SERVICE_ACCOUNT` in `controller-deployment.yaml` to the exact same name. The account and
+generated Knative Services must be in the namespace selected by `DWS_NAMESPACE`.
 
 ## Example flow
 

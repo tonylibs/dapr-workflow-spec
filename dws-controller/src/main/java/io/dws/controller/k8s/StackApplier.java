@@ -96,7 +96,8 @@ public class StackApplier {
       for (GenericKubernetesResource binding : synthesizer.bindingComponents(plan, namespace)) {
         applyDynamic(ResourceContexts.DAPR_COMPONENT, binding);
       }
-      for (GenericKubernetesResource service : synthesizer.knativeServices(plan, namespace)) {
+      for (GenericKubernetesResource service :
+          synthesizer.knativeServices(plan, namespace, config.step().serviceAccount())) {
         applyDynamic(ResourceContexts.KNATIVE_SERVICE, service);
       }
       for (GenericKubernetesResource policy : synthesizer.workflowAccessPolicies(plan, namespace)) {

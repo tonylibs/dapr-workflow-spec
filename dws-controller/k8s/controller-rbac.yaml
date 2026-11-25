@@ -6,6 +6,16 @@ metadata:
   labels:
     app: dws-controller
 ---
+# Identity for controller-compiled Knative step pods. It intentionally has no Role or RoleBinding:
+# step workloads receive no Kubernetes API permissions from the standalone controller manifests.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dws-step
+  namespace: default
+  labels:
+    app: dws-step
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

@@ -188,11 +188,12 @@ public class StackSynthesizer {
     return toDynamicResource(chart);
   }
 
-  /** One scale-to-zero, Dapr-enabled Knative Service per deployable step. */
-  public List<GenericKubernetesResource> knativeServices(DeploymentPlan plan, String namespace) {
+  /** One Dapr-enabled Knative Service per deployable step, running as the configured identity. */
+  public List<GenericKubernetesResource> knativeServices(
+      DeploymentPlan plan, String namespace, String serviceAccount) {
     List<GenericKubernetesResource> services = new ArrayList<>(plan.steps().size());
     for (StepService step : plan.steps()) {
-      services.add(knativeService(plan, step, namespace));
+      services.add(knativeService(plan, step, namespace, serviceAccount));
     }
     return services;
   }
@@ -488,7 +489,7 @@ public class StackSynthesizer {
   }
 
   private GenericKubernetesResource knativeService(
-      DeploymentPlan plan, StepService step, String namespace) {
+      DeploymentPlan plan, StepService step, String namespace, String serviceAccount) {
     Chart chart = Testing.chart();
     Map<String, String> stepLabels = new LinkedHashMap<>(Labels.forPlan(plan));
     stepLabels.put(Labels.STEP_TYPE, Labels.stepType(step.kind()));
@@ -513,6 +514,7 @@ public class StackSynthesizer {
                                     .build())
                             .spec(
                                 ServiceSpecTemplateSpec.builder()
+                                    .serviceAccountName(serviceAccount)
                                     .containers(
                                         List.of(
                                             ServiceSpecTemplateSpecContainers.builder()

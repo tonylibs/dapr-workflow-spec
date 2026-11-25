@@ -8,9 +8,9 @@
 
 ## 2. Controller
 
-- [ ] 2.1 Add `dws.step.service-account` with default `dws-step` to `DwsConfig` and `application.yaml`. Thread the resolved value through `StackApplier` into the shared `StackSynthesizer` Knative template builder.
-- [ ] 2.2 Add `dws-step` without an RBAC grant to `dws-controller/k8s/controller-rbac.yaml`. Document the standalone install order, custom workload namespace, and matching `DWS_STEP_SERVICE_ACCOUNT` setting in `dws-controller/k8s/README.md`.
-- [ ] 2.3 Add `StepServiceAccountContractTest` to pin the chart environment key to controller configuration binding and standalone provisioning. Cover default and configured names, multiple deployable step kinds, and a mutable Knative Service reapplied at the same definition version. Run `./mvnw test -Dtest=StepServiceAccountContractTest,StackSynthesizerTest` and `./mvnw verify` from `dws-controller/`, using `mvnw.cmd` on Windows.
+- [x] 2.1 Add `dws.step.service-account` with default `dws-step` to `DwsConfig` and `application.yaml`. Thread the resolved value through `StackApplier` into the shared `StackSynthesizer` Knative template builder.
+- [x] 2.2 Add `dws-step` without an RBAC grant to `dws-controller/k8s/controller-rbac.yaml`. Document the standalone install order, custom workload namespace, and matching `DWS_STEP_SERVICE_ACCOUNT` setting in `dws-controller/k8s/README.md`.
+- [x] 2.3 Add `StepServiceAccountContractTest` to pin the chart environment key to controller configuration binding and standalone provisioning. Cover default and configured names, multiple deployable step kinds, and a mutable Knative Service reapplied at the same definition version. Run `./mvnw test -Dtest=StepServiceAccountContractTest,StackSynthesizerTest` and `./mvnw verify` from `dws-controller/`, using `mvnw.cmd` on Windows.
 
 ## 3. Acceptance
 

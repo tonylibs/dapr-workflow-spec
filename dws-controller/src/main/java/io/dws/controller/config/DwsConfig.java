@@ -16,6 +16,8 @@ public interface DwsConfig {
 
   Orchestrator orchestrator();
 
+  Step step();
+
   Reconcile reconcile();
 
   Log log();
@@ -45,6 +47,16 @@ public interface DwsConfig {
      * DWS_ORCHESTRATOR_SERVICE_ACCOUNT} to match.
      */
     @WithDefault("dws-orchestrator")
+    String serviceAccount();
+  }
+
+  interface Step {
+    /**
+     * ServiceAccount generated Knative step pods run as. The Helm chart and {@code
+     * k8s/controller-rbac.yaml} create it without an RBAC grant and set {@code
+     * DWS_STEP_SERVICE_ACCOUNT} to match.
+     */
+    @WithDefault("dws-step")
     String serviceAccount();
   }
 
