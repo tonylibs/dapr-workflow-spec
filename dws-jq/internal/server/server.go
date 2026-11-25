@@ -199,9 +199,10 @@ func decodeRequest(raw []byte) (runRequest, error) {
 }
 
 // variables decodes the request's variables object, accepting declared names
-// only ("secrets" is never declared).
+// only ("secrets" is never declared). An explicit null is the same as an
+// absent field, as it is for input.
 func (s *Server) variables(raw json.RawMessage) (map[string]any, error) {
-	if len(raw) == 0 {
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
 		return nil, nil
 	}
 	if raw[0] != '{' {

@@ -148,7 +148,8 @@ Types in use: `feat`, `fix`, `refactor`, `docs`, `chore`, `perf`, `ci`, `test`.
   `$secrets` expression without `JQ_SECRET_STORE`) or silently ignores the knob (a misspelt
   `JQ_TIMEOUT` leaves the 5 s default). The `POST /run` shape is part of the contract for the callers
   3b/3c/3f/3g/6b will add: body exactly `{"input": any, "variables": {declared name: any}}` (any other
-  key, or an undeclared variable, is `400`); `200 {"result","truthy"}`; `422 {"fault":{"type":
+  key, or an undeclared variable, is `400`; both fields are optional, and `"input": null` or
+  `"variables": null` is the same as leaving the field out); `200 {"result","truthy"}`; `422 {"fault":{"type":
   "expression","expression","detail"}}` for a jq error or timeout; `503` until ready. A caller that
   sends an extra field or reads another key breaks at runtime, not at build time. A bad expression
   or unreadable secret makes `dws-jq` exit 1 at startup, and `/healthz` is `503` until its secrets

@@ -118,8 +118,11 @@ func (f *Fetcher) fetchOne(ctx context.Context, store, name string) (string, err
 		if !retry {
 			return "", &FetchError{Store: store, Name: name, Reason: err.Error()}
 		}
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			return "", gaveUp(err.Error()) // ctx cut this attempt short
+		// Only ctx ending means giving up. An attempt cut short by the
+		// client's own Timeout also matches context.DeadlineExceeded, but the
+		// Bound may still have time for another try.
+		if ctx.Err() != nil {
+			return "", gaveUp(err.Error())
 		}
 		last = err.Error()
 		timer := time.NewTimer(backoff)

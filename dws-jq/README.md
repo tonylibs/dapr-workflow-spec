@@ -35,14 +35,15 @@ This table is pinned by the fixtures in [`testdata/contract/`](testdata/contract
 ## HTTP contract
 
 `POST /run` with `{"input": <any>, "variables": {"<declared name>": <any>}}`. Both fields are
-optional: an absent `input` is `null`, an absent declared variable is `null`. The body is at most
+optional: an absent `input` is `null`, an absent declared variable is `null`, and an absent or
+`null` `variables` binds every declared variable to `null`. The body is at most
 4 MiB. Only the exact keys `input` and `variables` are accepted. The result is the **first output**
 of the expression; no output gives `result: null`.
 
 | Status | Body | When |
 |---|---|---|
 | 200 | `{"result": <value>, "truthy": <bool>}` | evaluated; `truthy` follows jq (only `null`, `false` and no output are falsy) |
-| 400 | `{"error": "<reason>"}` | not a JSON object, unknown field, non-object `variables`, undeclared variable (`secrets` included), body over 4 MiB |
+| 400 | `{"error": "<reason>"}` | not a JSON object, unknown field, `variables` neither an object nor `null`, undeclared variable (`secrets` included), body over 4 MiB |
 | 422 | `{"fault": {"type": "expression", "expression": "<as configured>", "detail": "<reason>"}}` | a jq runtime error, an `error(...)` call, the time limit, or a result that cannot be encoded |
 | 500 | `{"error": "internal error"}` | an evaluation error that is not a jq fault (logged with the site) |
 | 503 | `{"error": "not ready"}` | before startup finished |

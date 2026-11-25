@@ -384,6 +384,40 @@ func TestFetch(t *testing.T) {
 	})
 }
 
+// TestFetch_retriesClientTimeout covers an attempt cut short by the HTTP
+// client's own Timeout: its error matches context.DeadlineExceeded, but the
+// Bound has time left, so the read is retried rather than given up.
+func TestFetch_retriesClientTimeout(t *testing.T) {
+	const slowAttempts = 2
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) <= slowAttempts {
+			select {
+			case <-time.After(time.Second):
+			case <-r.Context().Done():
+			}
+			return
+		}
+		_, _ = w.Write([]byte(`{"value":"v"}`))
+	}))
+	defer srv.Close()
+	f := fastFetcher(srv)
+	f.Client = &http.Client{Timeout: 50 * time.Millisecond}
+	f.Bound = 5 * time.Second
+
+	got, err := f.Fetch(context.Background(), "s", []string{"n"})
+
+	if err != nil {
+		t.Fatalf("Fetch: %v, want the read retried after the client timeouts", err)
+	}
+	if got["n"] != "v" {
+		t.Errorf("got %v, want n=v", got)
+	}
+	if n := requests.Load(); n != slowAttempts+1 {
+		t.Errorf("requests = %d, want %d", n, slowAttempts+1)
+	}
+}
+
 func TestFetchErrorFormat(t *testing.T) {
 	err := &FetchError{Store: "kubernetes", Name: "a", Reason: "status 404"}
 	if got, want := err.Error(), `secret "a" in store "kubernetes": status 404`; got != want {
