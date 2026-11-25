@@ -123,8 +123,13 @@ making the controller's static scan unsound. This answers the 2.0d dynamic-acces
 `if .x then $secrets.a else $secrets.b end`.
 
 Secret values are replaced by `***` in fault details, 400 reasons and log records, in raw,
-`encoding/json` and gojq-escaped forms. The `result` itself is **not** redacted: returning a secret
-is the expression author's explicit choice.
+`encoding/json` and gojq-escaped forms. gojq's error messages show a value through a 30-byte preview
+that cuts a long value and appends ` ...` (`string ("ABCDEFGHIJKLMNOPQRSTUVWX ...")`), so any prefix
+of a secret (up to 30 bytes) directly followed by ` ...` is masked too, keeping the marker:
+`string ("*** ...")`. This can mask ordinary text that starts like a secret and ends in ` ...`.
+Secrets that overlap in a message (one ends where another starts, or one inside another) are masked
+as one `***`. The `result` itself is **not** redacted: returning a secret is the expression author's
+explicit choice.
 
 ## Dialect
 

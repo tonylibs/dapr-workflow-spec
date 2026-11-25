@@ -347,6 +347,60 @@ func TestRun_redactsDetail(t *testing.T) {
 	}
 }
 
+// longSecret is longer than gojq's 30-byte value preview, so a type error
+// shows only a cut prefix of it, which exact-match redaction would miss.
+const longSecret = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJK"
+
+// secretPiece returns a 4-byte substring of secret that s contains, or "".
+func secretPiece(s, secret string) string {
+	for i := 0; i+4 <= len(secret); i++ {
+		if strings.Contains(s, secret[i:i+4]) {
+			return secret[i : i+4]
+		}
+	}
+	return ""
+}
+
+func TestRun_redactsTruncatedSecret(t *testing.T) {
+	expressions := []string{
+		"$secrets.a + 1",           // string preview in a type error
+		"$secrets.a | .x",          // string preview in an index error
+		"$secrets.a | fromjson",    // string preview in an argument error
+		"{k: $secrets.a} | .[0]",   // object preview, secret as a value
+		"{($secrets.a): 1} | .[0]", // object preview, secret as a key
+		`["pad", $secrets.a] | .x`, // array preview, secret at an offset
+	}
+	for _, format := range []string{"json", "text"} {
+		for _, expression := range expressions {
+			t.Run(format+"/"+expression, func(t *testing.T) {
+				var buf bytes.Buffer
+				srv := New(compiled(t, expression, nil), Options{Site: testSite, Timeout: testTimeout},
+					logging.New(&buf, format, nil))
+				srv.MarkReady(map[string]any{"a": longSecret}, secrets.NewRedactor([]string{longSecret}))
+
+				rec := do(srv, http.MethodPost, "/run", `{}`, nil)
+				detail, _ := faultOf(t, rec)["detail"].(string)
+
+				if !strings.Contains(detail, "***") {
+					t.Errorf("fault.detail = %q, want ***", detail)
+				}
+				if piece := secretPiece(detail, longSecret); piece != "" {
+					t.Errorf("fault.detail %q shows %q of the secret", detail, piece)
+				}
+				if piece := secretPiece(rec.Body.String(), longSecret); piece != "" {
+					t.Errorf("response body %s shows %q of the secret", rec.Body, piece)
+				}
+				if buf.Len() == 0 {
+					t.Fatal("the fault was not logged")
+				}
+				if piece := secretPiece(buf.String(), longSecret); piece != "" {
+					t.Errorf("log %q shows %q of the secret", buf.String(), piece)
+				}
+			})
+		}
+	}
+}
+
 func TestRun_logsTraceOnFailure(t *testing.T) {
 	srv, buf := readyServer(t, ".a + 1", nil, testTimeout)
 	header := http.Header{"Traceparent": {testTraceparent}}
@@ -410,8 +464,11 @@ func TestRun_unencodableResult(t *testing.T) {
 	}
 }
 
+// TestRun_concurrent runs requests in parallel over one ready server. The
+// expression reads the shared $secrets map, so -race covers those reads too.
 func TestRun_concurrent(t *testing.T) {
-	srv, _ := readyServer(t, ".n", nil, testTimeout)
+	srv, _ := newServer(compiled(t, "($secrets.a | length) + .n", nil), testTimeout)
+	srv.MarkReady(map[string]any{"a": "abc"}, secrets.NewRedactor([]string{"abc"}))
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -433,7 +490,7 @@ func TestRun_concurrent(t *testing.T) {
 				t.Errorf("request %d: read body: %v", i, err)
 				return
 			}
-			if want := fmt.Sprintf(`{"result":%d,"truthy":true}`, i); resp.StatusCode != http.StatusOK || string(body) != want {
+			if want := fmt.Sprintf(`{"result":%d,"truthy":true}`, i+3); resp.StatusCode != http.StatusOK || string(body) != want {
 				t.Errorf("request %d: got %d %s, want 200 %s", i, resp.StatusCode, body, want)
 			}
 		}()
