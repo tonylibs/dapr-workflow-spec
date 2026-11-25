@@ -227,8 +227,14 @@ apisix:
   #                            nginx `env` directive that lets worker processes read it.
   # If you set auth.apiTokens.admin.daprApi.existingSecret, change the Secret name here to match;
   # rendering fails (naming both Secrets) if they disagree, or if either setting is dropped.
-  # These defaults assume auth.enabled=true, which apiGateway.enabled=true requires anyway. For
-  # an auth-off, apisix-only install, set `apisix.extraEnvVars=null` and clear the nginx envs.
+  # The reference is `optional: true` (issue #177): the Secret only exists with auth.enabled=true
+  # and admin.enabled=true, and the APISIX subchart cannot see those values, so with auth or admin
+  # off kubelet starts APISIX with the variable unset (nothing reads it: there is no admin route
+  # then). With the Secret present it resolves as usual. Create an operator Secret before APISIX
+  # starts, or restart APISIX afterwards, as for any token change, and likewise after turning
+  # auth/admin on for a release that already runs APISIX (its pod template does not change, so
+  # `helm upgrade` does not restart it). To make APISIX fail fast on a
+  # missing Secret instead, override this entry without `optional`; the render guard accepts both.
   # Verified live on docker-desktop 2026-10-31: APISIX 3.17 resolves `$env://` inside the route's proxy-rewrite header
   # and the ingress controller merges it with the URLRewrite filter; see the
   # tasks 1.x spike in openspec/changes/auth-phase-10-api-tokens; see the chart README.
@@ -238,6 +244,7 @@ apisix:
         secretKeyRef:
           name: "{{ .Release.Name }}-admin-dapr-api-token"
           key: token
+          optional: true
   apisix:
     nginx:
       envs:

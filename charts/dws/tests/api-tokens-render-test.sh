@@ -4,8 +4,11 @@
 # that spec: auth off renders nothing; auth on renders four Secrets (admin x2, controller,
 # dws-schedule-time) and wires annotations and secretKeyRef env; an operator-supplied Secret replaces the chart's; the controller has no app
 # token; the admin route (and only it) sets the dapr-api-token header from an $env:// reference;
-# the bundled APISIX receives the variable; and the three bundled-gateway wiring guards fail
-# render with actionable messages.
+# the bundled APISIX receives the variable through an `optional: true` reference; and the three
+# bundled-gateway wiring guards fail render with actionable messages, optional flag or not.
+# Issue #177 / openspec change helm-apisix-token-auth-off adds: auth off + bundled APISIX, and
+# auth on + admin off + bundled APISIX, render no required reference to an absent token Secret
+# (unresolved_token_refs) and keep unrelated APISIX env entries.
 #
 # NEVER echoes Secret data. `helm template` has no `lookup`, so every render mints fresh random
 # tokens; this script only ever prints descriptions and fixed strings, never a rendered file,
@@ -119,6 +122,29 @@ env_entry() {
   ' "$1"
 }
 
+# unresolved_token_refs <scenario>: Secret names of every required (non-`optional: true`)
+# secretKeyRef to a *-dapr-api-token / *-app-api-token Secret that the same render does not
+# create. Empty output means no workload depends on a token Secret that will not exist (the
+# CreateContainerConfigError of issue #177). Prints Secret names only, never data.
+unresolved_token_refs() {
+  local rendered
+  rendered="$(token_secret_names "$1")"
+  awk '
+    function indent(s) { match(s, /^ */); return RLENGTH }
+    function flush() {
+      if (inside && name ~ /-(dapr|app)-api-token$/ && !optional) print name
+      inside = 0; name = ""; optional = 0
+    }
+    inside && indent($0) <= base { flush() }
+    /^ *secretKeyRef:$/ { flush(); inside = 1; base = indent($0); next }
+    inside && /^ *name:/ { v = $0; sub(/^ *name: */, "", v); gsub(/["'\'']/, "", v); name = v }
+    inside && /^ *optional: *true$/ { optional = 1 }
+    END { flush() }
+  ' "$work/$1.yaml" | sort -u | while IFS= read -r n; do
+    grep -qxF -- "$n" <<<"$rendered" || echo "$n"
+  done
+}
+
 # token_value <secret doc>: print the 48+ char token (used only to compare, never printed to output).
 token_value() { sed -n 's/^  token: "\(.*\)"$/\1/p' "$1"; }
 
@@ -133,6 +159,31 @@ for pattern in '-dapr-api-token' '-app-api-token' 'dapr\.io/api-token-secret' 'd
     fi
   done
 done
+ok
+
+# --- 1b. Auth off + bundled APISIX: no required token dependency (issue #177) -----------------
+# The APISIX subchart cannot see auth.enabled, so its default DWS_ADMIN_DAPR_API_TOKEN entry stays
+# in the render; it must be `optional: true` so kubelet starts APISIX with the variable unset.
+render auth_off_apisix "${base_args[@]}" \
+  --api-versions gateway.networking.k8s.io/v1 --api-versions apisix.apache.org/v1alpha1 \
+  --set apisix.enabled=true --set apisix.timezone=UTC
+[ -z "$(token_secret_names auth_off_apisix)" ] || die "auth off + bundled APISIX rendered a token Secret"
+for pattern in 'dapr\.io/api-token-secret' 'dapr\.io/app-token-secret' 'DAPR_API_TOKEN' 'APP_API_TOKEN' \
+  'RequestHeaderModifier'; do
+  # -w: DAPR_API_TOKEN must not match inside DWS_ADMIN_DAPR_API_TOKEN (`_` is a word character).
+  if grep -Eqw -- "$pattern" "$work/auth_off_apisix.yaml"; then
+    die "auth off + bundled APISIX rendered something matching '$pattern'"
+  fi
+done
+unresolved="$(unresolved_token_refs auth_off_apisix)"
+[ -z "$unresolved" ] || die "auth off + bundled APISIX has a required reference to absent Secret(s): $unresolved"
+apisix_dep="$(require_doc auth_off_apisix Deployment "$release-apisix")"
+entry="$(env_entry "$apisix_dep" DWS_ADMIN_DAPR_API_TOKEN)"
+if [ -n "$entry" ]; then
+  grep -q 'secretKeyRef:' <<<"$entry" || die "auth off: APISIX DWS_ADMIN_DAPR_API_TOKEN is not a secretKeyRef"
+  grep -qx ' *optional: true' <<<"$entry" || die "auth off: APISIX DWS_ADMIN_DAPR_API_TOKEN reference is not optional"
+fi
+env_entry "$apisix_dep" TZ | grep -qE '^ +value: "?UTC"?$' || die "auth off + bundled APISIX lost an unrelated env entry (TZ)"
 ok
 
 # --- 2. Auth on, defaults: exactly four Secrets, strong, distinct -----------------------------
@@ -300,6 +351,20 @@ render sched_off "${auth_args[@]}" --set scheduleTime.enabled=false
   || die "scheduleTime.enabled=false still renders the dws-schedule-time token Secret"
 ok
 
+# Admin off + bundled APISIX (no shared Gateway): no orphan admin token dependency (issue #177).
+# The controller and dws-schedule-time keep required references, but to Secrets this render creates.
+render admin_off_apisix "${auth_args[@]}" \
+  --api-versions gateway.networking.k8s.io/v1 --api-versions apisix.apache.org/v1alpha1 \
+  --set admin.enabled=false --set apisix.enabled=true
+[ "$(token_secret_names admin_off_apisix | tr '\n' ' ')" = "$release-controller-dapr-api-token $release-schedule-time-dapr-api-token " ] \
+  || die "admin.enabled=false + bundled APISIX renders admin token Secrets"
+unresolved="$(unresolved_token_refs admin_off_apisix)"
+[ -z "$unresolved" ] || die "admin off + bundled APISIX has a required reference to absent Secret(s): $unresolved"
+entry="$(env_entry "$(require_doc admin_off_apisix Deployment "$release-apisix")" DWS_ADMIN_DAPR_API_TOKEN)"
+grep -qE "name: '?\"?$release-admin-dapr-api-token\"?'?$" <<<"$entry" || die "admin off: APISIX no longer references the admin Dapr API token Secret"
+grep -qx ' *optional: true' <<<"$entry" || die "admin off: APISIX reference to the admin Dapr API token Secret is not optional"
+ok
+
 # --- 5. Gateway: header injected on the admin route only, from an $env:// reference -----------
 render gw_bundled "${gateway_args[@]}" --set apisix.enabled=true
 admin_route="$(require_doc gw_bundled HTTPRoute "$fullname-admin-route")"
@@ -328,7 +393,9 @@ entry="$(env_entry "$apisix_dep" DWS_ADMIN_DAPR_API_TOKEN)"
 grep -q 'secretKeyRef:' <<<"$entry" || die "bundled APISIX DWS_ADMIN_DAPR_API_TOKEN is not a secretKeyRef"
 grep -qE "name: '?\"?$release-admin-dapr-api-token\"?'?$" <<<"$entry" || die "bundled APISIX env does not read the admin Dapr API token Secret"
 grep -qx '.*key: token' <<<"$entry" || die "bundled APISIX env does not read key 'token'"
+grep -qx ' *optional: true' <<<"$entry" || die "bundled APISIX env reference is not optional (default must not block startup when the Secret is absent)"
 if grep -Eq '^ +value:' <<<"$entry"; then die "bundled APISIX env carries a literal value"; fi
+[ -z "$(unresolved_token_refs gw_bundled)" ] || die "bundled gateway render has a required reference to an absent token Secret"
 if ! grep -A1 -E '^ +envs:$' "$work/gw_bundled.yaml" | grep -qE '^ +- DWS_ADMIN_DAPR_API_TOKEN$'; then
   die "bundled APISIX config does not list DWS_ADMIN_DAPR_API_TOKEN in its nginx envs"
 fi
@@ -342,6 +409,11 @@ render gw_existing "${gateway_args[@]}" --set apisix.enabled=true \
   --set 'apisix.extraEnvVars[0].valueFrom.secretKeyRef.key=token'
 apisix_dep="$(require_doc gw_existing Deployment "$release-apisix")"
 env_entry "$apisix_dep" DWS_ADMIN_DAPR_API_TOKEN | grep -qF 'my-admin-dapr' || die "re-pointed APISIX env does not read the supplied Secret"
+# This override has no `optional`: the guard accepts a required reference too (an operator who
+# wants APISIX to fail fast on a missing Secret), it only checks the Secret name and key.
+if env_entry "$apisix_dep" DWS_ADMIN_DAPR_API_TOKEN | grep -q 'optional:'; then
+  die "re-pointed override unexpectedly rendered an optional flag (scenario no longer covers a required reference)"
+fi
 [ -z "$(find_doc gw_existing Secret "$release-admin-dapr-api-token")" ] || die "chart-generated admin Dapr API Secret rendered despite existingSecret"
 ok
 

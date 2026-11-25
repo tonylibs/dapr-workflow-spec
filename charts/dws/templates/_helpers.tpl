@@ -895,6 +895,10 @@ APISIX would inject a stale value that the Dapr sidecar then answers with 401 on
 request. Only called for the bundled gateway (apiGateway.enabled and apisix.enabled): an external
 APISIX is the operator's to wire (README, "Machine-auth tokens").
 
+`secretKeyRef.optional` is ignored here: the chart default sets `optional: true` (so auth-off and
+admin-off installs start without the Secret, issue #177) and an operator override may leave it
+out; either way the Secret-name and key checks above apply unchanged.
+
 NOTE: the bundled subchart's own `apisix.nginx.envs` lives under the subchart's top-level
 `apisix:` key, so from this chart's values it is `apisix.apisix.nginx.envs`.
 */}}
