@@ -55,6 +55,8 @@ $ curl -s -X POST localhost:8080/run -d '{"input":"x"}'                         
 {"fault":{"detail":"expected an object but got: string (\"x\")","expression":".a","type":"expression"}}
 ```
 
+While startup is in progress, `POST /run` responds with HTTP 503 and `{"error":"not ready"}`.
+
 Numbers keep integer precision; results are encoded with jq's rules (`nan` becomes `null`,
 infinities become `+-1.7976931348623157e+308`). Object keys come out sorted (gojq).
 
@@ -65,14 +67,17 @@ before.
 
 In order; any failure writes one `ERROR` record and exits 1:
 
-1. Load and validate the environment (`invalid configuration: ...`).
+1. Load and validate the environment (`invalid configuration: ...`, with the configured expression and
+   site on the record, as for every other startup failure).
 2. Unwrap, parse and policy-check the expression, then compile it with the declared variables plus
    `$secrets` (`invalid expression: ...`, with the expression text and site on the record). An
    undeclared `$variable` fails here.
 3. If the expression reads `$secrets` but `JQ_SECRET_STORE` is empty, fail.
 4. Open the listener (so the Dapr sidecar sees the app port), then read each referenced secret,
    retrying with backoff for up to 60 s in total. A store or secret that cannot be read, or a reply
-   without a string `value`, fails startup naming the store and secret (never a value).
+   without a string `value`, fails startup naming the store and secret (never a value). Only the exact
+   lowercase `value` key counts, and a secret named `bulk` is refused without a request because
+   `GET /v1.0/secrets/{store}/bulk` is Dapr's bulk route, which would return the whole store.
 5. Become ready: `/healthz` turns `200`, `/run` starts evaluating.
 
 On SIGINT/SIGTERM the server shuts down gracefully (10 s).
@@ -94,8 +99,8 @@ second guard. The AST walker follows gojq's `Query` types and is pinned to gojq 
 ## `$secrets`
 
 `$secrets` is bound to a map loaded once at startup from the Dapr secrets API
-(`GET /v1.0/secrets/{store}/{name}`, the `value` key). Secrets never appear in a request or in
-workflow history, and an expression without `$secrets` never contacts the sidecar.
+(`GET /v1.0/secrets/{store}/{name}`, the `value` key). The function keeps that map in memory and
+supplies it to the expression directly. An expression without `$secrets` skips the sidecar call.
 
 Only **static** access is allowed, so the set of names the function needs is known before it runs:
 
@@ -157,15 +162,17 @@ Pending: see Task 10 (cold start and per-evaluation latency, ADR 0014 follow-up 
 ```shell
 cd dws-jq
 make build   # compile bin/dws-jq
-make test    # go test -race ./...  (includes the expression corpus)
+make test    # go test -race -count=1 ./...  (includes the expression corpus)
 make lint    # go vet + gofmt check (+ golangci-lint if installed)
 make docker  # build registry.io/dws/dws-jq:1.0
-go test ./internal/conformance/ -v   # the corpus alone, one line per case
+go test -count=1 ./internal/conformance/ -v   # the corpus alone, one line per case
 ```
 
-The corpus runner reads `conformance/expressions/` at the repository root; set
-`DWS_CONFORMANCE_EXPRESSIONS` to point at another copy. On windows/386 the race detector does not
-run (`-race` needs cgo and a 64-bit target): use `go test ./...` there and let CI run `make test`.
+The corpus runner reads `conformance/expressions/` at the repository root. Set
+`DWS_CONFORMANCE_EXPRESSIONS` to point at another copy. The `-count=1` flag makes Go reread corpus
+files outside the module. On windows/386, use `go vet ./...`, `gofmt -l .` and
+`go test -count=1 ./...`. The race detector is unavailable on that target. Run `make test` on
+Linux/amd64.
 
 Run it locally without a cluster:
 

@@ -12,18 +12,17 @@ contracts are in [`README.md`](README.md), `docs/adr/0014-dws-jq-expression-func
 ```shell
 cd dws-jq
 make build   # compile bin/dws-jq
-make test    # go test -race ./...
+make test    # go test -race -count=1 ./...
 make vet     # go vet ./...
 make lint    # vet + gofmt check (+ golangci-lint if installed)
 make docker  # build registry.io/dws/dws-jq:1.0
 go test ./internal/expr/ -run TestCheck              # single test
-go test ./internal/conformance/ -v                   # the expression corpus, one line per case
+go test -count=1 ./internal/conformance/ -v          # the expression corpus, one line per case
 ```
 
-CI gate: `go vet ./... && gofmt -l . && go test -race ./...`. No `.golangci.yml` exists in the repo.
+CI runs `go vet`, the gofmt check, `go build` and `go test -race ./...`.
 
-**No `-race` on windows/386.** The local Go toolchain here is windows/386, where the race detector is
-unavailable; run `go test ./...` locally and leave `-race` to CI (linux/amd64).
+The race detector is unavailable on windows/386. Use `go test -count=1 ./...` on that target.
 
 ## Style guide
 
@@ -81,6 +80,7 @@ trusting the walker.
 
 `internal/conformance` runs `conformance/expressions/` (repo root) through the same
 `expr.Compile` + `Evaluate` that `/run` uses, inside `go test`. The default path is
-`../../../conformance/expressions` relative to the package; set `DWS_CONFORMANCE_EXPRESSIONS` to use
-another copy. Never edit a case's expectation to make dws-jq pass: add it to
+`../../../conformance/expressions` relative to the package. Set `DWS_CONFORMANCE_EXPRESSIONS` to use
+another copy. Use `-count=1` so Go rereads corpus files outside the module. Never edit a case's
+expectation to make dws-jq pass: add it to
 `conformance/expressions/divergences/dws-jq.yaml`, which fails the build when it goes stale.
