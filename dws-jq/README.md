@@ -44,6 +44,7 @@ of the expression; no output gives `result: null`.
 | 200 | `{"result": <value>, "truthy": <bool>}` | evaluated; `truthy` follows jq (only `null`, `false` and no output are falsy) |
 | 400 | `{"error": "<reason>"}` | not a JSON object, unknown field, non-object `variables`, undeclared variable (`secrets` included), body over 4 MiB |
 | 422 | `{"fault": {"type": "expression", "expression": "<as configured>", "detail": "<reason>"}}` | a jq runtime error, an `error(...)` call, the time limit, or a result that cannot be encoded |
+| 500 | `{"error": "internal error"}` | an evaluation error that is not a jq fault (logged with the site) |
 | 503 | `{"error": "not ready"}` | before startup finished |
 
 ```shell
@@ -67,8 +68,10 @@ before.
 
 In order; any failure writes one `ERROR` record and exits 1:
 
-1. Load and validate the environment (`invalid configuration: ...`, with the configured expression and
-   site on the record, as for every other startup failure).
+1. Load and validate the environment (`invalid configuration: ...`). The record carries `site` and
+   `expression` as configured (the expression is empty when `JQ_EXPRESSION` is unset), like the
+   expression and `JQ_SECRET_STORE` failures below; the listener and secret-read failures carry `site`
+   but not the expression.
 2. Unwrap, parse and policy-check the expression, then compile it with the declared variables plus
    `$secrets` (`invalid expression: ...`, with the expression text and site on the record). An
    undeclared `$variable` fails here.
@@ -135,11 +138,12 @@ The dialect is gojq's, minus the builtins above. It differs from jackson-jq (Ste
 | Integer precision | arbitrary precision; `9007199254740993 + 1` is `9007199254740994` |
 | String indexing | `"abcde"[2]` is `"c"` (intentionally unlike jq) |
 | Regex | RE2: no look-around or backreferences. `test("a(?=b)")` is a 422 evaluate fault (`invalid or unsupported Perl syntax`), not a startup error |
-| `$__loc__`, `input_line_number`, `get_*_origin` | unsupported (compile fault) |
+| `$__loc__`, `input_line_number`, `get_*_origin` | unsupported (compile fault); the corpus pins `$__loc__`, and `input_line_number` is pinned in `internal/expr/program_test.go` |
 
 The behavior is measured, not just described: the language-neutral corpus
-[`conformance/expressions/`](../conformance/expressions) holds one case per row plus the v1
-expression shapes. `internal/conformance` runs it inside `go test`; known divergences live in
+[`conformance/expressions/`](../conformance/expressions) holds a case for each row above except
+`input_line_number` and `get_*_origin` (see that row), plus the v1 expression shapes.
+`internal/conformance` runs it inside `go test`; known divergences live in
 `conformance/expressions/divergences/dws-jq.yaml` (currently none).
 
 ## Logging
