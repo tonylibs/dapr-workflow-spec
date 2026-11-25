@@ -27,7 +27,7 @@ func TestFetch(t *testing.T) {
 		var gotPath string
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			gotPath = r.URL.EscapedPath()
-			_, _ = w.Write([]byte(`{"value":"abcd"}`))
+			_, _ = w.Write([]byte(`{"value":"abcd","Value":5,"unrelated":{"ok":true}}`))
 		}))
 		defer srv.Close()
 
@@ -74,24 +74,32 @@ func TestFetch(t *testing.T) {
 		}
 	})
 
-	t.Run("missing value key is a FetchError naming value", func(t *testing.T) {
-		var calls atomic.Int32
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			calls.Add(1)
-			_, _ = w.Write([]byte(`{"other":"x"}`))
-		}))
-		defer srv.Close()
+	t.Run("missing lowercase value key is a FetchError naming value", func(t *testing.T) {
+		for _, key := range []string{"other", "VALUE", "Value"} {
+			t.Run(key, func(t *testing.T) {
+				const value = "sidecar-value-not-for-logs"
+				var calls atomic.Int32
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					calls.Add(1)
+					_, _ = w.Write([]byte(`{"` + key + `":"` + value + `"}`))
+				}))
+				defer srv.Close()
 
-		_, err := fastFetcher(srv).Fetch(context.Background(), "s", []string{"n"})
-		var fe *FetchError
-		if !errors.As(err, &fe) {
-			t.Fatalf("err = %v, want *FetchError", err)
-		}
-		if !strings.Contains(fe.Reason, "value") {
-			t.Errorf("Reason = %q", fe.Reason)
-		}
-		if calls.Load() != 1 {
-			t.Errorf("a malformed 200 must not be retried, calls = %d", calls.Load())
+				_, err := fastFetcher(srv).Fetch(context.Background(), "s", []string{"n"})
+				var fe *FetchError
+				if !errors.As(err, &fe) {
+					t.Fatalf("err = %v, want *FetchError", err)
+				}
+				if !strings.Contains(fe.Reason, "value") {
+					t.Errorf("Reason = %q", fe.Reason)
+				}
+				if strings.Contains(err.Error(), value) {
+					t.Error("Fetch error contains the response value")
+				}
+				if calls.Load() != 1 {
+					t.Errorf("a malformed 200 must not be retried, calls = %d", calls.Load())
+				}
+			})
 		}
 	})
 
@@ -241,7 +249,6 @@ func TestFetch(t *testing.T) {
 
 	t.Run("names are escaped into a single path segment", func(t *testing.T) {
 		for _, tc := range []struct{ name, wantPath string }{
-			{"bulk", "/v1.0/secrets/kubernetes/bulk"},
 			{"a/b", "/v1.0/secrets/kubernetes/a%2Fb"},
 			{"../x", "/v1.0/secrets/kubernetes/..%2Fx"},
 			{"a b?c#d", "/v1.0/secrets/kubernetes/a%20b%3Fc%23d"},
@@ -275,6 +282,26 @@ func TestFetch(t *testing.T) {
 		}
 		if want := "/v1.0/secrets/a%2Fb/n"; gotURI != want {
 			t.Errorf("request URI = %q, want %q", gotURI, want)
+		}
+	})
+
+	t.Run("bulk route is rejected without a request", func(t *testing.T) {
+		var calls atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls.Add(1)
+			_, _ = w.Write([]byte(`{"value":"v"}`))
+		}))
+		defer srv.Close()
+
+		_, err := fastFetcher(srv).Fetch(context.Background(), "s", []string{"ok", "bulk"})
+		var fe *FetchError
+		if !errors.As(err, &fe) {
+			t.Errorf("err = %v, want *FetchError", err)
+		} else if fe.Store != "s" || fe.Name != "bulk" || !strings.Contains(fe.Reason, "bulk") {
+			t.Errorf("FetchError = %+v, want store and name with reason mentioning the bulk route", fe)
+		}
+		if calls.Load() != 0 {
+			t.Errorf("requests = %d, want 0", calls.Load())
 		}
 	})
 

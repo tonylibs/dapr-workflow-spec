@@ -19,6 +19,9 @@ const (
 	maxBackoff     = 5 * time.Second
 	maxBodyBytes   = 1 << 20
 	tokenHeader    = "dapr-api-token"
+	// bulkSegment is the last segment of Dapr's GET /v1.0/secrets/{store}/bulk,
+	// which returns every secret in the store.
+	bulkSegment = "bulk"
 )
 
 var errNoValue = errors.New(`response has no string "value" key`)
@@ -63,6 +66,10 @@ func (f *Fetcher) Fetch(ctx context.Context, store string, names []string) (map[
 		}
 		if reason := invalidSegment("secret name", name); reason != "" {
 			return nil, &FetchError{Store: store, Name: name, Reason: reason}
+		}
+		if name == bulkSegment {
+			return nil, &FetchError{Store: store, Name: name,
+				Reason: `"bulk" is the Dapr bulk-secrets route, not a secret name`}
 		}
 	}
 
@@ -150,15 +157,19 @@ func (f *Fetcher) attempt(ctx context.Context, store, name string) (value string
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxBodyBytes))
 		return "", true, fmt.Errorf("sidecar answered status %d", resp.StatusCode)
 	}
-	var body struct {
-		Value *string `json:"value"`
-	}
+	// Decode into a map, not a struct: struct decoding matches keys
+	// case-insensitively, and only the exact lowercase "value" key is the secret.
 	// A 2xx reply that is not a JSON object with a string "value" is final:
 	// asking again would return the same thing.
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxBodyBytes)).Decode(&body); err != nil || body.Value == nil {
+	var body map[string]json.RawMessage
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxBodyBytes)).Decode(&body); err != nil {
 		return "", false, errNoValue
 	}
-	return *body.Value, false, nil
+	var secret *string // nil for JSON null
+	if err := json.Unmarshal(body["value"], &secret); err != nil || secret == nil {
+		return "", false, errNoValue
+	}
+	return *secret, false, nil
 }
 
 // invalidSegment explains why s cannot be a single path segment of the secrets
