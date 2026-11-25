@@ -141,9 +141,9 @@
 
 ## 7. Expression corpus `conformance/expressions/` (D11)
 
-- [ ] 7.1 Write `conformance/expressions/case.schema.json` (2020-12). Its fields, areas and `expect`
+- [x] 7.1 Write `conformance/expressions/case.schema.json` (2020-12). Its fields, areas and `expect`
   variants are listed in design D11.
-- [ ] 7.2 Write `conformance/expressions/README.md`. Cover:
+- [x] 7.2 Write `conformance/expressions/README.md`. Cover:
   - the layout;
   - the case format;
   - the authoring rules (expectations from the documented dialect and ADRs, never edited to fit an
@@ -151,19 +151,19 @@
   - the runner rules and verdicts, including the stale-divergence rule;
   - engine notes (gojq vs jackson-jq);
   - how to run the `dws-jq` runner.
-- [ ] 7.3 Add `contract/` cases:
+- [x] 7.3 Add `contract/` cases:
   - wrapped;
   - bare;
   - first-of-many;
   - empty;
   - truthiness of `false`, `null`, `0`, `""` and `[]`;
   - an evaluate error.
-- [ ] 7.4 Add `builtins/`: the 13 cases converted from `conformance/data-flow/cases/builtins/`.
+- [x] 7.4 Add `builtins/`: the 13 cases converted from `conformance/data-flow/cases/builtins/`.
   - Use the same file names, and keep each case's `source` and `engine` text.
   - Each expression is the original stage's jq.
   - The 11 blocked cases expect a `compile` fault containing the builtin.
   - Add the false-positive guard cases (`.env`, `{debug: 1}`, `"input"`).
-- [ ] 7.5 Add `dialect/`: one case per ADR 0014 Decision 5 row:
+- [x] 7.5 Add `dialect/`: one case per ADR 0014 Decision 5 row:
   - object key order (`tojson`, `to_entries`);
   - `keys_unsorted` (compile fault);
   - date/local-time functions;
@@ -171,25 +171,25 @@
   - string indexing (`"abcde"[2]`);
   - a regex look-around (fault);
   - `$__loc__` (compile fault).
-- [ ] 7.6 Add `loops/` and `catch/` cases from v1's tests:
+- [x] 7.6 Add `loops/` and `catch/` cases from v1's tests:
   - `for.in`: `.pets`, `${ .pets }`, `$sample`, `.count`, `[1, 2]`;
   - `while`: `.count > 0`, `.flag` (three inputs), `$item < 3` (two values), `$i < 2`;
   - catch: `$error.status == 429`, `$error.status == 503`, `$oops.status == 503`, and
     `retry.when` — all against the v1 503 error object.
-- [ ] 7.7 Add `templates/` cases:
+- [x] 7.7 Add `templates/` cases:
   - the O-2 example;
   - a part with `def`;
   - a part with `as $x`;
   - an `empty` part;
   - a part with several results.
-- [ ] 7.8 Add `divergences/dws-jq.yaml` (`runtime: dws-jq (gojq)`, empty `divergences: []`), with
+- [x] 7.8 Add `divergences/dws-jq.yaml` (`runtime: dws-jq (gojq)`, empty `divergences: []`), with
   the same header comment as `conformance/data-flow/divergences/v1.yaml`.
 
 ## 8. dws-jq corpus runner (D11)
 
-- [ ] 8.1 Add the test-only dependencies `gopkg.in/yaml.v3` and
+- [x] 8.1 Add the test-only dependencies `gopkg.in/yaml.v3` and
   `github.com/santhosh-tekuri/jsonschema/v6`.
-- [ ] 8.2 Implement `internal/conformance` with a test that:
+- [x] 8.2 Implement `internal/conformance` with a test that:
   1. loads the corpus, honouring `DWS_CONFORMANCE_EXPRESSIONS`;
   2. validates the schema, and checks `name`/`area`/path and that `test` is unique;
   3. sets `TZ=UTC`;
@@ -197,22 +197,22 @@
   5. compares numbers by value and checks the fault phase;
   6. applies the four verdicts;
   7. prints one line per case and the totals.
-- [ ] 8.3 Add self-tests for the runner's own rules, using a temporary corpus:
+- [x] 8.3 Add self-tests for the runner's own rules, using a temporary corpus:
   - a path/area mismatch fails;
   - a duplicate `test` fails;
   - a stale divergence fails;
   - `10` equals `10.0`.
-- [ ] 8.4 Run the corpus. A case that fails because the implementation is wrong is fixed in the
+- [x] 8.4 Run the corpus. A case that fails because the implementation is wrong is fixed in the
   implementation. A case where gojq genuinely differs from the documented expectation is listed in
   `divergences/dws-jq.yaml` with a reason and follow-up. Record which ADR 0014 Decision 5 "to
   confirm" cells are now confirmed on the gojq side.
 
 ## 9. dws-jq packaging and docs (D12, D14)
 
-- [ ] 9.1 Add the `Dockerfile` (`golang:1.26.9` → `gcr.io/distroless/static:nonroot`, `EXPOSE 8080`)
+- [x] 9.1 Add the `Dockerfile` (`golang:1.26.9` → `gcr.io/distroless/static:nonroot`, `EXPOSE 8080`)
   and `k8s/knative-service.yaml`. The example uses `minScale "0"`, Dapr annotations, `JQ_*` env and
   a `/healthz` readiness probe.
-- [ ] 9.2 Write `dws-jq/README.md`. Cover:
+- [x] 9.2 Write `dws-jq/README.md`. Cover:
   - purpose;
   - the configuration contract table;
   - the HTTP contract (200/400/422/503);
@@ -222,48 +222,48 @@
   - the dialect, with a pointer to the corpus;
   - logging;
   - EX-3 results.
-- [ ] 9.3 Write `dws-jq/CLAUDE.md` with package-specific idioms only: commands, error style, config
+- [x] 9.3 Write `dws-jq/CLAUDE.md` with package-specific idioms only: commands, error style, config
   style, where logging is allowed, test style, the corpus runner location, and the local
   `-race`/386 note.
-- [ ] 9.4 Add `.github/workflows/dws-jq.yml`, modelled on `dws-call-http.yml`:
+- [x] 9.4 Add `.github/workflows/dws-jq.yml`, modelled on `dws-call-http.yml`:
   - paths: `dws-jq/**`, `conformance/expressions/**`, the workflow file;
   - tag `dws-jq-v*`;
   - test job: vet, gofmt, build, `go test -race ./...`;
   - image job: build, a `/healthz` smoke test with `JQ_EXPRESSION=.`, push off-PR.
-- [ ] 9.5 Register the release:
+- [x] 9.5 Register the release:
   - `release-please-config.json`: package `dws-jq` (`simple`, `version.txt`,
     `initial-version: "0.1.0"`, `skip-github-release`);
   - `.release-please-manifest.json`: `"dws-jq": "0.0.0"`;
   - `component-release.yml`: option `dws-jq`;
   - `docs/release-process.md`: a workflow-table row and a first-release note.
-- [ ] 9.6 Update the root `CLAUDE.md`:
+- [x] 9.6 Update the root `CLAUDE.md`:
   - package map row;
   - gate-table row (`make lint && make test`);
   - a new contract bullet: `dws-jq` configuration contract, controller 2m.2 → `dws-jq`, pinned by
     `dws-jq/testdata/contract/`;
   - `dws-jq` added to the structured-log-format bullet.
-- [ ] 9.7 Update `docs/log-format.md`:
+- [x] 9.7 Update `docs/log-format.md`:
   - package list;
   - severity row (Go `slog`);
   - trace-source row (inbound `traceparent`).
-- [ ] 9.8 Run the full gate: `cd dws-jq && make lint && make test`. On windows/386, `-race` is
+- [x] 9.8 Run the full gate: `cd dws-jq && make lint && make test`. On windows/386, `-race` is
   unavailable: run `go vet ./... && go test ./...` and record the gap. Run `make docker` if the
   Docker daemon is running.
 
 ## 10. EX-3 measurements and ADR notes (D13, D14)
 
-- [ ] 10.1 Check whether a cluster with Knative Serving and Dapr is reachable (`kubectl get nodes`,
+- [x] 10.1 Check whether a cluster with Knative Serving and Dapr is reachable (`kubectl get nodes`,
   Knative and Dapr CRDs).
   - If it is: load the image, apply the example service, and measure cold start (5 samples after
     scale-to-zero) and warm latency (p50/p95 over 200 calls) through Dapr service invocation from a
     sidecar-enabled curl pod.
   - If it is not: record "not measured: no cluster".
-- [ ] 10.2 Record the EX-3 numbers, or their absence, in `dws-jq/README.md`.
-- [ ] 10.3 Add a dated "2j notes" block to ADR 0014. It records:
+- [x] 10.2 Record the EX-3 numbers, or their absence, in `dws-jq/README.md`.
+- [x] 10.3 Add a dated "2j notes" block to ADR 0014. It records:
   - the gojq-side Decision 5 cells the corpus confirmed;
   - O-5: dynamic `$secrets` access is rejected by `dws-jq`;
   - the EX-3 status;
   - anything in the ADR that turned out wrong.
 
   Also update the roadmap row 2j status.
-- [ ] 10.4 Run `openspec validate dws-jq-function` and the final `dws-jq` gate.
+- [x] 10.4 Run `openspec validate dws-jq-function` and the final `dws-jq` gate.
