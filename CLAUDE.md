@@ -138,9 +138,11 @@ Types in use: `feat`, `fix`, `refactor`, `docs`, `chore`, `perf`, `ci`, `test`.
   Knative Service per site with env `JQ_EXPRESSION`, `JQ_VARIABLES` (JSON array of names without
   `$`), `JQ_TIMEOUT`, `JQ_SECRET_STORE`, `JQ_SITE`, plus the usual `PORT`, `DAPR_HTTP_PORT`,
   `DAPR_API_TOKEN` and `DWS_LOG_FORMAT`. The fixtures `dws-jq/testdata/contract/env-*.json` are the
-  contract: `TestConfigContract` parses each and asserts the set of names `config` reads
-  (`config.Names`) equals the union of fixture keys, so a name added or dropped on the `dws-jq` side
-  without a fixture fails the build. The controller side (2m.2) must compare its rendering with the
+  contract: `TestConfigContract` loads each through a recording lookup and asserts the set of names
+  the loader actually asks for equals the union of fixture keys (fixture values differ from the
+  defaults, so a dropped read also changes the loaded `Config`), so a name added or dropped on the
+  `dws-jq` side without a fixture fails the build. `config.Names()` is derived from the same
+  recording, not a hand-kept list. The controller side (2m.2) must compare its rendering with the
   same fixtures, as `SchedulerContractTest` does for the scheduler; until it does, nothing pins that
   side. A drifted name is not a compile error: `dws-jq` fails startup (a missing `JQ_EXPRESSION`, a
   `$secrets` expression without `JQ_SECRET_STORE`) or silently ignores the knob (a misspelt

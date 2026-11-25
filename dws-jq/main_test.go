@@ -339,7 +339,7 @@ func TestMain_warnsOnUnusedSecretStore(t *testing.T) {
 // `$secrets.a` against a fake sidecar served by handler.
 func inProcessSecrets(t *testing.T, handler http.Handler) {
 	t.Helper()
-	for _, name := range config.Names {
+	for _, name := range config.Names() {
 		t.Setenv(name, "")
 	}
 	sidecar := httptest.NewServer(handler)

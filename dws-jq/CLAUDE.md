@@ -47,11 +47,14 @@ case err != nil:                 // anything else -> 500 "internal error"
 
 ### Config: hand-rolled `getenv`, validate immediately
 
-`internal/config` reads `os.Getenv` through `getenv(key, default)` plus `parseVariables` and
-`parseTimeout`, and returns a `*FieldError` naming the variable. No config library. Every name read
-must be in `config.Names`, and every name in `Names` must appear in a
-`testdata/contract/env-*.json` fixture; `TestConfigContract` enforces both. Adding an env var means
-adding it to `Names`, to a fixture, to the README table and to the root `CLAUDE.md` contract bullet.
+`Load` is `load(os.Getenv)`, and `load` reads every variable through that one `lookup` argument (a
+local `getenv(key, default)` plus `parseVariables` and `parseTimeout` on the raw values), reading all
+names before validating any. It returns a `*FieldError` naming the variable. No config library.
+`TestConfigContract` passes a recording lookup and requires the names read to equal the union of
+`testdata/contract/env-*.json` fixture keys; `TestLoadIsTheOnlyEnvironmentRead` fails on any other
+`os.Getenv`/`LookupEnv`/`Environ` in the package; `config.Names()` comes from the same recording.
+Adding an env var means reading it through `lookup`, adding it to a fixture (with a non-default
+value) and its expected `Config`, to the README table and to the root `CLAUDE.md` contract bullet.
 
 ### Logging: only `main.go` and `internal/server`
 

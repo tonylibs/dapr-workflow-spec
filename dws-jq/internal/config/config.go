@@ -22,21 +22,6 @@ const (
 	defaultDaprHTTPPort = "3500"
 )
 
-// Names lists every environment variable Load reads. TestConfigContract pins
-// it against the fixtures under testdata/contract, so adding a name here
-// without a fixture (or the reverse) fails the package tests.
-var Names = []string{
-	"JQ_EXPRESSION",
-	"JQ_VARIABLES",
-	"JQ_TIMEOUT",
-	"JQ_SECRET_STORE",
-	"JQ_SITE",
-	"PORT",
-	"DAPR_HTTP_PORT",
-	"DAPR_API_TOKEN",
-	"DWS_LOG_FORMAT",
-}
-
 var (
 	variableName      = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	reservedVariables = map[string]bool{"secrets": true, "ENV": true, "__loc__": true}
@@ -72,27 +57,53 @@ func (e *FieldError) Error() string { return e.Name + ": " + e.Reason }
 // Load reads configuration from the environment and validates it. Invalid
 // input yields a *FieldError so the process can log it and exit non-zero.
 func Load() (Config, error) {
+	return load(os.Getenv)
+}
+
+// Names returns every environment variable Load reads, in the order it reads
+// them. It is recorded from the loader itself, so it cannot drift from Load.
+func Names() []string {
+	var names []string
+	_, _ = load(func(key string) string {
+		names = append(names, key)
+		return ""
+	})
+	return names
+}
+
+// load builds the Config from lookup, the only way it reads a variable.
+// Every name is read before anything is validated, so a recording lookup
+// (Names, TestConfigContract) sees all of them whatever the values are.
+func load(lookup func(string) string) (Config, error) {
+	getenv := func(key, def string) string {
+		if v := lookup(key); v != "" {
+			return v
+		}
+		return def
+	}
 	cfg := Config{
-		Expression:   os.Getenv("JQ_EXPRESSION"),
-		SecretStore:  os.Getenv("JQ_SECRET_STORE"),
+		Expression:   lookup("JQ_EXPRESSION"),
+		SecretStore:  lookup("JQ_SECRET_STORE"),
 		Site:         getenv("JQ_SITE", DefaultSite),
 		Port:         getenv("PORT", defaultPort),
 		DaprHTTPPort: getenv("DAPR_HTTP_PORT", defaultDaprHTTPPort),
-		DaprAPIToken: os.Getenv("DAPR_API_TOKEN"),
-		LogFormat:    os.Getenv("DWS_LOG_FORMAT"),
+		DaprAPIToken: lookup("DAPR_API_TOKEN"),
+		LogFormat:    lookup("DWS_LOG_FORMAT"),
 	}
+	rawVariables := lookup("JQ_VARIABLES")
+	rawTimeout := lookup("JQ_TIMEOUT")
 
 	if strings.TrimSpace(cfg.Expression) == "" {
 		return Config{}, &FieldError{Name: "JQ_EXPRESSION", Reason: "is required"}
 	}
 
-	variables, err := parseVariables("JQ_VARIABLES")
+	variables, err := parseVariables("JQ_VARIABLES", rawVariables)
 	if err != nil {
 		return Config{}, err
 	}
 	cfg.Variables = variables
 
-	cfg.Timeout, err = parseTimeout("JQ_TIMEOUT", defaultTimeout)
+	cfg.Timeout, err = parseTimeout("JQ_TIMEOUT", rawTimeout, defaultTimeout)
 	if err != nil {
 		return Config{}, err
 	}
@@ -100,15 +111,7 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
-func getenv(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
-}
-
-func parseVariables(key string) ([]string, error) {
-	raw := os.Getenv(key)
+func parseVariables(key, raw string) ([]string, error) {
 	if strings.TrimSpace(raw) == "" {
 		return []string{}, nil
 	}
@@ -135,8 +138,7 @@ func parseVariables(key string) ([]string, error) {
 	return names, nil
 }
 
-func parseTimeout(key string, def time.Duration) (time.Duration, error) {
-	raw := os.Getenv(key)
+func parseTimeout(key, raw string, def time.Duration) (time.Duration, error) {
 	if strings.TrimSpace(raw) == "" {
 		return def, nil
 	}
