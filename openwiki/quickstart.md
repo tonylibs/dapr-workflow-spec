@@ -59,7 +59,7 @@ How the pieces work, for people changing DWS:
 - [Lifecycle events](integrations/lifecycle-events.md) — publishers, replay determinism, known replay defect.
 - [Administrative read model](integrations/admin-read-model.md) — `dws-admin` projection, queries, SSE, submission relay.
 - Step runtimes: [HTTP](integrations/http-step-runner.md), [OpenAPI](integrations/openapi-step-runner.md), [gRPC & AsyncAPI](integrations/protocol-step-runners.md), [A2A](integrations/a2a-step-runner.md).
-- Runtime v2 (early): [DWS Flow workflow host](architecture/flow-host.md), [DWS Step activity host](integrations/step-activity-host.md).
+- Runtime v2 (early): [DWS Flow workflow host](architecture/flow-host.md), [DWS Step activity host](integrations/step-activity-host.md), and the built-but-not-yet-controller-wired [DWS jq expression service](architecture/dws-jq.md).
 - [Console OIDC login](architecture/console-auth.md) — browser PKCE login and the Dex agreement.
 - [Helm chart packaging](architecture/helm-chart-roadmap.md) — chart internals, auth pipeline placement, CI and release.
 - [OWS DSL feature roadmap](architecture/roadmap.md) — DSL coverage vs implementation.
