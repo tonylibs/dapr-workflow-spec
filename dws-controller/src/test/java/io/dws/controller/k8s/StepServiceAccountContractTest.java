@@ -43,12 +43,12 @@ import reactor.core.publisher.Mono;
  */
 @QuarkusTest
 @WithKubernetesTestServer
-@TestProfile(StepServiceAccountContractTest.CustomStepAccount.class)
+@TestProfile(StepServiceAccountContractTest.CustomTaskAccount.class)
 class StepServiceAccountContractTest {
 
   private static final String WORKFLOW = "identity-contract";
-  private static final String DEFAULT_ACCOUNT = "dws-step";
-  private static final String CUSTOM_ACCOUNT = "contract-step";
+  private static final String DEFAULT_ACCOUNT = "dws-task";
+  private static final String CUSTOM_ACCOUNT = "contract-task";
   private static final Path APPLICATION_CONFIG =
       Path.of("src", "main", "resources", "application.yaml");
   private static final Path STANDALONE_RBAC = Path.of("k8s", "controller-rbac.yaml");
@@ -101,17 +101,17 @@ class StepServiceAccountContractTest {
   @Test
   @DisplayName("the chart env key binds the configured account and the controller defaults it")
   void chartEnvironmentKeyAndControllerConfigurationStayAligned() throws Exception {
-    Method stepMethod = DwsConfig.class.getMethod("step");
-    Method serviceAccountMethod = stepMethod.getReturnType().getMethod("serviceAccount");
+    Method taskMethod = DwsConfig.class.getMethod("task");
+    Method serviceAccountMethod = taskMethod.getReturnType().getMethod("serviceAccount");
 
     assertThat(serviceAccountMethod.getAnnotation(WithDefault.class).value())
         .isEqualTo(DEFAULT_ACCOUNT);
-    assertThat(resolvedStepAccount()).isEqualTo(CUSTOM_ACCOUNT);
+    assertThat(resolvedTaskAccount()).isEqualTo(CUSTOM_ACCOUNT);
 
     assertThat(Files.readString(APPLICATION_CONFIG, StandardCharsets.UTF_8))
-        .contains("service-account: ${DWS_STEP_SERVICE_ACCOUNT:" + DEFAULT_ACCOUNT + "}");
+        .contains("service-account: ${DWS_TASK_SERVICE_ACCOUNT:" + DEFAULT_ACCOUNT + "}");
     assertThat(Files.readString(CHART_CONTROLLER_DEPLOYMENT, StandardCharsets.UTF_8))
-        .contains("- name: DWS_STEP_SERVICE_ACCOUNT");
+        .contains("- name: DWS_TASK_SERVICE_ACCOUNT");
   }
 
   @Test
@@ -120,7 +120,7 @@ class StepServiceAccountContractTest {
     document(STANDALONE_RBAC, "ServiceAccount", DEFAULT_ACCOUNT);
     JsonNode deployment = document(STANDALONE_DEPLOYMENT, "Deployment", "dws-controller");
 
-    assertThat(environmentValue(deployment, "DWS_STEP_SERVICE_ACCOUNT")).isEqualTo(DEFAULT_ACCOUNT);
+    assertThat(environmentValue(deployment, "DWS_TASK_SERVICE_ACCOUNT")).isEqualTo(DEFAULT_ACCOUNT);
     List<String> boundAccounts = new ArrayList<>();
     for (JsonNode binding : documents(STANDALONE_RBAC)) {
       if ("RoleBinding".equals(binding.path("kind").asText())
@@ -169,10 +169,10 @@ class StepServiceAccountContractTest {
         .allSatisfy(service -> assertThat(serviceAccountName(service)).isEqualTo(CUSTOM_ACCOUNT));
   }
 
-  private String resolvedStepAccount() throws ReflectiveOperationException {
-    Method stepMethod = DwsConfig.class.getMethod("step");
-    Object step = stepMethod.invoke(config);
-    return (String) stepMethod.getReturnType().getMethod("serviceAccount").invoke(step);
+  private String resolvedTaskAccount() throws ReflectiveOperationException {
+    Method taskMethod = DwsConfig.class.getMethod("task");
+    Object task = taskMethod.invoke(config);
+    return (String) taskMethod.getReturnType().getMethod("serviceAccount").invoke(task);
   }
 
   private List<GenericKubernetesResource> stepServices(DeploymentPlan plan) {
@@ -233,10 +233,10 @@ class StepServiceAccountContractTest {
     throw new AssertionError("no environment variable " + name);
   }
 
-  public static class CustomStepAccount implements QuarkusTestProfile {
+  public static class CustomTaskAccount implements QuarkusTestProfile {
     @Override
     public Map<String, String> getConfigOverrides() {
-      return Map.of("dws.step.service-account", CUSTOM_ACCOUNT);
+      return Map.of("dws.task.service-account", CUSTOM_ACCOUNT);
     }
   }
 }

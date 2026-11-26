@@ -8,10 +8,10 @@ dws:
     # ServiceAccount orchestrator pods run as; needs configmaps get/list/watch (the definition
     # Component reads its ConfigMap as the pod's service account). Env: DWS_ORCHESTRATOR_SERVICE_ACCOUNT.
     service-account: dws-orchestrator
-  step:
+  task:
     # ServiceAccount generated Knative step pods run as; it intentionally needs no chart-granted
-    # RBAC. Env: DWS_STEP_SERVICE_ACCOUNT.
-    service-account: ${DWS_STEP_SERVICE_ACCOUNT:dws-step}
+    # RBAC. Env: DWS_TASK_SERVICE_ACCOUNT.
+    service-account: ${DWS_TASK_SERVICE_ACCOUNT:dws-task}
   log:
     # json | text. Env: DWS_LOG_FORMAT. The controller's own logs follow the environment variable;
     # an instrumented orchestrator Deployment is stamped with DWS_LOG_FORMAT=json only when this is json.

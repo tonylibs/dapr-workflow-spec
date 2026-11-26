@@ -43,7 +43,7 @@ class StackSynthesizerTest {
 
   private static final String NAMESPACE = "default";
   private static final String SERVICE_ACCOUNT = "dws-orchestrator";
-  private static final String STEP_SERVICE_ACCOUNT = "dws-step";
+  private static final String STEP_SERVICE_ACCOUNT = "dws-task";
   private static final ImageCatalog IMAGES =
       new ImageCatalog(
           "sw-call-http:1.0",

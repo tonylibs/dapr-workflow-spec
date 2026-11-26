@@ -4,7 +4,7 @@
 
 | File | Purpose |
 |------|---------|
-| `controller-rbac.yaml` | Controller and workload identities: controller RBAC, the read-only `dws-orchestrator` account, and the no-grant `dws-step` account |
+| `controller-rbac.yaml` | Controller and workload identities: controller RBAC, the read-only `dws-orchestrator` account, and the no-grant `dws-task` account |
 | `controller-deployment.yaml` | The controller's own Deployment and Service |
 | `dapr-crds.yaml` | Pinned Dapr CRD bundle (input to `cdk8s import`, not applied by the controller) |
 | `serving-crds.yaml` | Pinned Knative Serving CRD bundle (same) |
@@ -20,7 +20,7 @@
   (`.github/workflows/dws-call-http.yml`, `.github/workflows/dws-call-openapi.yml`,
   `.github/workflows/dws-orchestrator.yml`); if the GHCR packages are private, the cluster
   also needs an `imagePullSecret` for `ghcr.io`. Create it in the managed workload namespace and
-  attach it to the `dws-orchestrator` and `dws-step` ServiceAccounts before submitting workflows.
+  attach it to the `dws-orchestrator` and `dws-task` ServiceAccounts before submitting workflows.
 
 ## Install
 
@@ -31,7 +31,7 @@ kubectl rollout status deployment/dws-controller
 ```
 
 Apply `controller-rbac.yaml` first. It provisions both workload identities before the controller
-can create an orchestrator Deployment or Knative step Service. The dedicated `dws-step` account
+can create an orchestrator Deployment or Knative step Service. The dedicated `dws-task` account
 has no RoleBinding or ClusterRoleBinding from these manifests; add operator-owned grants only when
 a step explicitly needs Kubernetes API access.
 
@@ -46,11 +46,15 @@ name from `dws.orchestrator.service-account` (env `DWS_ORCHESTRATOR_SERVICE_ACCO
 `dws-orchestrator`), so if you rename the account in `controller-rbac.yaml` set that env var in
 `controller-deployment.yaml` to match.
 
-Knative step pods similarly run as `dws-step`, not `default`. The controller reads the name from
-`dws.step.service-account` (env `DWS_STEP_SERVICE_ACCOUNT`, default `dws-step`). If the workload
+Knative step pods similarly run as `dws-task`, not `default`. The controller reads the name from
+`dws.task.service-account` (env `DWS_TASK_SERVICE_ACCOUNT`, default `dws-task`). If the workload
 namespace uses a differently named step account, create it first and set
-`DWS_STEP_SERVICE_ACCOUNT` in `controller-deployment.yaml` to the exact same name. The account and
-generated Knative Services must be in the namespace selected by `DWS_NAMESPACE`.
+`DWS_TASK_SERVICE_ACCOUNT` in `controller-deployment.yaml` to the exact same name. The account and
+generated Knative Services must be in the namespace selected by `DWS_NAMESPACE`. The name keeps
+this Kubernetes identity distinct from the `dws-step` runtime component. Earlier builds read
+`DWS_STEP_SERVICE_ACCOUNT` (default `dws-step`) instead, and the current controller ignores that
+variable: move any custom value to `DWS_TASK_SERVICE_ACCOUNT`, keep the old account until Revisions that name it stop serving, and
+resubmit each workflow to move its step Services to the new account.
 
 ## Example flow
 

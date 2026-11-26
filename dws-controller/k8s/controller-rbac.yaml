@@ -11,10 +11,10 @@ metadata:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: dws-step
+  name: dws-task
   namespace: default
   labels:
-    app: dws-step
+    app: dws-task
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
