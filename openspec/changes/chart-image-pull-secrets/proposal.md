@@ -5,7 +5,8 @@ The DWS chart's global `imagePullSecrets` currently reaches only admin and conso
 ## What Changes
 
 - Apply the global pull-secret list to every ServiceAccount owned by the DWS chart and every Deployment pod template rendered by its first-party templates. Document and validate the list as references to existing Secrets in the workload namespace.
-- Create a dedicated step ServiceAccount with no chart-granted RBAC. Pass its name from the chart to the controller and use it on every generated Knative step Service, including when the list is empty. Provide the default account in the standalone controller manifests.
+- Create a dedicated `dws-task` ServiceAccount with no chart-granted RBAC. Derive its name from the release in Helm and use `dws-task` as the standalone default. The name distinguishes this Kubernetes identity from the `dws-step` runtime component. Pass the account name from the chart to the controller and use it on every generated Knative step Service, including when the list is empty.
+- Use `dws.task.service-account` and `DWS_TASK_SERVICE_ACCOUNT` for the controller setting that selects the account.
 - Pin the chart-to-controller contract in render and controller tests. Verify a fresh installation and workflow execution against a private registry.
 - Out of scope are registry package visibility, per-component pull-secret overrides, and dependency chart configuration.
 

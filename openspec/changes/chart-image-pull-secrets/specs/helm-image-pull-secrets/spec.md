@@ -30,7 +30,7 @@
 
 - **WHEN** `imagePullSecrets` is omitted or explicitly set to `[]`
 - **THEN** each rendered chart-owned ServiceAccount and Deployment pod template omits `imagePullSecrets`
-- **AND** the dedicated step ServiceAccount still renders when `controller.enabled=true`
+- **AND** the dedicated step ServiceAccount still renders when `controller.enabled=true` as `dws-task` under the default release and naming settings
 
 ### Requirement: Generated workloads can pull private DWS images using their ServiceAccounts
 
