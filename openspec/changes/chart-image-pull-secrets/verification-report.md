@@ -71,3 +71,72 @@ reached `COMPLETED` with output:
 
 The acceptance run used the chart-created ServiceAccounts throughout. No ServiceAccount was
 manually patched, and no private application image was preloaded onto a node.
+
+## Re-run after the `dws-task` rename (task 4.3)
+
+Date: 2026-11-26  
+Cluster: Docker Desktop Kubernetes (`docker-desktop`), three Ready nodes  
+Namespace: `dws-pull-accept-task`  
+Release: `pulltask`  
+Controller commit: `e2653ba4` (image built from that tree)
+
+### Knative tag resolution
+
+The first run's registry address, `host.docker.internal:5001`, is listed in Knative's
+`registries-skipping-tag-resolving`, so that run never exercised tag-to-digest resolution. This
+re-run attached the same authenticated registry to the `kind` Docker network and referenced it
+by its private address `172.18.0.8:5000`, which is not in the skip list. Knative's resolver
+uses plain HTTP for RFC 1918 registry addresses, so no Knative configuration was changed. Each
+node got a containerd `hosts.toml` entry for the address. Anonymous `/v2/` access returned HTTP
+401 from every node. The namespace-local `regcred` Secret uses the same test credentials, keyed
+by the new address.
+
+| Workload | Tag | Image digest |
+| --- | --- | --- |
+| Controller | `controller-task-20261126-1211` | `sha256:3d3a60942108dff4751f238e8be2593ad2decb7f5b61b98bcbc07f21afb869ce` |
+| Admin | `admin-task-20261126-1211` | `sha256:b0d768dd192a9a480e1397830661c20aac4ea941049763d4a0230b81beef1e57` |
+| Scheduler | `scheduler-task-20261126-1211` | `sha256:097b5e0a96d09d436df1fdfb72cbc5a41b18fdeefb90604ca0e69ad7f6c617db` |
+| Orchestrator | `orchestrator-task-20261126-1211` | `sha256:962420c9dfba55bdeb107699beb855424abcb50bbccec196f154bba97f61b245` |
+| HTTP step | `call-http-task-20261126-1211` | `sha256:7925b6af008bba242aec680b46473fccec8da8745752930e2d47ef681d6c55fa` |
+
+The controller image is new. The other tags are new references to the images from the first
+run, so their layers may already have been cached on the nodes. Every reference was still
+resolved and pulled through the authenticated registry, and Kubernetes recorded a `Pulled`
+event for it.
+
+### Installation
+
+The chart was installed with the same values as the first run, plus the new image references.
+`dapr.enabled=false` also disables the Redis dependency chart, so a test Redis Deployment,
+Service and password Secret were created in the namespace, the same way as in the first run.
+The controller, admin and scheduler Deployments were each 1/1 Ready.
+
+- ServiceAccounts `pulltask-dws-controller`, `pulltask-dws-orchestrator`,
+  `pulltask-dws-schedule-time` and `pulltask-dws-task` each carry `imagePullSecrets: [regcred]`.
+  No `dws-step` ServiceAccount was rendered.
+- The controller Deployment sets `DWS_TASK_SERVICE_ACCOUNT=pulltask-dws-task`.
+- No RoleBinding or ClusterRoleBinding names `pulltask-dws-task`.
+
+### Workflow execution
+
+Submitted `private-pull-task@v0f0b9c3c` (HTTP 201). Its `probeAdmin` HTTP task calls the admin
+`/health` endpoint.
+
+- Orchestrator Pod: 2/2 Ready, ServiceAccount `pulltask-dws-orchestrator`, inherited
+  `imagePullSecrets: [regcred]`.
+- Knative Service `probe-admin`: Ready at `probe-admin-00001`. Its Revision template names
+  `serviceAccountName: pulltask-dws-task`.
+- Revision `status.containerStatuses[user-container].imageDigest`:
+  `172.18.0.8:5000/dws-acceptance@sha256:7925b6af008bba242aec680b46473fccec8da8745752930e2d47ef681d6c55fa`.
+  This digest was resolved from the tag `call-http-task-20261126-1211` in the Revision spec.
+- Step Pod: 3/3 Ready, ServiceAccount `pulltask-dws-task`, inherited
+  `imagePullSecrets: [regcred]`, user-container image ID matching the resolved digest.
+
+Started instance `pull-task-run-1` (HTTP 202). It reached `COMPLETED` with output:
+
+```json
+{"details":{"database":{"status":"up"}},"error":{},"info":{"database":{"status":"up"}},"status":"ok"}
+```
+
+No ServiceAccount or workload manifest was patched by hand. `openspec validate
+chart-image-pull-secrets --type change --strict` reported the change as valid.
