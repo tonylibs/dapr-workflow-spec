@@ -157,8 +157,9 @@ The behavior is measured, not just described: the language-neutral corpus
 
 `internal/logging` implements [`docs/log-format.md`](../docs/log-format.md). With
 `DWS_LOG_FORMAT=json`: one JSON object per line with `timestamp`, `severity`, `logger` (`dws-jq`),
-`message`, optional `trace_id`/`span_id` (from the inbound W3C `traceparent` header; no OTel SDK) and
-`exception.*`, then the contract scrubber. Anything else: slog text. Secret values are redacted in
+`message`, optional `trace_id`/`span_id`, and `exception.*`. OpenTelemetry's propagator extracts the
+IDs from the inbound W3C `traceparent` header. JSON mode also applies the contract scrubber.
+Other settings select slog text. Secret values are redacted in
 both modes. In JSON mode the scrubber also runs over the `expression` attribute and the message, so
 it can mask parts of the expression text (`{token: .t}` is logged as `{token: [REDACTED]}`); the full
 text is in the Service's `JQ_EXPRESSION` env.

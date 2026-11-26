@@ -20,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -169,9 +171,9 @@ func (h *jsonHandler) Handle(ctx context.Context, r slog.Record) error {
 	writeField(&buf, keySeverity, severity(r.Level), false)
 	writeField(&buf, keyLogger, LoggerName, false)
 	writeField(&buf, keyMessage, h.scrub(r.Message), false)
-	if tc, ok := traceFrom(ctx); ok {
-		writeField(&buf, keyTraceID, tc.traceID, false)
-		writeField(&buf, keySpanID, tc.spanID, false)
+	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+		writeField(&buf, keyTraceID, sc.TraceID().String(), false)
+		writeField(&buf, keySpanID, sc.SpanID().String(), false)
 	}
 
 	leaves := append(append([]slog.Attr(nil), h.attrs...), flatten(h.prefix, attrSlice(r))...)
