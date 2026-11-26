@@ -121,7 +121,7 @@ configured_args=(
 # All enabled first-party ServiceAccounts and Deployments receive both references. The default
 # release namespace is the effective workload namespace when namespaceOverride is empty.
 render configured dws --namespace release-space "${configured_args[@]}"
-for account in dws-controller dws-schedule-time dws-orchestrator dws-step dws-dapr-ready; do
+for account in dws-controller dws-schedule-time dws-orchestrator dws-task dws-dapr-ready; do
   account_doc="$(require_doc configured ServiceAccount "$account")"
   assert_namespace "$account_doc" release-space
   assert_service_account_secrets "$account_doc"
@@ -134,31 +134,33 @@ done
 hook_job="$(require_doc configured Job dws-dapr-ready)"
 grep -qx '      serviceAccountName: dws-dapr-ready' "$hook_job" \
   || fail "Dapr readiness hook Job does not use its pull-secret-bearing ServiceAccount"
-assert_no_step_rbac configured dws-step
+assert_no_step_rbac configured dws-task
+[ -z "$(find_doc configured ServiceAccount dws-step)" ] \
+  || fail "chart still renders the pre-rename dws-step ServiceAccount"
 
 controller_doc="$(require_doc configured Deployment dws-controller)"
-configured_step_env="$(awk '/name: DWS_STEP_SERVICE_ACCOUNT$/ { getline; gsub(/"/, "", $2); print $2; exit }' "$controller_doc")"
-[ "$configured_step_env" = dws-step ] \
-  || fail "controller DWS_STEP_SERVICE_ACCOUNT '$configured_step_env' does not match dws-step"
+configured_step_env="$(awk '/name: DWS_TASK_SERVICE_ACCOUNT$/ { getline; gsub(/"/, "", $2); print $2; exit }' "$controller_doc")"
+[ "$configured_step_env" = dws-task ] \
+  || fail "controller DWS_TASK_SERVICE_ACCOUNT '$configured_step_env' does not match dws-task"
 
 # One shared name rule must survive a custom release name and namespaceOverride.
 render custom myrel --namespace release-space --set namespaceOverride=workloads "${configured_args[@]}"
-custom_step="$(require_doc custom ServiceAccount myrel-dws-step)"
+custom_step="$(require_doc custom ServiceAccount myrel-dws-task)"
 assert_namespace "$custom_step" workloads
 assert_service_account_secrets "$custom_step"
 custom_controller="$(require_doc custom Deployment myrel-dws-controller)"
 assert_namespace "$custom_controller" workloads
-custom_step_env="$(awk '/name: DWS_STEP_SERVICE_ACCOUNT$/ { getline; gsub(/"/, "", $2); print $2; exit }' "$custom_controller")"
-[ "$custom_step_env" = myrel-dws-step ] \
-  || fail "custom release DWS_STEP_SERVICE_ACCOUNT '$custom_step_env' does not match myrel-dws-step"
-assert_no_step_rbac custom myrel-dws-step
+custom_step_env="$(awk '/name: DWS_TASK_SERVICE_ACCOUNT$/ { getline; gsub(/"/, "", $2); print $2; exit }' "$custom_controller")"
+[ "$custom_step_env" = myrel-dws-task ] \
+  || fail "custom release DWS_TASK_SERVICE_ACCOUNT '$custom_step_env' does not match myrel-dws-task"
+assert_no_step_rbac custom myrel-dws-task
 
 # Both the omitted default and an explicit [] omit the field everywhere while retaining the
 # dedicated step account.
 render omitted dws
 render empty dws --set-json 'imagePullSecrets=[]'
 for scenario in omitted empty; do
-  for account in dws-controller dws-schedule-time dws-orchestrator dws-step dws-dapr-ready; do
+  for account in dws-controller dws-schedule-time dws-orchestrator dws-task dws-dapr-ready; do
     assert_no_pull_secrets "$(require_doc "$scenario" ServiceAccount "$account")"
   done
   for deployment in dws-controller dws-schedule-time dws-admin dws-console; do
@@ -168,10 +170,10 @@ done
 
 # The step identity belongs to the controller lifecycle.
 render controller_disabled dws --set controller.enabled=false "${configured_args[@]}"
-[ -z "$(find_doc controller_disabled ServiceAccount dws-step)" ] \
+[ -z "$(find_doc controller_disabled ServiceAccount dws-task)" ] \
   || fail "step ServiceAccount rendered with controller.enabled=false"
-if grep -q 'DWS_STEP_SERVICE_ACCOUNT' "$work/controller_disabled.yaml"; then
-  fail "DWS_STEP_SERVICE_ACCOUNT rendered with controller.enabled=false"
+if grep -q 'DWS_TASK_SERVICE_ACCOUNT' "$work/controller_disabled.yaml"; then
+  fail "DWS_TASK_SERVICE_ACCOUNT rendered with controller.enabled=false"
 fi
 
 # Schema rejects values that Kubernetes could not interpret as LocalObjectReferences.

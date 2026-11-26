@@ -226,11 +226,11 @@ metadata:
     app.kubernetes.io/component: controller
 
 ---
-# Source: dws/templates/controller/step-serviceaccount.yaml
+# Source: dws/templates/controller/task-serviceaccount.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: dws-step
+  name: dws-task
   namespace: default
   labels:
     helm.sh/chart: dws-1.1.1
@@ -2036,8 +2036,8 @@ spec:
                   fieldPath: metadata.namespace
             - name: DWS_ORCHESTRATOR_SERVICE_ACCOUNT
               value: "dws-orchestrator"
-            - name: DWS_STEP_SERVICE_ACCOUNT
-              value: "dws-step"
+            - name: DWS_TASK_SERVICE_ACCOUNT
+              value: "dws-task"
             - name: DWS_IMAGES_CALL_HTTP
               value: "ghcr.io/tonylibs/dws-call-http:0.2.0"
             - name: DWS_IMAGES_CALL_OPENAPI

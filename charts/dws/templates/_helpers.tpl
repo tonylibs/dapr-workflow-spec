@@ -76,11 +76,11 @@ DWS_ORCHESTRATOR_SERVICE_ACCOUNT and stamps it on every orchestrator Deployment 
 
 {{/*
 Dedicated ServiceAccount for controller-compiled Knative step pods. The controller is handed
-this name through DWS_STEP_SERVICE_ACCOUNT and stamps it on every step Service it creates. The
+this name through DWS_TASK_SERVICE_ACCOUNT and stamps it on every step Service it creates. The
 account deliberately has no chart-granted RBAC.
 */}}
-{{- define "dws.step.serviceAccountName" -}}
-{{- printf "%s-step" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- define "dws.task.serviceAccountName" -}}
+{{- printf "%s-task" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*

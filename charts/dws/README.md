@@ -29,6 +29,13 @@ ServiceAccounts, including the accounts used by generated orchestrators and Knat
 omitted value or explicit `[]` leaves `imagePullSecrets` absent. Dependency chart configuration
 is separate and is not changed by this value.
 
+When `controller.enabled=true`, generated Knative step pods run as the dedicated
+`<fullname>-task` ServiceAccount (`dws-task` for release `dws`, `myrel-dws-task` for release
+`myrel`), not the namespace `default` account. The chart grants it no RBAC and passes its name to
+the controller as `DWS_TASK_SERVICE_ACCOUNT`. The name keeps this Kubernetes identity distinct
+from the `dws-step` runtime component. Existing step Services switch to the account when their
+workflow is submitted again.
+
 ## Upgrading to scheduling Phase 6a (time triggers)
 
 This chart version adds `dws-schedule-time` (`scheduleTime.enabled`, default `true`; see
