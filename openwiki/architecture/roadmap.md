@@ -44,6 +44,8 @@ The completed data-flow claim is acceptance-tested by the language-neutral corpu
 
 Known v1 gaps belong only in [`conformance/data-flow/divergences/v1.yaml`](../../conformance/data-flow/divergences/v1.yaml). A listed case still runs: a continuing mismatch is recorded as a known divergence, while a now-passing listed case fails the test so its exemption is removed. The current list records the missing jackson-jq local-time functions; it does not lower the corpus expectation. The orchestrator GitHub workflow includes corpus changes in pull-request test selection, so a vector change validates v1 before merge. ADR 0012 also assigns this corpus to the planned v2 Step and Flow paths; those runners are not yet delivered.
 
+A separate expression-level corpus now verifies the built [DWS jq expression service](dws-jq.md), including its gojq dialect and startup policy. It does not yet alter v1 or deployed v2 behavior: their future migrations still need the compiler and caller work in the runtime roadmap.
+
 ```mermaid
 flowchart TD
   Vectors["YAML vectors and expected results"] --> Runner["v1 conformance runner"]
