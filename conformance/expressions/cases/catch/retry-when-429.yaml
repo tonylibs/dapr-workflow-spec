@@ -1,0 +1,9 @@
+name: catch/retry-when-429
+test: givenRetryWhenForStatus429_whenCaught503_thenNotTruthy
+area: catch
+summary: 'A catch.retry.when condition for status 429 is not truthy for a 503 error.'
+source: 'v1 test dws-orchestrator/src/test/java/io/dws/orchestrator/workflow/activity/CatchPolicyTest.java:337 (retryConditionsGateTheRetry).'
+expression: '$error.status == 429'
+input: {}
+variables: {"error":{"type":"https://serverlessworkflow.io/spec/1.0.0/errors/communication","status":503,"instance":"/fetchOrder","title":"Communication error","detail":"step 'fetch-order' failed with status 503: upstream down"},"context":{}}
+expect: { result: false, truthy: false }

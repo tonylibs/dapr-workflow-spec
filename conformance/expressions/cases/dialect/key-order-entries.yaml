@@ -1,0 +1,8 @@
+name: dialect/key-order-entries
+test: givenObjectWithUnsortedKeys_whenToEntries_thenKeysComeOutSorted
+area: dialect
+summary: 'to_entries lists the keys of an object in sorted order.'
+source: 'ADR 0014 Decision 5 (documented dialect: gojq''s, minus the Decision 9 builtins) and the gojq README.'
+expression: '{"b":1,"a":2} | to_entries | map(.key)'
+input: null
+expect: { result: ["a","b"], truthy: true }

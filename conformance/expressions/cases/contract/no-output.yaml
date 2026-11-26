@@ -1,0 +1,8 @@
+name: contract/no-output
+test: givenExpressionWithNoOutput_whenEvaluated_thenResultIsNullAndFalsy
+area: contract
+summary: 'An expression that produces no output yields a null result and is not truthy.'
+source: 'ADR 0014 Decision 3 (contract: result and truthiness follow v1).'
+expression: 'empty'
+input: null
+expect: { result: null, truthy: false }

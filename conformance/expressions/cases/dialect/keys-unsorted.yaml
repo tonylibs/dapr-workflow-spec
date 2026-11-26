@@ -1,0 +1,10 @@
+name: dialect/keys-unsorted
+test: givenKeysUnsortedBuiltin_whenExpressionCompiles_thenCompileFault
+area: dialect
+summary: 'keys_unsorted is missing from the dialect, so the expression fails to compile.'
+source: 'ADR 0014 Decision 5 (documented dialect: gojq''s, minus the Decision 9 builtins) and the gojq README.'
+engine: 'gojq has no keys_unsorted; jackson-jq (jq 1.6 builtins) has it (EX-1 to confirm).'
+expression: 'keys_unsorted'
+input: {"b":1,"a":2}
+expect:
+  fault: { phase: compile, detailContains: ["keys_unsorted"] }

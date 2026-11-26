@@ -1,0 +1,8 @@
+{
+  "JQ_EXPRESSION": "$item < 3",
+  "JQ_VARIABLES": "[\"context\",\"item\",\"index\"]",
+  "JQ_TIMEOUT": "250ms",
+  "JQ_SITE": "processItems.jq.while",
+  "PORT": "8081",
+  "DWS_LOG_FORMAT": "json"
+}

@@ -1,0 +1,8 @@
+name: contract/truthy-zero
+test: givenZeroResult_whenTruthinessIsComputed_thenItIsTruthy
+area: contract
+summary: 'The result 0 is truthy; only null and false are not.'
+source: 'ADR 0014 Decision 3 (everything except null and false is true).'
+expression: '0'
+input: null
+expect: { result: 0, truthy: true }

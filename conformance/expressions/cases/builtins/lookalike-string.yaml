@@ -1,0 +1,8 @@
+name: builtins/lookalike-string
+test: givenStringLiteralInput_whenExpressionCompiles_thenItIsNotABlockedBuiltin
+area: builtins
+summary: 'A string literal "input" is not the blocked input builtin.'
+source: 'ADR 0014 Decision 5 and design D11 (false-positive guard for the builtin policy walk).'
+expression: '"input"'
+input: null
+expect: { result: "input", truthy: true }

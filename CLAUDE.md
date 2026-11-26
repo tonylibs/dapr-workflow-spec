@@ -13,6 +13,7 @@ index: a package map plus rules that apply across every package. Each package al
 | [`dws-step`](dws-step) | Java 25, Spring Boot | Minimal single-node step activity host. |
 | [`dws-call-http`](dws-call-http) | Go 1.26 | `call: http` step image. |
 | [`dws-call-grpc`](dws-call-grpc) | Go 1.26 | `call: grpc` step image (unary only). |
+| [`dws-jq`](dws-jq) | Go 1.26 | Per-expression jq function (ADR 0014): one compiled expression, `POST /run`; not yet called or deployed. |
 | [`dws-run`](dws-run) | Go 1.26 | `run: shell` / `run: script` step images (3 variants, 1 codebase). |
 | [`dws-call-openapi`](dws-call-openapi) | Node 24, TypeScript, Fastify | `call: openapi` step image. |
 | [`dws-call-asyncapi`](dws-call-asyncapi) | Node 24, TypeScript, Fastify | `call: asyncapi` step image. |
@@ -26,7 +27,7 @@ index: a package map plus rules that apply across every package. Each package al
 | [`charts/dws`](charts/dws) | Helm | Chart packaging the control plane (`dws-controller`, `dws-admin` + Postgres, optional console/Dapr/Redis/Dex/APISIX). Not a code package — see its own [`README.md`](charts/dws/README.md). |
 
 `dws-call-grpc`, `dws-call-asyncapi`, `dws-call-a2a`, `dws-admin`, `dws-console`, `dws-flow`,
-`dws-schedule-time`, `dws-mid-basic`, and `dws-mid-bearer` are not yet listed in `AGENTS.md`'s component table — that table predates them. Don't treat its absence
+`dws-schedule-time`, `dws-jq`, `dws-mid-basic`, and `dws-mid-bearer` are not yet listed in `AGENTS.md`'s component table — that table predates them. Don't treat its absence
 as "this package doesn't exist."
 
 ## Cross-cutting style rules
@@ -93,13 +94,13 @@ Types in use: `feat`, `fix`, `refactor`, `docs`, `chore`, `perf`, `ci`, `test`.
   app token, since its only inbound caller is its own sidecar delivering job callbacks. The chart
   fails the render if two sidecars would share one token Secret.
 - **Structured log format** ([`docs/log-format.md`](docs/log-format.md)): `dws-controller`,
-  `dws-admin`, `dws-orchestrator`, `dws-flow`, `dws-step` and `dws-schedule-time` each read `DWS_LOG_FORMAT` (`json`,
+  `dws-admin`, `dws-orchestrator`, `dws-flow`, `dws-step`, `dws-schedule-time` and `dws-jq` each read `DWS_LOG_FORMAT` (`json`,
   trimmed and case-insensitive; anything else means today's text) and, in JSON mode, write one
   object per line with the six keys `timestamp`, `severity`, `logger`, `message`, `trace_id`,
   `span_id` (the last two omitted outside a valid span) plus `exception.type`/`.message`/
   `.stacktrace`. Each package has its own formatter and its own golden-case test — there is no
   shared library, so a key renamed in one package and not the others is not a build error; change
-  all six and `docs/log-format.md` together. The chart renders `DWS_LOG_FORMAT` on controller,
+  all seven and `docs/log-format.md` together. The chart renders `DWS_LOG_FORMAT` on controller,
   admin and `dws-schedule-time` from `observability.logs.format`; the controller stamps it on instrumented orchestrators
   (`OrchestratorEnvContractTest` asserts the sibling `application.yaml` reads it). Runtime-v2
   Phase 4 synthesis must stamp it on `dws-flow`/`dws-step` too. A package that reads a different
@@ -132,6 +133,29 @@ Types in use: `feat`, `fix`, `refactor`, `docs`, `chore`, `perf`, `ci`, `test`.
   fixtures with `./mvnw test -Dtest=SchedulerContractTest -Ddws.writeTriggerFixtures=true` and
   update the parser in the same change. The chart's read-only scheduler Role (configmaps and
   apps/deployments, `get`/`list`/`watch`) is part of the same contract.
+- **`dws-jq` configuration contract** (`dws-controller` 2m.2 → `dws-jq`; ADR 0014, OpenSpec
+  `dws-jq-function`). One generic image serves every expression site; the controller will render one
+  Knative Service per site with env `JQ_EXPRESSION`, `JQ_VARIABLES` (JSON array of names without
+  `$`), `JQ_TIMEOUT`, `JQ_SECRET_STORE`, `JQ_SITE`, plus the usual `PORT`, `DAPR_HTTP_PORT`,
+  `DAPR_API_TOKEN` and `DWS_LOG_FORMAT`. The fixtures `dws-jq/testdata/contract/env-*.json` are the
+  contract: `TestConfigContract` loads each through a recording lookup and asserts the set of names
+  the loader actually asks for equals the union of fixture keys (fixture values differ from the
+  defaults, so a dropped read also changes the loaded `Config`), so a name added or dropped on the
+  `dws-jq` side without a fixture fails the build. `config.Names()` is derived from the same
+  recording, not a hand-kept list. The controller side (2m.2) must compare its rendering with the
+  same fixtures, as `SchedulerContractTest` does for the scheduler; until it does, nothing pins that
+  side. A drifted name is not a compile error: `dws-jq` fails startup (a missing `JQ_EXPRESSION`, a
+  `$secrets` expression without `JQ_SECRET_STORE`) or silently ignores the knob (a misspelt
+  `JQ_TIMEOUT` leaves the 5 s default). The `POST /run` shape is part of the contract for the callers
+  3b/3c/3f/3g/6b will add: body exactly `{"input": any, "variables": {declared name: any}}` (any other
+  key, or an undeclared variable, is `400`; both fields are optional, and `"input": null` or
+  `"variables": null` is the same as leaving the field out); `200 {"result","truthy"}`; `422 {"fault":{"type":
+  "expression","expression","detail"}}` for a jq error or timeout; `503` until ready. A caller that
+  sends an extra field or reads another key breaks at runtime, not at build time. A bad expression
+  or unreadable secret makes `dws-jq` exit 1 at startup, and `/healthz` is `503` until its secrets
+  are read, so the failure shows up as a Knative revision that never becomes ready. Expression behaviour
+  (gojq dialect, builtin policy) is pinned by `conformance/expressions/`, run by `dws-jq`'s
+  `internal/conformance` inside `go test`.
 - **Step-service request/response shape** (`dws-call-http`, `dws-call-grpc`, `dws-call-openapi`,
   `dws-call-asyncapi`, `dws-run`) is consumed by `dws-orchestrator`'s retry/error-classification
   logic (`WorkflowErrors.classify`). If you change a step-service's error/response contract,
@@ -166,6 +190,7 @@ each package's own config:
 | `dws-call-a2a` | `uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest` |
 | `dws-admin` | `pnpm lint && pnpm test && pnpm build` |
 | `dws-console` | `pnpm check && pnpm typecheck && pnpm test && pnpm build` (`check` = Biome lint+format) |
+| `dws-jq` | `make lint && make test` (the expression corpus runs inside `go test`; reads `conformance/expressions/` at the repo root) |
 | `dws-mid-bearer` | `make lint && make test` (TinyGo only runs inside `make docker`) |
 | `dws-flow` | `dotnet test test/dws-flow.Tests.csproj` (name the test project: a bare `dotnet test` in `dws-flow/` only finds the app project, runs no tests and exits 0). No lint/format gate configured yet — no `.editorconfig`, no analyzers |
 | `dws-schedule-time` | `dotnet test test/dws-schedule-time.Tests.csproj` (name the test project, as for `dws-flow`). No lint/format gate configured yet |

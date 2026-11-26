@@ -1,0 +1,8 @@
+name: loops/in-field
+test: givenBareForIn_whenEvaluated_thenYieldsTheArray
+area: loops
+summary: 'A bare for.in expression selects an array from the data.'
+source: 'v1 test dws-orchestrator/src/test/java/io/dws/orchestrator/workflow/activity/EvaluateForActivityTest.java:58 (bareJqExpressionYieldsTheArray).'
+expression: '.pets'
+input: {"pets":[{"id":1},{"id":2}]}
+expect: { result: [{"id":1},{"id":2}], truthy: true }

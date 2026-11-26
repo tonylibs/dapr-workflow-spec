@@ -1,0 +1,9 @@
+name: dialect/loc-variable
+test: givenLocVariable_whenExpressionCompiles_thenCompileFault
+area: dialect
+summary: '$__loc__ is unsupported, so the expression fails to compile.'
+source: 'ADR 0014 Decision 5 (documented dialect: gojq''s, minus the Decision 9 builtins) and the gojq README.'
+expression: '$__loc__'
+input: null
+expect:
+  fault: { phase: compile, detailContains: ["$__loc__"] }

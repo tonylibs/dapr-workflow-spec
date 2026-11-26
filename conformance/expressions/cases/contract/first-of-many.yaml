@@ -1,0 +1,8 @@
+name: contract/first-of-many
+test: givenExpressionWithManyOutputs_whenEvaluated_thenYieldsOnlyTheFirst
+area: contract
+summary: 'Only the first output of an expression is the result.'
+source: 'ADR 0014 Decision 3 (contract: result and truthiness follow v1).'
+expression: '.[]'
+input: [0,1]
+expect: { result: 0, truthy: true }

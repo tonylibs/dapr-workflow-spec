@@ -1,0 +1,9 @@
+name: contract/evaluate-error
+test: givenExpressionThatErrors_whenEvaluated_thenEvaluateFault
+area: contract
+summary: 'An error raised while evaluating is an evaluate fault.'
+source: 'ADR 0014 Decision 3 (expression failure covers evaluation errors).'
+expression: '.a + 1'
+input: {"a":"x"}
+expect:
+  fault: { phase: evaluate, detailContains: [] }

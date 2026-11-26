@@ -268,7 +268,66 @@ implementations in the system. Instead, every component that embeds a jq engine 
 |---|---|---|
 | EX-1 | jackson-jq runner for `conformance/expressions/` (Step and v1), with its own divergence list. Needed only until 2k and 5.3 land (Decision 9) | Not started |
 | EX-2 | Submit-time expression check using the `dws-jq` binary (controller dry-run or `dws-admin` validation) | Deferred |
-| EX-3 | Measure cold start and per-evaluation latency, before 2.0d settles O-1; decide whether some sites need `min-scale: 1` | Not started |
+| EX-3 | Measure cold start and per-evaluation latency, before 2.0d settles O-1; decide whether some sites need `min-scale: 1` | Measured 2026-11-25 on a local cluster ([`dws-jq/README.md`](../../dws-jq/README.md#ex-3-results)); the "which sites need `min-scale: 1`" decision is **open**, see 2j notes |
+
+### 2j notes (2026-11-25)
+
+Recorded while building `dws-jq` (roadmap row 2j). No decision above is changed.
+
+**Decision 5, gojq-side cells confirmed** by `conformance/expressions/cases/dialect/*`, run by `dws-jq`
+(55 of 55 corpus cases pass on gojq v0.12.20; the `dws-jq` divergence list is empty):
+
+| Cell | Observed on gojq |
+|---|---|
+| Integer precision | `9007199254740993 + 1` is `9007199254740994` |
+| String indexing | `"abcde"[2]` is `"c"` |
+| Regex look-around | `test("a(?=b)")` is an **evaluate-phase** fault (`invalid or unsupported Perl syntax`), not a startup error |
+| `keys_unsorted` | compile fault, so `dws-jq` fails at startup |
+| `$__loc__` | compile fault. `input_line_number` also fails to compile (pinned in `internal/expr/program_test.go`); `get_*_origin` is not pinned by a test |
+| Key order, date functions | as the table states |
+
+The jackson-jq column of those rows stays "to confirm" until EX-1.
+
+**O-5, dynamic access.** `dws-jq` rejects every non-static `$secrets` use at startup, naming the form it
+found. Only `$secrets.name`, `$secrets."name"` and `$secrets["name"]` are accepted. This answers the
+2.0d question "dynamic `$secrets[...]` access" with *reject*; a computed choice is still possible as
+`if .x then $secrets.a else $secrets.b end`. The reason is that `$secrets[.key]` could not be scoped to
+a named secret, so the controller's static scan would be unsound. The other open half of O-5 (which
+expressions may use `$secrets`) is not answered by `dws-jq`, which accepts it in any expression it is
+configured for. One addition not in the ADR: a secret named `bulk` is refused, because
+`GET /v1.0/secrets/{store}/bulk` is Dapr's bulk route and would return the whole store.
+
+**EX-3.** Measured 2026-11-25 (local Docker Desktop cluster, Knative 1.24.0, Dapr 1.19.1; numbers in the
+`dws-jq` README). Warm evaluation through Dapr invocation: p50 2.4 ms, p95 3.5 ms over 200 calls. A cold
+start through the Knative route: about 1 s (0.92 to 1.02 s, five samples), with the image already on the
+node.
+
+**What turned out wrong or incomplete:**
+
+1. **Decision 2 and Decision 8 assume a scaled-to-zero site wakes on invocation. With Dapr service
+   invocation it does not.** In all five cold samples the call failed within 6 ms with `500
+   ERR_DIRECT_INVOKE` ("failed to resolve address for `<app-id>-dapr.<ns>.svc.cluster.local` ... no such
+   host") and no pod was started: Dapr resolves the callee through the `<app-id>-dapr` headless Service,
+   which has no address at zero pods, so the Knative activator never sees the request. Only a request
+   through the Knative route wakes the revision, and after it did, Dapr invocation still failed for
+   several seconds (about 20 s after pod creation in the one run that was timed). Decision 8's "a cold
+   start is paid on the first evaluation" is therefore not true for callers that use Dapr invocation,
+   which Decision 2 prescribes for all three callers. For O-1 this means `min-scale: 1` is not only an
+   optimisation for busy sites: any site whose caller cannot tolerate a failed first call needs it, or
+   the caller needs a wake-up step or retry. Roadmap row 2.0d must settle this; it was not decided here.
+   The zero-pod failure (5 of 5 samples, `ERR_DIRECT_INVOKE` naming the unresolvable `<app-id>-dapr` host) is Dapr's name resolution and does not depend on this cluster. The cause of the roughly 20 s delay after the wake is **unconfirmed**: the headless Service gaining an address, or DNS negative caching (which depends on cluster DNS configuration), would both fit, and it was not isolated. It was one timed run.
+2. **Decision 4's table is wrong about gojq as a library.** It says `input_filename` "exists; returns
+   `null`", and that `debug` and `stderr` "exist". Run as a library (the way `dws-jq` uses it, not the
+   `gojq` command), v0.12.20 does not define `input_filename`, `debug` or `stderr` (`function not
+   defined: input_filename/0`, and so on), and `input`/`inputs` fail to compile with `input(s)/0 is not
+   allowed` rather than failing at run time. `env` and `$ENV` do exist and return `{}`, `halt` and
+   `halt_error` exist (they stop evaluation with a halt error), and `import` fails with `cannot load
+   module`. This does not change the decision: `dws-jq` still rejects all of them by name at startup,
+   so a future gojq that defines `debug` or `input_filename` cannot slip through. It does mean the table
+   describes the command-line tool for those rows.
+3. Decision 4 says the 13 cases in `conformance/data-flow/cases/builtins/` are the acceptance test. The
+   `dws-jq` corpus carries them plus look-alike cases (`.env`, `{debug: 1}`, `"input"`) to show the
+   by-name check does not reject field names, object keys or strings.
 
 ## Alternatives rejected
 

@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tonylibs/dapr-workflow-spec/conformance/expressions/case.schema.json",
+  "title": "Expression conformance case",
+  "description": "One case of the shared jq expression conformance corpus (ADR 0014 Decision 5). See README.md.",
+  "type": "object",
+  "required": ["name", "test", "area", "summary", "source", "expression", "input", "expect"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "description": "<area>/<file name without .yaml>. Unique across the corpus; divergence lists refer to it.",
+      "type": "string",
+      "pattern": "^[a-z0-9-]+/[a-z0-9-]+$"
+    },
+    "test": {
+      "description": "The test name a runner reports the case under, givenX_whenY_thenZ. Unique across the corpus.",
+      "type": "string",
+      "pattern": "^given[A-Z][A-Za-z0-9]*_when[A-Z][A-Za-z0-9]*_then[A-Z][A-Za-z0-9]*$"
+    },
+    "area": {
+      "description": "The coverage area, equal to the case's directory.",
+      "enum": ["contract", "builtins", "dialect", "loops", "catch", "templates"]
+    },
+    "summary": { "description": "What the case proves, in one sentence.", "type": "string", "minLength": 1 },
+    "source": {
+      "description": "Where the expected result comes from: ADR 0012 Decision 9, ADR 0014 Decision 3 or 5 (plus the gojq README), a data-flow corpus case, or a v1 test file:line.",
+      "type": "string",
+      "minLength": 1
+    },
+    "engine": {
+      "description": "What an engine does with the expression, when that matters (for example a builtin it does not implement).",
+      "type": "string",
+      "minLength": 1
+    },
+    "expression": {
+      "description": "The jq expression, bare or wrapped in ${ }. Always a single-quoted YAML scalar.",
+      "type": "string",
+      "minLength": 1
+    },
+    "input": { "description": "The value bound to `.`. Required; may be null." },
+    "variables": {
+      "description": "Values bound to $<name>. A declared variable left out is null.",
+      "type": "object"
+    },
+    "expect": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["result", "truthy"],
+          "additionalProperties": false,
+          "properties": {
+            "result": { "description": "The first output, or null when the expression has none." },
+            "truthy": { "description": "False for null and false, true for everything else.", "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["fault"],
+          "additionalProperties": false,
+          "properties": {
+            "fault": {
+              "description": "The expression fails.",
+              "type": "object",
+              "required": ["phase", "detailContains"],
+              "additionalProperties": false,
+              "properties": {
+                "phase": {
+                  "description": "compile: fails before any evaluation. evaluate: fails while evaluating.",
+                  "enum": ["compile", "evaluate"]
+                },
+                "detailContains": {
+                  "description": "Strings the fault detail must contain, such as the blocked builtin. May be empty when only the phase is specified.",
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

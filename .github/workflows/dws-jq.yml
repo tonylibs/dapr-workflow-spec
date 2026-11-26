@@ -1,0 +1,151 @@
+name: dws-jq
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'dws-jq-v*'
+    paths:
+      - 'dws-jq/**'
+      - 'conformance/expressions/**'
+      - '.github/workflows/dws-jq.yml'
+  pull_request:
+    paths:
+      - 'dws-jq/**'
+      - 'conformance/expressions/**'
+      - '.github/workflows/dws-jq.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: dws-jq-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/dws-jq
+
+jobs:
+  test:
+    name: compile & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dws-jq
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: dws-jq/go.mod
+          cache: false
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: gofmt check
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed on:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Build
+        run: go build -trimpath -ldflags="-s -w" -o bin/dws-jq .
+
+      - name: Test
+        run: go test -race ./...
+
+  build-image:
+    name: build & push image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        # Skip on PRs: the image is built for validation but not pushed.
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=match,pattern=^dws-jq-v(.*)$,group=1
+            type=sha,prefix=,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # Loaded into the local daemon rather than pushed, so the next step can
+      # run the very image that would ship.
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: dws-jq
+          load: true
+          tags: dws-jq:smoke
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=dws-jq
+          cache-to: type=gha,mode=max,scope=dws-jq
+
+      # `.` reads no secrets, so no Dapr sidecar or cluster is needed: the
+      # function is ready as soon as the expression compiles. Require /healthz
+      # to report ok, then one evaluation with its exact response body.
+      - name: Smoke-test the image
+        shell: bash
+        run: |
+          docker run -d --name dws-jq-smoke -p 8080:8080 -e JQ_EXPRESSION=. dws-jq:smoke
+          trap 'docker rm -f dws-jq-smoke' EXIT
+          # Poll by hand: docker-proxy publishes the port before the process
+          # listens, so an early connect can end in an empty reply or a reset,
+          # which curl's own retry options do not all cover.
+          healthy=false
+          for _ in $(seq 1 20); do
+            body=$(curl -fsS --max-time 1 http://localhost:8080/healthz 2>/dev/null) || body=""
+            if grep -q '"status":"ok"' <<< "$body"; then
+              healthy=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$healthy" != true ]; then
+            echo "container did not become healthy"
+            docker logs dws-jq-smoke
+            exit 1
+          fi
+          echo "$body"
+          out=$(curl -fsS --max-time 5 -X POST http://localhost:8080/run -d '{"input":1}') || {
+            echo "POST /run failed"
+            docker logs dws-jq-smoke
+            exit 1
+          }
+          echo "$out"
+          [ "$out" = '{"result":1,"truthy":true}' ] || { echo "unexpected /run body"; docker logs dws-jq-smoke; exit 1; }
+
+      - name: Push the smoke-tested image
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            docker tag dws-jq:smoke "$tag"
+            docker push "$tag"
+          done <<< "$IMAGE_TAGS"

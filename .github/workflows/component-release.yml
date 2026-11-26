@@ -27,6 +27,7 @@ on:
           - dws-flow
           - dws-schedule-time
           - dws-call-http
+          - dws-jq
           - dws-call-grpc
           - dws-call-openapi
           - dws-call-asyncapi

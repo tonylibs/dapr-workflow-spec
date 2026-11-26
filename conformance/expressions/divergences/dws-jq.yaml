@@ -1,0 +1,10 @@
+# Known divergences of dws-jq (gojq) from the shared expression corpus.
+#
+# A case listed here still runs on every build. The dws-jq runner reports it as a known divergence
+# while gojq disagrees with the expected result, and fails the build once gojq agrees, so the entry is
+# removed by the change that fixes it. Never edit a case's expectation to make dws-jq pass.
+#
+# followUp: the roadmap or ADR 0014 follow-up (for example EX-1) that resolves the entry.
+# The jackson-jq list (Step nodes and v1) arrives with EX-1.
+runtime: dws-jq (gojq)
+divergences: []

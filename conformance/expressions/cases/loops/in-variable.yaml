@@ -1,0 +1,9 @@
+name: loops/in-variable
+test: givenForInOverVariable_whenEvaluated_thenYieldsTheVariable
+area: loops
+summary: 'A for.in expression can read a bound variable.'
+source: 'v1 test dws-orchestrator/src/test/java/io/dws/orchestrator/workflow/activity/EvaluateForActivityTest.java:113 (scopeVariableIsBoundIntoInExpression).'
+expression: '$sample'
+input: {}
+variables: {"sample":[10,20,30]}
+expect: { result: [10,20,30], truthy: true }

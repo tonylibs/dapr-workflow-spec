@@ -1,0 +1,8 @@
+name: builtins/lookalike-field
+test: givenFieldNamedEnv_whenExpressionCompiles_thenItIsNotABlockedBuiltin
+area: builtins
+summary: 'A field access named .env is not the blocked env builtin.'
+source: 'ADR 0014 Decision 5 and design D11 (false-positive guard for the builtin policy walk).'
+expression: '.env'
+input: {"env":1}
+expect: { result: 1, truthy: true }

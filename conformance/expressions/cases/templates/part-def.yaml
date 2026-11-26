@@ -1,0 +1,8 @@
+name: templates/part-def
+test: givenPartWithDef_whenEvaluated_thenDefinitionStaysInsidePart
+area: templates
+summary: 'A part that defines a function keeps the definition inside the part.'
+source: 'ADR 0014 Decision 9, O-2 (the compiler wraps each ${ } part as ([ expr ] | .[0])).'
+expression: '{ "a": ([ def inc: . + 1; .n | inc ] | .[0]) }'
+input: {"n":1}
+expect: { result: {"a":2}, truthy: true }
