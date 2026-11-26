@@ -14,5 +14,5 @@
 
 ## 3. Acceptance
 
-- [ ] 3.1 On a fresh cluster namespace with Dapr and Knative, create `regcred`, use uncached private tags, and install the matching chart and controller image with `imagePullSecrets: [{name: regcred}]`. Confirm the controller, admin, and scheduler are ready. Submit and execute a workflow with a Knative step, then record orchestrator and step Pod readiness, the step's resolved image digest and dedicated ServiceAccount, and successful workflow completion without manual ServiceAccount patches or preloaded images.
-- [ ] 3.2 Run `openspec validate chart-image-pull-secrets --type change --strict` before archive.
+- [x] 3.1 On a fresh cluster namespace with Dapr and Knative, create `regcred`, use uncached private tags, and install the matching chart and controller image with `imagePullSecrets: [{name: regcred}]`. Confirm the controller, admin, and scheduler are ready. Submit and execute a workflow with a Knative step, then record orchestrator and step Pod readiness, the step's resolved image digest and dedicated ServiceAccount, and successful workflow completion without manual ServiceAccount patches or preloaded images.
+- [x] 3.2 Run `openspec validate chart-image-pull-secrets --type change --strict` before archive.
