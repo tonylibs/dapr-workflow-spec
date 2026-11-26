@@ -140,3 +140,69 @@ Started instance `pull-task-run-1` (HTTP 202). It reached `COMPLETED` with outpu
 
 No ServiceAccount or workload manifest was patched by hand. `openspec validate
 chart-image-pull-secrets --type change --strict` reported the change as valid.
+
+## Shared task account and per-step-image override (task 7.1)
+
+Date: 2026-11-26  
+Cluster: Docker Desktop Kubernetes (`docker-desktop`), three Ready nodes  
+Namespace: `dws-pull-accept-ovr`  
+Release: `pullovr`  
+Tree: working tree on top of `1921f7dd` with tasks 5.1–6.3 applied (controller image built from it
+after `./mvnw verify` passed, 469 tests)
+
+### Registry and credentials
+
+The same authenticated registry as the task 4.3 run (`172.18.0.8:5000`, anonymous `/v2/` → 401)
+gained a second htpasswd user, `stepuser`. The namespace holds two pull Secrets: `regcred`
+(the existing `dws` user) and `step-cred` (`stepuser`).
+
+| Workload | Tag | Image digest |
+| --- | --- | --- |
+| Controller | `controller-ovr-20261126` | built from this tree |
+| Console | `console-ovr-20261126` | local `dws-console:gw-e2e` re-tagged |
+| Admin, scheduler, orchestrator, HTTP step | `*-task-20261126-1211` | as in the task 4.3 run |
+| Shell step | `run-shell-ovr-20261126` | `sha256:62f2b7885904775f6a7a016f0c1c5aa5392b5ddeaf011df261bdca494bf8e50f` (built from `dws-run`, new to every node) |
+
+### Installation
+
+Values: `imagePullSecrets: [{name: regcred}]`, `imagePullServiceAccount.enabled=true`,
+`console.enabled=true`, `dapr.enabled=false` (test Redis created as before), private image
+overrides as above, and `controller.images.run.shell.imagePullSecrets: [{name: step-cred}]`.
+Controller, admin, console and scheduler were each 1/1 Ready.
+
+- ServiceAccounts: `pullovr-dws-controller`, `pullovr-dws-orchestrator`,
+  `pullovr-dws-schedule-time` and `pullovr-dws-task` each carry `imagePullSecrets: [regcred]`;
+  `pullovr-dws-task-override` carries none.
+- RoleBindings name only the controller, orchestrator and scheduler accounts; no RoleBinding or
+  ClusterRoleBinding names `pullovr-dws-task` or `pullovr-dws-task-override`.
+- Pods: admin and console run as `pullovr-dws-task`; controller and scheduler keep their own
+  accounts. All four have pod-level `imagePullSecrets: [regcred]`.
+- Controller env: `DWS_TASK_SERVICE_ACCOUNT=pullovr-dws-task`,
+  `DWS_TASK_OVERRIDE_SERVICE_ACCOUNT=pullovr-dws-task-override`,
+  `DWS_ORCHESTRATOR_SERVICE_ACCOUNT=pullovr-dws-orchestrator`,
+  `DWS_IMAGES_PULL_SECRETS_RUN_SHELL=["step-cred"]`, and no other `DWS_IMAGES_PULL_SECRETS_*`.
+
+### Workflow execution
+
+Submitted `private-pull-ovr@v766aca29` (HTTP 201): `probeAdmin` (`call: http`, no override) then
+`shellEcho` (`run: shell`, `echo override-ok`, overridden).
+
+| Knative Service | Revision `serviceAccountName` | Revision `imagePullSecrets` | Resolved digest |
+| --- | --- | --- | --- |
+| `probe-admin` | `pullovr-dws-task` | none | `172.18.0.8:5000/dws-acceptance@sha256:7925b6af…6c55fa` |
+| `shell-echo` | `pullovr-dws-task-override` | `[step-cred]` | `172.18.0.8:5000/dws-acceptance@sha256:62f2b788…f8e50f` |
+
+- Both Revisions resolved their tags to digests and became Ready (`-00001`); step Pods 3/3 Ready.
+- `probe-admin` Pod: account `pullovr-dws-task`, effective pull secrets `[regcred]` (inherited).
+- `shell-echo` Pod: account `pullovr-dws-task-override`, effective pull secrets `[step-cred]` only.
+  Kubernetes recorded `Successfully pulled image …@sha256:62f2b788…` for it, so the uncached image
+  was pulled with `step-cred` alone.
+- Orchestrator Pod: account `pullovr-dws-orchestrator`, inherited `[regcred]`, 2/2 Ready.
+
+Started `pull-ovr-run-1` (HTTP 202). It reached `COMPLETED` with output `override-ok`.
+
+The `call-http`, orchestrator and admin image references were already cached on nodes from the
+earlier runs ("already present"); their pull path through `regcred` was proven in the task 4.3
+run. The `[]` (public image) variant was not exercised live, because every DWS image on GHCR
+requires authentication; it is covered by chart render and controller tests. No ServiceAccount or
+workload was patched by hand.
