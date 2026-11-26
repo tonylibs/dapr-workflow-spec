@@ -90,6 +90,11 @@ spec:
               value: {{ include "dws.orchestrator.serviceAccountName" . | quote }}
             - name: DWS_TASK_SERVICE_ACCOUNT
               value: {{ include "dws.task.serviceAccountName" . | quote }}
+            - name: DWS_TASK_OVERRIDE_SERVICE_ACCOUNT
+              value: {{ include "dws.task.overrideServiceAccountName" . | quote }}
+            {{- with (include "dws.controller.pullSecretOverrideEnv" .) }}
+            {{- . | nindent 12 }}
+            {{- end }}
             - name: DWS_IMAGES_CALL_HTTP
               value: "{{ .Values.controller.images.callHttp.repository }}:{{ .Values.controller.images.callHttp.tag }}"
             - name: DWS_IMAGES_CALL_OPENAPI

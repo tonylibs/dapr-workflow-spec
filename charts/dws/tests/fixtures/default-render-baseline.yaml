@@ -226,6 +226,21 @@ metadata:
     app.kubernetes.io/component: controller
 
 ---
+# Source: dws/templates/controller/task-override-serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dws-task-override
+  namespace: default
+  labels:
+    helm.sh/chart: dws-1.1.1
+    app.kubernetes.io/name: dws
+    app.kubernetes.io/instance: dws
+    app.kubernetes.io/version: "1.18.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: step
+
+---
 # Source: dws/templates/controller/task-serviceaccount.yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -2038,6 +2053,8 @@ spec:
               value: "dws-orchestrator"
             - name: DWS_TASK_SERVICE_ACCOUNT
               value: "dws-task"
+            - name: DWS_TASK_OVERRIDE_SERVICE_ACCOUNT
+              value: "dws-task-override"
             - name: DWS_IMAGES_CALL_HTTP
               value: "ghcr.io/tonylibs/dws-call-http:0.2.0"
             - name: DWS_IMAGES_CALL_OPENAPI

@@ -1,19 +1,42 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
-  "$comment": "Deliberately partial (ADR 0007, question 8): only scheduleTime is described and closed. Every other top-level key is left unconstrained, so existing values files and --reuse-values upgrades keep rendering; guards for the rest stay as fail calls in _preflight.tpl/_helpers.tpl. Close another block only in its own change.",
+  "$comment": "Deliberately partial (ADR 0007, question 8): only scheduleTime and imagePullServiceAccount are described and closed. controller and controller.images stay open; only the per-step-image imagePullSecrets overrides inside them are validated. Every other top-level key is left unconstrained, so existing values files and --reuse-values upgrades keep rendering; guards for the rest stay as fail calls in _preflight.tpl/_helpers.tpl. Close another block only in its own change.",
   "type": "object",
   "properties": {
     "imagePullSecrets": {
-      "description": "References to existing image pull Secrets in the chart's effective workload namespace.",
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["name"],
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1
+      "$ref": "#/definitions/imagePullSecrets"
+    },
+    "imagePullServiceAccount": {
+      "description": "Opt-in sharing of the stable zero-RBAC <fullname>-task ServiceAccount with the admin and console Deployments. RBAC-bearing workloads keep their own ServiceAccounts.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "description": "Set serviceAccountName: <fullname>-task on the admin and console Deployments.",
+          "type": "boolean"
+        }
+      }
+    },
+    "controller": {
+      "description": "Left open (ADR 0007). Only the per-step-image imagePullSecrets overrides are validated.",
+      "type": "object",
+      "properties": {
+        "images": {
+          "type": "object",
+          "properties": {
+            "callHttp": { "$ref": "#/definitions/stepImage" },
+            "callOpenapi": { "$ref": "#/definitions/stepImage" },
+            "callGrpc": { "$ref": "#/definitions/stepImage" },
+            "callAsyncapi": { "$ref": "#/definitions/stepImage" },
+            "callA2a": { "$ref": "#/definitions/stepImage" },
+            "run": {
+              "type": "object",
+              "properties": {
+                "shell": { "$ref": "#/definitions/stepImage" },
+                "scriptJs": { "$ref": "#/definitions/stepImage" },
+                "scriptPython": { "$ref": "#/definitions/stepImage" }
+              }
+            }
           }
         }
       }
@@ -106,6 +129,34 @@
     }
   },
   "definitions": {
+    "imagePullSecrets": {
+      "description": "References to existing image pull Secrets in the chart's effective workload namespace.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "stepImage": {
+      "description": "A controller-generated step image. Left open apart from its optional imagePullSecrets override.",
+      "type": "object",
+      "properties": {
+        "imagePullSecrets": {
+          "description": "Replacement for the top-level imagePullSecrets for this step image. Omitted or null inherits the global list through <fullname>-task; an array (including []) replaces it and runs the step as <fullname>-task-override.",
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/definitions/imagePullSecrets" }
+          ]
+        }
+      }
+    },
     "isoDuration": {
       "description": "ISO-8601 day-time duration such as PT15S, PT1H30M or P1D.",
       "type": "string",
