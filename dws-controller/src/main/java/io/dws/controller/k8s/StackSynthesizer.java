@@ -13,6 +13,7 @@ import imports.dev.knative.serving.ServiceSpecTemplateSpecContainersEnv;
 import imports.dev.knative.serving.ServiceSpecTemplateSpecContainersEnvValueFrom;
 import imports.dev.knative.serving.ServiceSpecTemplateSpecContainersEnvValueFromSecretKeyRef;
 import imports.dev.knative.serving.ServiceSpecTemplateSpecContainersPorts;
+import imports.dev.knative.serving.ServiceSpecTemplateSpecImagePullSecrets;
 import imports.io.dapr.Component;
 import imports.io.dapr.ComponentProps;
 import imports.io.dapr.ComponentSpec;
@@ -33,6 +34,7 @@ import imports.io.dapr.WorkflowAccessPolicySpecRules;
 import imports.io.dapr.WorkflowAccessPolicySpecRulesActivities;
 import imports.io.dapr.WorkflowAccessPolicySpecRulesCallers;
 import io.dws.controller.compile.Names;
+import io.dws.controller.config.ImagePullSecretPolicy;
 import io.dws.controller.logging.StructuredLogging;
 import io.dws.controller.model.BindingComponent;
 import io.dws.controller.model.DeploymentPlan;
@@ -191,9 +193,28 @@ public class StackSynthesizer {
   /** One Dapr-enabled Knative Service per deployable step, running as the configured identity. */
   public List<GenericKubernetesResource> knativeServices(
       DeploymentPlan plan, String namespace, String serviceAccount) {
+    return knativeServices(
+        plan, namespace, serviceAccount, serviceAccount, ImagePullSecretPolicy.none());
+  }
+
+  /**
+   * One Dapr-enabled Knative Service per deployable step. A step whose {@link TaskKind} has a
+   * pull-secret override runs as {@code overrideServiceAccount} with exactly that list on its
+   * Revision template (none for an empty list); every other step runs as {@code
+   * defaultServiceAccount} with no pod-level list, inheriting the account's pull secrets.
+   */
+  public List<GenericKubernetesResource> knativeServices(
+      DeploymentPlan plan,
+      String namespace,
+      String defaultServiceAccount,
+      String overrideServiceAccount,
+      ImagePullSecretPolicy pullSecrets) {
     List<GenericKubernetesResource> services = new ArrayList<>(plan.steps().size());
     for (StepService step : plan.steps()) {
-      services.add(knativeService(plan, step, namespace, serviceAccount));
+      Optional<List<String>> override = pullSecrets.overrideFor(step.kind());
+      String serviceAccount = override.isPresent() ? overrideServiceAccount : defaultServiceAccount;
+      services.add(
+          knativeService(plan, step, namespace, serviceAccount, override.orElse(List.of())));
     }
     return services;
   }
@@ -489,9 +510,33 @@ public class StackSynthesizer {
   }
 
   private GenericKubernetesResource knativeService(
-      DeploymentPlan plan, StepService step, String namespace, String serviceAccount) {
+      DeploymentPlan plan,
+      StepService step,
+      String namespace,
+      String serviceAccount,
+      List<String> pullSecrets) {
     Chart chart = Testing.chart();
     Map<String, String> stepLabels = new LinkedHashMap<>(Labels.forPlan(plan));
+    ServiceSpecTemplateSpec.Builder podSpec =
+        ServiceSpecTemplateSpec.builder()
+            .serviceAccountName(serviceAccount)
+            .containers(
+                List.of(
+                    ServiceSpecTemplateSpecContainers.builder()
+                        .image(step.image())
+                        .env(knativeEnv(step.env()))
+                        .ports(
+                            List.of(
+                                ServiceSpecTemplateSpecContainersPorts.builder()
+                                    .containerPort(CONTAINER_PORT)
+                                    .build()))
+                        .build()));
+    if (!pullSecrets.isEmpty()) {
+      podSpec.imagePullSecrets(
+          pullSecrets.stream()
+              .map(name -> ServiceSpecTemplateSpecImagePullSecrets.builder().name(name).build())
+              .toList());
+    }
     stepLabels.put(Labels.STEP_TYPE, Labels.stepType(step.kind()));
     new Service(
         chart,
@@ -512,22 +557,7 @@ public class StackSynthesizer {
                                     .labels(stepLabels)
                                     .annotations(stepAnnotations(plan, step))
                                     .build())
-                            .spec(
-                                ServiceSpecTemplateSpec.builder()
-                                    .serviceAccountName(serviceAccount)
-                                    .containers(
-                                        List.of(
-                                            ServiceSpecTemplateSpecContainers.builder()
-                                                .image(step.image())
-                                                .env(knativeEnv(step.env()))
-                                                .ports(
-                                                    List.of(
-                                                        ServiceSpecTemplateSpecContainersPorts
-                                                            .builder()
-                                                            .containerPort(CONTAINER_PORT)
-                                                            .build()))
-                                                .build()))
-                                    .build())
+                            .spec(podSpec.build())
                             .build())
                     .build())
             .build());

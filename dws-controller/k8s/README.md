@@ -4,7 +4,7 @@
 
 | File | Purpose |
 |------|---------|
-| `controller-rbac.yaml` | Controller and workload identities: controller RBAC, the read-only `dws-orchestrator` account, and the no-grant `dws-task` account |
+| `controller-rbac.yaml` | Controller and workload identities: controller RBAC, the read-only `dws-orchestrator` account, and the no-grant `dws-task` and `dws-task-override` accounts |
 | `controller-deployment.yaml` | The controller's own Deployment and Service |
 | `dapr-crds.yaml` | Pinned Dapr CRD bundle (input to `cdk8s import`, not applied by the controller) |
 | `serving-crds.yaml` | Pinned Knative Serving CRD bundle (same) |
@@ -30,9 +30,9 @@ kubectl apply -f k8s/controller-deployment.yaml
 kubectl rollout status deployment/dws-controller
 ```
 
-Apply `controller-rbac.yaml` first. It provisions both workload identities before the controller
-can create an orchestrator Deployment or Knative step Service. The dedicated `dws-task` account
-has no RoleBinding or ClusterRoleBinding from these manifests; add operator-owned grants only when
+Apply `controller-rbac.yaml` first. It provisions the workload identities before the controller
+can create an orchestrator Deployment or Knative step Service. The dedicated `dws-task` and
+`dws-task-override` accounts have no RoleBinding or ClusterRoleBinding from these manifests; add operator-owned grants only when
 a step explicitly needs Kubernetes API access.
 
 The resources are namespaced to `default`. To manage workflows in another namespace, update every
@@ -55,6 +55,24 @@ this Kubernetes identity distinct from the `dws-step` runtime component. Earlier
 `DWS_STEP_SERVICE_ACCOUNT` (default `dws-step`) instead, and the current controller ignores that
 variable: move any custom value to `DWS_TASK_SERVICE_ACCOUNT`, keep the old account until Revisions that name it stop serving, and
 resubmit each workflow to move its step Services to the new account.
+
+### Per-step-image pull-secret overrides
+
+A step image can use its own pull Secrets instead of the ones attached to `dws-task`. Set
+`DWS_IMAGES_PULL_SECRETS_<KIND>` (`dws.images.pull-secrets.<kind>`) on the controller to a JSON
+array of Secret names in the workload namespace, for example
+`DWS_IMAGES_PULL_SECRETS_CALL_HTTP='["http-cred"]'`, or `'[]'` for a public image. Kinds:
+`CALL_HTTP`, `CALL_OPENAPI`, `CALL_GRPC`, `CALL_ASYNCAPI`, `CALL_A2A`, `RUN_SHELL`,
+`RUN_SCRIPT_JS`, `RUN_SCRIPT_PYTHON`. The list replaces the default for that kind only.
+
+Kubernetes and Knative add a ServiceAccount's `imagePullSecrets` to the pod's list instead of
+replacing it, so overridden steps run as `dws-task-override`, which has no RBAC and must carry no
+`imagePullSecrets`. The controller reads its name from `dws.task.override-service-account` (env
+`DWS_TASK_OVERRIDE_SERVICE_ACCOUNT`, default `dws-task-override`) and stamps the override list on
+the step's Revision template. Steps without an override keep running as `dws-task`, which is never
+changed. Apply the updated `controller-rbac.yaml` (it adds `dws-task-override`) before upgrading
+the controller, then resubmit the workflows that use an overridden step kind; the definition
+version does not change. Malformed JSON or a blank name is rejected with an error naming the key.
 
 ## Example flow
 

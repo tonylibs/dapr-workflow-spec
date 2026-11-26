@@ -34,6 +34,14 @@ spec:
               value: dws-orchestrator
             - name: DWS_TASK_SERVICE_ACCOUNT
               value: dws-task
+            - name: DWS_TASK_OVERRIDE_SERVICE_ACCOUNT
+              value: dws-task-override
+            # Optional per-step-image pull-secret replacement, a JSON array of Secret names
+            # ('[]' = none). Overridden steps run as dws-task-override. One per step kind:
+            # DWS_IMAGES_PULL_SECRETS_{CALL_HTTP,CALL_OPENAPI,CALL_GRPC,CALL_ASYNCAPI,CALL_A2A,
+            # RUN_SHELL,RUN_SCRIPT_JS,RUN_SCRIPT_PYTHON}.
+            # - name: DWS_IMAGES_PULL_SECRETS_CALL_HTTP
+            #   value: '["http-cred"]'
             - name: DWS_IMAGES_CALL_HTTP
               value: ghcr.io/tonylibs/dws-call-http:latest
             - name: DWS_IMAGES_CALL_OPENAPI
