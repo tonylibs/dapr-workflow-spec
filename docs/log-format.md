@@ -70,7 +70,7 @@ operators key off them.
 | `dws-orchestrator`, `dws-step` | MDC `trace_id` / `span_id` (OTel Java agent's Logback MDC instrumentation) |
 | `dws-admin` | `trace.getActiveSpan()?.spanContext()` from `@opentelemetry/api` (global registered by the Node agent) |
 | `dws-flow`, `dws-schedule-time` | `Activity.Current` (`TraceId` / `SpanId`); `dws-schedule-time`'s `DwsJsonConsoleFormatter` is a copy of `dws-flow`'s, pinned by the same 12 golden cases |
-| `dws-jq` | the inbound W3C `traceparent` header of the request being served (no OTel SDK); records outside a request carry none |
+| `dws-jq` | the inbound W3C `traceparent` header of the request being served, extracted with OpenTelemetry's `propagation.TraceContext` propagator (`go.opentelemetry.io/otel`); records outside a request carry none |
 
 A context whose trace ID is all zeros, or that is otherwise invalid, is treated as absent.
 
