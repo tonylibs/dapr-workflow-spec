@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -378,6 +380,7 @@ func TestWithTraceparent(t *testing.T) {
 		{"zero span id", "00-" + goldenTraceID + "-0000000000000000-01", "", ""},
 		{"version ff", "ff-" + goldenTraceID + "-" + goldenSpanID + "-01", "", ""},
 		{"version 00 with extra field", "00-" + goldenTraceID + "-" + goldenSpanID + "-01-extra", "", ""},
+		{"version 00 with reserved flags", "00-" + goldenTraceID + "-" + goldenSpanID + "-09", "", ""},
 		{"uppercase hex", "00-" + strings.ToUpper(goldenTraceID) + "-" + goldenSpanID + "-01", "", ""},
 		{"short trace id", "00-4bf92f3577b34da6-" + goldenSpanID + "-01", "", ""},
 		{"non-hex trace id", "00-" + strings.Repeat("g", 32) + "-" + goldenSpanID + "-01", "", ""},
@@ -386,8 +389,12 @@ func TestWithTraceparent(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			ctx := WithTraceparent(context.Background(), tc.header)
+			if span := trace.SpanContextFromContext(ctx); span.IsRemote() != (tc.trace != "") {
+				t.Errorf("remote span context = %v, want remote = %t", span, tc.trace != "")
+			}
 			var buf bytes.Buffer
-			New(&buf, "json", nil).InfoContext(WithTraceparent(context.Background(), tc.header), "m")
+			New(&buf, "json", nil).InfoContext(ctx, "m")
 			got := decodeLine(t, buf.Bytes())
 
 			gotTrace, hasTrace := got["trace_id"]
