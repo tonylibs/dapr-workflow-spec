@@ -68,9 +68,27 @@ telemetry backend. See [`docs/roadmaps/observability-phase6-evidence.md`](../../
 **Watch out:** it runs as root to read pod logs, and exactly one release in a namespace can use its
 fixed Service name. Do not enable it alongside the chart's collector fixture. A custom OTLP endpoint
 does not reconfigure this collector; it receives nothing. The OpenTelemetry Operator remains a
-separate prerequisite. The live run used current `main` images and manually attached image-pull
-Secrets: several chart-pinned first-party image tags were unavailable, and `imagePullSecrets` did
-not reach controller-created workflow workloads. Check the current status of [#205](https://github.com/tonylibs/dapr-workflow-spec/issues/205) and [#207](https://github.com/tonylibs/dapr-workflow-spec/issues/207) before treating a stock private-registry installation as verified.
+separate prerequisite.
+
+### Private registries — Today
+
+Create registry credentials in the workload namespace, then set the chart-wide
+`imagePullSecrets` list. DWS applies it to its component pods and the ServiceAccounts used by
+controller-created orchestrator and Knative step workloads. Re-submit a workflow after changing
+credentials so its existing step Services receive the updated account configuration.
+
+```sh
+kubectl create secret docker-registry regcred --namespace dws-system \
+  --docker-server registry.example.com \
+  --docker-username "$REGISTRY_USER" --docker-password "$REGISTRY_PASSWORD"
+helm upgrade --install dws oci://ghcr.io/tonylibs/charts/dws -n dws-system \
+  --set 'imagePullSecrets[0].name=regcred'
+```
+
+For a step image that needs different credentials—or no credentials—set that image's
+`controller.images.<step>.imagePullSecrets`; its list replaces the global list. See the
+[chart private-registry guide](../../charts/dws/README.md#private-registry-credentials) for the
+exact supported step-image keys and the dedicated task ServiceAccounts.
 
 ### Trace-correlated logs — Today
 
