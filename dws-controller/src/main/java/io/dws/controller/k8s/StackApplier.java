@@ -1,6 +1,7 @@
 package io.dws.controller.k8s;
 
 import io.dws.controller.config.DwsConfig;
+import io.dws.controller.config.ImagePullSecretPolicy;
 import io.dws.controller.events.EventPublisher;
 import io.dws.controller.model.ApplyResult;
 import io.dws.controller.model.DeploymentPlan;
@@ -36,7 +37,12 @@ public class StackApplier {
   private final DwsConfig config;
   private final ObservabilityFlags observability;
   private final String namespace;
+  private final ImagePullSecretPolicy pullSecrets;
 
+  /**
+   * @throws IllegalArgumentException when a {@code dws.images.pull-secrets.*} value is malformed;
+   *     the message names the offending key
+   */
   public StackApplier(
       KubernetesClient client,
       StackSynthesizer synthesizer,
@@ -49,6 +55,7 @@ public class StackApplier {
     this.config = config;
     this.observability = observability;
     this.namespace = config.namespace();
+    this.pullSecrets = ImagePullSecretPolicy.from(config.images().pullSecrets());
   }
 
   /**
@@ -96,7 +103,13 @@ public class StackApplier {
       for (GenericKubernetesResource binding : synthesizer.bindingComponents(plan, namespace)) {
         applyDynamic(ResourceContexts.DAPR_COMPONENT, binding);
       }
-      for (GenericKubernetesResource service : synthesizer.knativeServices(plan, namespace)) {
+      for (GenericKubernetesResource service :
+          synthesizer.knativeServices(
+              plan,
+              namespace,
+              config.task().serviceAccount(),
+              config.task().overrideServiceAccount(),
+              pullSecrets)) {
         applyDynamic(ResourceContexts.KNATIVE_SERVICE, service);
       }
       for (GenericKubernetesResource policy : synthesizer.workflowAccessPolicies(plan, namespace)) {

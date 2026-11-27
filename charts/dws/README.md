@@ -5,6 +5,80 @@ supporting Dapr/PostgreSQL/Redis/Dex/APISIX dependencies. See the repository roo
 [`AGENTS.md`](../../AGENTS.md) for the overall project and [`docs/roadmaps/dws-auth.md`](../../docs/roadmaps/dws-auth.md)
 for the auth/Gateway design history.
 
+## Private registry credentials
+
+`imagePullSecrets` is a list of references to existing Kubernetes image pull Secrets. Create each
+Secret before installing or upgrading the chart in the effective workload namespace: the Helm
+release namespace by default, or `namespaceOverride` when that value is set. The chart validates
+the reference shape but does not create, copy, or inspect the Secret data.
+
+```bash
+kubectl create secret docker-registry regcred \
+  --namespace <workload-namespace> \
+  --docker-server <registry> \
+  --docker-username <username> \
+  --docker-password <password>
+
+helm upgrade --install dws charts/dws \
+  --namespace <workload-namespace> --create-namespace \
+  --set 'imagePullSecrets[0].name=regcred'
+```
+
+The nonempty list is applied to all first-party DWS Deployment pod templates and chart-owned
+ServiceAccounts, including the accounts used by generated orchestrators and Knative steps. An
+omitted value or explicit `[]` leaves `imagePullSecrets` absent. Dependency chart configuration
+is separate and is not changed by this value.
+
+When `controller.enabled=true`, generated Knative step pods run as the dedicated
+`<fullname>-task` ServiceAccount (`dws-task` for release `dws`, `myrel-dws-task` for release
+`myrel`), not the namespace `default` account. The chart grants it no RBAC and passes its name to
+the controller as `DWS_TASK_SERVICE_ACCOUNT`. The name keeps this Kubernetes identity distinct
+from the `dws-step` runtime component. Existing step Services switch to the account when their
+workflow is submitted again.
+
+### Sharing the task account with admin and console
+
+`imagePullServiceAccount.enabled=true` (default `false`) runs the `admin` and `console`
+Deployments as the same zero-RBAC `<fullname>-task` ServiceAccount, so one account carries the
+pull-secret references for every workload that needs no Kubernetes API access. The account is
+rendered whenever `controller`, `admin`, or `console` is enabled and keeps the same name in both
+modes, so toggling the option never deletes an account that running Knative Revisions still use.
+The pod templates keep their own `imagePullSecrets` as well.
+
+Workloads that need RBAC keep their own least-privilege ServiceAccounts in both modes:
+`<fullname>-controller`, `<fullname>-schedule-time`, `<fullname>-orchestrator` (generated
+orchestrators read their definition ConfigMap), and `<fullname>-dapr-ready`. A Pod has exactly one
+`serviceAccountName`, so merging them would grant their RBAC to step pods. The top-level
+`imagePullSecrets` list is rendered on each of them.
+
+### Per-step-image overrides
+
+Each generated step image under `controller.images` (`callHttp`, `callOpenapi`, `callGrpc`,
+`callAsyncapi`, `callA2a`, `run.shell`, `run.scriptJs`, `run.scriptPython`) accepts an optional
+`imagePullSecrets` list that **replaces** the top-level list for that image. Omitted or `null`
+inherits the global list; `[]` means no pull Secret (for example, a public image).
+
+```yaml
+imagePullSecrets: [{name: regcred}]
+controller:
+  images:
+    callHttp:
+      imagePullSecrets: [{name: http-cred}]
+    run:
+      shell:
+        imagePullSecrets: []
+```
+
+Kubernetes and Knative add a ServiceAccount's `imagePullSecrets` to the pod's own list rather
+than replacing it. Overridden steps therefore run as a second zero-RBAC account,
+`<fullname>-task-override`, which never carries `imagePullSecrets`; the controller stamps the
+override list on the step's Revision template. The chart renders this account whenever
+`controller.enabled=true` and passes both names (`DWS_TASK_SERVICE_ACCOUNT`,
+`DWS_TASK_OVERRIDE_SERVICE_ACCOUNT`) and each override (`DWS_IMAGES_PULL_SECRETS_<KIND>`, a JSON
+array of Secret names) to the controller. `<fullname>-task` is never changed, so other steps keep
+pulling with the global list. Resubmit the workflows that use an overridden step kind
+(`POST /workflows`) to apply a new or removed override; the definition version does not change.
+
 ## Upgrading to scheduling Phase 6a (time triggers)
 
 This chart version adds `dws-schedule-time` (`scheduleTime.enabled`, default `true`; see

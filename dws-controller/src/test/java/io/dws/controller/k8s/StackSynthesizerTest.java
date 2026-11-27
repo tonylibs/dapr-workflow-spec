@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.tuple;
 import io.dws.controller.compile.Names;
 import io.dws.controller.compile.V1OrchestratorCompiler;
 import io.dws.controller.compile.WorkflowCompiler;
+import io.dws.controller.config.ImagePullSecretPolicy;
 import io.dws.controller.model.DeploymentPlan;
 import io.dws.controller.model.EnvValue.Literal;
 import io.dws.controller.model.EnvValue.SecretKeyRef;
@@ -18,6 +19,7 @@ import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.EnvVar;
 import io.fabric8.kubernetes.api.model.EnvVarBuilder;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
+import io.fabric8.kubernetes.api.model.PodSpec;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder;
 import io.fabric8.kubernetes.client.utils.Serialization;
@@ -43,6 +45,8 @@ class StackSynthesizerTest {
 
   private static final String NAMESPACE = "default";
   private static final String SERVICE_ACCOUNT = "dws-orchestrator";
+  private static final String STEP_SERVICE_ACCOUNT = "dws-task";
+  private static final String OVERRIDE_SERVICE_ACCOUNT = "dws-task-override";
   private static final ImageCatalog IMAGES =
       new ImageCatalog(
           "sw-call-http:1.0",
@@ -155,7 +159,10 @@ class StackSynthesizerTest {
         new StepService("call-api", TaskKind.CALL_HTTP, "ghcr.io/tonylibs/step:latest", env);
 
     List<Map<String, Object>> rendered =
-        containerEnv(synthesizer.knativeServices(planWith(step), NAMESPACE).getFirst());
+        containerEnv(
+            synthesizer
+                .knativeServices(planWith(step), NAMESPACE, STEP_SERVICE_ACCOUNT)
+                .getFirst());
 
     assertThat(rendered)
         .containsExactlyInAnyOrder(
@@ -341,7 +348,7 @@ class StackSynthesizerTest {
                           "middleware.http.oauth2clientcredentials"));
             });
 
-    assertThat(synthesizer.knativeServices(plan, NAMESPACE))
+    assertThat(synthesizer.knativeServices(plan, NAMESPACE, STEP_SERVICE_ACCOUNT))
         .allSatisfy(
             service ->
                 assertThat(templateAnnotations(service))
@@ -372,7 +379,7 @@ class StackSynthesizerTest {
         .containsEntry("scopes", List.of("dispatch-agent"));
     assertThat(spec(endpoints.getFirst())).containsEntry("baseUrl", "https://agent.example.test");
 
-    assertThat(synthesizer.knativeServices(plan, NAMESPACE))
+    assertThat(synthesizer.knativeServices(plan, NAMESPACE, STEP_SERVICE_ACCOUNT))
         .allSatisfy(
             service ->
                 assertThat(templateAnnotations(service))
@@ -949,7 +956,9 @@ class StackSynthesizerTest {
     assertThat(httpHandlers(configuration))
         .extracting(handler -> handler.get("name"))
         .containsExactly("wf-v1-oauth-aaaaaaaa", "wf-v1-oauth-bbbbbbbb");
-    assertThat(templateAnnotations(synthesizer.knativeServices(plan, NAMESPACE).getFirst()))
+    assertThat(
+            templateAnnotations(
+                synthesizer.knativeServices(plan, NAMESPACE, STEP_SERVICE_ACCOUNT).getFirst()))
         .containsEntry("dapr.io/config", configuration.getMetadata().getName());
   }
 
@@ -1024,8 +1033,142 @@ class StackSynthesizerTest {
     StepService step =
         new StepService("sync-inventory", kind, "ghcr.io/tonylibs/step:latest", Map.of());
     GenericKubernetesResource service =
-        synthesizer.knativeServices(planWith(step), NAMESPACE).get(0);
+        synthesizer.knativeServices(planWith(step), NAMESPACE, STEP_SERVICE_ACCOUNT).get(0);
     return templateAnnotations(service);
+  }
+
+  @Test
+  @DisplayName("a per-image override moves only its kind to the override account with its secrets")
+  void pullSecretOverrideIsolatesItsKind() {
+    DeploymentPlan plan =
+        planWithSteps(
+            new StepService("fetch-items", TaskKind.CALL_HTTP, "sw-call-http:1.0", Map.of()),
+            new StepService("read-spec", TaskKind.CALL_OPENAPI, "sw-call-openapi:1.0", Map.of()));
+    ImagePullSecretPolicy policy =
+        new ImagePullSecretPolicy(Map.of(TaskKind.CALL_HTTP, List.of("http-cred", "mirror")));
+
+    Map<String, GenericKubernetesResource> services =
+        byName(
+            synthesizer.knativeServices(
+                plan, NAMESPACE, STEP_SERVICE_ACCOUNT, OVERRIDE_SERVICE_ACCOUNT, policy));
+
+    assertThat(templateSpec(services.get("fetch-items")))
+        .containsEntry("serviceAccountName", OVERRIDE_SERVICE_ACCOUNT)
+        .containsEntry(
+            "imagePullSecrets", List.of(Map.of("name", "http-cred"), Map.of("name", "mirror")));
+    assertThat(templateSpec(services.get("read-spec")))
+        .containsEntry("serviceAccountName", STEP_SERVICE_ACCOUNT)
+        .doesNotContainKey("imagePullSecrets");
+
+    PodSpec orchestrator =
+        synthesizer
+            .orchestratorDeployment(plan, NAMESPACE, SERVICE_ACCOUNT)
+            .getSpec()
+            .getTemplate()
+            .getSpec();
+    assertThat(orchestrator.getServiceAccountName()).isEqualTo(SERVICE_ACCOUNT);
+    assertThat(orchestrator.getImagePullSecrets()).isNullOrEmpty();
+  }
+
+  @Test
+  @DisplayName("an explicit empty override uses the override account with no pod pull secrets")
+  void emptyPullSecretOverrideUsesOverrideAccountOnly() {
+    DeploymentPlan plan =
+        planWithSteps(
+            new StepService("sync", TaskKind.RUN_SHELL, "sw-run-shell:1.0", Map.of()),
+            new StepService("fetch", TaskKind.CALL_HTTP, "sw-call-http:1.0", Map.of()));
+    ImagePullSecretPolicy policy = new ImagePullSecretPolicy(Map.of(TaskKind.RUN_SHELL, List.of()));
+
+    Map<String, GenericKubernetesResource> services =
+        byName(
+            synthesizer.knativeServices(
+                plan, NAMESPACE, STEP_SERVICE_ACCOUNT, OVERRIDE_SERVICE_ACCOUNT, policy));
+
+    assertThat(templateSpec(services.get("sync")))
+        .containsEntry("serviceAccountName", OVERRIDE_SERVICE_ACCOUNT)
+        .doesNotContainKey("imagePullSecrets");
+    assertThat(templateSpec(services.get("fetch")))
+        .containsEntry("serviceAccountName", STEP_SERVICE_ACCOUNT)
+        .doesNotContainKey("imagePullSecrets");
+  }
+
+  @ParameterizedTest
+  @EnumSource(TaskKind.class)
+  @DisplayName("every deployable kind honours its own override and no other kind's")
+  void everyKindHonoursItsOverride(TaskKind kind) {
+    StepService step = new StepService("sync-inventory", kind, "sw-step:1.0", Map.of());
+    ImagePullSecretPolicy policy = new ImagePullSecretPolicy(Map.of(kind, List.of("cred")));
+    TaskKind other = TaskKind.values()[(kind.ordinal() + 1) % TaskKind.values().length];
+    ImagePullSecretPolicy otherPolicy = new ImagePullSecretPolicy(Map.of(other, List.of("cred")));
+
+    Map<String, Object> overridden =
+        templateSpec(
+            synthesizer
+                .knativeServices(
+                    planWith(step),
+                    NAMESPACE,
+                    STEP_SERVICE_ACCOUNT,
+                    OVERRIDE_SERVICE_ACCOUNT,
+                    policy)
+                .getFirst());
+    Map<String, Object> untouched =
+        templateSpec(
+            synthesizer
+                .knativeServices(
+                    planWith(step),
+                    NAMESPACE,
+                    STEP_SERVICE_ACCOUNT,
+                    OVERRIDE_SERVICE_ACCOUNT,
+                    otherPolicy)
+                .getFirst());
+
+    assertThat(overridden)
+        .containsEntry("serviceAccountName", OVERRIDE_SERVICE_ACCOUNT)
+        .containsEntry("imagePullSecrets", List.of(Map.of("name", "cred")));
+    assertThat(untouched)
+        .containsEntry("serviceAccountName", STEP_SERVICE_ACCOUNT)
+        .doesNotContainKey("imagePullSecrets");
+  }
+
+  @Test
+  @DisplayName("the three-argument overload renders no pod pull secrets on the default account")
+  void defaultOverloadKeepsDefaultAccount() {
+    StepService step = new StepService("sync", TaskKind.CALL_HTTP, "sw-call-http:1.0", Map.of());
+
+    assertThat(
+            templateSpec(
+                synthesizer
+                    .knativeServices(planWith(step), NAMESPACE, STEP_SERVICE_ACCOUNT)
+                    .getFirst()))
+        .containsEntry("serviceAccountName", STEP_SERVICE_ACCOUNT)
+        .doesNotContainKey("imagePullSecrets");
+  }
+
+  private static Map<String, GenericKubernetesResource> byName(
+      List<GenericKubernetesResource> services) {
+    Map<String, GenericKubernetesResource> result = new LinkedHashMap<>();
+    services.forEach(service -> result.put(service.getMetadata().getName(), service));
+    return result;
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> templateSpec(GenericKubernetesResource service) {
+    Map<String, Object> spec = (Map<String, Object>) service.getAdditionalProperties().get("spec");
+    Map<String, Object> template = (Map<String, Object>) spec.get("template");
+    return (Map<String, Object>) template.get("spec");
+  }
+
+  private static DeploymentPlan planWithSteps(StepService... steps) {
+    DeploymentPlan single = planWith(steps[0]);
+    return new DeploymentPlan(
+        single.workflow(),
+        single.versionId(),
+        single.version(),
+        single.definitionResource(),
+        single.specText(),
+        List.of(steps),
+        List.of(),
+        single.orchestrator());
   }
 
   private static DeploymentPlan planWith(StepService step) {

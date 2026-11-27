@@ -66,6 +66,14 @@ controller:
   # dws.images.* property DwsConfig/ImageCatalog require (dws-controller/src/main/java/
   # io/dws/controller/config/DwsConfig.java) -- all nine are mandatory config on the
   # controller side, so every key here must stay populated.
+  #
+  # Each of the eight step images (not orchestrator) also accepts an optional
+  # `imagePullSecrets` override, e.g. `callHttp.imagePullSecrets: [{name: http-cred}]`.
+  # Omitted or null inherits the top-level imagePullSecrets through <fullname>-task. An array,
+  # including [], REPLACES the global list for that image only: the controller runs those steps
+  # as the pull-secret-free <fullname>-task-override ServiceAccount and stamps exactly that list on
+  # the Knative Revision (none for []). <fullname>-task is never changed, so other steps keep
+  # pulling with the global list. Resubmit affected workflows (POST /workflows) to apply a change.
   images:
     callHttp:
       repository: ghcr.io/tonylibs/dws-call-http
@@ -776,9 +784,18 @@ opentelemetry-collector:
           processors: [memory_limiter, batch]
           exporters: [debug]
 
-# Image pull secrets, applied to the admin (and other component) pods that reference
-# private registries. More info: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+# References to existing image pull Secrets in the effective workload namespace (the Helm release
+# namespace, or namespaceOverride when set). The chart does not create or copy these Secrets.
+# More info: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
+# Opt-in: run the admin and console Deployments as the stable zero-RBAC <fullname>-task
+# ServiceAccount (the one un-overridden Knative steps use), so one account carries the pull-secret
+# references for every non-RBAC workload. The account keeps its name in both modes, so toggling
+# this never disrupts running Knative Revisions. RBAC-bearing workloads (controller, scheduleTime,
+# generated orchestrators, the Dapr readiness hook) always keep their own least-privilege
+# ServiceAccounts, and the top-level imagePullSecrets list is rendered on each of them too.
+imagePullServiceAccount:
+  enabled: false
 # Overrides for the chart name / fully-qualified name used to derive component resource names.
 nameOverride: ""
 fullnameOverride: ""

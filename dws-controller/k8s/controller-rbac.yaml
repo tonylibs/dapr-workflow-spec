@@ -6,6 +6,28 @@ metadata:
   labels:
     app: dws-controller
 ---
+# Identity for controller-compiled Knative step pods. It intentionally has no Role or RoleBinding:
+# step workloads receive no Kubernetes API permissions from the standalone controller manifests.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dws-task
+  namespace: default
+  labels:
+    app: dws-task
+---
+# Identity for Knative step pods whose image has a per-image pull-secret override
+# (DWS_IMAGES_PULL_SECRETS_<KIND>). It has no RBAC and must never carry imagePullSecrets: the
+# controller stamps the replacement list on the step's Revision, and Kubernetes would otherwise add
+# this account's list to it. Attach pull Secrets to dws-task, not here.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dws-task-override
+  namespace: default
+  labels:
+    app: dws-task-override
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

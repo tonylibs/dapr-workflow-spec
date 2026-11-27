@@ -75,6 +75,76 @@ DWS_ORCHESTRATOR_SERVICE_ACCOUNT and stamps it on every orchestrator Deployment 
 {{- end }}
 
 {{/*
+Dedicated ServiceAccount for controller-compiled Knative step pods. The controller is handed
+this name through DWS_TASK_SERVICE_ACCOUNT and stamps it on every step Service it creates. The
+account deliberately has no chart-granted RBAC.
+*/}}
+{{- define "dws.task.serviceAccountName" -}}
+{{- printf "%s-task" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Whether <fullname>-task renders: always with the controller (generated steps use it), and with
+admin or console when imagePullServiceAccount.enabled shares it with them. The name never depends
+on the toggle, so switching modes cannot delete an account that active Knative Revisions use.
+Emits "true" or nothing.
+*/}}
+{{- define "dws.task.serviceAccountEnabled" -}}
+{{- $shared := and (include "dws.imagePullServiceAccount.enabled" .) (or .Values.admin.enabled .Values.console.enabled) -}}
+{{- if or .Values.controller.enabled $shared }}true{{ end -}}
+{{- end }}
+
+{{/*
+imagePullServiceAccount.enabled, read defensively so `--reuse-values` upgrades from a release
+that predates the key keep rendering. Emits "true" or nothing.
+*/}}
+{{- define "dws.imagePullServiceAccount.enabled" -}}
+{{- if dig "enabled" false (.Values.imagePullServiceAccount | default dict) }}true{{ end -}}
+{{- end }}
+
+{{/*
+Zero-RBAC ServiceAccount for steps whose image has a per-image imagePullSecrets override. It never
+carries imagePullSecrets: Kubernetes and Knative union a ServiceAccount's list with the pod's, so a
+replacement list only works on an account with none. Handed to the controller through
+DWS_TASK_OVERRIDE_SERVICE_ACCOUNT.
+*/}}
+{{- define "dws.task.overrideServiceAccountName" -}}
+{{- printf "%s-task-override" (include "dws.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+DWS_IMAGES_PULL_SECRETS_<KIND> env entries for the controller container, one per generated step
+image whose imagePullSecrets is an array (including []). Each value is a JSON array of Secret names
+(an empty env value would read as unset in SmallRye Config, so [] must stay distinguishable).
+Omitted or null overrides emit nothing. Must stay in step with dws.images.pull-secrets.* in
+dws-controller's DwsConfig.
+*/}}
+{{- define "dws.controller.pullSecretOverrideEnv" -}}
+{{- $images := .Values.controller.images -}}
+{{- $steps := list
+  (list "CALL_HTTP" $images.callHttp)
+  (list "CALL_OPENAPI" $images.callOpenapi)
+  (list "CALL_GRPC" $images.callGrpc)
+  (list "CALL_ASYNCAPI" $images.callAsyncapi)
+  (list "CALL_A2A" $images.callA2a)
+  (list "RUN_SHELL" $images.run.shell)
+  (list "RUN_SCRIPT_JS" $images.run.scriptJs)
+  (list "RUN_SCRIPT_PYTHON" $images.run.scriptPython) -}}
+{{- range $steps }}
+{{- $kind := index . 0 }}
+{{- $img := index . 1 | default dict }}
+{{- if and (hasKey $img "imagePullSecrets") (kindIs "slice" (index $img "imagePullSecrets")) }}
+{{- $names := list }}
+{{- range (index $img "imagePullSecrets") }}
+{{- $names = append $names .name }}
+{{- end }}
+- name: DWS_IMAGES_PULL_SECRETS_{{ $kind }}
+  value: {{ $names | toJson | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
 Controller selector labels — the common selector labels plus a component marker so the
 controller Deployment/Service cannot match sibling components (admin, postgres).
 */}}

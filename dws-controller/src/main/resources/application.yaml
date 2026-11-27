@@ -8,6 +8,13 @@ dws:
     # ServiceAccount orchestrator pods run as; needs configmaps get/list/watch (the definition
     # Component reads its ConfigMap as the pod's service account). Env: DWS_ORCHESTRATOR_SERVICE_ACCOUNT.
     service-account: dws-orchestrator
+  task:
+    # ServiceAccount generated Knative step pods run as; it intentionally needs no chart-granted
+    # RBAC. Env: DWS_TASK_SERVICE_ACCOUNT.
+    service-account: ${DWS_TASK_SERVICE_ACCOUNT:dws-task}
+    # ServiceAccount for steps whose image has a pull-secret override (dws.images.pull-secrets.*).
+    # It must carry no imagePullSecrets and needs no RBAC. Env: DWS_TASK_OVERRIDE_SERVICE_ACCOUNT.
+    override-service-account: ${DWS_TASK_OVERRIDE_SERVICE_ACCOUNT:dws-task-override}
   log:
     # json | text. Env: DWS_LOG_FORMAT. The controller's own logs follow the environment variable;
     # an instrumented orchestrator Deployment is stamped with DWS_LOG_FORMAT=json only when this is json.
@@ -23,6 +30,20 @@ dws:
     run-script-js: ghcr.io/tonylibs/dws-run-script-js:latest
     run-script-python: ghcr.io/tonylibs/dws-run-script-python:latest
     orchestrator: ghcr.io/tonylibs/dws-orchestrator:latest
+    # Optional per-step-image pull-secret overrides, unset by default. Each is a JSON array of
+    # Secret names that REPLACES the global list for that image: the step runs as
+    # dws.task.override-service-account with exactly these Secrets ('[]' = none). Malformed JSON or
+    # a blank name is rejected with an error naming the key. Keys and env vars:
+    #   call-http         DWS_IMAGES_PULL_SECRETS_CALL_HTTP
+    #   call-openapi      DWS_IMAGES_PULL_SECRETS_CALL_OPENAPI
+    #   call-grpc         DWS_IMAGES_PULL_SECRETS_CALL_GRPC
+    #   call-asyncapi     DWS_IMAGES_PULL_SECRETS_CALL_ASYNCAPI
+    #   call-a2a          DWS_IMAGES_PULL_SECRETS_CALL_A2A
+    #   run-shell         DWS_IMAGES_PULL_SECRETS_RUN_SHELL
+    #   run-script-js     DWS_IMAGES_PULL_SECRETS_RUN_SCRIPT_JS
+    #   run-script-python DWS_IMAGES_PULL_SECRETS_RUN_SCRIPT_PYTHON
+    # pull-secrets:
+    #   call-http: '["http-cred"]'
 
 quarkus:
   kubernetes-client:

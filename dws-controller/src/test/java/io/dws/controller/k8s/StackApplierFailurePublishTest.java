@@ -45,6 +45,10 @@ class StackApplierFailurePublishTest {
     EventPublisher events = mock(EventPublisher.class);
     DwsConfig config = mock(DwsConfig.class);
     when(config.namespace()).thenReturn("default");
+    // No per-image pull-secret overrides: a mocked PullSecrets returns Optional.empty() for each.
+    DwsConfig.Images images = mock(DwsConfig.Images.class);
+    when(images.pullSecrets()).thenReturn(mock(DwsConfig.PullSecrets.class));
+    when(config.images()).thenReturn(images);
     // Fail on the first cluster interaction inside apply's try block.
     when(client.configMaps()).thenThrow(new RuntimeException("boom"));
 
