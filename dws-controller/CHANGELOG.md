@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-controller-v1.4.0...dws-controller-v1.5.0) (2026-11-27)
+
+
+### Features
+
+* **controller:** assign dedicated service account to steps ([3ee9534](https://github.com/tonylibs/dapr-workflow-spec/commit/3ee9534c5d617262bff268c8d90d25d62a9d9ef6))
+* **controller:** isolate per-image pull-secret overrides on dws-task-override ([a5f4292](https://github.com/tonylibs/dapr-workflow-spec/commit/a5f4292e5b123cc6b85420103c694487599db96f))
+
 ## [1.4.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-controller-v1.3.0...dws-controller-v1.4.0) (2026-11-15)
 
 
