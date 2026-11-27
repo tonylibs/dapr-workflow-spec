@@ -10,9 +10,7 @@ public enum ScopeKind
 /// <summary>Single routing point from a node's declared scope to the engine that runs it.</summary>
 public static class ScopeDispatch
 {
-    private static readonly HashSet<string> SequencerScopes = ["main", "do"];
-
-    public static ScopeKind Resolve(string scope) => SequencerScopes.Contains(scope) ? ScopeKind.Sequencer : ScopeKind.NotImplemented;
+    public static ScopeKind Resolve(string scope) => Scopes.Sequencers.Contains(scope) ? ScopeKind.Sequencer : ScopeKind.NotImplemented;
 
     public static string NotImplementedMessage(string scope) => $"config failure: scope '{scope}' is not implemented yet";
 }

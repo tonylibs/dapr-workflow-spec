@@ -18,6 +18,7 @@ public enum ChildKind
 /// </summary>
 public static class ChildClassifier
 {
+    // DSL task-body keys, not Scopes values: a `try` task compiles to scope `try-catch`.
     private static readonly HashSet<string> FlowTaskKeys = ["do", "for", "try", "fork", "wait", "listen"];
 
     public static ChildKind Classify(JsonObject taskBody) => FlowTaskKeys.Any(taskBody.ContainsKey) ? ChildKind.Flow : ChildKind.Step;
