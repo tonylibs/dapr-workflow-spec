@@ -1,7 +1,7 @@
 {
   "dws-admin": "0.4.0",
   "dws-console": "0.3.0",
-  "dws-controller": "1.4.0",
+  "dws-controller": "1.5.0",
   "dws-orchestrator": "0.3.0",
   "dws-step": "0.2.0",
   "dws-call-http": "0.2.0",
