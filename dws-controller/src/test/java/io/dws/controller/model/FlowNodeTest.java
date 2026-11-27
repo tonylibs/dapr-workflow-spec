@@ -99,14 +99,14 @@ class FlowNodeTest {
   @Test
   void aControllerWithUnsetJsonConfigRoundTripsWithoutNulls() throws Exception {
     FlowScope scope =
-        FlowScope.of("try-catch", List.of())
-            .withTryCatchConfig(
-                new FlowScope.TryCatchConfig(
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.of("error"),
-                    Optional.empty(),
-                    Optional.empty()));
+        FlowScope.controller(
+            new FlowScope.TryCatchConfig(
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of("error"),
+                Optional.empty(),
+                Optional.empty()));
     FlowNode flow = new FlowNode("guarded", "guarded", "dws-def-guarded", ENVELOPE, scope);
 
     String json = mapper.writeValueAsString(flow);
@@ -122,7 +122,8 @@ class FlowNodeTest {
     StepNode companion = step("group.dataflow", "group-dataflow");
     StepNode child = step("child", "child");
     FlowNode group =
-        new FlowNode("group", "group", "dws-def-group", ENVELOPE, FlowScope.of("do", List.of()))
+        new FlowNode(
+                "group", "group", "dws-def-group", ENVELOPE, FlowScope.sequencer("do", List.of()))
             .withDataflow(companion)
             .withChild(child);
 
@@ -135,7 +136,8 @@ class FlowNodeTest {
   @Test
   void rendersTheDataflowReferenceFromTheAttachedCompanionOnly() {
     FlowNode bare =
-        new FlowNode("group", "group", "dws-def-group", ENVELOPE, FlowScope.of("do", List.of()));
+        new FlowNode(
+            "group", "group", "dws-def-group", ENVELOPE, FlowScope.sequencer("do", List.of()));
 
     FlowNode withCompanion = bare.withDataflow(step("group.dataflow", "group-dataflow"));
 
@@ -149,7 +151,7 @@ class FlowNodeTest {
         "order-fulfillment-main",
         "dws-def-order-fulfillment-v1a2b3c4d-order-fulfillment-main",
         ENVELOPE,
-        FlowScope.of("main", List.of()),
+        FlowScope.sequencer("main", List.of()),
         List.of(children));
   }
 
