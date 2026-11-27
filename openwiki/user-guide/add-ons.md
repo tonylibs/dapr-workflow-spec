@@ -86,9 +86,19 @@ helm upgrade --install dws oci://ghcr.io/tonylibs/charts/dws -n dws-system \
 ```
 
 For a step image that needs different credentials—or no credentials—set that image's
-`controller.images.<step>.imagePullSecrets`; its list replaces the global list. See the
+`controller.images.<step>.imagePullSecrets`; an explicit list (including `[]`) **replaces** the
+global list for that step kind. DWS runs those overridden Knative steps as the separate zero-RBAC
+`<release>-dws-task-override` ServiceAccount, which has no inherited pull Secrets, and writes only
+the override onto the Revision. This prevents the global credential from also reaching that pod.
+Re-submit workflows using that step kind after changing the override; existing step Services keep
+their previous configuration.
+
+Set `imagePullServiceAccount.enabled=true` if the Admin API and console should also run as the
+normal zero-RBAC task ServiceAccount and share its pull credentials. They still retain their own
+pod-level `imagePullSecrets`; controller, scheduler, and generated orchestrators keep separate
+least-privilege accounts because they need Kubernetes access. See the
 [chart private-registry guide](../../charts/dws/README.md#private-registry-credentials) for the
-exact supported step-image keys and the dedicated task ServiceAccounts.
+supported `controller.images` keys and account details.
 
 ### Trace-correlated logs — Today
 
