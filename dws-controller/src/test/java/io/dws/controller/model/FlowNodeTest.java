@@ -145,6 +145,17 @@ class FlowNodeTest {
     assertThat(withCompanion.specText()).contains("\"dataflow\" : \"group-dataflow\"");
   }
 
+  /** ADR 0012 Decision 3 emits companions for structural tasks only; {@code main} is never one. */
+  @Test
+  void rejectsADataflowCompanionOnMain() {
+    FlowNode main = flow();
+    StepNode companion = step("order-fulfillment.dataflow", "order-fulfillment-dataflow");
+
+    assertThatThrownBy(() -> main.withDataflow(companion))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("main");
+  }
+
   private static FlowNode flow(CompiledNode... children) {
     return new FlowNode(
         "order-fulfillment.main",

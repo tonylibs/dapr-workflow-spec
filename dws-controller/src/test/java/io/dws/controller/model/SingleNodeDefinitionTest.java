@@ -175,7 +175,12 @@ class SingleNodeDefinitionTest {
             "when",
             "exceptWhen",
             "catch",
-            "forkMode")) {
+            "forkMode",
+            "wait",
+            "to",
+            "timeout",
+            "read",
+            "dataflow")) {
       assertThat(node.has(field)).as(field).isFalse();
     }
   }

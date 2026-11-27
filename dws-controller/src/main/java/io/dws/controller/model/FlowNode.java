@@ -43,6 +43,10 @@ public record FlowNode(
   public FlowNode {
     children = List.copyOf(children);
     ChildIndex.of(children); // rejects a duplicate key before the node exists
+    if (dataflow.isPresent() && FlowScope.MAIN.equals(scope.scope())) {
+      // ADR 0012 Decision 3: only structural tasks get a companion; the schema forbids it on main.
+      throw new IllegalArgumentException("a main flow cannot have a dataflow companion");
+    }
   }
 
   public FlowNode(
