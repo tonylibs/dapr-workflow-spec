@@ -16,6 +16,8 @@ None. All task checkboxes are complete. Individual pod recovery succeeded for ad
 
 With `auth.enabled=false, apisix.enabled=true`, the default APISIX extraEnvVars still references the absent admin token Secret (`charts/dws/values.yaml:193`). The documented workaround is to clear `apisix.extraEnvVars` and `apisix.apisix.nginx.envs` for that standalone topology. This remains a divergence from the unconditional auth-off guarantee in `specs/helm-dapr-api-tokens/spec.md:12`; extend the auth-off render matrix and make that wiring conditional before treating this topology as supported by defaults.
 
+> **Resolved 2026-11-26** by `helm-apisix-token-auth-off` (issue #177). The default APISIX reference is now `optional: true`, so auth-off and admin-off installs with bundled APISIX start with no token Secret dependency. `api-tokens-render-test.sh` covers both topologies. The warning above stays as the record of the Phase 10 state.
+
 ## Resolved findings
 
 - Shared supplied Dapr API Secret names are rejected in preflight; negative render coverage added.

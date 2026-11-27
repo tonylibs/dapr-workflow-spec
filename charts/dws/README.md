@@ -653,6 +653,7 @@ apisix:
         secretKeyRef:
           name: "{{ .Release.Name }}-admin-dapr-api-token"
           key: token
+          optional: true             # absent Secret (auth or admin off) leaves it unset, APISIX still starts
   apisix:
     nginx:
       envs:                          # the APISIX chart's nginx.envs: lets nginx workers read it
@@ -662,9 +663,22 @@ apisix:
 Render fails with a message naming the problem if the variable is missing from `extraEnvVars`, if
 it is sourced from a different Secret than the admin Dapr API token Secret (for example after you
 set `auth.apiTokens.admin.daprApi.existingSecret` and forgot to re-point APISIX — override
-`apisix.extraEnvVars` with your Secret's name), or if it is absent from the nginx `envs`.
-These defaults assume `auth.enabled=true`, which `apiGateway.enabled=true` requires anyway; for an
-auth-off install that only wants APISIX, clear both settings.
+`apisix.extraEnvVars` with your Secret's name), or if it is absent from the nginx `envs`. These
+checks apply whether or not the reference is `optional`.
+
+The default reference is `optional: true`. The admin Dapr API token Secret only exists with
+`auth.enabled=true` and `admin.enabled=true`, and the APISIX subchart cannot read those values. So
+an install with auth or admin off but `apisix.enabled=true` starts APISIX with the variable unset.
+Nothing reads it in that case, because there is no admin route (`apiGateway.enabled=true` requires
+both). You don't have to clear these settings for such an install. If you cleared them under an
+older chart version (`extraEnvVars: []`, `nginx.envs: []`), that override still works, and you
+can drop it. When the Secret exists, the variable resolves as usual. Create an `existingSecret`
+before APISIX starts, or restart APISIX afterwards, as for any token change. The same applies when
+you turn on `auth.enabled` (or `admin.enabled`) for a release that already runs APISIX. Its pod
+template does not change, so `helm upgrade` does not restart it, and it keeps running without the
+token until you run `kubectl rollout restart deployment/<release>-apisix`. Until then, every
+`/dws-admin` request through the Gateway gets a 401. To make APISIX fail to
+start when the Secret is missing, override the entry without `optional`.
 
 **External APISIX (`apisix.enabled=false`)**: the chart cannot render into a workload it does not
 own, and nothing is added to it. You must expose the same variable the same way:

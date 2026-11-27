@@ -87,6 +87,25 @@ PF_PIDS=()
 INCLUDE_CONTROLLER="${GW_E2E_INCLUDE_CONTROLLER:-1}"
 if [ "$INCLUDE_CONTROLLER" = 1 ]; then CONTROLLER_ENABLED=true; else CONTROLLER_ENABLED=false; fi
 
+# Optional registry credentials for private chart images (e.g. ghcr.io/tonylibs/dws-controller):
+# GW_E2E_IMAGE_PULL_SECRET=<source-namespace>/<secret-name> names an existing
+# kubernetes.io/dockerconfigjson Secret. After creating the disposable namespace the script copies
+# it there under the same name (piped kubectl -> jq -> kubectl, the data is never printed) and
+# installs with imagePullSecrets[0].name=<secret-name>, the chart's top-level pull-secret list.
+# Unset (default, CI): no pull secret.
+PULL_SECRET_REF="${GW_E2E_IMAGE_PULL_SECRET:-}"
+PULL_SECRET_ARGS=()
+if [ -n "$PULL_SECRET_REF" ]; then
+  case "$PULL_SECRET_REF" in
+    */*) PULL_SECRET_NS="${PULL_SECRET_REF%%/*}"; PULL_SECRET_NAME="${PULL_SECRET_REF#*/}" ;;
+    *)
+      echo "FAIL: GW_E2E_IMAGE_PULL_SECRET ('$PULL_SECRET_REF') must be <namespace>/<secret-name>" >&2
+      exit 1
+      ;;
+  esac
+  PULL_SECRET_ARGS=(--set "imagePullSecrets[0].name=${PULL_SECRET_NAME}")
+fi
+
 PASS_COUNT=0
 pass() { PASS_COUNT=$((PASS_COUNT + 1)); echo "PASS: $1"; }
 fail_and_exit() { echo "FAIL: $1" >&2; exit 1; }
@@ -255,6 +274,13 @@ fi
 echo
 echo "=== 3. Creating namespace $NAMESPACE and disposable Redis + mock IdP ==="
 kubectl create namespace "$NAMESPACE"
+if [ -n "$PULL_SECRET_REF" ]; then
+  kubectl -n "$PULL_SECRET_NS" get secret "$PULL_SECRET_NAME" -o json \
+    | jq '{apiVersion, kind, type, data, metadata: {name: .metadata.name}}' \
+    | kubectl -n "$NAMESPACE" apply -f - >/dev/null \
+    || fail_and_exit "could not copy image pull Secret $PULL_SECRET_REF into $NAMESPACE"
+  pass "copied image pull Secret ${PULL_SECRET_NAME} from ${PULL_SECRET_NS} into ${NAMESPACE} (data not printed)"
+fi
 
 kubectl -n "$NAMESPACE" apply -f - <<EOF
 apiVersion: v1
@@ -443,6 +469,7 @@ helm install "$RELEASE" "$CHART_DIR" \
   --set redis.external.existingSecretKey=redis-password \
   --set apiGateway.enabled=true \
   --set apisix.enabled=true \
+  "${PULL_SECRET_ARGS[@]}" \
   || { dump_debug_state; fail_and_exit "helm install failed"; }
 pass "helm install succeeded (bundled APISIX + Gateway API, auth/admin/console enabled)"
 
