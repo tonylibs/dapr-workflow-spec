@@ -14,6 +14,11 @@ import java.util.Optional;
  * {@code fork}, {@code wait}, {@code listen}) carries that scope's own configuration and an empty
  * task list. The {@code wait} and {@code listen} controllers have no execution children (ADR 0006).
  *
+ * <p>An unset field is left out of the {@code /plan} JSON rather than written as {@code null}
+ * ({@link JsonInclude.Include#NON_ABSENT}), and every {@code Optional<JsonNode>} drops a JSON
+ * {@code null} on construction: Jackson reads an absent or null {@code Optional<JsonNode>} back as
+ * {@code Optional.of(NullNode)}, which would otherwise render as {@code "errors": null}.
+ *
  * @param scope the classification scope, e.g. {@code main}, {@code try-catch}, {@code fork}
  * @param tasks this scope's task list, verbatim from the submitted document; always empty on a
  *     controller
@@ -25,8 +30,8 @@ import java.util.Optional;
  *     retry policy, recovery guards, and error variable name
  * @param waitDuration a {@code wait} scope's duration
  * @param listenConfig a {@code listen} scope's event selection, timeout, and read mode
- * @param dataflowAppId this scope's companion Step app ID, when present
  */
+@JsonInclude(JsonInclude.Include.NON_ABSENT)
 public record FlowScope(
     String scope,
     List<JsonNode> tasks,
@@ -34,15 +39,15 @@ public record FlowScope(
     Optional<String> forkMode,
     Optional<ForConfig> forConfig,
     Optional<TryCatchConfig> tryCatchConfig,
-    @JsonInclude(JsonInclude.Include.NON_ABSENT) Optional<JsonNode> waitDuration,
-    @JsonInclude(JsonInclude.Include.NON_ABSENT) Optional<ListenConfig> listenConfig,
-    @JsonInclude(JsonInclude.Include.NON_ABSENT) Optional<String> dataflowAppId) {
+    Optional<JsonNode> waitDuration,
+    Optional<ListenConfig> listenConfig) {
 
   /**
    * A {@code for} controller's loop configuration, read verbatim from the definition. Every field
    * is optional here rather than validated: ADR 0004 defers v2 semantic validation, and the
    * single-node schema is what requires {@code in} on a {@code for} node.
    */
+  @JsonInclude(JsonInclude.Include.NON_ABSENT)
   public record ForConfig(
       Optional<String> each,
       Optional<String> in,
@@ -57,14 +62,21 @@ public record FlowScope(
    * body binds. Every field is optional here rather than validated, for the same reason as {@link
    * ForConfig}: ADR 0004 defers v2 semantic validation to the single-node schema.
    */
+  @JsonInclude(JsonInclude.Include.NON_ABSENT)
   public record TryCatchConfig(
       Optional<JsonNode> errors,
       Optional<JsonNode> retry,
       Optional<String> as,
       Optional<String> when,
-      Optional<String> exceptWhen) {}
+      Optional<String> exceptWhen) {
+    public TryCatchConfig {
+      errors = withoutJsonNull(errors);
+      retry = withoutJsonNull(retry);
+    }
+  }
 
   /** A {@code listen} controller's event selection, task timeout, and event read mode. */
+  @JsonInclude(JsonInclude.Include.NON_ABSENT)
   public record ListenConfig(JsonNode to, Optional<JsonNode> timeout, Optional<String> read) {
     public ListenConfig {
       timeout = withoutJsonNull(timeout);
@@ -77,7 +89,6 @@ public record FlowScope(
   }
 
   private static Optional<JsonNode> withoutJsonNull(Optional<JsonNode> value) {
-    // Jackson can deserialize an absent Optional<JsonNode> as an Optional of NullNode.
     return value.filter(node -> !node.isNull());
   }
 
@@ -86,7 +97,6 @@ public record FlowScope(
     return new FlowScope(
         scope,
         tasks,
-        Optional.empty(),
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
@@ -105,8 +115,7 @@ public record FlowScope(
         forConfig,
         tryCatchConfig,
         waitDuration,
-        listenConfig,
-        dataflowAppId);
+        listenConfig);
   }
 
   /** This scope with its fork completion mode attached. */
@@ -119,8 +128,7 @@ public record FlowScope(
         forConfig,
         tryCatchConfig,
         waitDuration,
-        listenConfig,
-        dataflowAppId);
+        listenConfig);
   }
 
   /** This scope with its loop configuration attached. */
@@ -133,8 +141,7 @@ public record FlowScope(
         Optional.of(forConfig),
         tryCatchConfig,
         waitDuration,
-        listenConfig,
-        dataflowAppId);
+        listenConfig);
   }
 
   /** This scope with its recovery configuration attached. */
@@ -147,10 +154,10 @@ public record FlowScope(
         forConfig,
         Optional.of(tryCatchConfig),
         waitDuration,
-        listenConfig,
-        dataflowAppId);
+        listenConfig);
   }
 
+  /** This scope with its {@code wait} duration attached. */
   public FlowScope withWait(JsonNode duration) {
     return new FlowScope(
         scope,
@@ -160,10 +167,10 @@ public record FlowScope(
         forConfig,
         tryCatchConfig,
         Optional.of(duration),
-        listenConfig,
-        dataflowAppId);
+        listenConfig);
   }
 
+  /** This scope with its {@code listen} configuration attached. */
   public FlowScope withListen(ListenConfig config) {
     return new FlowScope(
         scope,
@@ -173,20 +180,6 @@ public record FlowScope(
         forConfig,
         tryCatchConfig,
         waitDuration,
-        Optional.of(config),
-        dataflowAppId);
-  }
-
-  public FlowScope withDataflow(String companionAppId) {
-    return new FlowScope(
-        scope,
-        tasks,
-        catchAppId,
-        forkMode,
-        forConfig,
-        tryCatchConfig,
-        waitDuration,
-        listenConfig,
-        Optional.of(companionAppId));
+        Optional.of(config));
   }
 }

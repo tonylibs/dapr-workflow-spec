@@ -92,6 +92,31 @@ class FlowNodeTest {
     assertThat(mapper.readValue(json, CompiledNode.class)).isEqualTo(flow);
   }
 
+  /**
+   * Jackson reads an absent {@code Optional<JsonNode>} back as {@code Optional.of(NullNode)}, so an
+   * unset JSON-valued config field must neither be written nor come back as a JSON {@code null}.
+   */
+  @Test
+  void aControllerWithUnsetJsonConfigRoundTripsWithoutNulls() throws Exception {
+    FlowScope scope =
+        FlowScope.of("try-catch", List.of())
+            .withTryCatchConfig(
+                new FlowScope.TryCatchConfig(
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.of("error"),
+                    Optional.empty(),
+                    Optional.empty()));
+    FlowNode flow = new FlowNode("guarded", "guarded", "dws-def-guarded", ENVELOPE, scope);
+
+    String json = mapper.writeValueAsString(flow);
+    FlowNode back = (FlowNode) mapper.readValue(json, CompiledNode.class);
+
+    assertThat(json).doesNotContain(":null");
+    assertThat(back).isEqualTo(flow);
+    assertThat(back.specText()).isEqualTo(flow.specText()).doesNotContain("errors", "retry");
+  }
+
   @Test
   void aCompanionStaysAttachedWhenExecutionChildrenChangeAndTheGraphRoundTrips() throws Exception {
     StepNode companion = step("group.dataflow", "group-dataflow");
@@ -108,23 +133,14 @@ class FlowNodeTest {
   }
 
   @Test
-  void rejectsACompanionReferenceThatDoesNotMatchTheGraph() {
-    FlowScope scope = FlowScope.of("do", List.of()).withDataflow("group-dataflow");
-    assertThatThrownBy(() -> new FlowNode("group", "group", "dws-def-group", ENVELOPE, scope))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("dataflow");
-    assertThatThrownBy(
-            () ->
-                new FlowNode(
-                    "group",
-                    "group",
-                    "dws-def-group",
-                    ENVELOPE,
-                    scope,
-                    List.of(),
-                    Optional.of(step("other.dataflow", "other-dataflow"))))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("dataflow");
+  void rendersTheDataflowReferenceFromTheAttachedCompanionOnly() {
+    FlowNode bare =
+        new FlowNode("group", "group", "dws-def-group", ENVELOPE, FlowScope.of("do", List.of()));
+
+    FlowNode withCompanion = bare.withDataflow(step("group.dataflow", "group-dataflow"));
+
+    assertThat(bare.specText()).doesNotContain("\"dataflow\"");
+    assertThat(withCompanion.specText()).contains("\"dataflow\" : \"group-dataflow\"");
   }
 
   private static FlowNode flow(CompiledNode... children) {

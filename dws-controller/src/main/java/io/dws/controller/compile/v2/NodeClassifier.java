@@ -63,7 +63,13 @@ public class NodeClassifier {
 
   /** Everything the recursion carries unchanged from the top of the definition. */
   private record Context(
-      SingleNodeDefinition.Envelope envelope, String workflow, String versionId) {}
+      SingleNodeDefinition.Envelope envelope, String workflow, String versionId) {
+
+    /** The ConfigMap/Configuration-store key of the node with {@code appId}. */
+    String definitionResource(String appId) {
+      return Names.nodeDefinitionResource(workflow, versionId, appId);
+    }
+  }
 
   /**
    * Classifies a whole definition into the {@code main} flow node and, transitively, every node
@@ -124,11 +130,16 @@ public class NodeClassifier {
         .or(() -> task.map(Task::getDoTask).map(t -> doFlow(nodeId, t, rawBody, context)))
         .or(() -> task.map(Task::getWaitTask).map(t -> waitFlow(nodeId, rawBody, context)))
         .or(() -> task.map(Task::getListenTask).map(t -> listenFlow(nodeId, rawBody, context)))
-        .<CompiledNode>map(flow -> withDataflow(flow, rawBody, context))
-        .orElseGet(() -> step(nodeId, task, rawItem, context));
+        .<CompiledNode>map(flow -> attachDataflowCompanion(flow, rawBody, context))
+        .orElseGet(() -> taskStep(nodeId, item.getTask(), rawItem, context));
   }
 
-  private static FlowNode withDataflow(FlowNode flow, JsonNode rawBody, Context context) {
+  /**
+   * {@code flow} with a companion Step carrying the task's own {@code input}/{@code output}/{@code
+   * export} sections verbatim, or {@code flow} unchanged when it declares none of them.
+   */
+  private static FlowNode attachDataflowCompanion(
+      FlowNode flow, JsonNode rawBody, Context context) {
     ObjectNode dataflow = JsonNodeFactory.instance.objectNode();
     for (var field : rawBody.properties()) {
       if (DATAFLOW_FIELDS.contains(field.getKey())) {
@@ -141,9 +152,8 @@ public class NodeClassifier {
 
     ObjectNode task = JsonNodeFactory.instance.objectNode();
     task.set(flow.nodeId(), dataflow);
-    String nodeId = NodeNaming.dataflowNodeId(flow.nodeId());
-    String appId = NodeNaming.appId(nodeId);
-    return flow.withDataflow(step(context, nodeId, appId, task, Optional.empty()));
+    return flow.withDataflow(
+        companionStep(NodeNaming.dataflowNodeId(flow.nodeId()), task, context));
   }
 
   private static FlowNode waitFlow(String nodeId, JsonNode rawBody, Context context) {
@@ -290,26 +300,30 @@ public class NodeClassifier {
   /**
    * Every non-structural task kind, per design §D2 — including {@code switch}, which owns no list.
    */
-  private static StepNode step(
-      String nodeId, Optional<Task> task, RawTaskItem rawItem, Context context) {
+  private static StepNode taskStep(String nodeId, Task task, RawTaskItem rawItem, Context context) {
     String appId = NodeNaming.appId(nodeId);
     Optional<String> functionAppId =
-        task
+        Optional.ofNullable(task)
             // Disjunction, not two chained filters: a task is a call or a run, never both, so
             // chaining them ANDs to false and every step silently loses its -fn function app ID.
             .filter(t -> Objects.nonNull(t.getCallTask()) || Objects.nonNull(t.getRunTask()))
             .map(_ -> NodeNaming.functionAppId(appId));
-    return step(context, nodeId, appId, rawItem.copy(), functionAppId);
+    String specText =
+        functionAppId
+            .map(fn -> SingleNodeDefinition.step(context.envelope(), appId, rawItem.copy(), fn))
+            .orElseGet(() -> SingleNodeDefinition.step(context.envelope(), appId, rawItem.copy()));
+    return new StepNode(nodeId, appId, context.definitionResource(appId), specText, functionAppId);
   }
 
-  private static StepNode step(
-      Context context, String nodeId, String appId, JsonNode task, Optional<String> functionAppId) {
+  /** A structural task's data-flow companion (ADR 0012 Decision 3): a Step with no function. */
+  private static StepNode companionStep(String nodeId, JsonNode task, Context context) {
+    String appId = NodeNaming.appId(nodeId);
     return new StepNode(
         nodeId,
         appId,
-        Names.nodeDefinitionResource(context.workflow(), context.versionId(), appId),
-        SingleNodeDefinition.step(context.envelope(), appId, task, functionAppId.orElse(null)),
-        functionAppId);
+        context.definitionResource(appId),
+        SingleNodeDefinition.step(context.envelope(), appId, task),
+        Optional.empty());
   }
 
   /**
@@ -337,21 +351,12 @@ public class NodeClassifier {
       Context context, String nodeId, FlowScope scope, List<CompiledNode> children) {
     String appId = NodeNaming.appId(nodeId);
     return new FlowNode(
-        nodeId,
-        appId,
-        Names.nodeDefinitionResource(context.workflow(), context.versionId(), appId),
-        context.envelope(),
-        scope,
-        children);
+        nodeId, appId, context.definitionResource(appId), context.envelope(), scope, children);
   }
 
   private static FlowNode flow(Context context, String nodeId, FlowScope scope) {
     String appId = NodeNaming.appId(nodeId);
     return new FlowNode(
-        nodeId,
-        appId,
-        Names.nodeDefinitionResource(context.workflow(), context.versionId(), appId),
-        context.envelope(),
-        scope);
+        nodeId, appId, context.definitionResource(appId), context.envelope(), scope);
   }
 }

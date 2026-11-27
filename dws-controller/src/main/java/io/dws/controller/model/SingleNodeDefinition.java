@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Map;
+import java.util.Objects;
 import lombok.experimental.UtilityClass;
 
 /** Renders one compiled node's single-node definition (Phase 0 schema). */
@@ -19,7 +20,25 @@ public class SingleNodeDefinition {
   /** The envelope fields every node shares. */
   public record Envelope(String workflow, String version) {}
 
+  /** A flow node's definition, with no data-flow companion. */
   public static String flow(
+      Envelope envelope, String appId, FlowScope scope, Map<String, String> children) {
+    return write(flowNode(envelope, appId, scope, children));
+  }
+
+  /** A flow node's definition, referencing its data-flow companion Step by app ID. */
+  public static String flow(
+      Envelope envelope,
+      String appId,
+      FlowScope scope,
+      Map<String, String> children,
+      String dataflowAppId) {
+    ObjectNode node = flowNode(envelope, appId, scope, children);
+    node.put("dataflow", Objects.requireNonNull(dataflowAppId, "dataflowAppId"));
+    return write(node);
+  }
+
+  private static ObjectNode flowNode(
       Envelope envelope, String appId, FlowScope scope, Map<String, String> children) {
     ObjectNode node = envelope(envelope, appId, "flow");
     node.put("scope", scope.scope());
@@ -57,8 +76,12 @@ public class SingleNodeDefinition {
               config.timeout().ifPresent(timeout -> node.set("timeout", timeout));
               config.read().ifPresent(read -> node.put("read", read));
             });
-    scope.dataflowAppId().ifPresent(dataflow -> node.put("dataflow", dataflow));
-    return write(node);
+    return node;
+  }
+
+  /** A step node's definition, with no co-located function. */
+  public static String step(Envelope envelope, String appId, JsonNode task) {
+    return step(envelope, appId, task, null);
   }
 
   public static String step(Envelope envelope, String appId, JsonNode task, String functionAppId) {

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.apache.commons.collections4.ListUtils;
 
@@ -42,10 +43,6 @@ public record FlowNode(
   public FlowNode {
     children = List.copyOf(children);
     ChildIndex.of(children); // rejects a duplicate key before the node exists
-    if (!dataflow.map(StepNode::appId).equals(scope.dataflowAppId())) {
-      throw new IllegalArgumentException(
-          "dataflow companion must match its scope's dataflow app ID");
-    }
   }
 
   public FlowNode(
@@ -68,8 +65,8 @@ public record FlowNode(
   }
 
   /**
-   * This node's single-node definition JSON (Phase 0 schema), rendered from the scope and the
-   * current children.
+   * This node's single-node definition JSON (Phase 0 schema), rendered from the scope, the current
+   * children, and the data-flow companion's app ID when there is one.
    *
    * <p>Read-only on the wire: it is derived, so a {@code /plan} payload round-trips through the
    * components above rather than through this.
@@ -77,13 +74,16 @@ public record FlowNode(
   @Override
   @JsonProperty(access = JsonProperty.Access.READ_ONLY)
   public String specText() {
-    return SingleNodeDefinition.flow(envelope, appId, scope, ChildIndex.of(children));
+    Map<String, String> childIndex = ChildIndex.of(children);
+    return dataflow
+        .map(
+            companion ->
+                SingleNodeDefinition.flow(envelope, appId, scope, childIndex, companion.appId()))
+        .orElseGet(() -> SingleNodeDefinition.flow(envelope, appId, scope, childIndex));
   }
 
   /** This flow with {@code child} appended after its current children, in source order. */
   public FlowNode withChild(CompiledNode child) {
-    //    List<CompiledNode> appended = new ArrayList<>(children);
-    //    appended.add(child);
     return withChildren(ListUtils.union(children, List.of(child)));
   }
 
@@ -92,16 +92,13 @@ public record FlowNode(
     return new FlowNode(nodeId, appId, definitionResource, envelope, scope, children, dataflow);
   }
 
-  /** This flow with its companion and the matching reference in its definition. */
+  /**
+   * This flow with its data-flow companion attached. The definition's {@code dataflow} reference is
+   * rendered from the companion itself, so the two cannot disagree.
+   */
   public FlowNode withDataflow(StepNode companion) {
     return new FlowNode(
-        nodeId,
-        appId,
-        definitionResource,
-        envelope,
-        scope.withDataflow(companion.appId()),
-        children,
-        Optional.of(companion));
+        nodeId, appId, definitionResource, envelope, scope, children, Optional.of(companion));
   }
 
   @Override
