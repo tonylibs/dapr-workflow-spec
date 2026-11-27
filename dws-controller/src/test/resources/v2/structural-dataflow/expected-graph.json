@@ -1,0 +1,161 @@
+{
+  "nodeId" : "structural-dataflow.main",
+  "appId" : "structural-dataflow-main",
+  "definitionResource" : "dws-def-structural-dataflow-<versionId>-structural-dataflow-main",
+  "kind" : "flow",
+  "functionAppId" : null,
+  "children" : [ {
+    "nodeId" : "reserveItems",
+    "appId" : "reserve-items",
+    "definitionResource" : "dws-def-structural-dataflow-<versionId>-reserve-items",
+    "kind" : "flow",
+    "functionAppId" : null,
+    "dataflow" : {
+      "nodeId" : "reserveItems.dataflow",
+      "appId" : "reserve-items-dataflow",
+      "definitionResource" : "dws-def-structural-dataflow-<versionId>-reserve-items-dataflow",
+      "kind" : "step",
+      "functionAppId" : null,
+      "children" : [ ]
+    },
+    "children" : [ {
+      "nodeId" : "reserveItems.do",
+      "appId" : "reserve-items-do",
+      "definitionResource" : "dws-def-structural-dataflow-<versionId>-reserve-items-do",
+      "kind" : "flow",
+      "functionAppId" : null,
+      "children" : [ {
+        "nodeId" : "reserveItem",
+        "appId" : "reserve-item",
+        "definitionResource" : "dws-def-structural-dataflow-<versionId>-reserve-item",
+        "kind" : "step",
+        "functionAppId" : null,
+        "children" : [ ]
+      } ]
+    } ]
+  }, {
+    "nodeId" : "processPayment",
+    "appId" : "process-payment",
+    "definitionResource" : "dws-def-structural-dataflow-<versionId>-process-payment",
+    "kind" : "flow",
+    "functionAppId" : null,
+    "dataflow" : {
+      "nodeId" : "processPayment.dataflow",
+      "appId" : "process-payment-dataflow",
+      "definitionResource" : "dws-def-structural-dataflow-<versionId>-process-payment-dataflow",
+      "kind" : "step",
+      "functionAppId" : null,
+      "children" : [ ]
+    },
+    "children" : [ {
+      "nodeId" : "processPayment.try",
+      "appId" : "process-payment-try",
+      "definitionResource" : "dws-def-structural-dataflow-<versionId>-process-payment-try",
+      "kind" : "flow",
+      "functionAppId" : null,
+      "children" : [ {
+        "nodeId" : "chargeCard",
+        "appId" : "charge-card",
+        "definitionResource" : "dws-def-structural-dataflow-<versionId>-charge-card",
+        "kind" : "step",
+        "functionAppId" : null,
+        "children" : [ ]
+      } ]
+    }, {
+      "nodeId" : "processPayment.catch",
+      "appId" : "process-payment-catch",
+      "definitionResource" : "dws-def-structural-dataflow-<versionId>-process-payment-catch",
+      "kind" : "flow",
+      "functionAppId" : null,
+      "children" : [ {
+        "nodeId" : "markFailed",
+        "appId" : "mark-failed",
+        "definitionResource" : "dws-def-structural-dataflow-<versionId>-mark-failed",
+        "kind" : "step",
+        "functionAppId" : null,
+        "children" : [ ]
+      } ]
+    } ]
+  }, {
+    "nodeId" : "notifyChannels",
+    "appId" : "notify-channels",
+    "definitionResource" : "dws-def-structural-dataflow-<versionId>-notify-channels",
+    "kind" : "flow",
+    "functionAppId" : null,
+    "dataflow" : {
+      "nodeId" : "notifyChannels.dataflow",
+      "appId" : "notify-channels-dataflow",
+      "definitionResource" : "dws-def-structural-dataflow-<versionId>-notify-channels-dataflow",
+      "kind" : "step",
+      "functionAppId" : null,
+      "children" : [ ]
+    },
+    "children" : [ {
+      "nodeId" : "sendEmail",
+      "appId" : "send-email",
+      "definitionResource" : "dws-def-structural-dataflow-<versionId>-send-email",
+      "kind" : "step",
+      "functionAppId" : null,
+      "children" : [ ]
+    }, {
+      "nodeId" : "writeAudit",
+      "appId" : "write-audit",
+      "definitionResource" : "dws-def-structural-dataflow-<versionId>-write-audit",
+      "kind" : "step",
+      "functionAppId" : null,
+      "children" : [ ]
+    } ]
+  }, {
+    "nodeId" : "reminderDelay",
+    "appId" : "reminder-delay",
+    "definitionResource" : "dws-def-structural-dataflow-<versionId>-reminder-delay",
+    "kind" : "flow",
+    "functionAppId" : null,
+    "dataflow" : {
+      "nodeId" : "reminderDelay.dataflow",
+      "appId" : "reminder-delay-dataflow",
+      "definitionResource" : "dws-def-structural-dataflow-<versionId>-reminder-delay-dataflow",
+      "kind" : "step",
+      "functionAppId" : null,
+      "children" : [ ]
+    },
+    "children" : [ ]
+  }, {
+    "nodeId" : "awaitApproval",
+    "appId" : "await-approval",
+    "definitionResource" : "dws-def-structural-dataflow-<versionId>-await-approval",
+    "kind" : "flow",
+    "functionAppId" : null,
+    "dataflow" : {
+      "nodeId" : "awaitApproval.dataflow",
+      "appId" : "await-approval-dataflow",
+      "definitionResource" : "dws-def-structural-dataflow-<versionId>-await-approval-dataflow",
+      "kind" : "step",
+      "functionAppId" : null,
+      "children" : [ ]
+    },
+    "children" : [ ]
+  }, {
+    "nodeId" : "summarize",
+    "appId" : "summarize",
+    "definitionResource" : "dws-def-structural-dataflow-<versionId>-summarize",
+    "kind" : "flow",
+    "functionAppId" : null,
+    "dataflow" : {
+      "nodeId" : "summarize.dataflow",
+      "appId" : "summarize-dataflow",
+      "definitionResource" : "dws-def-structural-dataflow-<versionId>-summarize-dataflow",
+      "kind" : "step",
+      "functionAppId" : null,
+      "children" : [ ]
+    },
+    "children" : [ {
+      "nodeId" : "dataflow",
+      "appId" : "dataflow",
+      "definitionResource" : "dws-def-structural-dataflow-<versionId>-dataflow",
+      "kind" : "step",
+      "functionAppId" : null,
+      "children" : [ ]
+    } ]
+  } ]
+}

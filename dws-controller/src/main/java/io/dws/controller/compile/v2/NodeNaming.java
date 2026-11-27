@@ -60,6 +60,10 @@ class NodeNaming {
     return tryTaskName + ".try";
   }
 
+  static String dataflowNodeId(String taskName) {
+    return taskName + ".dataflow";
+  }
+
   static String appId(String nodeId) {
     String appId = Names.kebab(nodeId);
     if (appId.isEmpty()) {

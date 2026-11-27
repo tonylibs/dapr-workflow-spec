@@ -1,0 +1,16 @@
+{
+  "workflow" : "structural-dataflow",
+  "version" : "structural-dataflow@<versionId>",
+  "nodeId" : "reminder-delay-dataflow",
+  "kind" : "step",
+  "task" : {
+    "reminderDelay" : {
+      "input" : {
+        "from" : "${ .reminder }"
+      },
+      "output" : {
+        "as" : "${ . }"
+      }
+    }
+  }
+}

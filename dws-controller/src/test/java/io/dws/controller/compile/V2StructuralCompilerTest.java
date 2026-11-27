@@ -12,7 +12,11 @@ import io.dws.controller.model.StepNode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class V2StructuralCompilerTest {
 
@@ -296,6 +300,166 @@ class V2StructuralCompilerTest {
     assertThatThrownBy(() -> compiler.compile(colliding))
         .isInstanceOf(CompilationException.class)
         .hasMessageContaining("reserve-item");
+  }
+
+  @Test
+  void rejectsACompanionCollidingWithASiblingAppId() {
+    String colliding =
+        """
+        document: {dsl: '1.0.0', namespace: default, name: collide-dataflow, version: '1.0.0'}
+        do:
+          - reserveItems:
+              wait: PT5M
+              input: {from: '${ .items }'}
+          - reserveItemsDataflow:
+              set: {reserved: true}
+        """;
+    assertThatThrownBy(() -> compiler.compile(colliding))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining("node 'reserveItems.dataflow'")
+        .hasMessageContaining("node 'reserveItemsDataflow'")
+        .hasMessageContaining("reserve-items-dataflow");
+  }
+
+  @Test
+  void carriesWaitAndListenConfigurationVerbatimOnLeafFlows() throws Exception {
+    String definition =
+        """
+        document: {dsl: '1.0.0', namespace: default, name: leaf-scopes, version: '1.0.0'}
+        do:
+          - delayText: {wait: PT5M}
+          - delayObject: {wait: {seconds: 30, minutes: 1}}
+          - listenBare:
+              listen:
+                to: {one: {with: {type: example.ready}}}
+          - listenText:
+              listen:
+                to: {one: {with: {type: example.ready, source: 'https://example.com'}}}
+                read: data
+              timeout: PT1H
+          - listenObject:
+              listen:
+                to: {one: {with: {type: example.ready}}}
+                read: envelope
+              timeout: {after: {minutes: 5}}
+        """;
+    CompiledNode main = compiler.compile(definition).flowStepGraph().getFirst();
+    JsonNode source = SpecParser.readRawOrThrow(definition, SpecParser.detectFormat(definition));
+    for (int i = 0; i < main.children().size(); i++) {
+      FlowNode leaf = (FlowNode) main.children().get(i);
+      JsonNode task = source.get("do").get(i).get(leaf.nodeId());
+      JsonNode wire = JSON.readTree(leaf.specText());
+      assertThat(leaf.children()).isEmpty();
+      assertThat(wire.get("tasks")).isEmpty();
+      assertThat(wire.get("children")).isEmpty();
+      if (task.has("wait")) {
+        assertThat(wire.get("scope").asText()).isEqualTo("wait");
+        assertThat(wire.get("wait")).isEqualTo(task.get("wait"));
+      } else {
+        assertThat(wire.get("scope").asText()).isEqualTo("listen");
+        assertThat(wire.get("to")).isEqualTo(task.get("listen").get("to"));
+        assertThat(wire.get("read")).isEqualTo(task.get("listen").get("read"));
+        assertThat(wire.get("timeout")).isEqualTo(task.get("timeout"));
+      }
+    }
+    assertThat(main.children()).hasSize(5);
+  }
+
+  @ParameterizedTest
+  @MethodSource("structuralScopes")
+  void emitsOneCompanionWithOnlyDeclaredDataFlowInSourceOrder(String scope, String body)
+      throws Exception {
+    String definition =
+        """
+        {
+          "document": {"dsl":"1.0.0","namespace":"default","name":"companion","version":"1.0.0"},
+          "do": [{"withData":{
+            "export":{"as":"${ $context }"},
+            %s,
+            "input":{"from":"${ .payload }"},
+            "then":"withoutData",
+            "output":{"as":"${ .result }"}
+          }},{"withoutData":{%s}},{"plainStep":{
+            "set":{"done":true},
+            "input":{"from":"${ . }"},
+            "output":{"as":"${ . }"},
+            "export":{"as":"${ . }"}
+          }}]
+        }
+        """
+            .formatted(
+                body.replace("workItem", "firstItem"), body.replace("workItem", "secondItem"));
+    FlowNode main = (FlowNode) compiler.compile(definition).flowStepGraph().getFirst();
+    FlowNode withData = (FlowNode) node(main, "with-data");
+    FlowNode withoutData = (FlowNode) node(main, "without-data");
+    StepNode companion = withData.dataflow().orElseThrow();
+
+    JsonNode wire = JSON.readTree(withData.specText());
+    assertThat(wire.get("scope").asText()).isEqualTo(scope);
+    assertThat(wire.get("dataflow").asText()).isEqualTo("with-data-dataflow");
+    assertThat(wire.get("children").has("dataflow")).isFalse();
+    assertThat(withoutData.scope().scope()).isEqualTo(scope);
+    assertThat(withoutData.dataflow()).isEmpty();
+    assertThat(JSON.readTree(withoutData.specText()).has("dataflow")).isFalse();
+    assertThat(main.dataflow()).isEmpty();
+    assertThat(companion.nodeId()).isEqualTo("withData.dataflow");
+    assertThat(companion.functionAppId()).isEmpty();
+    assertThat(withData.flatten()).startsWith(withData, companion);
+    assertThat(main.flatten().stream().filter(node -> node.nodeId().endsWith(".dataflow")))
+        .containsExactly(companion);
+    JsonNode companionTask = JSON.readTree(companion.specText()).get("task");
+    JsonNode fields = companionTask.get("withData");
+    assertThat(companionTask.size()).isEqualTo(1);
+    assertThat(fields.propertyStream().map(Map.Entry::getKey))
+        .containsExactly("export", "input", "output");
+    assertThat(fields.get("export").get("as").asText()).isEqualTo("${ $context }");
+    assertThat(fields.get("input").get("from").asText()).isEqualTo("${ .payload }");
+    assertThat(fields.get("output").get("as").asText()).isEqualTo("${ .result }");
+    assertThat(
+            JSON.readTree(node(main, "plain-step").specText())
+                .at("/task/plainStep/input/from")
+                .asText())
+        .isEqualTo("${ . }");
+
+    CompiledNode repeated = compiler.compile(definition).flowStepGraph().getFirst();
+    assertThat(repeated).isEqualTo(main);
+    assertThat(repeated.flatten().stream().map(CompiledNode::specText))
+        .containsExactlyElementsOf(main.flatten().stream().map(CompiledNode::specText).toList());
+  }
+
+  private static Stream<Arguments> structuralScopes() {
+    return Stream.of(
+        Arguments.of(
+            "for",
+            """
+            "for":{"in":"${ .items }"},"do":[{"workItem":{"set":{"value":1}}}]
+            """),
+        Arguments.of(
+            "try-catch",
+            """
+            "try":[{"workItem":{"set":{"value":1}}}],
+            "catch":{"do":[{"workItemRecovery":{"set":{"recovered":true}}}]}
+            """),
+        Arguments.of(
+            "fork",
+            """
+            "fork":{"branches":[{"workItem":{"set":{"value":1}}}]}
+            """),
+        Arguments.of(
+            "wait",
+            """
+            "wait":{"seconds":10}
+            """),
+        Arguments.of(
+            "listen",
+            """
+            "listen":{"to":{"one":{"with":{"type":"example.ready"}}}}
+            """),
+        Arguments.of(
+            "do",
+            """
+            "do":[{"workItem":{"set":{"value":1}}}]
+            """));
   }
 
   /**

@@ -1,6 +1,8 @@
 package io.dws.controller.model;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.util.DefaultIndenter;
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -46,6 +48,16 @@ public class SingleNodeDefinition {
               config.whileCondition().ifPresent(w -> node.put("while", w));
             });
     scope.forkMode().ifPresent(forkMode -> node.put("forkMode", forkMode));
+    scope.waitDuration().ifPresent(duration -> node.set("wait", duration));
+    scope
+        .listenConfig()
+        .ifPresent(
+            config -> {
+              node.set("to", config.to());
+              config.timeout().ifPresent(timeout -> node.set("timeout", timeout));
+              config.read().ifPresent(read -> node.put("read", read));
+            });
+    scope.dataflowAppId().ifPresent(dataflow -> node.put("dataflow", dataflow));
     return write(node);
   }
 
@@ -69,7 +81,9 @@ public class SingleNodeDefinition {
 
   private static String write(ObjectNode node) {
     try {
-      return JSON.writerWithDefaultPrettyPrinter().writeValueAsString(node) + "\n";
+      DefaultPrettyPrinter printer =
+          new DefaultPrettyPrinter().withObjectIndenter(new DefaultIndenter("  ", "\n"));
+      return JSON.writer(printer).writeValueAsString(node) + "\n";
     } catch (JsonProcessingException e) {
       throw new IllegalStateException("single-node definition could not be rendered", e);
     }

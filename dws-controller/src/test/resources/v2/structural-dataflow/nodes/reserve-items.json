@@ -1,0 +1,14 @@
+{
+  "workflow" : "structural-dataflow",
+  "version" : "structural-dataflow@<versionId>",
+  "nodeId" : "reserve-items",
+  "kind" : "flow",
+  "scope" : "for",
+  "tasks" : [ ],
+  "children" : {
+    "do" : "reserve-items-do"
+  },
+  "each" : "item",
+  "in" : "${ .items }",
+  "dataflow" : "reserve-items-dataflow"
+}

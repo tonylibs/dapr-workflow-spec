@@ -1,0 +1,14 @@
+{
+  "workflow" : "structural-dataflow",
+  "version" : "structural-dataflow@<versionId>",
+  "nodeId" : "process-payment",
+  "kind" : "flow",
+  "scope" : "try-catch",
+  "tasks" : [ ],
+  "children" : {
+    "try" : "process-payment-try",
+    "catch" : "process-payment-catch"
+  },
+  "catch" : "process-payment-catch",
+  "dataflow" : "process-payment-dataflow"
+}

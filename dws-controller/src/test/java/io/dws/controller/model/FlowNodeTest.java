@@ -84,9 +84,47 @@ class FlowNodeTest {
     FlowNode flow = flow(step("validateOrder", "validate-order"));
 
     String json = mapper.writeValueAsString(flow);
-    assertThat(json).contains("\"specText\"");
+    assertThat(json)
+        .contains("\"specText\"")
+        .doesNotContain(
+            "\"waitDuration\"", "\"listenConfig\"", "\"dataflowAppId\"", "\"dataflow\"");
 
     assertThat(mapper.readValue(json, CompiledNode.class)).isEqualTo(flow);
+  }
+
+  @Test
+  void aCompanionStaysAttachedWhenExecutionChildrenChangeAndTheGraphRoundTrips() throws Exception {
+    StepNode companion = step("group.dataflow", "group-dataflow");
+    StepNode child = step("child", "child");
+    FlowNode group =
+        new FlowNode("group", "group", "dws-def-group", ENVELOPE, FlowScope.of("do", List.of()))
+            .withDataflow(companion)
+            .withChild(child);
+
+    assertThat(group.children()).containsExactly(child);
+    assertThat(group.flatten()).containsExactly(group, companion, child);
+    assertThat(mapper.readValue(mapper.writeValueAsString(group), CompiledNode.class))
+        .isEqualTo(group);
+  }
+
+  @Test
+  void rejectsACompanionReferenceThatDoesNotMatchTheGraph() {
+    FlowScope scope = FlowScope.of("do", List.of()).withDataflow("group-dataflow");
+    assertThatThrownBy(() -> new FlowNode("group", "group", "dws-def-group", ENVELOPE, scope))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("dataflow");
+    assertThatThrownBy(
+            () ->
+                new FlowNode(
+                    "group",
+                    "group",
+                    "dws-def-group",
+                    ENVELOPE,
+                    scope,
+                    List.of(),
+                    Optional.of(step("other.dataflow", "other-dataflow"))))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("dataflow");
   }
 
   private static FlowNode flow(CompiledNode... children) {
@@ -99,7 +137,7 @@ class FlowNodeTest {
         List.of(children));
   }
 
-  private static CompiledNode step(String nodeId, String appId) {
+  private static StepNode step(String nodeId, String appId) {
     return new StepNode(nodeId, appId, "dws-def-" + appId, "{}", Optional.empty());
   }
 }

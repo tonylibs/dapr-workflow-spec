@@ -1,8 +1,10 @@
 package io.dws.controller.model;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.apache.commons.collections4.ListUtils;
 
 /**
@@ -24,7 +26,8 @@ import org.apache.commons.collections4.ListUtils;
  * @param definitionResource this node's own ConfigMap/Configuration-store key
  * @param envelope the {@code workflow}/{@code version} fields every node's {@code specText} shares
  * @param scope the DSL scope this node was classified from, and the task list it owns
- * @param children this flow's child nodes
+ * @param children this flow's execution children
+ * @param dataflow this flow's companion Step node, when present
  */
 public record FlowNode(
     String nodeId,
@@ -32,12 +35,27 @@ public record FlowNode(
     String definitionResource,
     SingleNodeDefinition.Envelope envelope,
     FlowScope scope,
-    List<CompiledNode> children)
+    List<CompiledNode> children,
+    @JsonInclude(JsonInclude.Include.NON_ABSENT) Optional<StepNode> dataflow)
     implements CompiledNode {
 
   public FlowNode {
     children = List.copyOf(children);
     ChildIndex.of(children); // rejects a duplicate key before the node exists
+    if (!dataflow.map(StepNode::appId).equals(scope.dataflowAppId())) {
+      throw new IllegalArgumentException(
+          "dataflow companion must match its scope's dataflow app ID");
+    }
+  }
+
+  public FlowNode(
+      String nodeId,
+      String appId,
+      String definitionResource,
+      SingleNodeDefinition.Envelope envelope,
+      FlowScope scope,
+      List<CompiledNode> children) {
+    this(nodeId, appId, definitionResource, envelope, scope, children, Optional.empty());
   }
 
   public FlowNode(
@@ -46,7 +64,7 @@ public record FlowNode(
       String definitionResource,
       SingleNodeDefinition.Envelope envelope,
       FlowScope scope) {
-    this(nodeId, appId, definitionResource, envelope, scope, Collections.emptyList());
+    this(nodeId, appId, definitionResource, envelope, scope, List.of());
   }
 
   /**
@@ -71,6 +89,27 @@ public record FlowNode(
 
   /** This flow with {@code children} in place of its current ones. */
   public FlowNode withChildren(List<CompiledNode> children) {
-    return new FlowNode(nodeId, appId, definitionResource, envelope, scope, children);
+    return new FlowNode(nodeId, appId, definitionResource, envelope, scope, children, dataflow);
+  }
+
+  /** This flow with its companion and the matching reference in its definition. */
+  public FlowNode withDataflow(StepNode companion) {
+    return new FlowNode(
+        nodeId,
+        appId,
+        definitionResource,
+        envelope,
+        scope.withDataflow(companion.appId()),
+        children,
+        Optional.of(companion));
+  }
+
+  @Override
+  public List<CompiledNode> flatten() {
+    List<CompiledNode> all = new ArrayList<>();
+    all.add(this);
+    dataflow.ifPresent(all::add);
+    children.forEach(child -> all.addAll(child.flatten()));
+    return List.copyOf(all);
   }
 }

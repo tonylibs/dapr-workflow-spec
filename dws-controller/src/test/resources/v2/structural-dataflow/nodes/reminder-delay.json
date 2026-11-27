@@ -1,0 +1,14 @@
+{
+  "workflow" : "structural-dataflow",
+  "version" : "structural-dataflow@<versionId>",
+  "nodeId" : "reminder-delay",
+  "kind" : "flow",
+  "scope" : "wait",
+  "tasks" : [ ],
+  "children" : { },
+  "wait" : {
+    "seconds" : 15,
+    "minutes" : 1
+  },
+  "dataflow" : "reminder-delay-dataflow"
+}

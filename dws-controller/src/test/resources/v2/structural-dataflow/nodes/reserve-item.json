@@ -1,0 +1,13 @@
+{
+  "workflow" : "structural-dataflow",
+  "version" : "structural-dataflow@<versionId>",
+  "nodeId" : "reserve-item",
+  "kind" : "step",
+  "task" : {
+    "reserveItem" : {
+      "set" : {
+        "reserved" : true
+      }
+    }
+  }
+}

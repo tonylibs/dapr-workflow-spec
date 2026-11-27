@@ -1,0 +1,17 @@
+{
+  "workflow" : "structural-dataflow",
+  "version" : "structural-dataflow@<versionId>",
+  "nodeId" : "process-payment-catch",
+  "kind" : "flow",
+  "scope" : "do",
+  "tasks" : [ {
+    "markFailed" : {
+      "set" : {
+        "failed" : true
+      }
+    }
+  } ],
+  "children" : {
+    "markFailed" : "mark-failed"
+  }
+}

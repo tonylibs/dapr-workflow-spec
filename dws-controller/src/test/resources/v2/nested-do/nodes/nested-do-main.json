@@ -1,0 +1,21 @@
+{
+  "workflow" : "nested-do",
+  "version" : "nested-do@<versionId>",
+  "nodeId" : "nested-do-main",
+  "kind" : "flow",
+  "scope" : "main",
+  "tasks" : [ {
+    "prepareOrder" : {
+      "do" : [ {
+        "stampOrder" : {
+          "set" : {
+            "stamped" : true
+          }
+        }
+      } ]
+    }
+  } ],
+  "children" : {
+    "prepareOrder" : "prepare-order"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "workflow" : "structural-dataflow",
+  "version" : "structural-dataflow@<versionId>",
+  "nodeId" : "process-payment-dataflow",
+  "kind" : "step",
+  "task" : {
+    "processPayment" : {
+      "output" : {
+        "as" : "${ .payment }"
+      }
+    }
+  }
+}

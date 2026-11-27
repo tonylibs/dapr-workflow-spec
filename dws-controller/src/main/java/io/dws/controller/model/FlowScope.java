@@ -1,5 +1,6 @@
 package io.dws.controller.model;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import java.util.Optional;
@@ -10,8 +11,8 @@ import java.util.Optional;
  *
  * <p>ADR 0004 splits flow nodes into two shapes. A <em>sequencer</em> ({@code main}, {@code do})
  * carries a task list and no configuration. A <em>controller</em> ({@code for}, {@code try-catch},
- * {@code fork}) carries that scope's own configuration and an empty task list, delegating each list
- * it owns to a {@code do}-shaped child.
+ * {@code fork}, {@code wait}, {@code listen}) carries that scope's own configuration and an empty
+ * task list. The {@code wait} and {@code listen} controllers have no execution children (ADR 0006).
  *
  * @param scope the classification scope, e.g. {@code main}, {@code try-catch}, {@code fork}
  * @param tasks this scope's task list, verbatim from the submitted document; always empty on a
@@ -22,6 +23,9 @@ import java.util.Optional;
  * @param forConfig a {@code for} scope's own loop configuration
  * @param tryCatchConfig a {@code try-catch} scope's own recovery configuration — error filter,
  *     retry policy, recovery guards, and error variable name
+ * @param waitDuration a {@code wait} scope's duration
+ * @param listenConfig a {@code listen} scope's event selection, timeout, and read mode
+ * @param dataflowAppId this scope's companion Step app ID, when present
  */
 public record FlowScope(
     String scope,
@@ -29,7 +33,10 @@ public record FlowScope(
     Optional<String> catchAppId,
     Optional<String> forkMode,
     Optional<ForConfig> forConfig,
-    Optional<TryCatchConfig> tryCatchConfig) {
+    Optional<TryCatchConfig> tryCatchConfig,
+    @JsonInclude(JsonInclude.Include.NON_ABSENT) Optional<JsonNode> waitDuration,
+    @JsonInclude(JsonInclude.Include.NON_ABSENT) Optional<ListenConfig> listenConfig,
+    @JsonInclude(JsonInclude.Include.NON_ABSENT) Optional<String> dataflowAppId) {
 
   /**
    * A {@code for} controller's loop configuration, read verbatim from the definition. Every field
@@ -57,37 +64,129 @@ public record FlowScope(
       Optional<String> when,
       Optional<String> exceptWhen) {}
 
+  /** A {@code listen} controller's event selection, task timeout, and event read mode. */
+  public record ListenConfig(JsonNode to, Optional<JsonNode> timeout, Optional<String> read) {
+    public ListenConfig {
+      timeout = withoutJsonNull(timeout);
+    }
+  }
+
   public FlowScope {
     tasks = List.copyOf(tasks);
+    waitDuration = withoutJsonNull(waitDuration);
+  }
+
+  private static Optional<JsonNode> withoutJsonNull(Optional<JsonNode> value) {
+    // Jackson can deserialize an absent Optional<JsonNode> as an Optional of NullNode.
+    return value.filter(node -> !node.isNull());
   }
 
   /** A scope carrying only a task list — every sequencer, and a controller before configuration. */
   public static FlowScope of(String scope, List<JsonNode> tasks) {
     return new FlowScope(
-        scope, tasks, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+        scope,
+        tasks,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty());
   }
 
   /** This scope with its dedicated catch node's app ID attached. */
   public FlowScope withCatch(String catchAppId) {
     return new FlowScope(
-        scope, tasks, Optional.of(catchAppId), forkMode, forConfig, tryCatchConfig);
+        scope,
+        tasks,
+        Optional.of(catchAppId),
+        forkMode,
+        forConfig,
+        tryCatchConfig,
+        waitDuration,
+        listenConfig,
+        dataflowAppId);
   }
 
   /** This scope with its fork completion mode attached. */
   public FlowScope withForkMode(String forkMode) {
     return new FlowScope(
-        scope, tasks, catchAppId, Optional.of(forkMode), forConfig, tryCatchConfig);
+        scope,
+        tasks,
+        catchAppId,
+        Optional.of(forkMode),
+        forConfig,
+        tryCatchConfig,
+        waitDuration,
+        listenConfig,
+        dataflowAppId);
   }
 
   /** This scope with its loop configuration attached. */
   public FlowScope withForConfig(ForConfig forConfig) {
     return new FlowScope(
-        scope, tasks, catchAppId, forkMode, Optional.of(forConfig), tryCatchConfig);
+        scope,
+        tasks,
+        catchAppId,
+        forkMode,
+        Optional.of(forConfig),
+        tryCatchConfig,
+        waitDuration,
+        listenConfig,
+        dataflowAppId);
   }
 
   /** This scope with its recovery configuration attached. */
   public FlowScope withTryCatchConfig(TryCatchConfig tryCatchConfig) {
     return new FlowScope(
-        scope, tasks, catchAppId, forkMode, forConfig, Optional.of(tryCatchConfig));
+        scope,
+        tasks,
+        catchAppId,
+        forkMode,
+        forConfig,
+        Optional.of(tryCatchConfig),
+        waitDuration,
+        listenConfig,
+        dataflowAppId);
+  }
+
+  public FlowScope withWait(JsonNode duration) {
+    return new FlowScope(
+        scope,
+        tasks,
+        catchAppId,
+        forkMode,
+        forConfig,
+        tryCatchConfig,
+        Optional.of(duration),
+        listenConfig,
+        dataflowAppId);
+  }
+
+  public FlowScope withListen(ListenConfig config) {
+    return new FlowScope(
+        scope,
+        tasks,
+        catchAppId,
+        forkMode,
+        forConfig,
+        tryCatchConfig,
+        waitDuration,
+        Optional.of(config),
+        dataflowAppId);
+  }
+
+  public FlowScope withDataflow(String companionAppId) {
+    return new FlowScope(
+        scope,
+        tasks,
+        catchAppId,
+        forkMode,
+        forConfig,
+        tryCatchConfig,
+        waitDuration,
+        listenConfig,
+        Optional.of(companionAppId));
   }
 }

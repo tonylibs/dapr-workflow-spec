@@ -1,0 +1,13 @@
+{
+  "workflow" : "structural-dataflow",
+  "version" : "structural-dataflow@<versionId>",
+  "nodeId" : "send-email",
+  "kind" : "step",
+  "task" : {
+    "sendEmail" : {
+      "set" : {
+        "emailSent" : true
+      }
+    }
+  }
+}

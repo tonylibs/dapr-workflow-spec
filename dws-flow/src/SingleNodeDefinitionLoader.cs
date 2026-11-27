@@ -9,7 +9,7 @@ public sealed partial class SingleNodeDefinitionLoader
 {
     public const string DefinitionPathEnvironmentVariable = "DWS_FLOW_DEFINITION_PATH";
 
-    private static readonly HashSet<string> ValidScopes = ["main", "do", "for", "try-catch", "fork"];
+    private static readonly HashSet<string> ValidScopes = ["main", "do", "for", "try-catch", "fork", "wait", "listen"];
     private readonly string? definitionPath;
 
     public SingleNodeDefinitionLoader(string? definitionPath)
@@ -60,7 +60,78 @@ public sealed partial class SingleNodeDefinitionLoader
             throw new DefinitionLoadException("catch must be a non-empty app ID string when present");
         }
 
-        return new SingleNodeDefinition(workflow, version, nodeId, scope, tasks, children, catchAppId);
+        if (scope is "wait" or "listen" && (tasks.Count != 0 || children.Count != 0))
+        {
+            throw new DefinitionLoadException($"scope '{scope}' requires empty 'tasks' and 'children'");
+        }
+
+        JsonNode? wait = null;
+        if (scope == "wait")
+        {
+            wait = ReadDuration(definition, "wait");
+        }
+        else
+        {
+            RejectFields(definition, scope, "wait");
+        }
+
+        JsonObject? to = null;
+        JsonNode? timeout = null;
+        string? read = null;
+        if (scope == "listen")
+        {
+            to = definition["to"] as JsonObject
+                ?? throw new DefinitionLoadException("listen definition must contain object 'to'");
+            timeout = definition.ContainsKey("timeout") ? ReadDuration(definition, "timeout") : null;
+            read = OptionalString(definition, "read");
+            if (definition.ContainsKey("read") && string.IsNullOrEmpty(read))
+            {
+                throw new DefinitionLoadException("read must be a non-empty string when present");
+            }
+        }
+        else
+        {
+            RejectFields(definition, scope, "to", "timeout", "read");
+        }
+
+        string? dataflow = OptionalString(definition, "dataflow");
+        if (definition.ContainsKey("dataflow"))
+        {
+            if (scope == "main")
+            {
+                throw new DefinitionLoadException("dataflow is not allowed on scope 'main'");
+            }
+
+            if (dataflow is null || dataflow.Length > 63 || !Dns1123Label().IsMatch(dataflow))
+            {
+                throw new DefinitionLoadException("dataflow must be a DNS-1123 label");
+            }
+        }
+
+        return new SingleNodeDefinition(workflow, version, nodeId, scope, tasks, children, catchAppId,
+            wait, to, timeout, read, dataflow);
+    }
+
+    private static JsonNode ReadDuration(JsonObject definition, string field)
+    {
+        JsonNode? value = definition[field];
+        if (value is JsonObject || value is JsonValue jsonValue && jsonValue.TryGetValue<string>(out _))
+        {
+            return value;
+        }
+
+        throw new DefinitionLoadException($"'{field}' must be a string or an object");
+    }
+
+    private static void RejectFields(JsonObject definition, string scope, params string[] fields)
+    {
+        foreach (string field in fields)
+        {
+            if (definition.ContainsKey(field))
+            {
+                throw new DefinitionLoadException($"'{field}' is not allowed on scope '{scope}'");
+            }
+        }
     }
 
     private JsonObject ReadDefinition()
@@ -108,6 +179,6 @@ public sealed partial class SingleNodeDefinitionLoader
         return true;
     }
 
-    [GeneratedRegex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")]
+    [GeneratedRegex(@"^[a-z0-9]([-a-z0-9]*[a-z0-9])?\z")]
     private static partial Regex Dns1123Label();
 }

@@ -8,14 +8,14 @@
     "nodeId" : "reminderDelay",
     "appId" : "reminder-delay",
     "definitionResource" : "dws-def-approval-reminder-<versionId>-reminder-delay",
-    "kind" : "step",
+    "kind" : "flow",
     "functionAppId" : null,
     "children" : [ ]
   }, {
     "nodeId" : "awaitApproval",
     "appId" : "await-approval",
     "definitionResource" : "dws-def-approval-reminder-<versionId>-await-approval",
-    "kind" : "step",
+    "kind" : "flow",
     "functionAppId" : null,
     "children" : [ ]
   }, {
