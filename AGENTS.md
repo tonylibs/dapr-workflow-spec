@@ -2,6 +2,15 @@
 
 This file provides guidance to AI coding agents when working with code in this repository.
 
+## Agent code execution
+
+Before building, testing, linting, installing project dependencies, or running a script or
+application, follow the [opensandbox-exec skill](.agents/skills/opensandbox-exec/SKILL.md).
+Run project commands through the dedicated `opensandbox_exec` MCP server. This requirement
+also applies to delegated agents and to the component commands below. Use the host for
+repository inspection, editing, trusted sandbox setup, and workspace transfer. If the
+execution profile is unavailable, report the blocker and leave project execution pending.
+
 ## Project overview
 
 DWS (dapr-workflow-spec) is a config-driven workflow platform for Kubernetes built on

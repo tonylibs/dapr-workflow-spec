@@ -43,6 +43,13 @@ args = ["-y", "@modelcontextprotocol/server-sequential-thinking"]
 command = "opensandbox-mcp"
 args = ["--domain", "localhost:8080", "--protocol", "http"]
 
+# Dedicated OpenSandbox service for agent builds and tests.
+[mcp_servers.opensandbox_exec]
+command = "opensandbox-mcp"
+args = ["--domain", "127.0.0.1:8090", "--protocol", "http", "--request-timeout-seconds", "600"]
+env = { OPEN_SANDBOX_API_KEY = "" }
+tool_timeout_sec = 900
+
 [features]
 multi_agent = true
 

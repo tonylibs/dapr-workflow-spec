@@ -1,0 +1,54 @@
+{
+  "workspace": "/workspace/dws",
+  "defaults": {
+    "entrypoint": ["sleep", "infinity"],
+    "timeout_seconds": 3600,
+    "ready_timeout_seconds": 180,
+    "resource": { "cpu": "2", "memory": "4Gi" }
+  },
+  "profiles": {
+    "java-node": {
+      "components": ["dws-controller"],
+      "image": "dws-code-exec-java-node:jdk25-node24",
+      "dockerfile_target": "java-node",
+      "preflight": "java -version && javac -version && node --version && npm --version && npx --version",
+      "example": "./mvnw test"
+    },
+    "java": {
+      "components": ["dws-orchestrator", "dws-step"],
+      "image": "eclipse-temurin:25-jdk-noble",
+      "preflight": "java -version && javac -version",
+      "example": "./mvnw test"
+    },
+    "go": {
+      "components": ["dws-call-http", "dws-call-grpc", "dws-run", "dws-jq", "dws-mid-basic", "dws-mid-bearer"],
+      "image": "golang:1.26-bookworm",
+      "preflight": "go version && gcc --version",
+      "example": "go vet ./... && go test ./..."
+    },
+    "node": {
+      "components": ["dws-call-openapi", "dws-call-asyncapi", "dws-admin"],
+      "image": "node:24-bookworm",
+      "preflight": "node --version && corepack enable pnpm && pnpm --version",
+      "example": "pnpm install --frozen-lockfile && pnpm test"
+    },
+    "node-npm": {
+      "components": ["dws-console"],
+      "image": "node:24-bookworm",
+      "preflight": "node --version && npm --version",
+      "example": "npm ci && npm test"
+    },
+    "python": {
+      "components": ["dws-call-a2a"],
+      "image": "ghcr.io/astral-sh/uv:python3.13-bookworm-slim",
+      "preflight": "python --version && uv --version",
+      "example": "uv sync --locked && uv run pytest"
+    },
+    "dotnet": {
+      "components": ["dws-flow", "dws-schedule-time"],
+      "image": "mcr.microsoft.com/dotnet/sdk:10.0",
+      "preflight": "dotnet --version",
+      "example": "dotnet test test/<component>.Tests.csproj"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+# Dedicated loopback lifecycle server for builds and tests.
+[server]
+host = "127.0.0.1"
+port = 8090
+max_sandbox_timeout_seconds = 14400
+
+[runtime]
+type = "docker"
+execd_image = "opensandbox/execd:v1.0.21"
+
+[storage]
+allowed_host_paths = []
+
+[store]
+type = "sqlite"
+path = ".local/opensandbox.db"
+
+[docker]
+network_mode = "bridge"
+sandbox_binds = []
+port_range_min = 35000
+port_range_max = 39999
+no_new_privileges = true
+pids_limit = 4096
+
+[ingress]
+mode = "direct"
