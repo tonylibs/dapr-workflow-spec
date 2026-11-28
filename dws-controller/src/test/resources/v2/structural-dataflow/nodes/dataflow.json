@@ -1,0 +1,13 @@
+{
+  "workflow" : "structural-dataflow",
+  "version" : "structural-dataflow@<versionId>",
+  "nodeId" : "dataflow",
+  "kind" : "step",
+  "task" : {
+    "dataflow" : {
+      "set" : {
+        "summary" : "ready"
+      }
+    }
+  }
+}

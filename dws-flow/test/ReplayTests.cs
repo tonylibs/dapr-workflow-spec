@@ -107,6 +107,22 @@ public sealed class ReplayTests
         }
     }
 
+    [Theory]
+    [InlineData("wait", "config failure: scope 'wait' is not implemented yet")]
+    [InlineData("listen", "config failure: scope 'listen' is not implemented yet")]
+    public void RunningALeafControllerReportsTheScopeConfigurationFailure(string scope, string message)
+    {
+        SingleNodeDefinition definition = new("order", "order@v1", "order-node", scope, [], new(), null);
+        FlowDefinitionHolder.Initialize(definition);
+        FakeWorkflowContext context = new("instance-1", isReplaying: false,
+            new Dictionary<string, JsonNode?>(), history: null);
+
+        Action action = () => new FlowWorkflow().RunAsync(context, null);
+
+        action.Should().Throw<InvalidOperationException>().WithMessage(message);
+        context.Commands.Should().BeEmpty();
+    }
+
     [Fact]
     public void WorkflowSourceUsesNoNonDeterministicApis()
     {

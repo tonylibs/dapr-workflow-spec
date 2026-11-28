@@ -2,10 +2,9 @@
   "workflow" : "approval-reminder",
   "version" : "approval-reminder@<versionId>",
   "nodeId" : "reminder-delay",
-  "kind" : "step",
-  "task" : {
-    "reminderDelay" : {
-      "wait" : "PT5M"
-    }
-  }
+  "kind" : "flow",
+  "scope" : "wait",
+  "tasks" : [ ],
+  "children" : { },
+  "wait" : "PT5M"
 }

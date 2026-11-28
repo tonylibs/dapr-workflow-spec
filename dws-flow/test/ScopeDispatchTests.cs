@@ -18,14 +18,19 @@ public sealed class ScopeDispatchTests
     [InlineData("for")]
     [InlineData("try-catch")]
     [InlineData("fork")]
+    [InlineData("wait")]
+    [InlineData("listen")]
     public void RoutesControllerScopesToNotImplemented(string scope)
     {
         ScopeDispatch.Resolve(scope).Should().Be(ScopeKind.NotImplemented);
     }
 
-    [Fact]
-    public void RendersNotImplementedMessageForForScope()
+    [Theory]
+    [InlineData("for", "config failure: scope 'for' is not implemented yet")]
+    [InlineData("wait", "config failure: scope 'wait' is not implemented yet")]
+    [InlineData("listen", "config failure: scope 'listen' is not implemented yet")]
+    public void RendersNotImplementedMessageForControllerScope(string scope, string message)
     {
-        ScopeDispatch.NotImplementedMessage("for").Should().Be("config failure: scope 'for' is not implemented yet");
+        ScopeDispatch.NotImplementedMessage(scope).Should().Be(message);
     }
 }

@@ -1,0 +1,14 @@
+{
+  "workflow" : "structural-dataflow",
+  "version" : "structural-dataflow@<versionId>",
+  "nodeId" : "notify-channels",
+  "kind" : "flow",
+  "scope" : "fork",
+  "tasks" : [ ],
+  "children" : {
+    "sendEmail" : "send-email",
+    "writeAudit" : "write-audit"
+  },
+  "forkMode" : "all",
+  "dataflow" : "notify-channels-dataflow"
+}

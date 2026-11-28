@@ -1,0 +1,13 @@
+{
+  "workflow" : "structural-dataflow",
+  "version" : "structural-dataflow@<versionId>",
+  "nodeId" : "mark-failed",
+  "kind" : "step",
+  "task" : {
+    "markFailed" : {
+      "set" : {
+        "failed" : true
+      }
+    }
+  }
+}

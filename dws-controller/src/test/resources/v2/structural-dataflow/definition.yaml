@@ -1,0 +1,79 @@
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: structural-dataflow
+  version: '1.0.0'
+
+do:
+  - reserveItems:
+      input:
+        from: ${ .order }
+      for:
+        each: item
+        in: ${ .items }
+      do:
+        - reserveItem:
+            set:
+              reserved: true
+
+  - processPayment:
+      try:
+        - chargeCard:
+            set:
+              charged: true
+      catch:
+        do:
+          - markFailed:
+              set:
+                failed: true
+      output:
+        as: ${ .payment }
+
+  - notifyChannels:
+      fork:
+        compete: false
+        branches:
+          - sendEmail:
+              set:
+                emailSent: true
+          - writeAudit:
+              set:
+                audited: true
+      export:
+        as: ${ .notifications }
+
+  - reminderDelay:
+      wait:
+        seconds: 15
+        minutes: 1
+      input:
+        from: ${ .reminder }
+      output:
+        as: ${ . }
+
+  - awaitApproval:
+      listen:
+        to:
+          one:
+            with:
+              type: com.example.request.approved
+        read: data
+      export:
+        as: ${ .approval }
+      timeout:
+        after:
+          minutes: 20
+      output:
+        as: ${ .event }
+
+  - summarize:
+      output:
+        as: ${ .summary }
+      do:
+        - dataflow:
+            set:
+              summary: ready
+      input:
+        from: ${ .order }
+      export:
+        as: ${ . }

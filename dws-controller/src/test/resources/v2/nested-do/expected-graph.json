@@ -1,0 +1,22 @@
+{
+  "nodeId" : "nested-do.main",
+  "appId" : "nested-do-main",
+  "definitionResource" : "dws-def-nested-do-<versionId>-nested-do-main",
+  "kind" : "flow",
+  "functionAppId" : null,
+  "children" : [ {
+    "nodeId" : "prepareOrder",
+    "appId" : "prepare-order",
+    "definitionResource" : "dws-def-nested-do-<versionId>-prepare-order",
+    "kind" : "flow",
+    "functionAppId" : null,
+    "children" : [ {
+      "nodeId" : "stampOrder",
+      "appId" : "stamp-order",
+      "definitionResource" : "dws-def-nested-do-<versionId>-stamp-order",
+      "kind" : "step",
+      "functionAppId" : null,
+      "children" : [ ]
+    } ]
+  } ]
+}

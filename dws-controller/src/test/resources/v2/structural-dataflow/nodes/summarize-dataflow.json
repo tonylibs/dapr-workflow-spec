@@ -1,0 +1,19 @@
+{
+  "workflow" : "structural-dataflow",
+  "version" : "structural-dataflow@<versionId>",
+  "nodeId" : "summarize-dataflow",
+  "kind" : "step",
+  "task" : {
+    "summarize" : {
+      "output" : {
+        "as" : "${ .summary }"
+      },
+      "input" : {
+        "from" : "${ .order }"
+      },
+      "export" : {
+        "as" : "${ . }"
+      }
+    }
+  }
+}

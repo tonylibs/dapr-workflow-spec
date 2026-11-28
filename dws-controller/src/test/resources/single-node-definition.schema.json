@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://dws.io/schemas/single-node-definition.v1.json",
   "title": "DWS single-node definition",
-  "description": "A pinned definition for exactly one Workflow Runtime v2 node. There are two node shapes: sequencers (scope main/do) carry a task list and its children; controllers (scope for/try-catch/fork) carry their scope's own configuration (loop/error/fork fields) and an empty task list. Runtimes additionally enforce that functionAppId is present if and only if task.call or task.run is present.",
+  "description": "A pinned definition for exactly one Workflow Runtime v2 node. Sequencers (main/do) carry tasks and their children. Controllers (for/try-catch/fork/wait/listen) carry their own configuration and an empty task list. Wait and listen have no children. Non-main flows may reference a data-flow step. Runtimes additionally enforce that functionAppId is present if and only if task.call or task.run is present.",
   "oneOf": [
     { "$ref": "#/definitions/flow" },
     { "$ref": "#/definitions/step" }
@@ -16,7 +16,7 @@
         "nodeId": {
           "type": "string",
           "description": "A DNS-1123 label and the Dapr app ID for this node.",
-          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$(?![\\s\\S])",
           "maxLength": 63
         },
         "kind": { "enum": ["flow", "step"] }
@@ -30,7 +30,7 @@
           "type": "object",
           "properties": {
             "kind": { "const": "flow" },
-            "scope": { "enum": ["main", "do", "for", "try-catch", "fork"] },
+            "scope": { "enum": ["main", "do", "for", "try-catch", "fork", "wait", "listen"] },
             "tasks": {
               "type": "array",
               "items": { "type": "object", "minProperties": 1 }
@@ -49,7 +49,12 @@
             "retry": { "type": ["object", "string"] },
             "as": { "type": "string", "minLength": 1 },
             "when": { "type": "string", "minLength": 1 },
-            "exceptWhen": { "type": "string", "minLength": 1 }
+            "exceptWhen": { "type": "string", "minLength": 1 },
+            "wait": { "type": ["string", "object"] },
+            "to": { "type": "object" },
+            "timeout": { "type": ["string", "object"] },
+            "read": { "type": "string", "minLength": 1 },
+            "dataflow": { "$ref": "#/definitions/envelope/properties/nodeId" }
           },
           "required": ["scope", "tasks", "children"],
           "allOf": [
@@ -89,10 +94,39 @@
             },
             {
               "if": {
-                "properties": { "scope": { "enum": ["for", "try-catch", "fork"] } },
+                "properties": { "scope": { "enum": ["for", "try-catch", "fork", "wait", "listen"] } },
                 "required": ["scope"]
               },
               "then": { "properties": { "tasks": { "maxItems": 0 } } }
+            },
+            {
+              "if": {
+                "properties": { "scope": { "enum": ["wait", "listen"] } },
+                "required": ["scope"]
+              },
+              "then": { "properties": { "children": { "maxProperties": 0 } } }
+            },
+            {
+              "if": { "properties": { "scope": { "const": "wait" } }, "required": ["scope"] },
+              "then": { "required": ["wait"] },
+              "else": { "not": { "required": ["wait"] } }
+            },
+            {
+              "if": { "properties": { "scope": { "const": "listen" } }, "required": ["scope"] },
+              "then": { "required": ["to"] },
+              "else": {
+                "not": {
+                  "anyOf": [
+                    { "required": ["to"] },
+                    { "required": ["timeout"] },
+                    { "required": ["read"] }
+                  ]
+                }
+              }
+            },
+            {
+              "if": { "properties": { "scope": { "const": "main" } }, "required": ["scope"] },
+              "then": { "not": { "required": ["dataflow"] } }
             }
           ]
         }
@@ -112,7 +146,16 @@
               "description": "Required by each runtime exactly when task.call or task.run is set; JSON Schema cannot express that DSL-specific rule without duplicating the task schema."
             }
           },
-          "required": ["task"]
+          "required": ["task"],
+          "not": {
+            "anyOf": [
+              { "required": ["wait"] },
+              { "required": ["to"] },
+              { "required": ["timeout"] },
+              { "required": ["read"] },
+              { "required": ["dataflow"] }
+            ]
+          }
         }
       ]
     }

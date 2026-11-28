@@ -41,7 +41,7 @@ class SingleNodeDefinitionTest {
         SingleNodeDefinition.flow(
             ENVELOPE,
             "fulfill-order",
-            FlowScope.of("try-catch", List.of()).withCatch("fulfill-order-catch"),
+            FlowScope.controller(FlowScope.TryCatchConfig.empty().withCatch("fulfill-order-catch")),
             Map.of("try", "fulfill-order-try", "catch", "fulfill-order-catch"));
     JsonNode node = JSON.readTree(rendered);
     assertThat(node.get("nodeId").asText()).isEqualTo("fulfill-order");
@@ -59,7 +59,7 @@ class SingleNodeDefinitionTest {
         SingleNodeDefinition.flow(
             ENVELOPE,
             "notify-channels",
-            FlowScope.of("fork", List.of()).withForkMode("all"),
+            FlowScope.controller(new FlowScope.ForkConfig("all")),
             Map.of("notifyRecipients", "notify-recipients"));
     JsonNode node = JSON.readTree(rendered);
     assertThat(node.get("forkMode").asText()).isEqualTo("all");
@@ -75,7 +75,7 @@ class SingleNodeDefinitionTest {
         SingleNodeDefinition.flow(
             ENVELOPE,
             "prepare-order",
-            FlowScope.of("do", List.of(task)),
+            FlowScope.sequencer("do", List.of(task)),
             Map.of("stampOrder", "stamp-order"));
     assertThat(JSON.readTree(rendered).get("scope").asText()).isEqualTo("do");
     assertValid(rendered);
@@ -99,13 +99,9 @@ class SingleNodeDefinitionTest {
   @Test
   void rendersAForControllersLoopConfiguration() throws Exception {
     FlowScope scope =
-        FlowScope.of("for", List.of())
-            .withForConfig(
-                new FlowScope.ForConfig(
-                    Optional.of("item"),
-                    Optional.of(".items"),
-                    Optional.empty(),
-                    Optional.empty()));
+        FlowScope.controller(
+            new FlowScope.ForConfig(
+                Optional.of("item"), Optional.of(".items"), Optional.empty(), Optional.empty()));
 
     String text =
         SingleNodeDefinition.flow(
@@ -129,15 +125,14 @@ class SingleNodeDefinitionTest {
   void rendersATryCatchControllersErrorFilterAndRetryPolicy() throws Exception {
     ObjectMapper json = new ObjectMapper();
     FlowScope scope =
-        FlowScope.of("try-catch", List.of())
-            .withTryCatchConfig(
-                new FlowScope.TryCatchConfig(
-                    Optional.of(json.readTree("{\"with\":{\"status\":402}}")),
-                    Optional.of(json.readTree("\"myRetryPolicy\"")),
-                    Optional.of("paymentError"),
-                    Optional.of(".paymentError.status == 402"),
-                    Optional.of(".retryBudget == 0")))
-            .withCatch("process-payment-catch");
+        FlowScope.controller(
+            new FlowScope.TryCatchConfig(
+                Optional.of("process-payment-catch"),
+                Optional.of(json.readTree("{\"with\":{\"status\":402}}")),
+                Optional.of(json.readTree("\"myRetryPolicy\"")),
+                Optional.of("paymentError"),
+                Optional.of(".paymentError.status == 402"),
+                Optional.of(".retryBudget == 0")));
 
     String text =
         SingleNodeDefinition.flow(
@@ -164,7 +159,7 @@ class SingleNodeDefinitionTest {
         SingleNodeDefinition.flow(
             new SingleNodeDefinition.Envelope("w", "w@v1"),
             "w-main",
-            FlowScope.of("main", List.of()),
+            FlowScope.sequencer("main", List.of()),
             Map.of());
 
     JsonNode node = new ObjectMapper().readTree(text);
@@ -180,7 +175,12 @@ class SingleNodeDefinitionTest {
             "when",
             "exceptWhen",
             "catch",
-            "forkMode")) {
+            "forkMode",
+            "wait",
+            "to",
+            "timeout",
+            "read",
+            "dataflow")) {
       assertThat(node.has(field)).as(field).isFalse();
     }
   }

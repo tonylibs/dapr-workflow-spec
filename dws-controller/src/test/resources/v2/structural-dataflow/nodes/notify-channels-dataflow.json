@@ -1,0 +1,13 @@
+{
+  "workflow" : "structural-dataflow",
+  "version" : "structural-dataflow@<versionId>",
+  "nodeId" : "notify-channels-dataflow",
+  "kind" : "step",
+  "task" : {
+    "notifyChannels" : {
+      "export" : {
+        "as" : "${ .notifications }"
+      }
+    }
+  }
+}

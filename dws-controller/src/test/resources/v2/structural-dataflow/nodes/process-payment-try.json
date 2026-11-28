@@ -1,0 +1,17 @@
+{
+  "workflow" : "structural-dataflow",
+  "version" : "structural-dataflow@<versionId>",
+  "nodeId" : "process-payment-try",
+  "kind" : "flow",
+  "scope" : "do",
+  "tasks" : [ {
+    "chargeCard" : {
+      "set" : {
+        "charged" : true
+      }
+    }
+  } ],
+  "children" : {
+    "chargeCard" : "charge-card"
+  }
+}

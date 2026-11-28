@@ -260,10 +260,16 @@ RawTaskList raw = RawTaskList.in(parent, "do", typed);
 // Wrong — every caller pads the tail
 flow(context, nodeId, "do", tasks, children, null, null);
 
-// Right (FlowScope.java) — copy-on-write withers; callers name only what they have
-flow(context, nodeId, FlowScope.of("do", tasks), children);
-flow(context, nodeId, FlowScope.of("try", tasks).withCatch(catchAppId), children);
+// Right (FlowScope.java) — one value object per shape; callers name only what they have
+flow(context, nodeId, FlowScope.sequencer("do", tasks), children);
+flow(context, nodeId, FlowScope.controller(recovery.withCatch(catchAppId)), children);
 ```
+
+A controller's configuration is one `FlowScope.ScopeConfig` (sealed: `ForConfig`, `TryCatchConfig`,
+`ForkConfig`, `WaitConfig`, `ListenConfig`), and `FlowScope`'s constructor rejects a sequencer
+scope with configuration, configuration for another scope, or a controller with a task list.
+`SingleNodeDefinition` renders it with an exhaustive `switch`, so a new controller scope is a
+new record plus one `case` — the compiler flags a renderer that misses it.
 
 ### A rule that end-to-end tests can't reach belongs in its own type
 

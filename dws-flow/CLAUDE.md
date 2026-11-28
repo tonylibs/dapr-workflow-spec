@@ -10,8 +10,10 @@ This is a small, early-phase package — a generic Dapr Workflow host for exactl
 `FlowWorkflow.RunAsync` routes through `ScopeDispatch` to `SequencerRunner`, which runs the node's
 tasks in source order, resolves each task's `then` directive, and dispatches each task to its Step
 activity or Flow child workflow (`ChildClassifier`/`IChildCaller`/`InstanceIds`/`TaskTimeout`); a node
-whose scope is `for`/`try-catch`/`fork` fails with a not-implemented configuration failure — those
-controller scopes land in a later phase. Some patterns below are drawn from very few data points and
+whose scope is `for`/`try-catch`/`fork`/`wait`/`listen` fails with a not-implemented configuration
+failure — those controller scopes land in a later phase. The contract's `scope` values live in
+`Scopes` (`All`, `Sequencers`, `LeafControllers`), shared by the loader and `ScopeDispatch`;
+`ChildClassifier` keeps its own list because it matches DSL task keys (`try`), not scope values. Some patterns below are drawn from very few data points and
 may need revisiting once that lands. CI is `.github/workflows/dws-flow.yml`: tests, then an image
 build with a `/healthz` smoke test. The version lives in `version.txt` (release-please bumps it;
 `dws-flow.csproj` reads it into `<Version>`), so don't hand-edit it.
@@ -169,9 +171,13 @@ steps (mirrors v1's `InterpreterWorkflow`'s loop-guard wording verbatim: `"workf
 steps; check for a definition loop"`). Each task body's static `then` directive (`ThenResolver.Next`)
 picks the next program counter, ends the node normally, or exits — there is no dynamic `then`
 selection from a task's own output (see "Known gap" below). `ChildClassifier.Classify` looks only at
-which keys a task body has (`for`/`try`/`fork`/`wait`/`listen` route to the not-yet-implemented
-controller scopes; everything else — `call`/`run`/`set`/`switch` — is a Step) to decide whether
-`IChildCaller.CallStep` or `.CallFlow` dispatches it. Child instance IDs are
+which keys a task body has (a nested `do` routes to a sequencer child; `for`/`try`/`fork`/`wait`/
+`listen` route to the not-yet-implemented controller scopes; everything else — `call`/`run`/`set`/
+`switch` — is a Step) to decide whether `IChildCaller.CallStep` or `.CallFlow` dispatches it.
+`ControllerFixtureContractTests` loads every `kind: "flow"` node under
+`dws-controller/src/test/resources/v2/*/nodes/` through the loader and checks each child's
+`ChildClassifier` kind against the node the controller compiled, so a scope or key added on the
+controller side without a matching change here fails `dotnet test`. Child instance IDs are
 `InstanceIds.For(root, appId, iteration)` → `"<root>:<appId>:<iteration>"`, with `iteration` defaulting
 to `"0"` when the node's own `FlowInput.IterationIndex` is absent (the Sequencer itself never
 increments iteration — that's a `for`-scope concern for a later phase). A task's `timeout` is read

@@ -1,0 +1,12 @@
+document:
+  dsl: '1.0.0'
+  namespace: default
+  name: nested-do
+  version: '1.0.0'
+
+do:
+  - prepareOrder:
+      do:
+        - stampOrder:
+            set:
+              stamped: true

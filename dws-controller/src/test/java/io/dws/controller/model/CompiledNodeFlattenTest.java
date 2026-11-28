@@ -10,7 +10,7 @@ class CompiledNodeFlattenTest {
 
   private static final SingleNodeDefinition.Envelope ENVELOPE =
       new SingleNodeDefinition.Envelope("w", "w@v1");
-  private static final FlowScope SCOPE = FlowScope.of("do", List.of());
+  private static final FlowScope SCOPE = FlowScope.sequencer("do", List.of());
 
   private static StepNode step(String id) {
     return new StepNode(id, id, "res-" + id, "{}", Optional.empty());

@@ -25,7 +25,7 @@ class AppIdRegistryTest {
 
   private static final SingleNodeDefinition.Envelope ENVELOPE =
       new SingleNodeDefinition.Envelope("w", "w@v1");
-  private static final FlowScope SCOPE = FlowScope.of("do", List.of());
+  private static final FlowScope SCOPE = FlowScope.sequencer("do", List.of());
 
   @Test
   void acceptsAGraphWhoseDeployablesAreDistinct() {

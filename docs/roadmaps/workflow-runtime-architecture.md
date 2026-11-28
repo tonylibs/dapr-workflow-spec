@@ -42,8 +42,8 @@ parent Flow performs all durable orchestration; a Step performs exactly one task
 
 | Component | Tasks and constructs |
 |---|---|
-| Flow service | Top-level `main` flow, `do`, `for`, `try-catch`, and `fork`. When a Flow is a `fork` scope, it performs `allOf` when `compete: false` or `anyOf` when `compete: true` for its branches. |
-| Step service | `call`, `run`, `set`, `switch`, `wait`, `listen`, `emit`, and `raise`. The `call` and `run` variants delegate their concrete work to Knative functions; the remaining Step task types execute in their Java Activity implementations. |
+| Flow service | Top-level `main` flow, `do`, `for`, `try-catch`, `fork`, `wait`, and `listen`. A `fork` scope performs `allOf` when `compete: false` or `anyOf` when `compete: true`. The `wait` and `listen` scopes own durable timers and external-event waits, respectively. |
+| Step service | `call`, `run`, `set`, `switch`, `emit`, and `raise`, plus companion data-flow Steps for structural tasks that declare `input`, `output`, or `export`. The `call` and `run` variants delegate their concrete work to Knative functions. Other Step operations run in Java Activities. |
 
 At the service boundary, a .NET Flow calls another .NET Flow through
 `CallChildWorkflowAsync` with the target Flow app ID, and calls a Java Step through
@@ -76,8 +76,8 @@ the task-specific I/O, while the workflow layer retains orchestration and retry 
 | Entity | Meaning | Diagram treatment |
 |---|---|---|
 | Workflow | The submitted DSL document. | Root entity. It owns the top-level `main` flow. |
-| Flow | A scope node, one of two shapes. A **sequencer** (`main`, `do`) owns a task list, in source order, and no configuration. A **controller** (`for`, `try-catch`, `fork`) owns its scope's own configuration, renders an empty task list, and calls its children — for `for` and `try-catch` these are derived `do` sequencers; for `fork` they are the branch root tasks' own nodes. | Green node. A flow invokes its direct child steps and flows. |
-| Step | A single task that does not own a task list. | Orange node. |
+| Flow | A scope node. A **sequencer** (`main`, `do`) owns a task list in source order. A **controller** (`for`, `try-catch`, `fork`, `wait`, `listen`) carries its own configuration and an empty task list. The `for` and `try-catch` controllers call derived `do` sequencers, and `fork` calls its branch root nodes. The `wait` and `listen` controllers have no execution children. | Green node. A Flow invokes its direct child Flows and Steps, if any. |
+| Step | A single task operation or a structural task's companion data-flow Activity. | Orange node. |
 | Fork node | The controller flow created for a `fork` task. | Green node. It calls each branch root's own node directly — a child Flow or a Step, depending on that node's kind — and performs the join or race. |
 
 ## Classification rules
@@ -89,7 +89,12 @@ the task-specific I/O, while the workflow layer retains orchestration and retry 
 | `for` | Flow | A controller carrying `each`/`in`/`at`/`while`. Its own task list is empty; it delegates to a `do` child that owns the loop body. |
 | `try-catch` | Flow | A controller carrying `errors`/`retry`/`as`/`when`/`exceptWhen`. Its own task list is empty; it delegates to a `try` child (the guarded list) and, when `catch.do` is non-empty, a `catch` child (the recovery list, derived as `<try-task>.catch`). |
 | `fork` | Flow | A controller carrying `forkMode` (`all` when `compete: false`, `any` when `compete: true`). Its own task list is empty; its children are each branch root task's own node, addressed directly rather than wrapped in a scope of its own. |
-| `call`, `run`, `set`, `switch`, `wait`, `listen`, `emit`, `raise` | Step | These tasks do not own a nested task list. |
+| `wait` | Flow | A leaf controller carrying the duration in `wait`. It creates a durable timer on the workflow context. |
+| `listen` | Flow | A leaf controller carrying the event selection in `to` and optional `timeout` and `read` fields. It waits for external events on the workflow context. |
+| `call`, `run`, `set`, `switch`, `emit`, `raise` | Step | These tasks execute as Activities. |
+
+A named structural task with `input`, `output`, or `export` gets one companion Step. The Flow
+definition references its app ID in the top-level `dataflow` field.
 
 `switch` is deliberately a **step**, not a flow. Its `then` values route execution to named
 entities, but it does not contain its own task list.
@@ -259,9 +264,9 @@ flowchart LR
 
 ## Example: timing and event steps
 
-`wait`, `listen`, and `emit` remain Steps. Their Java Activity implementations use the appropriate
-Dapr timer, external-event, or pub/sub capability; those infrastructure dependencies are not
-additional Flow components.
+`reminderDelay` and `awaitApproval` are leaf Flow controllers. The parent invokes them as child
+workflows so they can use Dapr's durable timer and external-event APIs. The parent invokes
+`publishCompletion` as a Step Activity to publish the event through Dapr pub/sub.
 
 ```yaml
 document:
@@ -293,8 +298,8 @@ do:
 
 ```mermaid
 flowchart LR
-  Main["Flow: main"] -->|CallActivityAsync| Wait["Step: reminderDelay"]
-  Main -->|CallActivityAsync| Listen["Step: awaitApproval"]
+  Main["Flow: main"] -->|CallChildWorkflowAsync| Wait["Flow: reminderDelay"]
+  Main -->|CallChildWorkflowAsync| Listen["Flow: awaitApproval"]
   Main -->|CallActivityAsync| Emit["Step: publishCompletion"]
 ```
 

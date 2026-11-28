@@ -1,0 +1,16 @@
+{
+  "workflow" : "structural-dataflow",
+  "version" : "structural-dataflow@<versionId>",
+  "nodeId" : "await-approval-dataflow",
+  "kind" : "step",
+  "task" : {
+    "awaitApproval" : {
+      "export" : {
+        "as" : "${ .approval }"
+      },
+      "output" : {
+        "as" : "${ .event }"
+      }
+    }
+  }
+}

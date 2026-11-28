@@ -49,6 +49,7 @@ public sealed class SequencerRunnerTests
     }
 
     [Theory]
+    [InlineData("do")]
     [InlineData("for")]
     [InlineData("try")]
     [InlineData("fork")]

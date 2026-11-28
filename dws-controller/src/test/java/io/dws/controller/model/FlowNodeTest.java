@@ -84,9 +84,76 @@ class FlowNodeTest {
     FlowNode flow = flow(step("validateOrder", "validate-order"));
 
     String json = mapper.writeValueAsString(flow);
-    assertThat(json).contains("\"specText\"");
+    assertThat(json)
+        .contains("\"specText\"")
+        .doesNotContain(
+            "\"waitDuration\"", "\"listenConfig\"", "\"dataflowAppId\"", "\"dataflow\"");
 
     assertThat(mapper.readValue(json, CompiledNode.class)).isEqualTo(flow);
+  }
+
+  /**
+   * Jackson reads an absent {@code Optional<JsonNode>} back as {@code Optional.of(NullNode)}, so an
+   * unset JSON-valued config field must neither be written nor come back as a JSON {@code null}.
+   */
+  @Test
+  void aControllerWithUnsetJsonConfigRoundTripsWithoutNulls() throws Exception {
+    FlowScope scope =
+        FlowScope.controller(
+            new FlowScope.TryCatchConfig(
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of("error"),
+                Optional.empty(),
+                Optional.empty()));
+    FlowNode flow = new FlowNode("guarded", "guarded", "dws-def-guarded", ENVELOPE, scope);
+
+    String json = mapper.writeValueAsString(flow);
+    FlowNode back = (FlowNode) mapper.readValue(json, CompiledNode.class);
+
+    assertThat(json).doesNotContain(":null");
+    assertThat(back).isEqualTo(flow);
+    assertThat(back.specText()).isEqualTo(flow.specText()).doesNotContain("errors", "retry");
+  }
+
+  @Test
+  void aCompanionStaysAttachedWhenExecutionChildrenChangeAndTheGraphRoundTrips() throws Exception {
+    StepNode companion = step("group.dataflow", "group-dataflow");
+    StepNode child = step("child", "child");
+    FlowNode group =
+        new FlowNode(
+                "group", "group", "dws-def-group", ENVELOPE, FlowScope.sequencer("do", List.of()))
+            .withDataflow(companion)
+            .withChild(child);
+
+    assertThat(group.children()).containsExactly(child);
+    assertThat(group.flatten()).containsExactly(group, companion, child);
+    assertThat(mapper.readValue(mapper.writeValueAsString(group), CompiledNode.class))
+        .isEqualTo(group);
+  }
+
+  @Test
+  void rendersTheDataflowReferenceFromTheAttachedCompanionOnly() {
+    FlowNode bare =
+        new FlowNode(
+            "group", "group", "dws-def-group", ENVELOPE, FlowScope.sequencer("do", List.of()));
+
+    FlowNode withCompanion = bare.withDataflow(step("group.dataflow", "group-dataflow"));
+
+    assertThat(bare.specText()).doesNotContain("\"dataflow\"");
+    assertThat(withCompanion.specText()).contains("\"dataflow\" : \"group-dataflow\"");
+  }
+
+  /** ADR 0012 Decision 3 emits companions for structural tasks only; {@code main} is never one. */
+  @Test
+  void rejectsADataflowCompanionOnMain() {
+    FlowNode main = flow();
+    StepNode companion = step("order-fulfillment.dataflow", "order-fulfillment-dataflow");
+
+    assertThatThrownBy(() -> main.withDataflow(companion))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("main");
   }
 
   private static FlowNode flow(CompiledNode... children) {
@@ -95,11 +162,11 @@ class FlowNodeTest {
         "order-fulfillment-main",
         "dws-def-order-fulfillment-v1a2b3c4d-order-fulfillment-main",
         ENVELOPE,
-        FlowScope.of("main", List.of()),
+        FlowScope.sequencer("main", List.of()),
         List.of(children));
   }
 
-  private static CompiledNode step(String nodeId, String appId) {
+  private static StepNode step(String nodeId, String appId) {
     return new StepNode(nodeId, appId, "dws-def-" + appId, "{}", Optional.empty());
   }
 }

@@ -10,4 +10,9 @@ public sealed record SingleNodeDefinition(
     string Scope,
     JsonArray Tasks,
     JsonObject Children,
-    string? Catch);
+    string? Catch,
+    JsonNode? Wait = null,
+    JsonObject? To = null,
+    JsonNode? Timeout = null,
+    string? Read = null,
+    string? Dataflow = null);

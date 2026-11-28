@@ -7,33 +7,9 @@ TBD - created by archiving change phase-1-structural-classification. Update Purp
 
 ### Requirement: Fork nodes declare their scope and join mode
 
-<!-- Retitled in substance by this change — the requirement now defines the whole `scope` enum and
-     both flow-node shapes, of which fork's join mode is only one part. Kept under the original
-     requirement name because an archive-time delta apply matches a MODIFIED requirement to the
-     current spec by its header, verbatim. -->
+Owning components: `single-node-definition.schema.json`, `dws-controller`, `dws-flow`.
 
-A `kind: "flow"` single-node definition SHALL declare `scope` as exactly one of five values: `main`,
-`do`, `for`, `try-catch`, `fork`. The values `try`, `catch`, and `forkBranch` are retired and SHALL
-be rejected.
-
-A flow node SHALL be one of two shapes. A **sequencer** (`scope` `main` or `do`) SHALL carry its own
-source-ordered `tasks` array and a `children` object keyed by each of those tasks' names, and SHALL
-NOT carry any scope configuration field. A **controller** (`scope` `for`, `try-catch`, or `fork`)
-SHALL carry an empty `tasks` array plus its own scope's configuration, and SHALL delegate execution
-to its `children`:
-
-- A `for` definition SHALL carry `in`, and MAY carry `each`, `at`, and `while`. It SHALL carry
-  exactly one child, keyed `do`. A definition whose `scope` is anything other than `for` SHALL NOT
-  carry `each`, `in`, `at`, or `while`.
-- A `try-catch` definition MAY carry `errors`, `retry`, `as`, `when`, and `exceptWhen` — the `catch`
-  block's own error filter, retry policy, error-variable name, and recovery guards — and SHALL carry
-  `catch` (the recovery child's app ID) exactly when the definition supplies a recovery list. Its
-  `children` SHALL be keyed `try` and, when present, `catch`. A definition whose `scope` is anything
-  other than `try-catch` SHALL NOT carry `errors`, `retry`, `as`, `when`, `exceptWhen`, or `catch`.
-- A `fork` definition SHALL carry `forkMode` with the value `all` or `any`, since a fork node
-  sequences nothing of its own — it fans out to its `children` and joins. Its `children` SHALL be
-  keyed by each branch's own root task name, with no intermediate branch node. A definition whose
-  `scope` is anything other than `fork` SHALL NOT carry `forkMode`.
+A `kind: "flow"` definition SHALL declare `scope` as `main`, `do`, `for`, `try-catch`, `fork`, `wait`, or `listen` (retired `try`, `catch`, `forkBranch` rejected). Sequencers (`main`, `do`) carry `tasks`, `children`, and no scope config. Controllers carry empty `tasks` and scope-exclusive config (`for`, `try-catch`, `fork` delegating to `children`; leaf controllers `wait` and `listen` with empty `children`, `wait` carrying `wait` and `listen` carrying `to` plus optional `timeout`/`read`).
 
 #### Scenario: A fork definition carries forkMode and no tasks
 
@@ -50,8 +26,8 @@ to its `children`:
 
 #### Scenario: forkMode on a non-fork scope is rejected
 
-- **WHEN** a definition declares `forkMode` alongside a `scope` of `main`, `do`, `for`, or
-  `try-catch`
+- **WHEN** a definition declares `forkMode` alongside a `scope` of `main`, `do`, `for`, `try-catch`,
+  `wait`, or `listen`
 - **THEN** validation fails, since only a fork node performs a join
 
 #### Scenario: A competing fork declares forkMode any
@@ -63,7 +39,8 @@ to its `children`:
 #### Scenario: A retired scope value is rejected
 
 - **WHEN** a definition declares `scope` of `try`, `catch`, or `forkBranch`
-- **THEN** validation fails, since the enum admits only `main`, `do`, `for`, `try-catch`, and `fork`
+- **THEN** validation fails, since the enum admits only `main`, `do`, `for`, `try-catch`, `fork`,
+  `wait`, and `listen`
 
 #### Scenario: A controller definition carries its scope's configuration and an empty task list
 
@@ -82,4 +59,69 @@ to its `children`:
 
 - **WHEN** a definition declares `scope: "main"` or `scope: "do"`
 - **THEN** validation fails if it carries any of `each`, `in`, `at`, `while`, `errors`, `retry`,
-  `as`, `when`, `exceptWhen`, `catch`, or `forkMode`
+  `as`, `when`, `exceptWhen`, `catch`, `forkMode`, `wait`, `to`, `timeout`, or `read`
+
+#### Scenario: A wait leaf controller validates with string or object duration and empty tasks and children
+
+- **WHEN** a `kind: "flow"` definition declares `scope: "wait"`, empty `tasks`, empty `children`,
+  and `wait` as either `"PT5M"` or `{"seconds": 10}`
+- **THEN** validation succeeds
+
+#### Scenario: A wait definition missing wait or carrying tasks or children is rejected
+
+- **WHEN** a `scope: "wait"` definition omits `wait`, has non-empty `tasks`, or has non-empty
+  `children`
+- **THEN** validation fails
+
+#### Scenario: A wait field on a non-wait scope is rejected
+
+- **WHEN** a definition declares `wait` alongside any `scope` other than `wait`
+- **THEN** validation fails
+
+#### Scenario: A listen leaf controller validates with to and optional timeout and read
+
+- **WHEN** a `kind: "flow"` definition declares `scope: "listen"`, empty `tasks`, empty `children`,
+  `to` as an event selection object, and optionally `timeout` (string or object) and `read` (string)
+- **THEN** validation succeeds
+
+#### Scenario: A listen definition missing to or carrying tasks or children is rejected
+
+- **WHEN** a `scope: "listen"` definition omits `to`, has non-empty `tasks`, or has non-empty
+  `children`
+- **THEN** validation fails
+
+#### Scenario: Listen fields on a non-listen scope are rejected
+
+- **WHEN** a definition declares `to`, `timeout`, or `read` alongside any `scope` other than
+  `listen`
+- **THEN** validation fails, keeping all existing scopes unchanged
+
+### Requirement: Structural flow nodes may reference a companion data-flow step
+
+Owning components: `single-node-definition.schema.json`, `dws-controller`, `dws-flow`.
+
+A non-`main` `kind: "flow"` definition (`do`, `for`, `try-catch`, `fork`, `wait`, `listen`) MAY carry a top-level DNS-1123 `dataflow` property naming its companion data-flow Step app ID; `dataflow` SHALL NOT appear on `scope: "main"` or inside `children`. A companion node SHALL be a `kind: "step"` definition with no `functionAppId` and `task` equal to `{ "<taskName>": { ... } }` carrying only declared `input`/`output`/`export`.
+
+#### Scenario: A structural flow node with a companion dataflow reference validates
+
+- **WHEN** a `kind: "flow"` definition with `scope` `for`, `try-catch`, `fork`, `wait`, `listen`,
+  or `do` carries `"dataflow": "reserve-items-dataflow"` and keeps its `children` restricted to its
+  scope's execution children (empty for `wait` and `listen`)
+- **THEN** validation succeeds against `single-node-definition.schema.json`
+
+#### Scenario: A main flow node carrying dataflow is rejected
+
+- **WHEN** a `kind: "flow"` definition declares `scope: "main"` and carries a `dataflow` property
+- **THEN** validation fails, because document-level data flow is out of scope
+
+#### Scenario: An invalid dataflow app ID is rejected
+
+- **WHEN** a `kind: "flow"` definition carries `dataflow` with an empty string or a value outside
+  the DNS-1123 label pattern `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$` (max 63 characters)
+- **THEN** validation fails
+
+#### Scenario: A companion data-flow step definition validates against the step schema
+
+- **WHEN** a `kind: "step"` definition has `nodeId: "reserve-items-dataflow"`, no `functionAppId`,
+  and `task: {"reserveItems": {"input": {"from": "${ .payload }"}, "output": {"as": "${ . }" }}}`
+- **THEN** validation succeeds against `single-node-definition.schema.json`

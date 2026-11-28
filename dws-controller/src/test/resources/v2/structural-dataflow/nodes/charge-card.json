@@ -1,0 +1,13 @@
+{
+  "workflow" : "structural-dataflow",
+  "version" : "structural-dataflow@<versionId>",
+  "nodeId" : "charge-card",
+  "kind" : "step",
+  "task" : {
+    "chargeCard" : {
+      "set" : {
+        "charged" : true
+      }
+    }
+  }
+}

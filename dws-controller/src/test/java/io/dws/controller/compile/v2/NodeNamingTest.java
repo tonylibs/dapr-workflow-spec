@@ -108,4 +108,22 @@ class NodeNamingTest {
     assertThat(NodeNaming.appId(NodeNaming.tryBodyNodeId("fulfillOrder")))
         .isEqualTo("fulfill-order-try");
   }
+
+  @Test
+  void derivesACompanionIdFromItsStructuralTask() {
+    String nodeId = NodeNaming.dataflowNodeId("reserveItems");
+    assertThat(nodeId).isEqualTo("reserveItems.dataflow");
+    assertThat(NodeNaming.appId(nodeId)).isEqualTo("reserve-items-dataflow");
+  }
+
+  @Test
+  void rejectsACompanionAppIdOverSixtyThreeCharacters() {
+    String taskName = "a".repeat(55);
+    String nodeId = NodeNaming.dataflowNodeId(taskName);
+    assertThatThrownBy(() -> NodeNaming.appId(nodeId))
+        .isInstanceOf(CompilationException.class)
+        .hasMessageContaining(nodeId)
+        .hasMessageContaining(taskName + "-dataflow")
+        .hasMessageContaining("63-character DNS-1123 label limit");
+  }
 }

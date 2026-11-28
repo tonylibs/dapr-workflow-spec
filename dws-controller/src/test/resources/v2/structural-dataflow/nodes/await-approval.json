@@ -1,0 +1,23 @@
+{
+  "workflow" : "structural-dataflow",
+  "version" : "structural-dataflow@<versionId>",
+  "nodeId" : "await-approval",
+  "kind" : "flow",
+  "scope" : "listen",
+  "tasks" : [ ],
+  "children" : { },
+  "to" : {
+    "one" : {
+      "with" : {
+        "type" : "com.example.request.approved"
+      }
+    }
+  },
+  "timeout" : {
+    "after" : {
+      "minutes" : 20
+    }
+  },
+  "read" : "data",
+  "dataflow" : "await-approval-dataflow"
+}

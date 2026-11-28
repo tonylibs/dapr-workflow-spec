@@ -11,6 +11,8 @@ on:
   pull_request:
     paths:
       - 'dws-flow/**'
+      # ControllerFixtureContractTests loads these; a fixture-only PR must still run the tests.
+      - 'dws-controller/src/test/resources/v2/**'
       - '.github/workflows/dws-flow.yml'
   workflow_dispatch:
 
