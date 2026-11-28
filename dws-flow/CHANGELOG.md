@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.0.0](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-flow-v0.4.1...dws-flow-v1.0.0) (2026-11-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runtime:** The v2 compiler now emits wait and listen as leaf Flow definitions with scope-specific fields.
+
+### Features
+
+* **runtime:** classify wait and listen as Flow controllers ([a6405d5](https://github.com/tonylibs/dapr-workflow-spec/commit/a6405d547fc252455137fd1a3f01e05f28b950a7))
+
+
+### Bug Fixes
+
+* **flow:** dispatch nested do tasks as Flow children ([075a7cd](https://github.com/tonylibs/dapr-workflow-spec/commit/075a7cdab9e34de549dfab9f7c9f09b338ab1420))
+
 ## [0.4.1](https://github.com/tonylibs/dapr-workflow-spec/compare/dws-flow-v0.4.0...dws-flow-v0.4.1) (2026-11-23)
 
 
